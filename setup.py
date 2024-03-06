@@ -38,7 +38,7 @@ setup(
     packages=find_packages(include=['clabtoolkit', 'clabtoolkit.*']),
     test_suite='tests',
     tests_require=test_requirements,
-    url='https://github.com/yasseraleman/clabtoolkit',
-    version='0.1.0',
+    url='https://github.com/connectomicslab/clabtoolkit',
+    version='0.0.1',
     zip_safe=False,
 )
