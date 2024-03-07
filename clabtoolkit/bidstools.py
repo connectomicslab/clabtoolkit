@@ -1,6 +1,6 @@
 import os
 import shutil
-import clabtoolkit as clt
+import clabtoolkit.misctools as cltmisc
 
 
 # This function copies the BIDs folder and its derivatives for e given subjects to a new location
@@ -59,7 +59,7 @@ include_derivatives: bool = False):
         subj_dir = os.path.join(bids_dir, subj_id)
         out_subj_dir = os.path.join(out_dir, subj_id)
 
-        clt._printprogressbar(
+        cltmisc._printprogressbar(
             i + 1,
             nsubj,
             "Processing subject "
