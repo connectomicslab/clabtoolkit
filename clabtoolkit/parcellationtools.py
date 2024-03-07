@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import clabtoolkit as clt
+import clabtoolkit.misctools as cltmisc
 
 
 def _parc_tsv_table(codes, names, colors, tsv_filename):
@@ -30,7 +30,7 @@ def _parc_tsv_table(codes, names, colors, tsv_filename):
     seg_hexcol = []
     nrows, ncols = colors.shape
     for i in np.arange(0, nrows):
-        seg_hexcol.append(clt.rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
+        seg_hexcol.append(cltmisc.rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
 
     tsv_df = pd.DataFrame(
         {
@@ -74,7 +74,7 @@ def tissue_seg_table(tsv_filename):
     seg_hexcol = []
     nrows, ncols = seg_rgbcol.shape
     for i in np.arange(0, nrows):
-        seg_hexcol.append(clt.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2]))
+        seg_hexcol.append(cltmisc.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2]))
 
     seg_df = pd.DataFrame(
         {

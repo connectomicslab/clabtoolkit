@@ -1,4 +1,4 @@
-import clabtoolkit as clt
+import clabtoolkit.misctools as cltmisc
 import os
 from glob import glob
 import subprocess
@@ -41,7 +41,7 @@ def _uncompress_dicom_session(dic_dir: str, subj_ids = None):
     for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
         subj_dir = os.path.join(dic_dir, subj_id)
 
-        clt._printprogressbar(
+        cltmisc._printprogressbar(
             i + 1,
             nsubj,
             "Processing subject "
@@ -116,7 +116,7 @@ def _compress_dicom_session(dic_dir: str, subj_ids = None):
     for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
         subj_dir = os.path.join(dic_dir, subj_id)
 
-        clt._printprogressbar(
+        cltmisc._printprogressbar(
             i + 1,
             nsubj,
             "Processing subject "
