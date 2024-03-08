@@ -1,6 +1,3 @@
-
-
-
 # _copy_bids_folder('/media/HPCdata/Mindfulness/', '/media/yaleman/HagmannHDD/Test/',["anat", "dwi"], ["sub-S001"], include_derivatives=True, deriv_dir='/media/HPCdata/Mindfulness/derivatives')
 # _uncompress_dicom_session('/media/yaleman/Database/IMAGING-PROJECTS/Dicom')
 
@@ -24,4 +21,3 @@
 
 # freelut = '/media/COSAS/Yasser/Work2Do/ReconVertDatabase/derivatives/chimera-atlases/sub-CHUVA001/ses-V2/anat/sub-CHUVA001_ses-V2_run-1_space-orig_atlas-chimeraLFMIIIFIF_desc-scale5growwm_dseg.lut'
 # fsllut = '/home/yaleman/test.fsllut'
-

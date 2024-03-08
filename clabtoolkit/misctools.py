@@ -1,4 +1,3 @@
-
 # Print iterations progress
 def _printprogressbar(
     iteration,
@@ -30,7 +29,8 @@ def _printprogressbar(
     if iteration == total:
         print()
 
-def rgb2hex(r, g, b):
+
+def _rgb2hex(r, g, b):
     """
     Function to convert rgb to hex
 
@@ -47,13 +47,13 @@ def rgb2hex(r, g, b):
     -------
     hexcode: str
         Hexadecimal code for the color
-    
+
     """
-        
+
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
 
-def hex2rgb(hexcode):
+def _hex2rgb(hexcode):
     """
     Function to convert hex to rgb
 
@@ -66,7 +66,7 @@ def hex2rgb(hexcode):
     -------
     tuple
         Tuple with the rgb values
-    
+
     """
 
-    return tuple(map(ord, hexcode[1:].decode('hex')))
+    return tuple(map(ord, hexcode[1:].decode("hex")))

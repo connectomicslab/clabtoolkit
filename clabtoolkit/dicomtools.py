@@ -3,11 +3,12 @@ import os
 from glob import glob
 import subprocess
 
+
 def sum(a, b):
     return a + b
 
 
-def _uncompress_dicom_session(dic_dir: str, subj_ids = None):
+def _uncompress_dicom_session(dic_dir: str, subj_ids=None):
     """
     Uncompress session folders
     @params:
@@ -31,7 +32,6 @@ def _uncompress_dicom_session(dic_dir: str, subj_ids = None):
                 subj_ids = [x.strip() for x in subj_ids]
         elif not isinstance(subj_ids, list):
             raise ValueError("The subj_ids parameter must be a list or a string")
-        
 
     # Failed sessions
     fail_sess = []
@@ -83,7 +83,7 @@ def _uncompress_dicom_session(dic_dir: str, subj_ids = None):
     print("End of the uncompression process.")
 
 
-def _compress_dicom_session(dic_dir: str, subj_ids = None):
+def _compress_dicom_session(dic_dir: str, subj_ids=None):
     """
     Compress session folders
     @params:

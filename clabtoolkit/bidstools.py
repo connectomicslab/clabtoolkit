@@ -5,15 +5,20 @@ import clabtoolkit.misctools as cltmisc
 
 # This function copies the BIDs folder and its derivatives for e given subjects to a new location
 def _copy_bids_folder(
-    bids_dir: str, out_dir: str, fold2copy: list = ["anat"], subjs2copy: str = None, deriv_dir: str = None,
-include_derivatives: bool = False):
+    bids_dir: str,
+    out_dir: str,
+    fold2copy: list = ["anat"],
+    subjs2copy: str = None,
+    deriv_dir: str = None,
+    include_derivatives: bool = False,
+):
     """
     Copy full bids folders
     @params:
         bids_dir     - Required  : BIDs dataset directory:
         out_dir      - Required  : Output directory:
         fold2copy    - Optional  : List of folders to copy: default = ['anat']
-        subjs2copy   - Optional  : List of subjects to copy: 
+        subjs2copy   - Optional  : List of subjects to copy:
         deriv_dir    - Optional  : Derivatives directory: default = None
         include_derivatives - Optional  : Include derivatives folder: default = False
     """
@@ -28,12 +33,12 @@ include_derivatives: bool = False):
         subj_ids.sort()
     else:
         subj_ids = subjs2copy
-    
+
     # Selecting the derivatives folder
     if include_derivatives:
         if deriv_dir is None:
             deriv_dir = os.path.join(bids_dir, "derivatives")
-    
+
         if not os.path.isdir(deriv_dir):
             # Lunch a warning message if the derivatives folder does not exist
             print("WARNING: The derivatives folder does not exist.")
@@ -83,7 +88,9 @@ include_derivatives: bool = False):
                 directories = os.listdir(ses_dir)
                 fold2copy = []
                 for directory in directories:
-                    if not directory.startswith(".") and os.path.isdir(os.path.join(ses_dir, directory)):
+                    if not directory.startswith(".") and os.path.isdir(
+                        os.path.join(ses_dir, directory)
+                    ):
                         print(directory)
                         fold2copy.append(directory)
 
@@ -108,10 +115,14 @@ include_derivatives: bool = False):
                 for pipe_dir in der_pipe_folders:
                     if os.path.isdir(pipe_dir):
 
-                        out_pipe_dir = os.path.join(out_dir, "derivatives", os.path.basename(pipe_dir))
+                        out_pipe_dir = os.path.join(
+                            out_dir, "derivatives", os.path.basename(pipe_dir)
+                        )
 
                         pipe_indiv_subj_in = os.path.join(pipe_dir, subj_id, ses_id)
-                        pipe_indiv_subj_out = os.path.join(out_pipe_dir, subj_id, ses_id)
+                        pipe_indiv_subj_out = os.path.join(
+                            out_pipe_dir, subj_id, ses_id
+                        )
 
                         if os.path.isdir(pipe_indiv_subj_in):
                             try:
@@ -119,11 +130,15 @@ include_derivatives: bool = False):
                                 os.makedirs(pipe_indiv_subj_out, exist_ok=True)
 
                                 # Copying the folder
-                                shutil.copytree(pipe_indiv_subj_in, pipe_indiv_subj_out, dirs_exist_ok=True)
+                                shutil.copytree(
+                                    pipe_indiv_subj_in,
+                                    pipe_indiv_subj_out,
+                                    dirs_exist_ok=True,
+                                )
 
                             except:
                                 fail_deriv.append(pipe_indiv_subj_in)
-    
+
     # Print the failed sessions and derivatives
     print(" ")
     if fail_sess:
@@ -137,5 +152,5 @@ include_derivatives: bool = False):
         for i in fail_deriv:
             print(i)
     print(" ")
-    
+
     print("End of copying the files.")
