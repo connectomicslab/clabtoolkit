@@ -66,33 +66,6 @@ class AnnotParcellation:
         self.regtable = reg_table
         self.regnames = reg_names
 
-    def _correct_names(self, prefix: str = None, sufix: str = None, lower: bool = False):
-        """
-        Correcting region names
-        @params:
-            prefix     - Optional  : Add prefix to the region names:
-            sufix      - Optional  : Add sufix to the region names:
-            lower      - Optional  : Lower the region names. Default is False:
-        """
-
-        # Add prefix and sufix to the region names
-        if prefix is not None:
-            # If temp_name do not starts with ctx- then add it
-            self.regnames = [
-                name if name.startswith(prefix) else prefix + "{}".format(name)
-                for name in self.regnames
-            ]
-        
-        if sufix is not None:
-            # If temp_name do not ends with - then add it
-            self.regnames = [
-                name if name.endswith(sufix) else "{}".format(name) + sufix
-                for name in self.regnames
-            ]
-
-        if lower:
-            self.regnames = [name.lower() for name in self.regnames]
-
     def _save_annotation(self, out_file: str = None):
         """
         Save the annotation file
@@ -458,61 +431,7 @@ def _remove_fsaverage_links(linkavg_folder: str):
         os.remove(linkavg_folder)
 
 
-def _read_fscolorlut(lutFile: str):
-    """
-    Reading freesurfer lut file
-    @params:
-        lutFile     - Required  : FreeSurfer color lut:
-    """
-    # Readind a color LUT file
-    fid = open(lutFile)
-    LUT = fid.readlines()
-    fid.close()
-
-    # Make dictionary of labels
-    LUT = [row.split() for row in LUT]
-    st_names = []
-    st_codes = []
-    cont = 0
-    for row in LUT:
-        if (
-            len(row) > 1 and row[0][0] != "#" and row[0][0] != "\\\\"
-        ):  # Get rid of the comments
-            st_codes.append(int(row[0]))
-            st_names.append(row[1])
-            if cont == 0:
-                st_colors = np.array([[int(row[2]), int(row[3]), int(row[4])]])
-            else:
-                ctemp = np.array([[int(row[2]), int(row[3]), int(row[4])]])
-                st_colors = np.append(st_colors, ctemp, axis=0)
-            cont = cont + 1
-
-    return st_codes, st_names, st_colors
 
 
-def _convertluts_freesurfer2fsl(freelut: str, fsllut: str):
-    """
-    Convert FreeSurfer lut file to FSL lut file
-    @params:
-        freelut     - Required  : FreeSurfer color lut:
-        fsllut      - Required  : FSL color lut:
-    """
 
-    # Reading FreeSurfer color lut
-    st_codes_lut, st_names_lut, st_colors_lut = _read_fscolorlut(freelut)
 
-    lut_lines = []
-    for roi_pos, st_code in enumerate(st_codes_lut):
-        st_name = st_names_lut[roi_pos]
-        lut_lines.append(
-            "{:<4} {:>3.5f} {:>3.5f} {:>3.5f} {:<40} ".format(
-                st_code,
-                st_colors_lut[roi_pos, 0] / 255,
-                st_colors_lut[roi_pos, 1] / 255,
-                st_colors_lut[roi_pos, 2] / 255,
-                st_name,
-            )
-        )
-
-    with open(fsllut, "w") as colorLUT_f:
-        colorLUT_f.write("\n".join(lut_lines))
