@@ -29,8 +29,8 @@ class Parcellation:
                 self.data = parc_file
                 self.affine = affine
 
-        # Detect minimum and maximum labels
-        self._parc_range()
+            # Detect minimum and maximum labels
+            self._parc_range()
 
     def _keep_by_code(self, 
                             codes2look: Union[list, np.ndarray], 
