@@ -57,7 +57,6 @@ class Parcellation:
             indexes = []
 
         cont = 0
-
         for i, v in enumerate(codes2look):
             
             # Find the elements in the data that are equal to v
