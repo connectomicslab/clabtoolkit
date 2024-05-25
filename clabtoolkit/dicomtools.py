@@ -137,7 +137,7 @@ def _org_conv_dicoms(in_dic_dir: str,
                     #     results = list(executor.map(_copy_dicom_file, dicom_files,
                     #     [subj_id] * ndwis, [out_dic_dir] * ndwis, [ses_id] * ndwis, [date_times] * ndwis, [demobool] * ndwis, [subTB] * ndwis, [boolforce] * ndwis))
 
-                    t1 = pb.add_task('[red]Copying DICOMs', total=ndics)
+                    t1 = pb.add_task(f'[red]Copying DICOMs: Subject {cont_subj + 1}/{n_subj} ', total=ndics)
                     
                     for cont_dic, dfiles in enumerate(dicom_files):
                         ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, boolforce)
