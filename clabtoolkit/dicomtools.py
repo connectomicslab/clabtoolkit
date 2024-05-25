@@ -41,10 +41,8 @@ def _org_conv_dicoms(in_dic_dir: str,
         
     """
     nthreads = os.cpu_count()
-    
-    # Output directories
-    dicomDir = os.path.join(out_dic_dir, 'Dicom')
 
+    # Listing the subject ids inside the dicom folder
     my_list = os.listdir(in_dic_dir)
     subj_ids = []
     for it in my_list:
@@ -137,7 +135,7 @@ def _org_conv_dicoms(in_dic_dir: str,
                     #     results = list(executor.map(_copy_dicom_file, dicom_files,
                     #     [subj_id] * ndwis, [out_dic_dir] * ndwis, [ses_id] * ndwis, [date_times] * ndwis, [demobool] * ndwis, [subTB] * ndwis, [boolforce] * ndwis))
 
-                    t1 = pb.add_task(f'[red]Copying DICOMs: Subject {cont_subj + 1}/{n_subj} ', total=ndics)
+                    t1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=ndics)
                     
                     for cont_dic, dfiles in enumerate(dicom_files):
                         ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, boolforce)
@@ -175,6 +173,9 @@ def _org_conv_dicoms(in_dic_dir: str,
         
     all_ser_dirs = list(set(all_ser_dirs))
     all_ser_dirs.sort()
+    
+    if boolcomp:
+        _compress_dicom_session(out_dic_dir)
 
 
 def _copy_dicom_file(dic_file: str, 
