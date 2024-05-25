@@ -337,12 +337,16 @@ def _create_session_series_names(dataset):
 
     return ses_id, ser_id
 
-def _uncompress_dicom_session(dic_dir: str, subj_ids=None):
+def _uncompress_dicom_session(dic_dir: str, 
+                            boolrmtar: bool = False,
+                            subj_ids=None):
     """
     Uncompress session folders
     @params:
         dic_dir     - Required  : Directory containing the subjects. It assumes an organization in:
         <subj_id>/<session_id>/<series_id>(Str)
+        boolrmtar   - Optional  : Boolean variable to remove the tar files after uncompressing the session. Default is False.
+        subj_ids    - Optional  : List of subject IDs to be considered. If not provided, it will consider all the subjects in the directory.
     """
 
     if subj_ids is None:
@@ -362,48 +366,43 @@ def _uncompress_dicom_session(dic_dir: str, subj_ids=None):
         elif not isinstance(subj_ids, list):
             raise ValueError("The subj_ids parameter must be a list or a string")
 
+    n_subj = len(subj_ids)
     # Failed sessions
     fail_sess = []
+    with Progress() as pb:
+        t1 = pb.add_task('[green]Compressing subjects...', total=n_subj)
 
-    # Loop around all the subjects
-    nsubj = len(subj_ids)
-    for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
-        subj_dir = os.path.join(dic_dir, subj_id)
 
-        cltmisc._printprogressbar(
-            i + 1,
-            nsubj,
-            "Processing subject "
-            + subj_id
-            + ": "
-            + "("
-            + str(i + 1)
-            + "/"
-            + str(nsubj)
-            + ")",
-        )
+        # Loop around all the subjects
+        n_subj = len(subj_ids)
+        for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
+            subj_dir = os.path.join(dic_dir, subj_id)
+            pb.update(task_id=t1, description= f'[green]Uncompressing sessions for {subj_id} ({i+1}/{n_subj})', completed=i+1)
 
-        # Loop along all the sessions inside the subject directory
-        for ses_tar in glob(
-            subj_dir + os.path.sep + "*.tar.gz"
-        ):  # Loop along the session
-            #         print('SubjectId: ' + subjId + ' ======>  Session: ' +  sesId)
-            # Compress only if it is a folder
-            if os.path.isfile(ses_tar):
-                try:
-                    # Compressing the folder
-                    subprocess.run(
-                        ["tar", "xzf", ses_tar, "-C", subj_dir],
-                        stdout=subprocess.PIPE,
-                        universal_newlines=True,
-                    )
+            # Loop along all the sessions inside the subject directory
+            for ses_tar in glob(
+                subj_dir + os.path.sep + "*.tar.gz"
+            ):  # Loop along the session
+                #         print('SubjectId: ' + subjId + ' ======>  Session: ' +  sesId)
+                # Compress only if it is a folder
+                if os.path.isfile(ses_tar):
+                    try:
+                        # Compressing the folder
+                        subprocess.run(
+                            ["tar", "xzf", ses_tar, "-C", subj_dir],
+                            stdout=subprocess.PIPE,
+                            universal_newlines=True,
+                        )
 
-                    # Removing the uncompressed dicom folder
-                    # subprocess.run(
-                    #     ['rm', '-r', ses_tar], stdout=subprocess.PIPE, universal_newlines=True)
-
-                except:
-                    fail_sess.append(ses_tar)
+                        # Removing the uncompressed dicom folder
+                        if boolrmtar:
+                            subprocess.run(
+                                ['rm', '-r', ses_tar], stdout=subprocess.PIPE, universal_newlines=True)
+                    except:
+                        fail_sess.append(ses_tar)
+                        
+        pb.update(task_id=t1, description= f'[green]Compressing sessions for {subj_id} ({n_subj}/{n_subj})', completed=n_subj)
+        
     if fail_sess:
         print("THE PROCESS FAILED TO UNCOMPRESS THE FOLLOWING TAR FILES:")
         for i in fail_sess:
@@ -437,51 +436,53 @@ def _compress_dicom_session(dic_dir: str, subj_ids=None):
         elif not isinstance(subj_ids, list):
             raise ValueError("The subj_ids parameter must be a list or a string")
 
+    n_subj = len(subj_ids)
     # Failed sessions
     fail_sess = []
+    with Progress() as pb:
+        t1 = pb.add_task('[green]Compressing subjects...', total=n_subj)
+        
+        # Loop around all the subjects
+        nsubj = len(subj_ids)
+        for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
+            subj_dir = os.path.join(dic_dir, subj_id)
+            pb.update(task_id=t1, description= f'[green]Compressing sessions for {subj_id} ({i+1}/{n_subj})', completed=i+1)
+ 
+            # Loop along all the sessions inside the subject directory
+            ses_dirs = os.listdir(subj_dir)
+            
+            # Detect which of the folders are sessions
+            ses_dirs = [x for x in ses_dirs if os.path.isdir(os.path.join(subj_dir, x))]
+            
+            # Detect which of the folders start with 'ses-'
+            ses_dirs = [x for x in ses_dirs if x.startswith('ses-')]
+            n_sessions = len(ses_dirs)
+            
+            for n_ses, ses_id in enumerate(ses_dirs):  # Loop along the session
+                ses_dir = os.path.join(subj_dir, ses_id)
+                #         print('SubjectId: ' + subjId + ' ======>  Session: ' +  sesId)
+                # Compress only if it is a folder
+                if os.path.isdir(ses_dir):
+                    tar_filename = ses_dir + ".tar.gz"
+                    try:
+                        # Compressing the folder
+                        subprocess.run(
+                            ["tar", "-C", subj_dir, "-czvf", tar_filename, ses_id],
+                            stdout=subprocess.PIPE,
+                            universal_newlines=True,
+                        )
 
-    # Loop around all the subjects
-    nsubj = len(subj_ids)
-    for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
-        subj_dir = os.path.join(dic_dir, subj_id)
-
-        cltmisc._printprogressbar(
-            i + 1,
-            nsubj,
-            "Processing subject "
-            + subj_id
-            + ": "
-            + "("
-            + str(i + 1)
-            + "/"
-            + str(nsubj)
-            + ")",
-        )
-
-        # Loop along all the sessions inside the subject directory
-        for ses_id in os.listdir(subj_dir):  # Loop along the session
-            ses_dir = os.path.join(subj_dir, ses_id)
-            #         print('SubjectId: ' + subjId + ' ======>  Session: ' +  sesId)
-            # Compress only if it is a folder
-            if os.path.isdir(ses_dir):
-                tar_filename = ses_dir + ".tar.gz"
-                try:
-                    # Compressing the folder
-                    subprocess.run(
-                        ["tar", "-C", subj_dir, "-czvf", tar_filename, ses_id],
-                        stdout=subprocess.PIPE,
-                        universal_newlines=True,
-                    )
-
-                    # Removing the uncompressed dicom folder
-                    subprocess.run(
-                        ["rm", "-r", ses_dir],
-                        stdout=subprocess.PIPE,
-                        universal_newlines=True,
-                    )
-
-                except:
-                    fail_sess.append(ses_dir)
+                        # Removing the uncompressed dicom folder
+                        subprocess.run(
+                            ["rm", "-r", ses_dir],
+                            stdout=subprocess.PIPE,
+                            universal_newlines=True,
+                        )
+                    except:
+                        fail_sess.append(ses_dir)
+            
+        pb.update(task_id=t1, description= f'[green]Compressing sessions for {subj_id} ({n_subj}/{n_subj})', completed=n_subj)
+        
     if fail_sess:
         print("THE PROCESS FAILED TO COMPRESS THE FOLLOWING SESSIONS:")
         for i in fail_sess:
