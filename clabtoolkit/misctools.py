@@ -2,7 +2,38 @@ import numpy as np
 from typing import Union
 import shlex
 import os
+import argparse
 
+class SmartFormatter(argparse.HelpFormatter):
+    """
+    Class to format the help message
+    
+    This class is used to format the help message in the argparse module. It allows to use the "R|" prefix to print the help message as raw text.
+    
+    For example:
+    parser = argparse.ArgumentParser(description='''R|This is a raw text help message.
+    It can contain multiple lines.
+    It will be printed as raw text.''', formatter_class=SmartFormatter)
+    
+    parser.print_help()
+    
+    Parameters
+    ----------
+    argparse : argparse.HelpFormatter
+        HelpFormatter class from the argparse module
+        
+    Returns
+    -------
+    argparse.HelpFormatter
+        HelpFormatter class from the argparse module
+    
+    """
+    def _split_lines(self, text, width):
+        if text.startswith('R|'):
+            return text[2:].splitlines()
+        # this is the RawTextHelpFormatter._split_lines
+        return argparse.HelpFormatter._split_lines(self, text, width)
+    
 # Print iterations progress
 def _printprogressbar(
     iteration,
@@ -109,6 +140,29 @@ def _hex2rgb(hexcode: str):
     # Convert hexadecimal color code to RGB values
     hexcode = hexcode.lstrip('#')
     return tuple(int(hexcode[i:i+2], 16) for i in (0, 2, 4))
+
+def _search_in_list(ref_list, list2look):
+    """
+    Search for the index of the elements in list2look in ref_list
+    
+    Parameters
+    ----------
+    ref_list : list
+        Reference list
+    list2look : list
+        List to look for
+        
+    Returns
+    -------
+    list
+        List of indices of the elements in list2look in ref_list
+    
+    """
+    ret = []
+    for v in list2look:
+        index = ref_list.index(v)
+        ret.append(index)
+    return ret
 
 def _multi_hex2rgb(hexcodes: list):
     """
@@ -235,6 +289,120 @@ def _remove_duplicates(input_list: list):
 
     return unique_list
 
+def _select_ids_from_file(subids: list, 
+                            idfile: Union[list, str]):
+    """
+    Function to select the ids from a list of ids that are in a file.
+    It can be used to select the ids from a list of subjects that are in a file.
+
+    Parameters
+    ----------
+    subids : list
+        List of subject ids.
+    idfile : str or list
+        File with the ids to select.
+        
+    Returns
+    -------
+    out_ids: list
+        List of ids that are in the file.
+    
+    """
+    
+    # Read the ids from the file
+    if isinstance(idfile, str):
+        if os.path.exists(idfile):
+            with open(idfile) as file:
+                t1s2run = [line.rstrip() for line in file]
+
+            out_ids = [s for s in subids if any(xs in s for xs in t1s2run)]
+    
+    if isinstance(idfile, list):
+        out_ids = _list_intercept(subids, idfile)
+
+    return out_ids
+
+def _list_intercept(list1: list,
+                    list2: list):
+    """
+    Function to intercept the elements from 2 different lists.
+
+    Parameters
+    ----------
+    list1 : list
+        List of elements
+    list2 : list
+        List of elements
+        
+    Returns
+    -------
+    int_list: list
+        List of elements that are in both lists
+
+    """
+    
+    # Create a list of elements that are in both lists
+    int_list = [value for value in list1 if value in list2]
+    
+    return int_list
+
+
+def _detect_recursive_files(in_dir):
+    """
+    Function to detect all the files in a directory and its subdirectories
+    
+    Parameters
+    ----------
+    in_dir : str
+        Input directory
+        
+    Returns
+    -------
+    files: list
+        List of files in the directory and its subdirectories
+    
+    """
+    
+    files = []
+    # r=root, d=directories, f = files
+    for r, d, f in os.walk(in_dir):
+        for file in f:
+            files.append(os.path.join(r, file))
+
+    return files
+
+def _rem_dupplicate_char(strcad: str, 
+                        dchar: str):
+    """
+    This function removes duplicate characters from strings.
+    
+    Parameters
+    ----------
+    s : list or str
+        Input string
+        dchar : str
+        
+    Returns
+    ---------
+    str or list
+        String with the duplicate characters removed.
+    
+    """
+    
+    chars = []
+    prev = None
+
+    for c in strcad:
+        if c != dchar:
+            chars.append(c)
+            prev = c
+        else:
+            if prev != c:
+                chars.append(c)
+                prev = c
+
+    return ''.join(chars)
+
 def _readjust_colors(colors: Union[list, np.ndarray]):
     """
     Function to readjust the colors to the range 0-255
@@ -344,7 +512,7 @@ def _correct_names(regnames: list,
     return regnames
 
 
-def _my_ismember(a, b):
+def _ismember_from_list(a, b):
     """
     Function to check if elements of a are in b
 

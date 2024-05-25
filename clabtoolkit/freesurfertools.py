@@ -87,7 +87,10 @@ class AnnotParcellation:
         )
 
     def _fill_parcellation(
-        self, label_file: str, surf_file: str, corr_annot: str = None
+        self, 
+        label_file: str, 
+        surf_file: str, 
+        corr_annot: str = None
     ):
         """
         Correct the parcellation by refilling the vertices from the cortex label file that do not have a label in the annotation file.

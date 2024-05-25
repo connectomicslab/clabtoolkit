@@ -367,8 +367,25 @@ class Parcellation:
                     st_codes, st_names, st_colors = self.read_luttable(in_file=lut_file)
 
                 elif lut_type == "tsv":
-                    st_codes, st_names, st_colors = self.read_tsvtable(in_file=lut_file)
                     
+                    tsv_dict = self.read_tsvtable(in_file=lut_file)
+                    if "index" in tsv_dict.keys() and "name" in tsv_dict.keys():
+                        st_codes = tsv_dict["index"]
+                        st_names = tsv_dict["name"]
+                    else: 
+                        raise ValueError("The dictionary must contain the keys 'index' and 'name'")
+                    
+                    if "color" in tsv_dict.keys():
+                        st_colors = tsv_dict["color"]
+                        
+                        if isinstance(st_colors[0], str):
+                            st_colors = cltmisc._multi_hex2rgb(st_colors)
+
+                        elif isinstance(st_colors[0], list):
+                            st_colors = np.array(st_colors)
+                    else:
+                        st_colors = None
+
                 else:
                     raise ValueError("The lut_type must be 'lut' or 'tsv'")
                     
@@ -382,28 +399,34 @@ class Parcellation:
         elif isinstance(lut_file, dict):
             self.lut_file = None
 
-            if "index" not in lut_file.keys() or "color" not in lut_file.keys() or "name" not in lut_file.keys():
-                raise ValueError("The dictionary must contain the keys 'index', 'color' and 'name'")
+            if "index" not in lut_file.keys() or "name" not in lut_file.keys():
+                raise ValueError("The dictionary must contain the keys 'index' and 'name'")
+            
+            if "color" not in lut_file.keys():
+                st_colors = None
+            else:
+                
+                st_colors = lut_file["color"]
+                if isinstance(st_colors[0], str):
+                    st_colors = cltmisc._multi_hex2rgb(st_colors)
 
-            colors = lut_file["color"]
-            if isinstance(colors[0], str):
-                colors = cltmisc._multi_hex2rgb(colors)
-
-            elif isinstance(colors[0], list):
-                colors = np.array(colors)
+                elif isinstance(st_colors[0], list):
+                    st_colors = np.array(st_colors)
 
             self.index = lut_file["index"]
-            self.color = colors
+            self.color = st_colors
             self.name = lut_file["name"]
     
     def _export_colortable(self, 
                             out_file: str, 
-                            lut_type: str = "lut"):
+                            lut_type: str = "lut",
+                            force: bool = True):
         """
         Export the lookup table to a file
         @params:
             out_file     - Required  : Lookup table file:
             lut_type     - Optional  : Type of the lut file: 'lut' or 'tsv'. Default = 'lut'
+            force        - Optional  : If True, it will overwrite the file. Default = True
         """
 
         if not hasattr(self, "index") or not hasattr(self, "name") or not hasattr(self, "color"):
@@ -425,8 +448,20 @@ class Parcellation:
                 self.index, self.name, self.color, out_file, headerlines=headerlines
             )
         elif lut_type == "tsv":
+            
+            if self.index is None or self.name is None:
+                raise ValueError("The parcellation does not contain a color table. The index and name attributes must be present")
+            
+            tsv_df = pd.DataFrame(
+                {"index": np.asarray(self.index), "name": self.name}
+            )
+            # Add color if it is present
+            if self.color is not None:
+                tsv_df["color"] = cltmisc._multi_rgb2hex(self.color)
+            
+            
             self.write_tsvtable(
-                self.index, self.name, self.color, out_file
+                tsv_df, out_file, force = force
             )
         else:
             raise ValueError("The lut_type must be 'lut' or 'tsv'")
@@ -525,12 +560,9 @@ class Parcellation:
         
         Returns
         -------
-        st_codes: list
-            List of codes for the parcellation
-        st_names: list
-            List of names for the parcellation
-        st_colors: list
-            List of colors for the parcellation
+        tsv_dict: dict
+            Dictionary with the tsv table
+            
         
         """
 
@@ -539,23 +571,31 @@ class Parcellation:
             raise ValueError("The file does not exist")
         
         tsv_df = pd.read_csv(in_file, sep="\t")
+        
+        # Convert to dictionary
+        tsv_dict = tsv_df.to_dict(orient="list")
+        
+        # Test if index and name are keys
+        if "index" not in tsv_dict.keys() or "name" not in tsv_dict.keys():
+            raise ValueError("The tsv file must contain the columns 'index' and 'name'")
+        
+        if "color" in tsv_dict.keys():
+            temp_colors = tsv_dict["color"]
 
-        st_codes = tsv_df["index"].values
-        st_names = tsv_df["name"].values
-        temp_colors = tsv_df["color"].values.tolist()
+            if cl_format == "rgb":
+                st_colors = cltmisc._multi_hex2rgb(temp_colors)
+            elif cl_format == "hex":
+                st_colors = temp_colors
+                
+            tsv_dict["color"] = st_colors
 
-        if cl_format == "rgb":
-            st_colors = cltmisc._multi_hex2rgb(temp_colors)
-        elif cl_format == "hex":
-            st_colors = temp_colors
-
-        return st_codes, st_names, st_colors
+        return tsv_dict
     
     @staticmethod
     def write_luttable(codes:list, 
                         names:list, 
                         colors:Union[list, np.ndarray],
-                        out_file:str, 
+                        out_file:str = None, 
                         headerlines: Union[list, str] = None,
                         boolappend: bool = False,
                         force: bool = True):
@@ -584,12 +624,13 @@ class Parcellation:
         """
 
         # Check if the file already exists and if the force parameter is False
-        if os.path.exists(out_file) and not force:
-            raise ValueError("The file already exists")
-        
-        out_dir = os.path.dirname(out_file)
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
+        if out_file is not None:
+            if os.path.exists(out_file) and not force:
+                raise ValueError("The file already exists")
+            
+            out_dir = os.path.dirname(out_file)
+            if not os.path.exists(out_dir):
+                os.makedirs(out_dir)
         
         happend_bool = True # Boolean to append the headerlines
         if headerlines is None:
@@ -624,6 +665,12 @@ class Parcellation:
                 
         else:
             luttable = headerlines
+            
+        if isinstance(colors, list):
+            if isinstance(colors[0], str):
+                colors = cltmisc._multi_hex2rgb(colors)
+            elif isinstance(colors[0], list):
+                colors = np.array(colors)
         
         # Table for parcellation      
         for roi_pos, roi_name in enumerate(names):
@@ -633,17 +680,26 @@ class Parcellation:
                                                                         colors[roi_pos,1], 
                                                                         colors[roi_pos,2], 0))
         luttable.append('\n')
+        
+        if out_file is not None:
+            if os.path.isfile(out_file) and force:
+                # Save the lut table
+                with open(out_file, 'w') as colorLUT_f:
+                    colorLUT_f.write('\n'.join(luttable))
+            elif not os.path.isfile(out_file):
+                # Save the lut table
+                with open(out_file, 'w') as colorLUT_f:
+                    colorLUT_f.write('\n'.join(luttable))
+                    
+            elif os.path.isfile(out_file) and not force:
+                raise ValueError("The file already exists. Please use the 'force' flag to overwrite the LUT file")
+            
+                
 
-        # Save the lut table
-        with open(out_file, 'w') as colorLUT_f:
-            colorLUT_f.write('\n'.join(luttable))
-
-        return out_file
+        return luttable
 
     @staticmethod
-    def write_tsvtable(codes:list, 
-                        names:list, 
-                        colors:Union[list, np.ndarray],
+    def write_tsvtable(tsv_df: Union[pd.DataFrame, dict],
                         out_file:str,
                         boolappend: bool = False,
                         force: bool = False):
@@ -678,25 +734,80 @@ class Parcellation:
         
         # Table for parcellation
         # 1. Converting colors to hexidecimal string
-        seg_hexcol = cltmisc._multi_rgb2hex(colors)
+        
+        if isinstance(tsv_df, pd.DataFrame):
+            tsv_dict = tsv_df.to_dict(orient="list")
+        else:
+            tsv_dict = tsv_df
+        
+        if "name" not in tsv_dict.keys() or "index" not in tsv_dict.keys():
+            raise ValueError("The dictionary must contain the keys 'index' and 'name'")
+        
+        codes = tsv_dict["index"]
+        names = tsv_dict["name"]
+        
+        if "color" in tsv_dict.keys():
+            temp_colors = tsv_dict["color"]
+            
+            if isinstance(temp_colors, list):
+                if isinstance(temp_colors[0], str):
+                    if temp_colors[0][0] != "#":
+                        raise ValueError("The colors must be in hexadecimal format")
+                
+                elif isinstance(temp_colors[0], list):
+                    colors = np.array(temp_colors)
+                    seg_hexcol = cltmisc._multi_rgb2hex(colors)
+                    tsv_dict["color"] = seg_hexcol  
+                    
+            elif isinstance(temp_colors, np.ndarray):
+                seg_hexcol = cltmisc._multi_rgb2hex(temp_colors)
+                tsv_dict["color"] = seg_hexcol 
+                
         
         if boolappend:
             if not os.path.exists(out_file):
                 raise ValueError("The file does not exist")
             else:
-                tsv_df = pd.read_csv(out_file, sep="\t")
-                tsv_df = tsv_df.append(
-                    {"index": np.asarray(codes), "name": names, "color": seg_hexcol}
-                )
+                tsv_orig = Parcellation.read_tsvtable(in_file=out_file, cl_format="hex")
+                
+                # Create a list with the common keys between tsv_orig and tsv_dict
+                common_keys = list(set(tsv_orig.keys()) & set(tsv_dict.keys()))
+                
+                # List all the keys for both dictionaries
+                all_keys = list(set(tsv_orig.keys()) | set(tsv_dict.keys()))
+                
+                
+                # Concatenate values for those keys and the rest of the keys that are in tsv_orig add white space
+                for key in common_keys:
+                    tsv_orig[key] = tsv_orig[key] + tsv_dict[key]
+                    
+                for key in all_keys:
+                    if key not in common_keys:
+                        if key in tsv_orig.keys():
+                            tsv_orig[key] = tsv_orig[key] + [""]*len(tsv_dict["name"])
+                        elif key in tsv_dict.keys():
+                            tsv_orig[key] =  [""]*len(tsv_orig["name"]) + tsv_dict[key]
         else:
-            tsv_df = pd.DataFrame(
-                {"index": np.asarray(codes), "name": names, "color": seg_hexcol}
-        )
-        # Save the tsv table
-        with open(out_file, "w+") as tsv_file:
-            tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
+            tsv_orig = tsv_dict
 
-        return tsv_file
+        # Dictionary to dataframe
+        tsv_df = pd.DataFrame(tsv_orig)
+        
+        if os.path.isfile(out_file) and force:
+            
+            # Save the tsv table
+            with open(out_file, "w+") as tsv_file:
+                tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
+                
+        elif not os.path.isfile(out_file):
+            # Save the tsv table
+            with open(out_file, "w+") as tsv_file:
+                tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
+                
+        elif os.path.isfile(out_file) and not force:
+            raise ValueError("The file already exists. Please use the 'force' flag to overwrite the TSV file")
+
+        return out_file
     
     @staticmethod
     def tissue_seg_table(tsv_filename):
