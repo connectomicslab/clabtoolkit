@@ -143,7 +143,8 @@ def _org_conv_dicoms(in_dic_dir: str,
                         ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, boolforce)
                         all_ser_dirs.append(ser_dir)
                         pb.update(task_id=t1, completed=cont_dic+1)
-
+                    pb.update(task_id=t1, completed=ndics)
+                    
                 else:
 
                     for ses_id in os.listdir(subj_dir):  # Loop along the session
@@ -170,7 +171,8 @@ def _org_conv_dicoms(in_dic_dir: str,
                 print('Subject: ' + subj_id + ' does not exist.')
                 
             pb.update(task_id=t2, completed=cont_subj+1)
-            
+        pb.update(task_id=t2, completed=n_subj) 
+        
     all_ser_dirs = list(set(all_ser_dirs))
     all_ser_dirs.sort()
 
