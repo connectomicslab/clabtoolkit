@@ -11,6 +11,7 @@ numpy>=1.26.1
 pandas>=2.1.0
 scipy>=1.11.0
 nibabel>=5.1.0
+rich>=11.0.0
 
 
 

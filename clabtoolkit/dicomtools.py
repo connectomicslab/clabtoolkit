@@ -370,7 +370,7 @@ def _uncompress_dicom_session(dic_dir: str,
     # Failed sessions
     fail_sess = []
     with Progress() as pb:
-        t1 = pb.add_task('[green]Compressing subjects...', total=n_subj)
+        t1 = pb.add_task('[green]Uncompressing ...', total=n_subj)
 
 
         # Loop around all the subjects
