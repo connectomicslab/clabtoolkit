@@ -284,6 +284,7 @@ def _copy_dicom_file(dic_file: str,
 
 # Extract Series Id and Sessions Id from a pydicom object
 def _create_session_series_names(dataset):
+
     # % This function creates the session and the series name for a dicom object
 
     # Extracting the study date from DICOM file
@@ -342,11 +343,15 @@ def _uncompress_dicom_session(dic_dir: str,
                             subj_ids=None):
     """
     Uncompress session folders
-    @params:
+    Parameters:
+    -----------
+    
         dic_dir     - Required  : Directory containing the subjects. It assumes an organization in:
         <subj_id>/<session_id>/<series_id>(Str)
         boolrmtar   - Optional  : Boolean variable to remove the tar files after uncompressing the session. Default is False.
         subj_ids    - Optional  : List of subject IDs to be considered. If not provided, it will consider all the subjects in the directory.
+        
+        
     """
 
     if subj_ids is None:
