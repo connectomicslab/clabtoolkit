@@ -710,37 +710,37 @@ def _remove_fsaverage_links(linkavg_folder: str):
         os.remove(linkavg_folder)
         
 def _detect_hemi(file_name: str):
-        """
-        Detect the hemisphere from the filename
+    """
+    Detect the hemisphere from the filename
+    
+    Parameters
+    ----------
+        file_name     - Required  : Filename:
         
-        Parameters
-        ----------
-            file_name     - Required  : Filename:
-            
-        Returns
-        -------
-        hemi_cad: str : Hemisphere name
-            
-        """
+    Returns
+    -------
+    hemi_cad: str : Hemisphere name
         
-        
-        # Detecting the hemisphere
-        file_name = file_name.lower()
-        
-        # Find in the string annot_name if it is lh. or rh.
-        if "lh." in file_name:
-            hemi = "lh"
-        elif "rh." in file_name:
-            hemi = "rh"
-        elif "hemi-l" in file_name:
-            hemi = "lh"
-        elif "hemi-r" in file_name:
-            hemi = "rh"
-        else:
-            hemi = None
-            raise ValueError(
-                "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
-            )
+    """
+    
+    
+    # Detecting the hemisphere
+    file_name = file_name.lower()
+    
+    # Find in the string annot_name if it is lh. or rh.
+    if "lh." in file_name:
+        hemi = "lh"
+    elif "rh." in file_name:
+        hemi = "rh"
+    elif "hemi-l" in file_name:
+        hemi = "lh"
+    elif "hemi-r" in file_name:
+        hemi = "rh"
+    else:
+        hemi = None
+        raise ValueError(
+            "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
+        )
 
     return hemi
 
