@@ -357,8 +357,8 @@ class AnnotParcellation:
         if ref_surf is None:
             
             # Get freesurfer directory
-            if "SUBJECTS_DIR" in os.environ:
-                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+            if "FREESURFER_HOME" in os.environ:
+                freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], 'subjects')
                 subj_id = "fsaverage"
 
                 hemi = _detect_hemi(gii_file)
@@ -408,8 +408,8 @@ class AnnotParcellation:
         if ref_surf is None:
             
             # Get freesurfer directory
-            if "SUBJECTS_DIR" in os.environ:
-                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+            if "FREESURFER_HOME" in os.environ:
+                freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], 'subjects')
                 subj_id = "fsaverage"
 
                 hemi = _detect_hemi(gii_file)
@@ -470,8 +470,8 @@ class AnnotParcellation:
         if not os.path.isdir(freesurfer_dir):
             
             # Take the default FreeSurfer directory
-            if "SUBJECTS_DIR" in os.environ:
-                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+            if "FREESURFER_HOME" in os.environ:
+                freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], 'subjects')
                 ref_id = "fsaverage"
             else:
                 raise ValueError("The FreeSurfer directory must be set in the environment variables or passed as an argument")
