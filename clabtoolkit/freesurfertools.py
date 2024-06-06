@@ -1,9 +1,11 @@
 import os
 import time
 import subprocess
-
+import sys
+from pathlib import Path
 import numpy as np
 import nibabel as nib
+import pandas as pd
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.parcellationtools as cltparc
 
@@ -33,8 +35,9 @@ class AnnotParcellation:
         Parameters
         ----------
         parc_file     - Required  : Parcellation filename:
-        
-        
+        ref_surf      - Optional  : Reference surface. Default is the white surface of the fsaverage subject:   
+        cont_tech     - Optional  : Container technology. Default is local:
+        cont_image    - Optional  : Container image. Default is local:
         
         """
         booldel = False
@@ -75,7 +78,6 @@ class AnnotParcellation:
         if booldel:
             os.remove(annot_file)
         
-
         # Correcting region names
         reg_names = [name.decode("utf-8") for name in reg_names]
 
@@ -253,6 +255,77 @@ class AnnotParcellation:
             corr_annot = self.filename
 
         return corr_annot, vert_lab, reg_ctable, reg_names
+    
+    def _export_to_tsv(self, 
+                        prefix2add: str = None,
+                        reg_offset: int = 1000,
+                        tsv_file: str = None):
+        
+        """
+        Export the table of the parcellation to a tsv file. It will contain the index, the annotation id, 
+        the parcellation id, the name and the color of the regions. 
+        If a prefix is provided, it will be added to the names of the regions.
+        If a tsv file is provided, it will be saved in the specified path. 
+        Otherwise it will only return the pandas dataframe.
+        
+        Parameters
+        ----------
+        prefix2add     - Optional  : Prefix to add to the names of the regions:
+        reg_offset     - Optional  : Offset to add to the parcellation id. Default is 1000:
+        tsv_file       - Optional  : Output tsv file:
+        
+        Returns
+        -------
+        tsv_df: pandas dataframe : Table of the parcellation
+        tsv_file: str : Tsv filename
+        
+        """
+    
+        # Creating the hexadecimal colors for the regions
+        parc_hexcolor = cltmisc._multi_rgb2hex(self.regtable[:, 0:3])
+
+        # Creating the region names
+        parc_names = self.regnames
+        if prefix2add is not None:
+            parc_names = cltmisc._correct_names(parc_names, prefix=prefix2add)
+        
+        parc_index = np.arange(0, len(parc_names))
+        
+        # Selecting the Id in the annotation file
+        annot_id = self.regtable[:, 4]
+        
+        
+        parc_id = reg_offset + parc_index
+            
+        
+        # Creating the dictionary for the tsv files
+        tsv_df = pd.DataFrame(
+                {"index": np.asarray(parc_index), 
+                "annotid": np.asarray(annot_id),
+                "parcid": np.asarray(parc_id),
+                "name": parc_names, 
+                "color": parc_hexcolor}
+                )
+
+
+        # Save the tsv table
+        if tsv_file is not None:
+            tsv_path = os.path.dirname(tsv_file)
+            
+                    # Create the directory if it does not exist using the library Path
+            tsv_path = Path(tsv_path)
+            
+            # If the directory does not exist create the directory and if it fails because it does not have write access send an error
+            try:
+                tsv_path.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                print("The TemplateFlow directory does not have write access.")
+                sys.exit()
+
+            with open(tsv_file, "w+") as tsv_f:
+                tsv_f.write(tsv_df.to_csv(sep="\t", index=False))
+        
+        return tsv_df, tsv_file
     
     
     @staticmethod
