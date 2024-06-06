@@ -4,6 +4,8 @@ import subprocess
 
 import numpy as np
 import nibabel as nib
+import clabtoolkit.misctools as cltmisc
+import clabtoolkit.parcellationtools as cltparc
 
 
 class AnnotParcellation:
@@ -21,42 +23,54 @@ class AnnotParcellation:
     
     """
 
-    def __init__(self, annot_file: str):
-
-
-        self.annotfile = annot_file
+    def __init__(self, parc_file: str):
+        """
+        Initialize the AnnotParcellation object
+        
+        Parameters
+        ----------
+        parc_file     - Required  : Parcellation filename:
+        
+        
+        
+        """
+        booldel = False
+        self.filename = parc_file
         
         # Verify if the annot file exists
-        if not os.path.exists(self.annotfile):
+        if not os.path.exists(self.filename):
             raise ValueError("The annot file does not exist")
         
         # Extracting the filename, folder and name
-        self.annotfolder = os.path.dirname(self.annotfile)
-        self.annotname = os.path.basename(self.annotfile)
+        self.path = os.path.dirname(self.filename)
+        self.name = os.path.basename(self.filename)
 
         # Detecting the hemisphere
-        annot_name = self.annotname.lower()
-        temp_name = annot_name.replace(".annot", "").lower()
-
+        temp_name = self.name.lower()
+        
         # Find in the string annot_name if it is lh. or rh.
-        if "lh." in temp_name:
-            hemi = "lh"
-        elif "rh." in temp_name:
-            hemi = "rh"
-        elif "hemi-l" in temp_name:
-            hemi = "lh"
-        elif "hemi-r" in temp_name:
-            hemi = "rh"
-        else:
-            hemi = None
-            raise ValueError(
-                "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
-            )
+        hemi = _detect_hemi(self.name)
 
         self.hemi = hemi
 
+        # If the file is a .gii file, then convert it to a .annot file
+        if self.name.endswith(".gii"):
+            annot_file = cltparc._gii2annot(self.filename)
+            booldel = True
+            
+        elif self.name.endswith(".annot"):
+            annot_file = self.filename
+            
+        elif self.name.endswith(".gcs"):
+            annot_file = cltparc.gcs2annot(self.filename, annot_file=self.filename.replace(".gcs", ".annot"))
+            booldel = True
+        
         # Read the annot file using nibabel
-        codes, reg_table, reg_names = nib.freesurfer.io.read_annot(self.annotfile)
+        codes, reg_table, reg_names = nib.freesurfer.io.read_annot(annot_file)
+        
+        if booldel:
+            os.remove(annot_file)
+        
 
         # Correcting region names
         reg_names = [name.decode("utf-8") for name in reg_names]
@@ -66,6 +80,7 @@ class AnnotParcellation:
         self.regtable = reg_table
         self.regnames = reg_names
 
+    
     def _save_annotation(self, out_file: str = None):
         """
         Save the annotation file
@@ -230,17 +245,170 @@ class AnnotParcellation:
             os.makedirs(os.path.dirname(corr_annot), exist_ok=True)
             nib.freesurfer.write_annot(corr_annot, vert_lab, reg_ctable, reg_names)
         else:
-            nib.freesurfer.write_annot(self.annotfile, vert_lab, reg_ctable, reg_names)
-            corr_annot = self.annotfile
+            nib.freesurfer.write_annot(self.filename, vert_lab, reg_ctable, reg_names)
+            corr_annot = self.filename
 
         return corr_annot, vert_lab, reg_ctable, reg_names
+    
+    
+    @staticmethod
+    def gii2annot(gii_file: str,
+                    ref_surf: str,
+                    annot_file: str = None, 
+                    cont_tech: str = "local",
+                    cont_image: str = "local"):
+        """
+        Function to convert FreeSurfer gifti files to annot files using mris_convert
+        
+        Parameters
+        ----------
+        gii_file       - Required  : Gii filename:
+        ref_surf       - Required  : Reference surface:
+        annot_file     - Optional  : Annot filename:
+        cont_tech      - Optional  : Container technology. Default is local:
+        cont_image     - Optional  : Container image. Default is local:
+        
+        Output
+        ------
+        gii_file: str : Gii filename
+        
+        """
+        
+        if not os.path.exists(gii_file):
+            raise ValueError("The gii file does not exist")
+        
+        if not os.path.exists(ref_surf):
+            raise ValueError("The reference surface file does not exist")
+        
+        if annot_file is None:
+            annot_file = os.path.join(os.path.dirname(gii_file), os.path.basename(gii_file).replace(".gii", ".annot"))
 
+        # Generating the bash command
+        cmd_bashargs = ['mris_convert', '--annot', gii_file, ref_surf, annot_file]
+        
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+    @staticmethod
+    def annot2gii(annot_file: str,
+                    ref_surf: str,
+                    gii_file: str = None, 
+                    cont_tech: str = "local",
+                    cont_image: str = "local"):
+        """
+        Function to convert FreeSurfer annot files to gii files using mris_convert
+        
+        Parameters
+        ----------
+        annot_file     - Required  : Annot filename:
+        ref_surf       - Required  : Reference surface:
+        gii_file       - Optional  : Gii filename:
+        cont_tech      - Optional  : Container technology. Default is local:
+        cont_image     - Optional  : Container image. Default is local:
+        
+        Output
+        ------
+        gii_file: str : Gii filename
+        
+        """
+        
+        if gii_file is None:
+            gii_file = os.path.join(os.path.dirname(annot_file), os.path.basename(annot_file).replace(".annot", ".gii"))
+        
+        if not os.path.exists(annot_file):
+            raise ValueError("The annot file does not exist")
+        
+        if not os.path.exists(ref_surf):
+            raise ValueError("The reference surface file does not exist")
+        
+        
+        # Generating the bash command
+        cmd_bashargs = ['mris_convert', '--annot', annot_file, ref_surf, gii_file]
+        
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        
+    @staticmethod
+    def gcs2annot(gcs_file: str, 
+                    annot_file: str, 
+                    freesurfer_dir: str = None, 
+                    ref_id: str = "fsaverage", 
+                    cont_tech: str = "local",
+                    cont_image: str = "local"):
+        
+        """
+        Function to convert gcs files to FreeSurfer annot files
+        
+        Parameters
+        ----------
+        gcs_file     - Required  : GCS filename:
+        annot_file    - Required  : Annot filename:
+        freesurfer_dir - Optional  : FreeSurfer directory. Default is the $SUBJECTS_DIR environment variable:
+        ref_id       - Optional  : Reference subject id. Default is fsaverage:
+        cont_tech    - Optional  : Container technology. Default is local:
+        cont_image   - Optional  : Container image. Default is local:
+        
+        Output
+        ------
+        annot_file: str : Annot filename
+                
+        """
+        
+        if not os.path.exists(gcs_file):
+            raise ValueError("The gcs file does not exist")
+        
+        if not os.path.isdir(freesurfer_dir):
+            
+            # Take the default FreeSurfer directory
+            if "SUBJECTS_DIR" in os.environ:
+                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+                ref_id = "fsaverage"
+            else:
+                raise ValueError("The FreeSurfer directory must be set in the environment variables or passed as an argument")
+            
+        hemi_cad = _detect_hemi(gcs_file)
+                                        
+        ctx_label = os.path.join(freesurfer_dir, ref_id, "label", hemi_cad + ".cortex.label")
+        aseg_presurf = os.path.join(freesurfer_dir, ref_id, "mri", "aseg.presurf.mgz")
+        sphere_reg = os.path.join(freesurfer_dir, ref_id, "surf", hemi_cad + ".sphere.reg")
+        
+        cmd_bashargs = ['mris_ca_label', '-l', ctx_label, '-aseg', aseg_presurf, ref_id,
+                        hemi_cad, sphere_reg, gcs_file, annot_file]
+        
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        return annot_file
+    
+    def _annot2tsv(self, tsv_file: str = None):
+        """
+        Save the annotation file as a tsv file
+        @params:
+            tsv_file     - Required  : Output tsv file:
+        """
+
+        if tsv_file is None:
+            tsv_file = os.path.join(self.annotfolder, self.annotname.replace(".annot", ".tsv"))
+
+        # If the directory does not exist then create it
+        temp_dir = os.path.dirname(tsv_file)
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+
+        # Save the annotation file
+        np.savetxt(tsv_file, self.codes, fmt="%d", delimiter="\t")
+
+        return tsv_file
+    
     def _annot2gcs(
         self,
         gcs_file: str = None,
         freesurfer_dir: str = None,
         fssubj_id: str = None,
         hemi: str = None,
+        cont_tech: str = "local", 
+        cont_image: str = "local"
     ):
         """
         Convert FreeSurfer annot files to gcs files
@@ -286,7 +454,6 @@ class AnnotParcellation:
                 )
             )
 
-
         # Set the FreeSurfer directory
         if freesurfer_dir is not None:
             os.environ["SUBJECTS_DIR"] = freesurfer_dir
@@ -328,7 +495,7 @@ class AnnotParcellation:
                     "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
                 )
 
-        cmd_cont = [
+        cmd_bashargs = [
             "mris_ca_train",
             "-n",
             "2",
@@ -340,12 +507,12 @@ class AnnotParcellation:
             fssubj_id,
             gcs_file,
         ]
-
+        
         echo_var = " ".join(cmd_cont)
         print(echo_var)
-        subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-        )  # Running container command
+        
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
         # Delete the ctab file
         os.remove(ctab_file)
@@ -432,6 +599,41 @@ def _remove_fsaverage_links(linkavg_folder: str):
         and os.path.realpath(linkavg_folder) != fssubj_dir_orig
     ):
         os.remove(linkavg_folder)
+        
+def _detect_hemi(file_name: str):
+        """
+        Detect the hemisphere from the filename
+        
+        Parameters
+        ----------
+            file_name     - Required  : Filename:
+            
+        Returns
+        -------
+        hemi_cad: str : Hemisphere name
+            
+        """
+        
+        
+        # Detecting the hemisphere
+        file_name = file_name.lower()
+        
+        # Find in the string annot_name if it is lh. or rh.
+        if "lh." in file_name:
+            hemi = "lh"
+        elif "rh." in file_name:
+            hemi = "rh"
+        elif "hemi-l" in file_name:
+            hemi = "lh"
+        elif "hemi-r" in file_name:
+            hemi = "rh"
+        else:
+            hemi = None
+            raise ValueError(
+                "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
+            )
+
+    return hemi
 
 
 
