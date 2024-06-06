@@ -23,7 +23,10 @@ class AnnotParcellation:
     
     """
 
-    def __init__(self, parc_file: str):
+    def __init__(self, parc_file: str,
+                    ref_surf: str = None, 
+                    cont_tech: str = "local", 
+                    cont_image: str = "local"):
         """
         Initialize the AnnotParcellation object
         
@@ -37,9 +40,9 @@ class AnnotParcellation:
         booldel = False
         self.filename = parc_file
         
-        # Verify if the annot file exists
+        # Verify if the file exists
         if not os.path.exists(self.filename):
-            raise ValueError("The annot file does not exist")
+            raise ValueError("The parcellation file does not exist")
         
         # Extracting the filename, folder and name
         self.path = os.path.dirname(self.filename)
@@ -55,7 +58,8 @@ class AnnotParcellation:
 
         # If the file is a .gii file, then convert it to a .annot file
         if self.name.endswith(".gii"):
-            annot_file = cltparc._gii2annot(self.filename)
+            
+            annot_file = cltparc.gii2annot(self.filename, ref_surf, cont_tech, cont_image)
             booldel = True
             
         elif self.name.endswith(".annot"):
@@ -253,7 +257,7 @@ class AnnotParcellation:
     
     @staticmethod
     def gii2annot(gii_file: str,
-                    ref_surf: str,
+                    ref_surf: str = None,
                     annot_file: str = None, 
                     cont_tech: str = "local",
                     cont_image: str = "local"):
@@ -263,7 +267,7 @@ class AnnotParcellation:
         Parameters
         ----------
         gii_file       - Required  : Gii filename:
-        ref_surf       - Required  : Reference surface:
+        ref_surf       - Optional  : Reference surface. Default is the white surface of the fsaverage subject:
         annot_file     - Optional  : Annot filename:
         cont_tech      - Optional  : Container technology. Default is local:
         cont_image     - Optional  : Container image. Default is local:
@@ -277,8 +281,21 @@ class AnnotParcellation:
         if not os.path.exists(gii_file):
             raise ValueError("The gii file does not exist")
         
-        if not os.path.exists(ref_surf):
-            raise ValueError("The reference surface file does not exist")
+        if ref_surf is None:
+            
+            # Get freesurfer directory
+            if "SUBJECTS_DIR" in os.environ:
+                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+                subj_id = "fsaverage"
+
+                hemi = _detect_hemi(gii_file)
+                ref_surf = os.path.join(freesurfer_dir, subj_id, "surf", hemi + ".white")
+            else:
+                raise ValueError("Impossible to set the reference surface file. Please provide it as an argument")
+            
+        else:              
+            if not os.path.exists(ref_surf):
+                raise ValueError("The reference surface file does not exist")
         
         if annot_file is None:
             annot_file = os.path.join(os.path.dirname(gii_file), os.path.basename(gii_file).replace(".gii", ".annot"))
@@ -291,7 +308,7 @@ class AnnotParcellation:
 
     @staticmethod
     def annot2gii(annot_file: str,
-                    ref_surf: str,
+                    ref_surf: str = None,
                     gii_file: str = None, 
                     cont_tech: str = "local",
                     cont_image: str = "local"):
@@ -301,7 +318,7 @@ class AnnotParcellation:
         Parameters
         ----------
         annot_file     - Required  : Annot filename:
-        ref_surf       - Required  : Reference surface:
+        ref_surf       - Optional  : Reference surface.  Default is the white surface of the fsaverage subject:
         gii_file       - Optional  : Gii filename:
         cont_tech      - Optional  : Container technology. Default is local:
         cont_image     - Optional  : Container image. Default is local:
@@ -311,6 +328,25 @@ class AnnotParcellation:
         gii_file: str : Gii filename
         
         """
+        
+        if not os.path.exists(annot_file):
+            raise ValueError("The annot file does not exist")
+        
+        if ref_surf is None:
+            
+            # Get freesurfer directory
+            if "SUBJECTS_DIR" in os.environ:
+                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+                subj_id = "fsaverage"
+
+                hemi = _detect_hemi(gii_file)
+                ref_surf = os.path.join(freesurfer_dir, subj_id, "surf", hemi + ".white")
+            else:
+                raise ValueError("Impossible to set the reference surface file. Please provide it as an argument")
+            
+        else:              
+            if not os.path.exists(ref_surf):
+                raise ValueError("The reference surface file does not exist")
         
         if gii_file is None:
             gii_file = os.path.join(os.path.dirname(annot_file), os.path.basename(annot_file).replace(".annot", ".gii"))
