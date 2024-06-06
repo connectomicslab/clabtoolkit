@@ -62,14 +62,14 @@ class AnnotParcellation:
         # If the file is a .gii file, then convert it to a .annot file
         if self.name.endswith(".gii"):
             
-            annot_file = cltparc.gii2annot(self.filename, ref_surf, cont_tech, cont_image)
+            annot_file = AnnotParcellation.gii2annot(self.filename, ref_surf, cont_tech, cont_image)
             booldel = True
             
         elif self.name.endswith(".annot"):
             annot_file = self.filename
             
         elif self.name.endswith(".gcs"):
-            annot_file = cltparc.gcs2annot(self.filename, annot_file=self.filename.replace(".gcs", ".annot"))
+            annot_file = AnnotParcellation.gcs2annot(self.filename, annot_file=self.filename.replace(".gcs", ".annot"))
             booldel = True
         
         # Read the annot file using nibabel
