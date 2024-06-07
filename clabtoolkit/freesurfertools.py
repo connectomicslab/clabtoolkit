@@ -62,7 +62,8 @@ class AnnotParcellation:
         # If the file is a .gii file, then convert it to a .annot file
         if self.name.endswith(".gii"):
             
-            annot_file = AnnotParcellation.gii2annot(self.filename, ref_surf, cont_tech, cont_image)
+            annot_file = AnnotParcellation.gii2annot(self.filename, 
+                                                        ref_surf=ref_surf,  annot_file=self.filename.replace(".gii", ".annot"), cont_tech=cont_tech, cont_image= cont_image)
             booldel = True
             
         elif self.name.endswith(".annot"):
@@ -442,7 +443,7 @@ class AnnotParcellation:
         
     @staticmethod
     def gcs2annot(gcs_file: str, 
-                    annot_file: str, 
+                    annot_file: str = None, 
                     freesurfer_dir: str = None, 
                     ref_id: str = "fsaverage", 
                     cont_tech: str = "local",
@@ -469,6 +470,10 @@ class AnnotParcellation:
         if not os.path.exists(gcs_file):
             raise ValueError("The gcs file does not exist")
         
+        if freesurfer_dir is None:
+            if "FREESURFER_HOME" in os.environ:
+                freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], 'subjects')
+            
         if not os.path.isdir(freesurfer_dir):
             
             # Take the default FreeSurfer directory
@@ -477,11 +482,17 @@ class AnnotParcellation:
                 ref_id = "fsaverage"
             else:
                 raise ValueError("The FreeSurfer directory must be set in the environment variables or passed as an argument")
+        
+        # Set freesurfer directory as subjects directory
+        os.environ["SUBJECTS_DIR"] = freesurfer_dir
             
         hemi_cad = _detect_hemi(gcs_file)
-                                        
+        
+        if annot_file is None:
+            annot_file = os.path.join(os.path.dirname(gcs_file), os.path.basename(gcs_file).replace(".gcs", ".annot"))
+        
         ctx_label = os.path.join(freesurfer_dir, ref_id, "label", hemi_cad + ".cortex.label")
-        aseg_presurf = os.path.join(freesurfer_dir, ref_id, "mri", "aseg.presurf.mgz")
+        aseg_presurf = os.path.join(freesurfer_dir, ref_id, "mri", "aseg.mgz")
         sphere_reg = os.path.join(freesurfer_dir, ref_id, "surf", hemi_cad + ".sphere.reg")
         
         cmd_bashargs = ['mris_ca_label', '-l', ctx_label, '-aseg', aseg_presurf, ref_id,
