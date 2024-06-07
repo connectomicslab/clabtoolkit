@@ -76,7 +76,6 @@ def _org_conv_dicoms(in_dic_dir: str,
                 s_ids = ["sub-"+ s for s in s_ids]
             subj_ids = s_ids
 
-
     # Reading demographics
     demobool = False  # Boolean variable to use the demographics table for the session id definition
     if demog_file != None:

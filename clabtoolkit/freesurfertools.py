@@ -95,7 +95,7 @@ class AnnotParcellation:
         """
 
         if out_file is None:
-            out_file = os.path.join(self.annotfolder, self.annotname)
+            out_file = os.path.join(self.path, self.name)
 
         # If the directory does not exist then create it
         temp_dir = os.path.dirname(out_file)
@@ -378,6 +378,8 @@ class AnnotParcellation:
         
         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        return annot_file
 
     @staticmethod
     def annot2gii(annot_file: str,
@@ -498,7 +500,7 @@ class AnnotParcellation:
         """
 
         if tsv_file is None:
-            tsv_file = os.path.join(self.annotfolder, self.annotname.replace(".annot", ".tsv"))
+            tsv_file = os.path.join(self.path, self.name.replace(".annot", ".tsv"))
 
         # If the directory does not exist then create it
         temp_dir = os.path.dirname(tsv_file)
@@ -530,11 +532,11 @@ class AnnotParcellation:
         """
 
         if gcs_file is None:
-            gcs_name = self.annotname.replace(".annot", ".gcs")
+            gcs_name = self.name.replace(".annot", ".gcs")
 
             # Create te gcs folder if it does not exist
             if gcs_folder is None:
-                gcs_folder = self.annotfolder
+                gcs_folder = self.path
 
             gcs_file = os.path.join(gcs_folder, gcs_name)
 
@@ -592,7 +594,7 @@ class AnnotParcellation:
             )
 
         # Save the lookup table for the left hemisphere
-        ctab_file = os.path.join(gcs_folder, self.annotname + ".ctab")
+        ctab_file = os.path.join(gcs_folder, self.name + ".ctab")
         with open(ctab_file, "w") as colorLUT_f:
             colorLUT_f.write("\n".join(luttable))
 
