@@ -439,8 +439,7 @@ class AnnotParcellation:
         
         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-        
-        
+
     @staticmethod
     def gcs2annot(gcs_file: str, 
                     annot_file: str = None, 

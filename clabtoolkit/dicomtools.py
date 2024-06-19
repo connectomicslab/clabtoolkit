@@ -86,7 +86,7 @@ def _org_conv_dicoms(in_dic_dir: str,
     all_ser_dirs = []
     cont_subj = 0
     n_subj = len(subj_ids)
-    
+    failed_ids = []
     # Creating the progress bars
     with Progress() as pb:
         t2 = pb.add_task('[green]Subjects...', total=n_subj)
@@ -119,51 +119,54 @@ def _org_conv_dicoms(in_dic_dir: str,
                         tempVar = temp.split('/')
                         date_time = datetime(day=int(tempVar[1]), month=int(tempVar[0]), year=int(tempVar[2]))
                         date_times.append(date_time)
+                try:
+                    if booldic:
+                        dicom_files = cltmisc._detect_recursive_files(subj_dir)
+                        ses_idprev = []
+                        ser_idprev = []
+                        
+                        
+                        ndics = len(dicom_files)
+                        # if nthreads > 4:
+                        #     nthreads = nthreads - 4
+                        # with concurrent.futures.ProcessPoolExecutor(nthreads) as executor:
+                        # #     results = [executor.submit(do_something, sec) for sec in secs]
+                        #     results = list(executor.map(_copy_dicom_file, dicom_files,
+                        #     [subj_id] * ndwis, [out_dic_dir] * ndwis, [ses_id] * ndwis, [date_times] * ndwis, [demobool] * ndwis, [subTB] * ndwis, [boolforce] * ndwis))
 
-                if booldic:
-                    dicom_files = cltmisc._detect_recursive_files(subj_dir)
-                    ses_idprev = []
-                    ser_idprev = []
-                    
-                    
-                    ndics = len(dicom_files)
-                    # if nthreads > 4:
-                    #     nthreads = nthreads - 4
-                    # with concurrent.futures.ProcessPoolExecutor(nthreads) as executor:
-                    # #     results = [executor.submit(do_something, sec) for sec in secs]
-                    #     results = list(executor.map(_copy_dicom_file, dicom_files,
-                    #     [subj_id] * ndwis, [out_dic_dir] * ndwis, [ses_id] * ndwis, [date_times] * ndwis, [demobool] * ndwis, [subTB] * ndwis, [boolforce] * ndwis))
+                        t1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=ndics)
+                        
+                        for cont_dic, dfiles in enumerate(dicom_files):
+                            ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, boolforce)
+                            all_ser_dirs.append(ser_dir)
+                            pb.update(task_id=t1, completed=cont_dic+1)
+                        pb.update(task_id=t1, completed=ndics)
+                        
+                    else:
 
-                    t1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=ndics)
-                    
-                    for cont_dic, dfiles in enumerate(dicom_files):
-                        ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, boolforce)
-                        all_ser_dirs.append(ser_dir)
-                        pb.update(task_id=t1, completed=cont_dic+1)
-                    pb.update(task_id=t1, completed=ndics)
-                    
-                else:
+                        for ses_id in os.listdir(subj_dir):  # Loop along the session
+                            ses_dir = os.path.join(subj_dir, ses_id)
+                            if not ses_id[-2].isalpha():
+                                if demobool:  # Adding the Visit ID to the last part o the session ID only in the DICOM Folder
+                                    tempVar = ses_id.split('-')[-1]
+                                    sdate_time = datetime.strptime(tempVar, '%Y%m%d%H%M%S')
+                                    timediff = np.array(date_times) - np.array(sdate_time)
+                                    clostd = np.argmin(abs(timediff))
+                                    visitVar = subTB.iloc[clostd]['session_id']
+                                    newses_id = ses_id + visitVar
+                                    newses_dir = os.path.join(subj_dir, newses_id)
+                                    os.rename(ses_dir, newses_dir)
+                                    ses_dir = newses_dir
 
-                    for ses_id in os.listdir(subj_dir):  # Loop along the session
-                        ses_dir = os.path.join(subj_dir, ses_id)
-                        if not ses_id[-2].isalpha():
-                            if demobool:  # Adding the Visit ID to the last part o the session ID only in the DICOM Folder
-                                tempVar = ses_id.split('-')[-1]
-                                sdate_time = datetime.strptime(tempVar, '%Y%m%d%H%M%S')
-                                timediff = np.array(date_times) - np.array(sdate_time)
-                                clostd = np.argmin(abs(timediff))
-                                visitVar = subTB.iloc[clostd]['session_id']
-                                newses_id = ses_id + visitVar
-                                newses_dir = os.path.join(subj_dir, newses_id)
-                                os.rename(ses_dir, newses_dir)
-                                ses_dir = newses_dir
+                            if os.path.isdir(ses_dir):
+                                for ser_id in os.listdir(ses_dir):  # Loop along the series
+                                    serDir = os.path.join(ses_dir, ser_id)
 
-                        if os.path.isdir(ses_dir):
-                            for ser_id in os.listdir(ses_dir):  # Loop along the series
-                                serDir = os.path.join(ses_dir, ser_id)
-
-                                if os.path.isdir(serDir):
-                                    all_ser_dirs.append(serDir)
+                                    if os.path.isdir(serDir):
+                                        all_ser_dirs.append(serDir)
+                except:
+                    failed_ids.append(subj_id)
+                    print('Error at subject: ' + subj_id)
             else:
                 print('Subject: ' + subj_id + ' does not exist.')
                 

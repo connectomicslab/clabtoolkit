@@ -378,6 +378,57 @@ def _filter_by_substring(list1: list,
     
     return filt_list
 
+def _get_indexes_by_substring(list1: list,
+                        substr: Union[str, list], 
+                        boolcase: bool = False):
+    """
+    Function extracts the indexes of the elements of a list of elements that contain
+    any of the substrings of anothre list. 
+    
+    Parameters
+    ----------
+    list1 : list
+        List of elements
+        
+    substr : str or list
+        Substring to filter. It can be a string or a list of strings
+    
+    boolcase : bool
+        Boolean to indicate if the search is case sensitive. Default is False
+
+    Returns
+    -------
+    indexes: list
+        List of indexes that contain any of the substring
+
+    """
+    
+    # Rise an error if list1 is not a list  
+    if not isinstance(list1, list):
+        raise ValueError("The input list1 must be a list.")
+    
+    # Convert the substr to a list
+    if isinstance(substr, str):
+        substr = [substr]
+    
+    # Convert the substr and list1 to lower case
+    if not boolcase:
+        tmp_substr = [e.lower() for e in substr]
+        tmp_list1 = [e.lower() for e in list1]
+    
+    else:
+        tmp_substr = substr
+        tmp_list1 = list1
+        
+        
+    # Get the indexes of the list elements that contain any of the strings in the list aa
+    indexes = [i for i, x in enumerate(tmp_list1) if any(a in x for a in tmp_substr)]
+
+    # Convert indexes to a numpy array
+    indexes = np.array(indexes)
+
+    return indexes
+
 
 def _list_intercept(list1: list,
                     list2: list):
