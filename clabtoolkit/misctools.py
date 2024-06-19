@@ -620,10 +620,13 @@ def _correct_names(regnames: list,
     # Replace the substring item from the region names
     if replace is not None:
             
-            for item in replace:
-
-                # Replace the substring item from the region names
-                regnames = [name.replace(item[0], item[1]) for name in regnames]
+            if isinstance(replace, list):
+                if all(isinstance(item, list) for item in replace):
+                    for item in replace:
+                        # Replace the substring item from the region names
+                        regnames = [name.replace(item[0], item[1]) for name in regnames]
+                else:
+                    regnames = [name.replace(replace[0], replace[1]) for name in regnames]
 
     return regnames
 
