@@ -469,10 +469,32 @@ class AnnotParcellation:
         if not os.path.exists(gcs_file):
             raise ValueError("The gcs file does not exist")
         
-        if freesurfer_dir is None:
-            if "FREESURFER_HOME" in os.environ:
-                freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], 'subjects')
-            
+        
+        # Set the FreeSurfer directory
+        if freesurfer_dir is not None:
+            if not os.path.isdir(freesurfer_dir):
+                
+                # Create the directory if it does not exist
+                freesurfer_dir = Path(freesurfer_dir)
+                freesurfer_dir.mkdir(parents=True, exist_ok=True)
+                os.environ["SUBJECTS_DIR"] = str(freesurfer_dir)
+                
+        else:
+            if "SUBJECTS_DIR" not in os.environ:
+                raise ValueError(
+                    "The FreeSurfer directory must be set in the environment variables or passed as an argument"
+                )
+            else:
+                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+                
+                if not os.path.isdir(freesurfer_dir):
+                    
+                    # Create the directory if it does not exist
+                    freesurfer_dir = Path(freesurfer_dir)
+                    freesurfer_dir.mkdir(parents=True, exist_ok=True)
+
+        freesurfer_dir = str(freesurfer_dir)
+        
         if not os.path.isdir(freesurfer_dir):
             
             # Take the default FreeSurfer directory
@@ -577,7 +599,13 @@ class AnnotParcellation:
 
         # Set the FreeSurfer directory
         if freesurfer_dir is not None:
-            os.environ["SUBJECTS_DIR"] = freesurfer_dir
+            if not os.path.isdir(freesurfer_dir):
+                
+                # Create the directory if it does not exist
+                freesurfer_dir = Path(freesurfer_dir)
+                freesurfer_dir.mkdir(parents=True, exist_ok=True)
+                os.environ["SUBJECTS_DIR"] = str(freesurfer_dir)
+                
         else:
             if "SUBJECTS_DIR" not in os.environ:
                 raise ValueError(
@@ -585,6 +613,12 @@ class AnnotParcellation:
                 )
             else:
                 freesurfer_dir = os.environ["SUBJECTS_DIR"]
+                
+                if not os.path.isdir(freesurfer_dir):
+                    
+                    # Create the directory if it does not exist
+                    freesurfer_dir = Path(freesurfer_dir)
+                    freesurfer_dir.mkdir(parents=True, exist_ok=True)
 
         # Set the FreeSurfer subject id
         if fssubj_id is None:
@@ -640,7 +674,151 @@ class AnnotParcellation:
 
         return gcs_name
 
+class FreeSurferSubject():
+    """
+    This class contains methods to work with FreeSurfer subjects.
+    
+    """
 
+    def __init__(self, subj_id:str, subjs_dir: str = None):
+        """
+        This method initializes the FreeSurferSubject object according to the subject id and the subjects directory.
+        It reads the FreeSurfer files and stores them in a dictionary.
+                
+        Parameters
+        ----------
+        
+        subj_id: str     - Required  : FreeSurfer subject id:
+        subjs_dir: str   - Optional  : FreeSurfer subjects directory. Default is the $SUBJECTS_DIR environment variable:
+        
+        Output
+        ------
+        fs_files: dict : Dictionary with the FreeSurfer files
+        
+        
+        """
+        
+        if subjs_dir is None:
+            self.subjs_dir = os.environ.get('SUBJECTS_DIR')
+        else:
+            if not os.path.exists(subjs_dir):
+                raise FileNotFoundError(f"Directory {subjs_dir} does not exist")
+            self.subjs_dir = subjs_dir
+        
+        subj_dir= os.path.join(self.subjs_dir, subj_id)
+        if not os.path.exists(subj_dir):
+            raise FileNotFoundError(f"Directory {subj_id} does not exist in {self.subjs_dir}")
+        
+        self.subj_id = subj_id
+
+        # Generate a dictionary of the FreeSurfer files
+        self.fs_files = {}
+        mri_dict = {}
+        mri_dict['orig'] = os.path.join(subj_dir, 'mri', 'orig.mgz')
+        mri_dict['brainmask'] = os.path.join(subj_dir, 'mri', 'brainmask.mgz')
+        mri_dict['aseg'] = os.path.join(subj_dir, 'mri', 'aseg.mgz')
+        mri_dict['desikan+aseg'] = os.path.join(subj_dir, 'mri', 'aparc+aseg.mgz')
+        mri_dict['destrieux+aseg'] = os.path.join(subj_dir, 'mri', 'aparc.a2009s+aseg.mgz')
+        mri_dict['dkt+aseg'] = os.path.join(subj_dir, 'mri', 'aparc.DKTatlas+aseg.mgz')
+        mri_dict['T1'] = os.path.join(subj_dir, 'mri', 'T1.mgz')
+        mri_dict['talairach'] = os.path.join(subj_dir, 'mri', 'transforms', 'talairach.lta')
+        mri_dict['ribbon'] = os.path.join(subj_dir, 'mri', 'ribbon.mgz')
+        mri_dict['wm'] = os.path.join(subj_dir, 'mri', 'wm.mgz')
+        mri_dict['wmparc'] = os.path.join(subj_dir, 'mri', 'wmparc.mgz')
+        self.fs_files['mri'] = mri_dict
+
+        # Creating the Surf dictionary
+        surf_dict = {}
+
+        lh_s_dict, lh_t_dict = self._get_hemi_dicts(subj_dir=subj_dir, hemi='lh')
+        rh_s_dict, rh_t_dict = self._get_hemi_dicts(subj_dir=subj_dir, hemi='rh')
+
+        surf_dict['lh'] = lh_s_dict
+        surf_dict['rh'] = rh_s_dict
+        self.fs_files['surf'] = surf_dict
+
+        # Creating the Stats dictionary
+        stats_dict = {}
+        global_dict = {}
+        global_dict['aseg'] = os.path.join(subj_dir, 'stats', 'aseg.stats')
+        global_dict['wmparc'] = os.path.join(subj_dir, 'stats', 'wmparc.stats')
+        global_dict['brainvol'] = os.path.join(subj_dir, 'stats', 'brainvol.stats')
+        stats_dict['global'] = global_dict
+        stats_dict['lh'] = lh_t_dict
+        stats_dict['rh'] = rh_t_dict
+
+
+        self.fs_files['stats'] = stats_dict
+
+
+
+    def _get_hemi_dicts(self, subj_dir:str, hemi:str):
+        """
+        This method creates the dictionaries for the hemisphere files.
+        
+        Parameters
+        ----------
+        subj_dir: str     - Required  : FreeSurfer subject ID:
+        
+        hemi: str        - Required  : Hemisphere (lh or rh):
+        
+        
+        """
+
+        
+        s_dict = {}
+        s_dict['pial'] = os.path.join(subj_dir, 'surf', hemi + '..pial')
+        s_dict['white'] = os.path.join(subj_dir, 'surf', hemi + '.white')
+        s_dict['inflated'] = os.path.join(subj_dir, 'surf', hemi + '.inflated')
+        s_dict['sphere'] = os.path.join(subj_dir, 'surf', hemi + '.sphere')
+        s_dict['curv'] = os.path.join(subj_dir, 'surf', hemi + '.curv')
+        s_dict['sulc'] = os.path.join(subj_dir, 'surf', hemi + '.sulc')
+        s_dict['thickness'] = os.path.join(subj_dir, 'surf', hemi + '.thickness')
+        s_dict['area'] = os.path.join(subj_dir, 'surf', hemi + '.area')
+        s_dict['volume'] = os.path.join(subj_dir, 'surf', hemi + '.volume')
+        s_dict['desikan'] = os.path.join(subj_dir, 'label', hemi + '.aparc.annot')
+        s_dict['destrieux'] = os.path.join(subj_dir, 'label', hemi + '.aparc.a2009s.annot')
+        s_dict['dkt'] = os.path.join(subj_dir, 'label', hemi + '.aparc.DKTatlas.annot')
+        
+
+        t_dict = {}
+        t_dict['desikan'] = os.path.join(subj_dir, 'stats', hemi + '.aparc.stats')
+        t_dict['destrieux'] = os.path.join(subj_dir, 'stats', hemi + '.aparc.a2009s.stats')
+        t_dict['dkt'] = os.path.join(subj_dir, 'stats', hemi + '.aparc.DKTatlas.stats')
+        t_dict['curv'] = os.path.join(subj_dir, 'stats', hemi + '.curv.stats')
+
+        return s_dict, t_dict
+    
+    def _is_processed(self, proc_stage: str = 'all'):
+        """
+        This method checks if a FreeSurfer process has been run.
+            
+        Parameters
+        ----------
+        proc_name: str     - Required  : FreeSurfer process name:
+            
+        Returns
+        -------
+        is_proc: bool : True if the process has been run, False otherwise
+            
+        """
+        
+        if proc_stage == 'all':
+            # Detect if all the files exist
+            # Do a loop for all the files that can be stored in the dictionary
+            allbool = []
+            for key in self.fs_files.keys():
+                for subkey in self.fs_files[key].keys():
+                    if not os.path.exists(self.fs_files[key][subkey]):
+                        allbool.append(False)
+                    else:
+                        allbool.append(True)
+            
+            if all(allbool):
+                return True
+            else:
+                return False
+        
 def _create_fsaverage_links(
     fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
 ):
@@ -755,6 +933,69 @@ def _detect_hemi(file_name: str):
         )
 
     return hemi
+
+
+            
+def _launch_freesurfer(t1w_img:str, 
+                    subj_id:str, 
+                    freesurfer_dir:str = None, 
+                    fs_options: str = '-all',
+                    cont_tech: str = "local",
+                    cont_image: str = "local",
+                    force = False):
+    """
+    Function to convert gcs files to FreeSurfer annot files
+    
+    Parameters
+    ----------
+    t1w_img       - Mandatory : T1w image filename:
+    subj_id        - Mandatory : Full subject id:
+    freesurfer_dir - Optional  : FreeSurfer directory. Default is the $SUBJECTS_DIR environment variable:
+    fs_options    - Optional  : FreeSurfer options. Default is -all (Other options could be -autorecon1, -autorecon2, -autorecon3
+                                -lgi, ):
+    
+    cont_tech    - Optional  : Container technology. Default is local:
+    cont_image   - Optional  : Container image. Default is local:
+    
+    Output
+    ------
+    annot_file: str : Annot filename
+    """
+
+    # Set the FreeSurfer directory
+    if freesurfer_dir is not None:
+        
+        if not os.path.isdir(freesurfer_dir):
+            
+            # Create the directory if it does not exist
+            freesurfer_dir = Path(freesurfer_dir)
+            freesurfer_dir.mkdir(parents=True, exist_ok=True)
+            os.environ["SUBJECTS_DIR"] = str(freesurfer_dir)
+            
+    else:
+        if "SUBJECTS_DIR" not in os.environ:
+            raise ValueError(
+                "The FreeSurfer directory must be set in the environment variables or passed as an argument"
+            )
+        else:
+            freesurfer_dir = os.environ["SUBJECTS_DIR"]
+            
+            if not os.path.isdir(freesurfer_dir):
+                
+                # Create the directory if it does not exist
+                freesurfer_dir = Path(freesurfer_dir)
+                freesurfer_dir.mkdir(parents=True, exist_ok=True)
+
+    # Computing FreeSurfer
+    if fs_options == '-all':
+        if force:
+            cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, subj_id, '-all', '-no-isrunning']
+        else:
+            cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, subj_id, '-all']
+    
+    cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, subj_id, fs_options]
+    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+    subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
 
 
