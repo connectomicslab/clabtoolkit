@@ -2,6 +2,8 @@ import os
 import time
 import subprocess
 import sys
+from glob import glob
+from typing import Union
 from pathlib import Path
 import numpy as np
 import nibabel as nib
@@ -747,9 +749,7 @@ class FreeSurferSubject():
         stats_dict['lh'] = lh_t_dict
         stats_dict['rh'] = rh_t_dict
 
-
         self.fs_files['stats'] = stats_dict
-
 
 
     def _get_hemi_dicts(self, subj_dir:str, hemi:str):
@@ -764,10 +764,10 @@ class FreeSurferSubject():
         
         
         """
-
         
+        # Surface dictionary
         s_dict = {}
-        s_dict['pial'] = os.path.join(subj_dir, 'surf', hemi + '..pial')
+        s_dict['pial'] = os.path.join(subj_dir, 'surf', hemi + '.pial')
         s_dict['white'] = os.path.join(subj_dir, 'surf', hemi + '.white')
         s_dict['inflated'] = os.path.join(subj_dir, 'surf', hemi + '.inflated')
         s_dict['sphere'] = os.path.join(subj_dir, 'surf', hemi + '.sphere')
@@ -776,11 +776,12 @@ class FreeSurferSubject():
         s_dict['thickness'] = os.path.join(subj_dir, 'surf', hemi + '.thickness')
         s_dict['area'] = os.path.join(subj_dir, 'surf', hemi + '.area')
         s_dict['volume'] = os.path.join(subj_dir, 'surf', hemi + '.volume')
+        s_dict['lgi'] = os.path.join(subj_dir, 'surf', hemi + '.pial_lgi')
         s_dict['desikan'] = os.path.join(subj_dir, 'label', hemi + '.aparc.annot')
         s_dict['destrieux'] = os.path.join(subj_dir, 'label', hemi + '.aparc.a2009s.annot')
         s_dict['dkt'] = os.path.join(subj_dir, 'label', hemi + '.aparc.DKTatlas.annot')
         
-
+        # Statistics dictionary
         t_dict = {}
         t_dict['desikan'] = os.path.join(subj_dir, 'stats', hemi + '.aparc.stats')
         t_dict['destrieux'] = os.path.join(subj_dir, 'stats', hemi + '.aparc.a2009s.stats')
@@ -789,42 +790,295 @@ class FreeSurferSubject():
 
         return s_dict, t_dict
     
-    def _is_processed(self, proc_stage: str = 'all'):
+    def _get_proc_status(self):
         """
-        This method checks if a FreeSurfer process has been run.
+        This method checks the processing status
             
         Parameters
         ----------
-        proc_name: str     - Required  : FreeSurfer process name:
+        self: object : FreeSurferSubject object
             
         Returns
         -------
-        is_proc: bool : True if the process has been run, False otherwise
+        pstatus: str : Processing status (all, autorecon1, autorecon2, unprocessed)
             
         """
         
-        if proc_stage == 'all':
-            # Detect if all the files exist
-            # Do a loop for all the files that can be stored in the dictionary
-            allbool = []
-            for key in self.fs_files.keys():
-                for subkey in self.fs_files[key].keys():
-                    if not os.path.exists(self.fs_files[key][subkey]):
-                        allbool.append(False)
-                    else:
-                        allbool.append(True)
+        # Check if the FreeSurfer subject id exists
+        if not os.path.isdir(os.path.join(self.subjs_dir, self.subj_id)):
+            pstatus = 'unprocessed'
+        else:
+            arecon1_files = [self.fs_files["mri"]['T1'], self.fs_files["mri"]['brainmask'], 
+                            self.fs_files["mri"]['orig']]
+
+            arecon2_files = [self.fs_files["mri"]['talairach'], self.fs_files["mri"]['wm'],
+                            self.fs_files["surf"]['lh']['pial'], self.fs_files["surf"]['rh']['pial'],
+                            self.fs_files["surf"]['lh']['white'], self.fs_files["surf"]['rh']['white'],
+                            self.fs_files["surf"]['lh']['inflated'], self.fs_files["surf"]['rh']['inflated'], 
+                            self.fs_files["surf"]['lh']['curv'], self.fs_files["surf"]['rh']['curv'], 
+                            self.fs_files["stats"]['lh']['curv'], self.fs_files["stats"]['rh']['curv'], 
+                            self.fs_files["surf"]['lh']['sulc'], self.fs_files["surf"]['rh']['sulc']]
             
-            if all(allbool):
-                return True
+            arecon3_files = [self.fs_files["mri"]['aseg'], self.fs_files["mri"]['desikan+aseg'],
+                            self.fs_files["mri"]['destrieux+aseg'], self.fs_files["mri"]['dkt+aseg'],
+                            self.fs_files["mri"]['wmparc'], self.fs_files["mri"]['ribbon'],
+                            self.fs_files["surf"]['lh']['sphere'], self.fs_files["surf"]['rh']['sphere'],
+                            self.fs_files["surf"]['lh']['thickness'], self.fs_files["surf"]['rh']['thickness'],
+                            self.fs_files["surf"]['lh']['area'], self.fs_files["surf"]['rh']['area'],
+                            self.fs_files["surf"]['lh']['volume'], self.fs_files["surf"]['rh']['volume'],
+                            self.fs_files["surf"]['lh']['desikan'], self.fs_files["surf"]['rh']['desikan'],
+                            self.fs_files["surf"]['lh']['destrieux'], self.fs_files["surf"]['rh']['destrieux'],
+                            self.fs_files["surf"]['lh']['dkt'], self.fs_files["surf"]['rh']['dkt'],
+                            self.fs_files["stats"]['lh']['desikan'], self.fs_files["stats"]['rh']['desikan'],
+                            self.fs_files["stats"]['lh']['destrieux'], self.fs_files["stats"]['rh']['destrieux'],
+                            self.fs_files["stats"]['lh']['dkt'], self.fs_files["stats"]['rh']['dkt']]
+            
+            # Check if the files exist in the FreeSurfer subject directory for auto-recon1 
+            if all([os.path.exists(f) for f in arecon1_files]):
+                arecon1_bool = True
             else:
-                return False
+                arecon1_bool = False
+
+            # Check if the files exist in the FreeSurfer subject directory for auto-recon2
+            if all([os.path.exists(f) for f in arecon2_files]):
+                arecon2_bool = True
+            else:
+                arecon2_bool = False
+
+            # Check if the files exist in the FreeSurfer subject directory for auto-recon3
+            if all([os.path.exists(f) for f in arecon3_files]):
+                arecon3_bool = True
+            else:
+                arecon3_bool = False
+
+            # Check the processing status
+            if arecon3_bool and arecon2_bool and arecon1_bool:
+                pstatus = 'processed'
+            elif arecon2_bool and arecon1_bool and not arecon3_bool:
+                pstatus = 'autorecon2'
+            elif arecon1_bool and not arecon2_bool and not arecon3_bool:
+                pstatus = 'autorecon1'
+            else:
+                pstatus = 'unprocessed'
+
+        self.pstatus = pstatus
+
+    
+    def _launch_freesurfer(self, t1w_img:str = None, 
+                            proc_stage: Union[str, list] = 'all',
+                            extra_proc: Union[str, list] = None,
+                            cont_tech: str = "local",
+                            cont_image: str = "local",
+                            force = False):
+        """
+        Function to launch recon-all command with different options
         
+        Parameters
+        ----------
+        t1w_img       - Mandatory : T1w image filename:
+        proc_stage    - Optional  : Processing stage. Default is all:
+                                    Valid options are: all, autorecon1, autorecon2, autorecon3
+        extra_proc    - Optional  : Extra processing stages. Default is None:
+                                    Valid options are: lgi, thalamus, brainstem, hippocampus, amygdala, hypothalamus
+                                    Some A few freesurfer modules, like subfield/nuclei segmentation tools, require 
+                                    the matlab runtime package (MCR). 
+                                    Please go to https://surfer.nmr.mgh.harvard.edu/fswiki/MatlabRuntime
+                                    to download the appropriate version of MCR for your system.
+        cont_tech    - Optional  : Container technology. Default is local:
+        cont_image   - Optional  : Container image. Default is local:
+        force        - Optional  : Force the processing. Default is False:
+        
+        Output
+        ------
+        annot_file: str : Annot filename
+        """
+
+        # Set the FreeSurfer directory
+        if self.subjs_dir is not None:
+            
+            if not os.path.isdir(self.subjs_dir):
+                
+                # Create the directory if it does not exist
+                self.subjs_dir = Path(self.subjs_dir)
+                self.subjs_dir.mkdir(parents=True, exist_ok=True)
+                os.environ["SUBJECTS_DIR"] = str(self.subjs_dir)
+                
+        else:
+            if "SUBJECTS_DIR" not in os.environ:
+                raise ValueError(
+                    "The FreeSurfer directory must be set in the environment variables or passed as an argument"
+                )
+            else:
+                self.subjs_dir = os.environ["SUBJECTS_DIR"]
+                
+                if not os.path.isdir(self.subjs_dir):
+                    
+                    # Create the directory if it does not exist
+                    self.subjs_dir = Path(self.subjs_dir)
+                    self.subjs_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Getting the freesurfer version
+        ver_cad = get_version(cont_tech = cont_tech,cont_image = cont_image)
+        ver_ent = ver_cad.split('.')
+        vert_int = int(''.join(ver_ent))
+
+        if not hasattr(self, 'pstatus'):
+            self._get_proc_status() 
+        proc_status = self.pstatus
+
+        # Check if the processing stage is valid
+        val_stages = ['all', 'autorecon1', 'autorecon2', 'autorecon3']
+        
+        if isinstance(proc_stage, str):
+            proc_stage = [proc_stage]
+        
+        proc_stage = [stage.lower() for stage in proc_stage]
+
+        for stage in proc_stage:
+            if stage not in val_stages:
+                raise ValueError(f"Stage {stage} is not valid")
+        
+        if 'all' in proc_stage:
+            proc_stage = ['all']
+        
+        # Check if the extra processing stages are valid
+        val_extra_stages = ['lgi', 'thalamus', 'brainstem', 'hippocampus', 'amygdala', 'hypothalamus']
+        if extra_proc is not None:
+            if isinstance(extra_proc, str):
+                extra_proc = [extra_proc]
+
+            # Put the extra processing stages in lower case
+            extra_proc = [stage.lower() for stage in extra_proc]
+            
+            # If hippocampus and amygdala are in the list, remove amygdala from the list
+            if 'hippocampus' in extra_proc and 'amygdala' in extra_proc:
+                extra_proc.remove('amygdala')
+
+            for stage in extra_proc:
+                if stage not in val_extra_stages:
+                    raise ValueError(f"Stage {stage} is not valid")
+
+        
+        if force:
+
+            if t1w_img is None:
+                if os.path.isdir(os.path.join(self.subjs_dir, self.subj_id)) and os.path.isfile(self.fs_files['mri']['orig']):
+                    for st in proc_stage:
+                        cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-' + st]
+                        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            else:
+                if os.path.isfile(t1w_img):
+                    for st in proc_stage:
+                        cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-i', t1w_img,'-' + st]
+                        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                else:
+                    raise ValueError("The T1w image does not exist")
+        else:
+            if proc_status == 'unprocessed':
+                if t1w_img is None:
+                    if os.path.isdir(os.path.join(self.subjs_dir, self.subj_id)) and os.path.isfile(self.fs_files['mri']['orig']):
+                        cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-all']
+                else:
+                    if os.path.isfile(t1w_img):
+                        cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-i', t1w_img, '-all']
+                    else:
+                        raise ValueError("The T1w image does not exist")
+
+                cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, self.subj_id, '-all']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            elif proc_status == 'autorecon1':
+                cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon2']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+                cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon3']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+            elif proc_status == 'autorecon2':
+                cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon3']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+        proc_status = self._get_proc_status() 
+
+        # Processing extra stages
+        if extra_proc is not None:
+            if isinstance(extra_proc, str):
+                extra_proc = [extra_proc]
+
+            cmd_list = []
+            for stage in extra_proc:
+                if stage in val_extra_stages:
+                    if stage == 'lgi': # Compute the local gyrification index
+
+                        if ((not os.path.isfile(self.fs_files['surf']['lh']['lgi']) and not os.path.isfile(self.fs_files['surf']['rh']['lgi'])) or force == True):
+                            cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-lgi']
+                            cmd_list.append(cmd_bashargs)
+
+                    elif stage == 'thalamus': # Segment the thalamic nuclei using the thalamic nuclei segmentation tool
+                        
+                        th_files = glob(os.path.join(self.subjs_dir, self.subj_id, 'mri', 'ThalamicNuclei.*'))
+
+                        if len(th_files) != 3 or force == True:
+                            if vert_int < 730:
+                                cmd_bashargs = ['segmentThalamicNuclei.sh', self.subj_id, self.subjs_dir]
+                            else:
+                                cmd_bashargs =  ['segment_subregions', 'thalamus', '--cross', self.subj_id]
+
+                            cmd_list.append(cmd_bashargs)
+
+                    elif stage == 'brainstem': # Segment the brainstem structures
+
+                        bs_files = glob(os.path.join(self.subjs_dir, self.subj_id, 'mri', 'brainstemS*'))
+
+                        if len(bs_files) != 3 or force == True:
+                            os.system("WRITE_POSTERIORS=1")
+                            if vert_int < 730:
+                                cmd_bashargs = ['segmentBS.sh', self.subj_id, self.subjs_dir]
+                            else:
+                                cmd_bashargs = ['segment_subregions', 'brainstem', '--cross', self.subj_id]
+
+                            cmd_list.append(cmd_bashargs)
+                    
+                    elif stage == 'hippocampus' or stage == 'amygdala': # Segment the hippocampal subfields
+
+                        ha_files = glob(os.path.join(self.subjs_dir, self.subj_id, 'mri', '*hippoAmygLabels.*'))
+
+                        if len(ha_files) != 16 or force == True:
+                            if vert_int < 730: # Use the FreeSurfer script for versions below 7.2.0
+                                cmd_bashargs = ['segmentHA_T1.sh', self.subj_id, self.subjs_dir]
+                            else:
+                                cmd_bashargs = ['segment_subregions', 'hippo-amygdala', '--cross', self.subj_id]  
+                            
+                            cmd_list.append(cmd_bashargs)
+
+                    elif stage == 'hypothalamus': # Segment the hypothalamic subunits
+
+                        os.system("WRITE_POSTERIORS=1")
+                        if len(bs_files) != 3 or force == True:
+                            cmd_bashargs = ['mri_segment_hypothalamic_subunits', '--s', self.subj_id, '--sd', self.subjs_dir, '--write_posteriors']
+                            cmd_list.append(cmd_bashargs)
+
+            if len(cmd_list) > 0:
+                for cmd_bashargs in cmd_list:
+                    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                    subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+        return proc_status
+
+            
 def _create_fsaverage_links(
     fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
 ):
     """
     Create the links to the fsaverage folder
-    @params:
+
+    Parameters
+    ----------
         fssubj_dir     - Required  : FreeSurfer subjects directory. It does not have to match the $SUBJECTS_DIR environment variable:
         fsavg_dir      - Optional  : FreeSurfer fsaverage directory. If not provided, it will be extracted from the $FREESURFER_HOME environment variable:
         refsubj_name   - Optional  : Reference subject name. Default is None:
@@ -934,71 +1188,239 @@ def _detect_hemi(file_name: str):
 
     return hemi
 
-
-            
-def _launch_freesurfer(t1w_img:str, 
-                    subj_id:str, 
-                    freesurfer_dir:str = None, 
-                    fs_options: str = '-all',
-                    cont_tech: str = "local",
-                    cont_image: str = "local",
-                    force = False):
+def get_version(cont_tech: str = "local", 
+                cont_image: str = "local"):
+    
     """
-    Function to convert gcs files to FreeSurfer annot files
+    Function to get the FreeSurfer version.
     
     Parameters
     ----------
-    t1w_img       - Mandatory : T1w image filename:
-    subj_id        - Mandatory : Full subject id:
-    freesurfer_dir - Optional  : FreeSurfer directory. Default is the $SUBJECTS_DIR environment variable:
-    fs_options    - Optional  : FreeSurfer options. Default is -all (Other options could be -autorecon1, -autorecon2, -autorecon3
-                                -lgi, ):
-    
     cont_tech    - Optional  : Container technology. Default is local:
     cont_image   - Optional  : Container image. Default is local:
     
     Output
     ------
-    annot_file: str : Annot filename
+    vers_cad: str : FreeSurfer version number 
+    
+    """
+    
+    # Running the version command
+    cmd_bashargs = ['recon-all', '-version']
+    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+    subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+    out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+    
+    vers_cad = out_cmd.stdout.split('-')[3]
+    
+    return vers_cad
+    
+    
+            
+
+
+def _launch_surf2vol(fssubj_dir: str, 
+                        out_dir: str, 
+                        fullid: str, 
+                        atlas: str, 
+                        gm_grow: str, 
+                        cont_tech: str = "local", 
+                        cont_image: str = "local"):
+    
+    """
+    Create volumetric parcellation from annot files.
+    
+    Parameters:
+    ----------
+    fssubj_dir : str
+        FreeSurfer subjects directory
+
+    out_dir : str
+        Output directory
+        
+    fullid : str
+        FreeSurfer ID
+    
+    atlas : str
+        Atlas ID   
+        
+    gm_grow : str
+        Amount of milimiters to grow the GM labels
+        
+    cont_tech : str
+        Container technology ("singularity", "docker", "local")
+        
+    cont_image: str
+        Container image to use
+        
     """
 
-    # Set the FreeSurfer directory
-    if freesurfer_dir is not None:
-        
-        if not os.path.isdir(freesurfer_dir):
-            
-            # Create the directory if it does not exist
-            freesurfer_dir = Path(freesurfer_dir)
-            freesurfer_dir.mkdir(parents=True, exist_ok=True)
-            os.environ["SUBJECTS_DIR"] = str(freesurfer_dir)
-            
+    if 'desc' not in atlas:
+        atlas_str = atlas + '_desc-'
     else:
-        if "SUBJECTS_DIR" not in os.environ:
-            raise ValueError(
-                "The FreeSurfer directory must be set in the environment variables or passed as an argument"
-            )
-        else:
-            freesurfer_dir = os.environ["SUBJECTS_DIR"]
-            
-            if not os.path.isdir(freesurfer_dir):
-                
-                # Create the directory if it does not exist
-                freesurfer_dir = Path(freesurfer_dir)
-                freesurfer_dir.mkdir(parents=True, exist_ok=True)
+        atlas_str = atlas
 
-    # Computing FreeSurfer
-    if fs_options == '-all':
-        if force:
-            cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, subj_id, '-all', '-no-isrunning']
+    if atlas == "aparc":
+        atlas_str = "atlas-desikan_desc-aparc"
+    elif atlas == "aparc.a2009s":
+        atlas_str = "atlas-destrieux_desc-a2009s"
+
+    out_parc = []
+    for g in gm_grow:
+        out_vol = os.path.join(out_dir, fullid + '_space-orig_' + atlas_str + 'grow' + g + 'mm_dseg.nii.gz')
+
+        if g == '0':
+            # Creating the volumetric parcellation using the annot files
+
+            cmd_bashargs = ['mri_aparc2aseg', '--s', fullid, '--annot', atlas,
+                            '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
+            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
         else:
-            cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, subj_id, '-all']
+            # Creating the volumetric parcellation using the annot files
+            cmd_bashargs = ['mri_aparc2aseg', '--s', fullid, '--annot', atlas, '--wmparc-dmax', g, '--labelwm',
+                            '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
+            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+        # Moving the resulting parcellation from conform space to native
+        raw_vol = os.path.join(fssubj_dir, fullid, 'mri', 'rawavg.mgz')
+        
+        cmd_bashargs = ['mri_vol2vol', '--mov', out_vol, '--targ', raw_vol,
+                        '--regheader', '--o', out_vol, '--no-save-reg', '--interp', 'nearest']
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        out_parc.append(out_vol)
+
+    return out_parc
+
+def _conform2native(cform_mgz: str, 
+                            nat_nii: str, 
+                            fssubj_dir: str, 
+                            fullid: str,
+                            interp_method: str = "nearest", 
+                            cont_tech: str = "local", 
+                            cont_image: str = "local"):
+    """
+    Moving image in comform space to native space
     
-    cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, subj_id, fs_options]
+    Parameters:
+    ----------
+    cform_mgz : str
+        Image in conform space
+
+    nat_nii : str
+        Image in native space
+        
+    fssubj_dir : str
+        FreeSurfer subjects directory
+    
+    fullid : str
+        FreeSurfer ID   
+    
+    interp_method: str
+        Interpolation method ("nearest", "trilinear", "cubic")
+    
+    cont_tech : str
+        Container technology ("singularity", "docker", "local")
+        
+    cont_image: str
+        Container image to use
+        
+    """
+    
+    # Moving the resulting parcellation from conform space to native
+    raw_vol = os.path.join(fssubj_dir, fullid, 'mri', 'rawavg.mgz')
+
+    cmd_bashargs = ['mri_vol2vol', '--mov', cform_mgz, '--targ', raw_vol,
+                    '--regheader', '--o', nat_nii, '--no-save-reg', '--interp', interp_method]
     cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
     subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
 
+def _fs_addon_parcellations(vol_tparc, fullid, fssubj_dir, parcid, out_str,                             
+                            cont_tech: str = "local", 
+                            cont_image: str = "local"):
+    
+    
+    
+    
 
+    volatlas_dir = os.path.dirname(vol_tparc)
 
+    # Creating ouput directory
+    if not os.path.isdir(volatlas_dir):
+        try:
+            os.makedirs(volatlas_dir)
+        except OSError:
+            print("Failed to make nested output directory")
 
+    if parcid == 'thalamus':
+    # Running Thalamic parcellation
+        process = subprocess.run(
+            ['segmentThalamicNuclei.sh', fullid, fssubj_dir],
+            stdout=subprocess.PIPE, universal_newlines=True)
+        
+        
+        cmd_bashargs = ['segmentThalamicNuclei.sh', fullid, fssubj_dir]
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
 
+        thal_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'ThalamicNuclei.v12.T1.mgz')
+
+        # Moving Thalamic parcellation to native space
+        _conform2native(thal_mgz, vol_tparc, fssubj_dir, fullid)
+
+        out_parc = [vol_tparc]
+
+    elif parcid == 'amygdala' or  parcid == 'hippocampus':
+        # Running Hippocampal and Amygdala parcellation
+        
+        cmd_bashargs = ['segmentHA_T1.sh', fullid, fssubj_dir]
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+        # Moving Hippocampal and amygdala parcellation to native space
+        lh_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'lh.hippoAmygLabels-T1.v21.mgz')
+        lh_gz = os.path.join(volatlas_dir, fullid + '_space-orig_hemi-L_desc-' + out_str + '_dseg.nii.gz')
+        _conform2native(lh_mgz, lh_gz, fssubj_dir, fullid)
+
+        rh_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'rh.hippoAmygLabels-T1.v21.mgz')
+        rh_gz = os.path.join(volatlas_dir, fullid + '_space-orig_hemi-R_desc-' + out_str + '_dseg.nii.gz')
+        _conform2native(rh_mgz, rh_gz, fssubj_dir, fullid)
+        out_parc = [lh_gz, rh_gz]
+
+    elif parcid == 'hypothalamus':
+
+    # Running Hypothalamus parcellation
+        os.system("WRITE_POSTERIORS=1")
+        cmd_bashargs = ['mri_segment_hypothalamic_subunits', '--s', fullid, '--sd', fssubj_dir, '--write_posteriors']
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        # Moving Hypothalamus to native space
+        hypo_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'hypothalamic_subunits_seg.v1.mgz')
+        hypo_gz = os.path.join(volatlas_dir, fullid + '_space-orig_desc-' + out_str + '_dseg.nii.gz')
+        _conform2native(hypo_mgz, hypo_gz, fssubj_dir, fullid)
+        out_parc = [hypo_gz]
+
+    elif parcid == 'brainstem':
+
+        # Running Brainstem parcellation
+        # os.environ["WRITE_POSTERIORS"] = 1
+        os.system("WRITE_POSTERIORS=1")
+        
+        cmd_bashargs = ['segmentBS.sh', fullid, fssubj_dir]
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        # Moving Hypothalamus to native space
+        bs_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'brainstemSsLabels.v12.mgz')
+        bs_gz = os.path.join(volatlas_dir, fullid + '_space-orig_desc-' + out_str + '_dseg.nii.gz')
+        _conform2native(bs_mgz, bs_gz, fssubj_dir, fullid)
+        out_parc = [bs_gz]
+
+    return out_parc
