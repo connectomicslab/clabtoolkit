@@ -1004,7 +1004,8 @@ class FreeSurferSubject():
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
                 subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
-        proc_status = self._get_proc_status() 
+        self._get_proc_status() 
+        proc_status = self.pstatus
 
         # Processing extra stages
         if extra_proc is not None:
