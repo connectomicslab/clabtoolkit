@@ -890,7 +890,8 @@ class FreeSurferSubject():
         
         Output
         ------
-        annot_file: str : Annot filename
+        proc_stage: str : Processing stage
+        
         """
 
         # Set the FreeSurfer directory
@@ -1070,7 +1071,37 @@ class FreeSurferSubject():
 
         return proc_status
 
-            
+    def _set_freesurfer_directory(fs_dir: str = None):
+        """
+        Function to set up the FreeSurfer directory
+        
+        Parameters
+        ----------
+        fs_dir       - Optional  : FreeSurfer directory. Default is None:
+                                If not provided, it will be extracted from the 
+                                $SUBJECTS_DIR environment variable. If it does not exist,
+                                it will be created.
+        
+        Output
+        ------
+        fs_dir: str : FreeSurfer directory
+        """
+
+        # Set the FreeSurfer directory
+        if fs_dir is None:
+        
+            if "SUBJECTS_DIR" not in os.environ:
+                raise ValueError(
+                    "The FreeSurfer directory must be set in the environment variables or passed as an argument"
+                )
+            else:
+                fs_dir = os.environ["SUBJECTS_DIR"]
+                
+        # Create the directory if it does not exist
+        fs_dir= Path(fs_dir)
+        fs_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["SUBJECTS_DIR"] = str(fs_dir)
+                
 def _create_fsaverage_links(
     fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
 ):
