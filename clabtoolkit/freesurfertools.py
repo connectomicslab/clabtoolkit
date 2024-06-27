@@ -665,9 +665,6 @@ class AnnotParcellation:
             gcs_file,
         ]
         
-        echo_var = " ".join(cmd_cont)
-        print(echo_var)
-        
         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
@@ -1072,6 +1069,7 @@ class FreeSurferSubject():
 
         return proc_status
 
+    @staticmethod
     def _set_freesurfer_directory(fs_dir: str = None):
         """
         Function to set up the FreeSurfer directory
