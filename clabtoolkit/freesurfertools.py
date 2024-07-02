@@ -1100,6 +1100,59 @@ class FreeSurferSubject():
         fs_dir= Path(fs_dir)
         fs_dir.mkdir(parents=True, exist_ok=True)
         os.environ["SUBJECTS_DIR"] = str(fs_dir)
+
+    
+    def _annot2ind(self, ref_id:str, hemi:str, fs_annot:str, ind_annot:str, cont_tech:str="local", cont_image:str = None):
+        """
+        Map ANNOT parcellation files to individual space.
+        
+        Parameters:
+        ----------
+        fssubj_dir : str
+            FreeSurfer subjects directory
+            
+        fs_annot : str
+            FreeSurfer GCS parcellation file
+            
+        ind_annot : str
+            Individual space annotation file
+            
+        hemi : str
+            Hemisphere id ("lh" or "rh")
+            
+        out_dir : str
+            Output directory
+            
+        fullid : str
+            FreeSurfer ID
+            
+        atlas : str
+            Atlas ID
+            
+        cont_tech : str
+            Container technology ("singularity", "docker", "local")
+            
+        cont_image: str
+            Container image to use    
+            
+        """
+
+        FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
+
+        # Moving the Annot to individual space
+        cmd_bashargs = ['mri_surf2surf', '--srcsubject', ref_id, '--trgsubject', self.subj_id,
+                                '--hemi', hemi, '--sval-annot', fs_annot,
+                                '--tval', ind_annot]
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        # Correcting the parcellation file in order to refill the parcellation with the correct labels    
+        cort_parc = AnnotParcellation(parc_file=ind_annot)
+        label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
+        surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
+        cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+
+        return ind_annot
                 
 def _create_fsaverage_links(
     fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
