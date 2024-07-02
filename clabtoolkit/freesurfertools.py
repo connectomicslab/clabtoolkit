@@ -1102,32 +1102,29 @@ class FreeSurferSubject():
         os.environ["SUBJECTS_DIR"] = str(fs_dir)
 
     
-    def _annot2ind(self, ref_id:str, hemi:str, fs_annot:str, ind_annot:str, cont_tech:str="local", cont_image:str = None):
+    def _annot2ind(self, 
+                    ref_id:str, 
+                    hemi:str, 
+                    fs_annot:str, 
+                    ind_annot:str, 
+                    cont_tech:str="local", 
+                    cont_image:str = None):
         """
         Map ANNOT parcellation files to individual space.
         
         Parameters:
         ----------
-        fssubj_dir : str
-            FreeSurfer subjects directory
+        ref_id : str
+            FreeSurfer ID for the reference subject
+        
+        hemi : str
+            Hemisphere id ("lh" or "rh")
             
         fs_annot : str
             FreeSurfer GCS parcellation file
             
         ind_annot : str
-            Individual space annotation file
-            
-        hemi : str
-            Hemisphere id ("lh" or "rh")
-            
-        out_dir : str
-            Output directory
-            
-        fullid : str
-            FreeSurfer ID
-            
-        atlas : str
-            Atlas ID
+            Annotation file in individual space
             
         cont_tech : str
             Container technology ("singularity", "docker", "local")
@@ -1153,6 +1150,178 @@ class FreeSurferSubject():
         cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
 
         return ind_annot
+    
+    def _launch_gcs2ind(self,
+                    fs_gcs: str, 
+                    ind_annot: str, 
+                    hemi: str, 
+                    cont_tech: str = "local", 
+                    cont_image: str = None):
+        """
+        Map GCS parcellation files to individual space.
+        
+        Parameters:
+        ----------
+        fs_gcs : str
+            FreeSurfer GCS parcellation file
+            
+        ind_annot : str
+            Individual space annotation file
+            
+        hemi : str
+            Hemisphere id ("lh" or "rh")
+            
+        out_dir : str
+            Output directory
+            
+        fullid : str
+            FreeSurfer ID
+            
+        atlas : str
+            Atlas ID
+            
+        cont_tech : str
+            Container technology ("singularity", "docker", "local")
+            
+        cont_image: str
+            Container image to use    
+            
+        """
+
+        # Moving the GCS to individual space
+        cort_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
+        sph_file  = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.sphere.reg')
+        
+        cmd_bashargs = ['mris_ca_label', '-l', cort_file, self.subj_id, hemi, sph_file,
+                        fs_gcs, ind_annot]
+        
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        # Correcting the parcellation file in order to refill the parcellation with the correct labels    
+        cort_parc = AnnotParcellation(parc_file=ind_annot)
+        label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
+        surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
+        cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+
+        return ind_annot
+    
+    def _launch_surf2vol(self, 
+                        atlas: str,
+                        out_vol: str, 
+                        gm_grow: Union[list, str] = ['0'], 
+                        bool_native: bool = False,
+                        cont_tech: str = "local", 
+                        cont_image: str = None):
+    
+        """
+        Create volumetric parcellation from annot files.
+        
+        Parameters:
+        ----------
+        atlas : str
+            Atlas ID   
+        
+        out_vol: str
+            Output volumetric parcellation file
+            
+        gm_grow : list or str
+            Amount of milimiters to grow the GM labels
+        
+        bool_native: bool
+            If True, the parcellation will be in native space. The parcellation in native space 
+            will be saved in Nifti-1 format.
+            
+        cont_tech : str
+            Container technology ("singularity", "docker", "local")
+            
+        cont_image: str
+            Container image to use
+            
+        """
+        FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
+        
+        if isinstance(gm_grow, str):
+            gm_grow = [gm_grow]
+            
+        out_parc = []
+        for g in gm_grow:
+            
+            if g == '0':
+                # Creating the volumetric parcellation using the annot files
+
+                cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas,
+                                '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+            else:
+                # Creating the volumetric parcellation using the annot files
+                cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', g, '--labelwm',
+                                '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
+            if bool_native:
+                # Moving the resulting parcellation from conform space to native
+                raw_vol = os.path.join(self.subjs_dir, self.subj_id, 'mri', 'rawavg.mgz')
+                
+                if out_vol.endswith('.mgz'):
+                    out_nat = out_vol.replace('.mgz', '.nii.gz')
+                elif out_vol.endswith('.nii.gz'):
+                    out_nat = out_vol
+                    
+                cmd_bashargs = ['mri_vol2vol', '--mov', out_vol, '--targ', raw_vol,
+                                '--regheader', '--o', out_nat, '--no-save-reg', '--interp', 'nearest']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+
+            
+            out_parc.append(out_vol)
+
+        return out_parc
+
+    def _conform2native(self, 
+                        mgz_conform: str, 
+                        nii_native: str, 
+                        interp_method: str = 'nearest', 
+                        cont_tech: str = 'local', 
+                        cont_image: str = None):
+        """
+        Moving image in comform space to native space
+        
+        Parameters:
+        ----------
+        mgz_conform : str
+            Image in conform space
+
+        nii_native : str
+            Image in native space
+            
+        fssubj_dir : str
+            FreeSurfer subjects directory
+        
+        fullid : str
+            FreeSurfer ID   
+        
+        interp_method: str
+            Interpolation method ("nearest", "trilinear", "cubic")
+        
+        cont_tech : str
+            Container technology ("singularity", "docker", "local")
+            
+        cont_image: str
+            Container image to use
+            
+        """
+        
+        # Moving the resulting parcellation from conform space to native
+        raw_vol = os.path.join(self.subjs_dir, self.subj_id, 'mri', 'rawavg.mgz')
+
+        cmd_bashargs = ['mri_vol2vol', '--mov', mgz_conform, '--targ', raw_vol,
+                        '--regheader', '--o', nii_native, '--no-save-reg', '--interp', interp_method]
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+    
                 
 def _create_fsaverage_links(
     fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
