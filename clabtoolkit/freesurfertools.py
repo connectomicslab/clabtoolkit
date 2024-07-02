@@ -1108,7 +1108,8 @@ class FreeSurferSubject():
                     fs_annot:str, 
                     ind_annot:str, 
                     cont_tech:str="local", 
-                    cont_image:str = None):
+                    cont_image:str = None,
+                    force = False):
         """
         Map ANNOT parcellation files to individual space.
         
@@ -1130,33 +1131,43 @@ class FreeSurferSubject():
             Container technology ("singularity", "docker", "local")
             
         cont_image: str
-            Container image to use    
+            Container image to use
+        
+        force : bool
+            Force the processing    
             
         """
-
-        FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
-
-        # Moving the Annot to individual space
-        cmd_bashargs = ['mri_surf2surf', '--srcsubject', ref_id, '--trgsubject', self.subj_id,
-                                '--hemi', hemi, '--sval-annot', fs_annot,
-                                '--tval', ind_annot]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
-        # Correcting the parcellation file in order to refill the parcellation with the correct labels    
-        cort_parc = AnnotParcellation(parc_file=ind_annot)
-        label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
-        surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
-        cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+        if not os.path.isfile(ind_annot) or force:
+            
+            FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
 
+            # Moving the Annot to individual space
+            cmd_bashargs = ['mri_surf2surf', '--srcsubject', ref_id, '--trgsubject', self.subj_id,
+                                    '--hemi', hemi, '--sval-annot', fs_annot,
+                                    '--tval', ind_annot]
+            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            
+            # Correcting the parcellation file in order to refill the parcellation with the correct labels    
+            cort_parc = AnnotParcellation(parc_file=ind_annot)
+            label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
+            surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
+            cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+            
+        elif os.path.isfile(ind_annot) and not force:
+            # Print a message
+            print(f"File {ind_annot} already exists. Use force=True to overwrite it")
+            
         return ind_annot
     
-    def _launch_gcs2ind(self,
+    def _gcs2ind(self,
                     fs_gcs: str, 
                     ind_annot: str, 
                     hemi: str, 
                     cont_tech: str = "local", 
-                    cont_image: str = None):
+                    cont_image: str = None,
+                    force = False):
         """
         Map GCS parcellation files to individual space.
         
@@ -1185,34 +1196,44 @@ class FreeSurferSubject():
             
         cont_image: str
             Container image to use    
+                
+        force : bool
+            Force the processing  
             
         """
 
-        # Moving the GCS to individual space
-        cort_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
-        sph_file  = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.sphere.reg')
-        
-        cmd_bashargs = ['mris_ca_label', '-l', cort_file, self.subj_id, hemi, sph_file,
-                        fs_gcs, ind_annot]
-        
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-        
-        # Correcting the parcellation file in order to refill the parcellation with the correct labels    
-        cort_parc = AnnotParcellation(parc_file=ind_annot)
-        label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
-        surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
-        cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+        if not os.path.isfile(ind_annot) or force:
+            
+            # Moving the GCS to individual space
+            cort_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
+            sph_file  = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.sphere.reg')
+            
+            cmd_bashargs = ['mris_ca_label', '-l', cort_file, self.subj_id, hemi, sph_file,
+                            fs_gcs, ind_annot]
+            
+            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            
+            # Correcting the parcellation file in order to refill the parcellation with the correct labels    
+            cort_parc = AnnotParcellation(parc_file=ind_annot)
+            label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
+            surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
+            cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+            
+        elif os.path.isfile(ind_annot) and not force:
+                    # Print a message
+                    print(f"File {ind_annot} already exists. Use force=True to overwrite it")
 
         return ind_annot
     
-    def _launch_surf2vol(self, 
+    def _surf2vol(self, 
                         atlas: str,
                         out_vol: str, 
                         gm_grow: Union[list, str] = ['0'], 
                         bool_native: bool = False,
                         cont_tech: str = "local", 
-                        cont_image: str = None):
+                        cont_image: str = None,
+                        force: bool = False):
     
         """
         Create volumetric parcellation from annot files.
@@ -1237,8 +1258,12 @@ class FreeSurferSubject():
             
         cont_image: str
             Container image to use
+        
+        force : bool
+            Force the processing.  
             
         """
+        
         FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
         
         if isinstance(gm_grow, str):
@@ -1249,43 +1274,54 @@ class FreeSurferSubject():
             
             if g == '0':
                 # Creating the volumetric parcellation using the annot files
-
-                cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas,
-                                '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-
-            else:
-                # Creating the volumetric parcellation using the annot files
-                cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', g, '--labelwm',
-                                '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-
-            if bool_native:
-                # Moving the resulting parcellation from conform space to native
-                raw_vol = os.path.join(self.subjs_dir, self.subj_id, 'mri', 'rawavg.mgz')
-                
                 if out_vol.endswith('.mgz'):
                     out_nat = out_vol.replace('.mgz', '.nii.gz')
                 elif out_vol.endswith('.nii.gz'):
                     out_nat = out_vol
                     
-                cmd_bashargs = ['mri_vol2vol', '--mov', out_vol, '--targ', raw_vol,
-                                '--regheader', '--o', out_nat, '--no-save-reg', '--interp', 'nearest']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                if not os.path.isfile(out_nat) or force:
+                    cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas,
+                                    '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
+                    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                    subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                    
+                    if bool_native:
+                        
+                        # Moving the resulting parcellation from conform space to native
+                        self._conform2native(mgz_conform = out_vol, nii_native = out_nat, force=force)
+                        
+                elif os.path.isfile(out_nat) and not force:
+                    # Print a message
+                    print(f"File {out_nat} already exists. Use force=True to overwrite it")
 
-            
-            out_parc.append(out_vol)
+            else:
+                if not os.path.isfile(out_vol) or force:
+                    # Creating the volumetric parcellation using the annot files
+                    cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', g, '--labelwm',
+                                    '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
+                    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                    subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                    
+                    if bool_native:
+                        
+                        # Moving the resulting parcellation from conform space to native
+                        self._conform2native(mgz_conform = out_vol, nii_native = out_nat, force=force)
+                        
+                elif os.path.isfile(out_nat) and not force:
+                    # Print a message
+                    print(f"File {out_nat} already exists. Use force=True to overwrite it")
+                    
+            out_parc.append(out_nat)
 
         return out_parc
 
     def _conform2native(self, 
                         mgz_conform: str, 
                         nii_native: str, 
-                        interp_method: str = 'nearest', 
-                        cont_tech: str = 'local', 
-                        cont_image: str = None):
+                        interp_method: str = "nearest", 
+                        cont_tech: str = "local", 
+                        cont_image: str = None,
+                        force: bool = False):
         """
         Moving image in comform space to native space
         
@@ -1311,16 +1347,24 @@ class FreeSurferSubject():
             
         cont_image: str
             Container image to use
+        
+        force : bool
+            Force the processing
             
         """
         
-        # Moving the resulting parcellation from conform space to native
-        raw_vol = os.path.join(self.subjs_dir, self.subj_id, 'mri', 'rawavg.mgz')
+        if not os.path.isfile(nii_native) or force:
+            # Moving the resulting parcellation from conform space to native
+            raw_vol = os.path.join(self.subjs_dir, self.subj_id, 'mri', 'rawavg.mgz')
 
-        cmd_bashargs = ['mri_vol2vol', '--mov', mgz_conform, '--targ', raw_vol,
-                        '--regheader', '--o', nii_native, '--no-save-reg', '--interp', interp_method]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            cmd_bashargs = ['mri_vol2vol', '--mov', mgz_conform, '--targ', raw_vol,
+                            '--regheader', '--o', nii_native, '--no-save-reg', '--interp', interp_method]
+            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        elif os.path.isfile(nii_native) and not force:
+            # Print a message
+            print(f"File {nii_native} already exists. Use force=True to overwrite it")
     
                 
 def _create_fsaverage_links(
