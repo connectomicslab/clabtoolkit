@@ -1271,14 +1271,14 @@ class FreeSurferSubject():
             
         out_parc = []
         for g in gm_grow:
-            
+            # Creating the volumetric parcellation using the annot files
+            if out_vol.endswith('.mgz'):
+                out_nat = out_vol.replace('.mgz', '.nii.gz')
+            elif out_vol.endswith('.nii.gz'):
+                out_nat = out_vol
+                
             if g == '0':
-                # Creating the volumetric parcellation using the annot files
-                if out_vol.endswith('.mgz'):
-                    out_nat = out_vol.replace('.mgz', '.nii.gz')
-                elif out_vol.endswith('.nii.gz'):
-                    out_nat = out_vol
-                    
+
                 if not os.path.isfile(out_nat) or force:
                     cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas,
                                     '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
@@ -1295,7 +1295,7 @@ class FreeSurferSubject():
                     print(f"File {out_nat} already exists. Use force=True to overwrite it")
 
             else:
-                if not os.path.isfile(out_vol) or force:
+                if not os.path.isfile(out_nat) or force:
                     # Creating the volumetric parcellation using the annot files
                     cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', g, '--labelwm',
                                     '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
