@@ -8,9 +8,37 @@ import pydicom
 from datetime import datetime
 from pathlib import Path
 from shutil import copyfile
-import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 from rich.progress import Progress
+from threading import Lock
+import time
+
+
+# simple progress indicator callback function
+def progress_indicator(future):
+    """
+    A simple progress indicator for the concurrent futures
+    :param future: future object
+    
+    """
+    global lock, n_dics, n_comp, pb, pb1, subj_id, dicom_files
+    # obtain the lock
+    with lock:
+        # update the counter
+        n_comp += 1
+        # report progress
+        # print(f'{tasks_completed}/{n_subj} completed, {n_subj-tasks_completed} remain.')
+        # pb.update(task_id=pb1, description= f'[red]Completed {n_comp}/{n_subj}', completed=n_subj)
+        pb.update(task_id=pb1, description= f'[red]{subj_id}: Finished ({n_comp}/{n_dics})', completed=n_comp) 
+
+def test(name):
+    
+    
+    # Create folders with the name of the task
+    os.system('mkdir -p /media/COSAS/test/outtestfold/' + str(name))
+    time.sleep(1)
 
 
 def _org_conv_dicoms(in_dic_dir: str, 
@@ -20,8 +48,9 @@ def _org_conv_dicoms(in_dic_dir: str,
                     ses_id:str=None,
                     nosub:bool=False,
                     booldic:bool=True,
-                    boolforce:bool=False,
-                    boolcomp:bool=False):
+                    boolcomp:bool=False,
+                    force:bool=False,
+                    nthreads:int = 0):
     """
     This method organizes the DICOM files in sessions and series. It could also uses the demographics file to define the session ID.
     
@@ -38,9 +67,23 @@ def _org_conv_dicoms(in_dic_dir: str,
         nosub          - Optional  : Boolean variable to consider the subjects that do not start with 'sub-'. Default is False.
         booldic        - Optional  : Boolean variable to organice the DICOM files. Default is True. If False it will leave the folders as they are.
         boolcomp       - Optional  : Boolean variable to compress the sessions containing the organized DICOM files. Default is False. If True it will compress the sessions.
+        force          - Optional  : Boolean variable to force the copy of the DICOM file if the file already exists. Default is False.
+        nthreds        - Optional  : Number of threads to be used in the process. Default is 0 that means automatic selection of the number of cores.
         
     """
-    nthreads = os.cpu_count()
+    
+    # Declaring global variables
+    global pb, pb1, n_dics, n_comp, lock, subj_id, dicom_files
+    
+    
+    # Detecting the number of cores to be used
+    ncores = os.cpu_count()
+    if nthreads == 0:
+        nthreads = ncores
+        if nthreads > 4:
+            nthreads = nthreads - 4
+        else:
+            nthreads = 1
 
     # Listing the subject ids inside the dicom folder
     my_list = os.listdir(in_dic_dir)
@@ -89,17 +132,19 @@ def _org_conv_dicoms(in_dic_dir: str,
     failed_ids = []
     # Creating the progress bars
     with Progress() as pb:
-        t2 = pb.add_task('[green]Subjects...', total=n_subj)
-        
-        
+        pb2 = pb.add_task('[green]Subjects...', total=n_subj)
+    
         for cont_subj, subj_id in enumerate(subj_ids):  # Loop along the IDs
+            
+            # create a lock for the counter
+            lock = Lock()
 
-            # cont_subj += 1
-            # cltmisc._printprogressbar(cont_subj, n_subj,
-            #                 'Processing subject ' + subj_id + ': ' + '(' + str(cont_subj) + '/' + str(n_subj) + ')')
+            n_comp = 0
+            failed = []
+            
+            pb.update(task_id=pb2, description= f'[green]Subject: {subj_id} ({cont_subj+1}/{n_subj})', completed=cont_subj+1)
 
             subj_dir = os.path.join(in_dic_dir, subj_id)
-
             if os.path.isdir(subj_dir):
                 # Default value for these variables for each subject
                 gendVar = 'Unknown'
@@ -126,21 +171,53 @@ def _org_conv_dicoms(in_dic_dir: str,
                         ser_idprev = []
                         
                         
-                        ndics = len(dicom_files)
+                        n_dics = len(dicom_files)
+                        if nthreads == 1:
+                            
+                            pb1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=n_dics)
+                            for cont_dic, dfiles in enumerate(dicom_files):
+                                ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force)
+                                all_ser_dirs.append(ser_dir)
+                                pb.update(task_id=pb1, description= f'[red]Copying DICOMs: Subject {subj_id} ({cont_dic+1}/{n_dics})', completed=cont_dic+1) 
+                                
+                        else:
+                
+                            # create a progress bar for the subjects
+                            pb1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=n_dics)
+
+                            # Adjusting the number of threads to the number of subjects
+                            if n_dics < nthreads:
+                                nthreads = n_dics
+                                
+                            # start the thread pool
+                            with ThreadPoolExecutor(nthreads) as executor:
+                                # send in the tasks
+                                # futures = [executor.submit(_build_parcellation, t1s[i],
+                                # bids_dir, deriv_dir, parccode, growwm) for i in range(n_subj)]
+                                
+                                futures = [executor.submit(_copy_dicom_file, dicom_files[i], subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force) for i in range(n_dics)]
+                                #futures = [executor.submit(test, i) for i in range(n_dics)]
+
+                                # register the progress indicator callback
+                                for future in futures:
+                                    future.add_done_callback(progress_indicator)
+                                # wait for all tasks to complete
+                        
+                        
                         # if nthreads > 4:
                         #     nthreads = nthreads - 4
                         # with concurrent.futures.ProcessPoolExecutor(nthreads) as executor:
                         # #     results = [executor.submit(do_something, sec) for sec in secs]
                         #     results = list(executor.map(_copy_dicom_file, dicom_files,
-                        #     [subj_id] * ndwis, [out_dic_dir] * ndwis, [ses_id] * ndwis, [date_times] * ndwis, [demobool] * ndwis, [subTB] * ndwis, [boolforce] * ndwis))
+                        #     [subj_id] * ndwis, [out_dic_dir] * ndwis, [ses_id] * ndwis, [date_times] * ndwis, [demobool] * ndwis, [subTB] * ndwis, [force] * ndwis))
 
-                        t1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=ndics)
+                        # t1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=ndics)
                         
-                        for cont_dic, dfiles in enumerate(dicom_files):
-                            ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, boolforce)
-                            all_ser_dirs.append(ser_dir)
-                            pb.update(task_id=t1, completed=cont_dic+1)
-                        pb.update(task_id=t1, completed=ndics)
+                        # for cont_dic, dfiles in enumerate(dicom_files):
+                        #     ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force)
+                        #     all_ser_dirs.append(ser_dir)
+                        #     pb.update(task_id=t1, completed=cont_dic+1)
+                        # pb.update(task_id=t1, completed=ndics)
                         
                     else:
 
@@ -170,8 +247,8 @@ def _org_conv_dicoms(in_dic_dir: str,
             else:
                 print('Subject: ' + subj_id + ' does not exist.')
                 
-            pb.update(task_id=t2, completed=cont_subj+1)
-        pb.update(task_id=t2, completed=n_subj) 
+        #     pb.update(task_id=t2, completed=cont_subj+1)
+        # pb.update(task_id=t2, completed=n_subj) 
         
     all_ser_dirs = list(set(all_ser_dirs))
     all_ser_dirs.sort()
