@@ -1294,6 +1294,11 @@ class FreeSurferSubject():
         if gm_grow == '0':
 
             if not os.path.isfile(out_nat) or force:
+                # Create the folder if it does not exist
+                temp_dir = os.path.dirname(out_nat)
+                temp_dir = Path(temp_dir)
+                temp_dir.mkdir(parents=True, exist_ok=True)
+            
                 cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas,
                                 '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
@@ -1310,6 +1315,11 @@ class FreeSurferSubject():
 
         else:
             if not os.path.isfile(out_nat) or force:
+                # Create the folder if it does not exist
+                temp_dir = os.path.dirname(out_nat)
+                temp_dir = Path(temp_dir)
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                
                 # Creating the volumetric parcellation using the annot files
                 cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', gm_grow, '--labelwm',
                                 '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
