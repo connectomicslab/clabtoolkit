@@ -30,7 +30,7 @@ class AnnotParcellation:
     def __init__(self, parc_file: str,
                     ref_surf: str = None, 
                     cont_tech: str = "local", 
-                    cont_image: str = "local"):
+                    cont_image: str = None):
         """
         Initialize the AnnotParcellation object
         
@@ -336,7 +336,7 @@ class AnnotParcellation:
                     ref_surf: str = None,
                     annot_file: str = None, 
                     cont_tech: str = "local",
-                    cont_image: str = "local"):
+                    cont_image: str = None):
         """
         Function to convert FreeSurfer gifti files to annot files using mris_convert
         
@@ -389,7 +389,7 @@ class AnnotParcellation:
                     ref_surf: str = None,
                     gii_file: str = None, 
                     cont_tech: str = "local",
-                    cont_image: str = "local"):
+                    cont_image: str = None):
         """
         Function to convert FreeSurfer annot files to gii files using mris_convert
         
@@ -448,7 +448,7 @@ class AnnotParcellation:
                     freesurfer_dir: str = None, 
                     ref_id: str = "fsaverage", 
                     cont_tech: str = "local",
-                    cont_image: str = "local"):
+                    cont_image: str = None):
         
         """
         Function to convert gcs files to FreeSurfer annot files
@@ -553,7 +553,7 @@ class AnnotParcellation:
         fssubj_id: str = None,
         hemi: str = None,
         cont_tech: str = "local", 
-        cont_image: str = "local"
+        cont_image: str = None
     ):
         """
         Convert FreeSurfer annot files to gcs files
@@ -865,7 +865,7 @@ class FreeSurferSubject():
                             proc_stage: Union[str, list] = 'all',
                             extra_proc: Union[str, list] = None,
                             cont_tech: str = "local",
-                            cont_image: str = "local",
+                            cont_image: str = None,
                             force = False):
         """
         Function to launch recon-all command with different options
@@ -1498,7 +1498,7 @@ def _detect_hemi(file_name: str):
     return hemi
 
 def get_version(cont_tech: str = "local", 
-                cont_image: str = "local"):
+                cont_image: str = None):
     
     """
     Function to get the FreeSurfer version.
@@ -1534,7 +1534,7 @@ def _launch_surf2vol(fssubj_dir: str,
                         atlas: str, 
                         gm_grow: str, 
                         cont_tech: str = "local", 
-                        cont_image: str = "local"):
+                        cont_image: str = None):
     
     """
     Create volumetric parcellation from annot files.
@@ -1611,7 +1611,7 @@ def _conform2native(cform_mgz: str,
                             fullid: str,
                             interp_method: str = "nearest", 
                             cont_tech: str = "local", 
-                            cont_image: str = "local"):
+                            cont_image: str = None):
     """
     Moving image in comform space to native space
     
@@ -1651,7 +1651,7 @@ def _conform2native(cform_mgz: str,
 
 def _fs_addon_parcellations(vol_tparc, fullid, fssubj_dir, parcid, out_str,                             
                             cont_tech: str = "local", 
-                            cont_image: str = "local"):
+                            cont_image: str = None):
     
     
     
