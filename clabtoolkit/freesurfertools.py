@@ -1141,15 +1141,15 @@ class FreeSurferSubject():
         if not os.path.isfile(fs_annot) and not os.path.isfile(os.path.join(self.subjs_dir, ref_id, 'label', hemi + '.' + fs_annot + '.annot')):
             raise FileNotFoundError(f"Files {fs_annot} or {os.path.join(self.subjs_dir, ref_id, 'label', hemi + '.' + fs_annot + '.annot')} do not exist")
         
-        if fs_annot.endswith('.gii')
+        if fs_annot.endswith('.gii'):
             tmp_annot = fs_annot.replace(".gii", ".annot")
             tmp_refsurf = os.path.join(self.subjs_dir, ref_id, 'surf', hemi + '.inflated')
             
             AnnotParcellation.gii2annot(gii_file = fs_annot,
                                             ref_surf = tmp_refsurf,
                                             annot_file = tmp_annot, 
-                                            cont_tech=cont_tech, 
-                                            cont_image=cont_image)
+                                            cont_tech = cont_tech, 
+                                            cont_image = cont_image)
             fs_annot = tmp_annot
     
 
