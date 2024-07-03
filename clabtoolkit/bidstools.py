@@ -1,6 +1,122 @@
 import os
 import shutil
 import clabtoolkit.misctools as cltmisc
+from typing import Union
+
+
+def _delete_from_entity(entity:dict, key2rem:Union[list, str]):
+    """
+    This function removes some keys from a dictionary.
+
+    Parameters:
+    ----------
+    entity: dict
+        Dictionary containing the entities
+    key2rem: list or str
+        List of keys to remove
+        
+    Returns:
+    -------
+    entity_out: dict
+        Dictionary containing the entities without the keys to remove
+    
+    """
+    
+    if isinstance(key2rem, str):
+        key2rem = [key2rem]
+    
+    entity_out = entity.copy()
+    for key in key2rem:
+
+        if key in entity_out:
+            entity_out.pop(key, None)
+    
+    return entity_out
+
+
+def _str2entity(string:str):
+    """
+    This function converts a string to a dictionary.
+    
+    Parameters:
+    ----------
+    string: str
+        String to convert
+        
+    Returns:
+    -------
+    ent_dict: dict
+        Dictionary containing the entities extracted from the string
+    """
+
+    ent_list = string.split("_")
+    # Detecting the suffix and the extension
+    # Detect which entity does not contain a "-"
+    for ent in ent_list:
+        if not "-" in ent:
+
+            if "." in ent:
+                temp = ent.split(".")
+                if temp[0]:
+                    suffix = temp[0]
+                    extension = '.'.join(temp[1:])
+                else:
+                    extension = ent
+            else:
+                suffix = ent
+            
+            ent_list.remove(ent)
+
+
+    ent_dict = {}
+    for ent in ent_list:
+        ent_dict[ent.split("-")[0]] = ent.split("-")[1]
+    
+    if "suffix" in locals():
+        ent_dict["suffix"] = suffix
+    if "extension" in locals():
+        ent_dict["extension"] = extension
+
+    return ent_dict
+
+def _entity2str(entity:dict):
+    """
+    This function converts an entity dictionary to a string.
+    
+    Parameters:
+    ----------
+    entity: dict
+        Dictionary containing the entities
+        
+    Returns:
+    -------
+    ent_string: str
+        String containing the entities
+        
+    """
+    entity = entity.copy()
+    
+    if "suffix" in entity:
+        suffix = entity["suffix"]
+        entity.pop("suffix", None)
+    if "extension" in entity:
+        extension = entity["extension"]
+        entity.pop("extension", None)
+
+    ent_string = ""
+    for key, value in entity.items():
+        ent_string = ent_string + key + "-" + value + "_"
+    
+    if "suffix" in locals():
+        ent_string = ent_string + suffix
+    else:
+        ent_string = ent_string[0:-1]
+    
+    if "extension" in locals():
+        ent_string = ent_string + "." + extension
+
+    return ent_string
+
 
 
 # This function copies the BIDs folder and its derivatives for e given subjects to a new location
