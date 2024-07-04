@@ -519,6 +519,68 @@ def _rem_dupplicate_char(strcad: str,
 
     return ''.join(chars)
 
+def _invert_colors(colors: Union[list, np.ndarray]):
+    """
+    Function to invert the colors by finding its complementary color. 
+
+    Parameters
+    ----------
+    colors : list or numpy array
+        List of colors
+
+    Returns
+    -------
+    colors: Numpy array
+        List of colors
+
+    """
+    
+    bool_norm = False
+    if isinstance(colors, list):
+
+        if isinstance(colors[0], str):
+            # Convert the hexadecimal colors to rgb
+            colors = _multi_hex2rgb(colors)
+            color_type = 'hex'
+            
+        elif isinstance(colors[0], np.ndarray):
+            colors = np.array(colors)
+            color_type = 'arraylist'
+            
+            if all(map(lambda x: max(x) < 1, colors)):
+                colors = [color * 255 for color in colors]
+                bool_norm = True
+                
+        else:
+            raise ValueError("If colors is a list, it must be a list of hexadecimal colors or a list of rgb colors")
+        
+    elif isinstance(colors, np.ndarray):
+        color_type = 'array'
+        if np.max(colors) <= 1:
+            colors = colors * 255
+            bool_norm = True
+    else:
+        raise ValueError("The colors must be a list of colors or a numpy array")
+
+    ## Inverting the colors
+    colors = 255 - colors
+    
+    if color_type == 'hex':
+        colors = _multi_rgb2hex(colors)
+    
+    elif color_type == 'arraylist':
+        if bool_norm:
+            colors = colors / 255
+        
+        # Create a list of colors where each row is an element in the list
+        colors = [list(color) for color in colors]
+    
+    elif color_type == 'array':
+        if bool_norm:
+            colors = colors / 255
+    
+    return colors
+
 def _readjust_colors(colors: Union[list, np.ndarray]):
     """
     Function to readjust the colors to the range 0-255
