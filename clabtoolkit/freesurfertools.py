@@ -12,6 +12,7 @@ import clabtoolkit.misctools as cltmisc
 import clabtoolkit.parcellationtools as cltparc
 
 
+
 class AnnotParcellation:
     """
     This class contains methods to work with FreeSurfer annot files
@@ -1246,6 +1247,7 @@ class FreeSurferSubject():
                         atlas: str,
                         out_vol: str, 
                         gm_grow: Union[int, str] = '0', 
+                        color_table: Union[list, str] = None,
                         bool_native: bool = False,
                         cont_tech: str = "local", 
                         cont_image: str = None,
@@ -1285,12 +1287,31 @@ class FreeSurferSubject():
         if isinstance(gm_grow, int):
             gm_grow = str(gm_grow)
         
+        if color_table is not None:
+            if isinstance(color_table, str):
+                color_table = [color_table]
+            
+            if not isinstance(color_table, list):
+                raise ValueError("color_table must be a list or a string with its elements equal to tsv or lut")
+            
+            # Check if the elements of the list are tsv or lut. If the elements are not tsv or lut delete them
+            # Lower all the elements in the list
+            color_table = cltmisc._filter_by_substring(color_table, ['tsv', 'lut'], boolcase=False)
+            
+            # If the list is empty set its value to None
+            if len(color_table) == 0:
+                color_table = ['lut']
+                
+        if len(color_table) != 0:
+            fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
+            fs_codes, fs_names, fs_colors = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+        
         # Creating the volumetric parcellation using the annot files
         if out_vol.endswith('.mgz'):
             out_nat = out_vol.replace('.mgz', '.nii.gz')
         elif out_vol.endswith('.nii.gz'):
             out_nat = out_vol
-                
+
         if gm_grow == '0':
 
             if not os.path.isfile(out_nat) or force:
@@ -1334,7 +1355,94 @@ class FreeSurferSubject():
             elif os.path.isfile(out_nat) and not force:
                 # Print a message
                 print(f"File {out_nat} already exists. Use force=True to overwrite it")
-                    
+        
+        if color_table is not None:
+            temp_iparc = nib.load(out_nat)
+            
+            # unique the values
+            unique_vals = np.unique(temp_iparc.get_fdata())
+
+            # Select only the values different from 0 that are lower than 1000 or higher than 5000
+            unique_vals = unique_vals[unique_vals != 0]
+            unique_vals = unique_vals[(unique_vals <  1000) | (unique_vals >  5000)]
+
+            # print them as integer numbers
+            unique_vals = unique_vals.astype(int)
+            print(unique_vals)
+
+            fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
+            fs_codes, fs_names, fs_colors = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+
+            values, idx = cltmisc._ismember_from_list( fs_codes, unique_vals.tolist())
+
+            # select the fs_names and fs_colors in the indexes idx
+            selected_fs_code = [fs_codes[i] for i in idx]
+            selected_fs_name = [fs_names[i] for i in idx]
+            selected_fs_color = [fs_colors[i] for i in idx]
+
+            selected_fs_color = cltmisc._multi_rgb2hex(selected_fs_color)
+
+            lh_obj = cltfree.AnnotParcellation(parc_file = '/media/COSAS/Yasser/Work2Do/TestChimera/derivatives/atlases-surfparc/sub-CHUVA002/ses-V1/sub-CHUVA002_ses-V1_run-1_hemi-L_atlas-Lausanne2018_scale-1_dseg.annot')
+            rh_obj = cltfree.AnnotParcellation(parc_file = '/media/COSAS/Yasser/Work2Do/TestChimera/derivatives/atlases-surfparc/sub-CHUVA002/ses-V1/sub-CHUVA002_ses-V1_run-1_hemi-R_atlas-Lausanne2018_scale-1_dseg.annot')
+
+            df_lh, out_tsv = lh_obj._export_to_tsv(prefix2add='ctx-lh-', reg_offset=1000)
+            df_rh, out_tsv = rh_obj._export_to_tsv(prefix2add='ctx-rh-', reg_offset=2000)
+
+            # Convert the column name of the dataframe to a list
+            lh_ctx_code = df_lh['parcid'].tolist()
+            rh_ctx_code = df_rh['parcid'].tolist()
+
+            # Convert the column name of the dataframe to a list
+            lh_ctx_name = df_lh['name'].tolist()
+            rh_ctx_name = df_rh['name'].tolist()
+
+            # Convert the column color of the dataframe to a list
+            lh_ctx_color = df_lh['color'].tolist()
+            rh_ctx_color = df_rh['color'].tolist()
+
+
+            if gm_grow == '0':
+                all_codes = selected_fs_code + lh_ctx_code + rh_ctx_code
+                all_names = selected_fs_name + lh_ctx_name + rh_ctx_name
+                all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color
+                
+            else:
+
+                lh_wm_name = cltmisc._correct_names(lh_ctx_name, replace=['ctx-lh-','wm-lh-'])
+                lh_wm_code = np.arange(1, len(lh_wm_name)+1) + 3000
+                lh_wm_code = lh_wm_code.tolist()
+
+                rh_wm_name = cltmisc._correct_names(rh_ctx_name, replace=['ctx-rh-','wm-rh-'])
+                rh_wm_code = np.arange(1, len(rh_wm_name)+1) + 4000
+                rh_wm_code = rh_wm_code.tolist()
+
+                lh_wm_color = lh_ctx_color.copy()
+                rh_wm_color = rh_ctx_color.copy()
+
+                all_codes  = selected_fs_code  + lh_ctx_code  + rh_ctx_code  + lh_wm_code  + rh_wm_code
+                all_names  = selected_fs_name  + lh_ctx_name  + rh_ctx_name  + lh_wm_name  + rh_wm_name
+                all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color + lh_wm_color + rh_wm_color
+
+                            
+            tsv_df = pd.DataFrame(
+                            {"index": np.asarray(all_codes), "name": all_names, "color": all_colors}
+                        )
+            
+            if 'tsv' in color_table:
+                out_file = out_nat.replace('.nii.gz', '.tsv')
+                cltparc.Parcellation.write_tsvtable(
+                                                    tsv_df, 
+                                                    out_file, force = force)
+            if 'lut' in color_table:
+                out_file = out_nat.replace('.nii.gz', '.lut')
+
+                cltparc.Parcellation.write_luttable(
+                                    tsv_df['index'].tolist(), 
+                                    tsv_df['name'].tolist(), 
+                                    tsv_df['color'].tolist(), 
+                                    out_file, 
+                                    headerlines=[f'# Color table corresponding to the parcellation {out_nat}', '# Created by clabtoolkit', '# '],
+                                    force = force)
 
         return out_nat
 
@@ -1533,95 +1641,15 @@ def get_version(cont_tech: str = "local",
     vers_cad = out_cmd.stdout.split('-')[3]
     
     return vers_cad
-    
-    
-            
 
-
-def _launch_surf2vol(fssubj_dir: str, 
-                        out_dir: str, 
-                        fullid: str, 
-                        atlas: str, 
-                        gm_grow: str, 
-                        cont_tech: str = "local", 
-                        cont_image: str = None):
-    
-    """
-    Create volumetric parcellation from annot files.
-    
-    Parameters:
-    ----------
-    fssubj_dir : str
-        FreeSurfer subjects directory
-
-    out_dir : str
-        Output directory
-        
-    fullid : str
-        FreeSurfer ID
-    
-    atlas : str
-        Atlas ID   
-        
-    gm_grow : str
-        Amount of milimiters to grow the GM labels
-        
-    cont_tech : str
-        Container technology ("singularity", "docker", "local")
-        
-    cont_image: str
-        Container image to use
-        
-    """
-
-    if 'desc' not in atlas:
-        atlas_str = atlas + '_desc-'
-    else:
-        atlas_str = atlas
-
-    if atlas == "aparc":
-        atlas_str = "atlas-desikan_desc-aparc"
-    elif atlas == "aparc.a2009s":
-        atlas_str = "atlas-destrieux_desc-a2009s"
-
-    out_parc = []
-    for g in gm_grow:
-        out_vol = os.path.join(out_dir, fullid + '_space-orig_' + atlas_str + 'grow' + g + 'mm_dseg.nii.gz')
-
-        if g == '0':
-            # Creating the volumetric parcellation using the annot files
-
-            cmd_bashargs = ['mri_aparc2aseg', '--s', fullid, '--annot', atlas,
-                            '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
-            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-
-        else:
-            # Creating the volumetric parcellation using the annot files
-            cmd_bashargs = ['mri_aparc2aseg', '--s', fullid, '--annot', atlas, '--wmparc-dmax', g, '--labelwm',
-                            '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
-            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-
-        # Moving the resulting parcellation from conform space to native
-        raw_vol = os.path.join(fssubj_dir, fullid, 'mri', 'rawavg.mgz')
-        
-        cmd_bashargs = ['mri_vol2vol', '--mov', out_vol, '--targ', raw_vol,
-                        '--regheader', '--o', out_vol, '--no-save-reg', '--interp', 'nearest']
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-        
-        out_parc.append(out_vol)
-
-    return out_parc
 
 def _conform2native(cform_mgz: str, 
-                            nat_nii: str, 
-                            fssubj_dir: str, 
-                            fullid: str,
-                            interp_method: str = "nearest", 
-                            cont_tech: str = "local", 
-                            cont_image: str = None):
+                        nat_nii: str, 
+                        fssubj_dir: str, 
+                        fullid: str,
+                        interp_method: str = "nearest", 
+                        cont_tech: str = "local", 
+                        cont_image: str = None):
     """
     Moving image in comform space to native space
     
@@ -1657,89 +1685,3 @@ def _conform2native(cform_mgz: str,
                     '--regheader', '--o', nat_nii, '--no-save-reg', '--interp', interp_method]
     cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
     subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-
-
-def _fs_addon_parcellations(vol_tparc, fullid, fssubj_dir, parcid, out_str,                             
-                            cont_tech: str = "local", 
-                            cont_image: str = None):
-    
-    
-    
-    
-
-    volatlas_dir = os.path.dirname(vol_tparc)
-
-    # Creating ouput directory
-    if not os.path.isdir(volatlas_dir):
-        try:
-            os.makedirs(volatlas_dir)
-        except OSError:
-            print("Failed to make nested output directory")
-
-    if parcid == 'thalamus':
-    # Running Thalamic parcellation
-        process = subprocess.run(
-            ['segmentThalamicNuclei.sh', fullid, fssubj_dir],
-            stdout=subprocess.PIPE, universal_newlines=True)
-        
-        
-        cmd_bashargs = ['segmentThalamicNuclei.sh', fullid, fssubj_dir]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-        
-
-        thal_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'ThalamicNuclei.v12.T1.mgz')
-
-        # Moving Thalamic parcellation to native space
-        _conform2native(thal_mgz, vol_tparc, fssubj_dir, fullid)
-
-        out_parc = [vol_tparc]
-
-    elif parcid == 'amygdala' or  parcid == 'hippocampus':
-        # Running Hippocampal and Amygdala parcellation
-        
-        cmd_bashargs = ['segmentHA_T1.sh', fullid, fssubj_dir]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-
-        # Moving Hippocampal and amygdala parcellation to native space
-        lh_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'lh.hippoAmygLabels-T1.v21.mgz')
-        lh_gz = os.path.join(volatlas_dir, fullid + '_space-orig_hemi-L_desc-' + out_str + '_dseg.nii.gz')
-        _conform2native(lh_mgz, lh_gz, fssubj_dir, fullid)
-
-        rh_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'rh.hippoAmygLabels-T1.v21.mgz')
-        rh_gz = os.path.join(volatlas_dir, fullid + '_space-orig_hemi-R_desc-' + out_str + '_dseg.nii.gz')
-        _conform2native(rh_mgz, rh_gz, fssubj_dir, fullid)
-        out_parc = [lh_gz, rh_gz]
-
-    elif parcid == 'hypothalamus':
-
-    # Running Hypothalamus parcellation
-        os.system("WRITE_POSTERIORS=1")
-        cmd_bashargs = ['mri_segment_hypothalamic_subunits', '--s', fullid, '--sd', fssubj_dir, '--write_posteriors']
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-        
-        # Moving Hypothalamus to native space
-        hypo_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'hypothalamic_subunits_seg.v1.mgz')
-        hypo_gz = os.path.join(volatlas_dir, fullid + '_space-orig_desc-' + out_str + '_dseg.nii.gz')
-        _conform2native(hypo_mgz, hypo_gz, fssubj_dir, fullid)
-        out_parc = [hypo_gz]
-
-    elif parcid == 'brainstem':
-
-        # Running Brainstem parcellation
-        # os.environ["WRITE_POSTERIORS"] = 1
-        os.system("WRITE_POSTERIORS=1")
-        
-        cmd_bashargs = ['segmentBS.sh', fullid, fssubj_dir]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-        
-        # Moving Hypothalamus to native space
-        bs_mgz = os.path.join(fssubj_dir, fullid, 'mri', 'brainstemSsLabels.v12.mgz')
-        bs_gz = os.path.join(volatlas_dir, fullid + '_space-orig_desc-' + out_str + '_dseg.nii.gz')
-        _conform2native(bs_mgz, bs_gz, fssubj_dir, fullid)
-        out_parc = [bs_gz]
-
-    return out_parc
