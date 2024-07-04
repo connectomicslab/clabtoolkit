@@ -51,40 +51,45 @@ class Parcellation:
         dims = np.shape(self.data)
         out_atlas = np.zeros((dims[0], dims[1], dims[2]), dtype='int16') 
 
+        array_3d = self.data
+        
+        # Create a boolean mask where elements are True if they are in the retain list
+        mask = np.isin(array_3d, codes2look)
+
+        # Set elements to zero if they are not in the retain list
+        array_3d[~mask] = 0
+
+        # Remove the elements from retain_list that are not present in the data
+        img_tmp_codes = np.unique(array_3d).tolist()
+
+        # Convert to integer
+        img_tmp_codes = [int(x) for x in img_tmp_codes]
+        codes2look    = cltmisc._list_intercept(codes2look, img_tmp_codes)
+
         if hasattr(self, "index"):
             temp_index = np.array(self.index) 
             index_new = []
             indexes = []
 
-        cont = 0
-        for i, v in enumerate(codes2look):
+        # Rearrange the array_3d of the data to start from 1
+        for i, code in enumerate(codes2look):
+            out_atlas[array_3d == code] = i + 1
             
-            # Find the elements in the data that are equal to v
-            result = np.where(self.data == v)
+            if hasattr(self, "index"):
+                # Find the element in self.index that is equal to v
+                ind = np.where(temp_index == code)[0]
 
-            if len(result[0]) > 0:
-                cont = cont + 1
-
-                if hasattr(self, "index"):
-                    # Find the element in self.index that is equal to v
-                    ind = np.where(temp_index == v)[0]
-
-                    if len(ind) > 0:
-                        indexes.append(ind[0])
-                        if rearrange:
-                            index_new.append(cont)
-                        else:
-                            index_new.append(self.index[ind[0]])
-
-                if rearrange:
-                    out_atlas[result[0], result[1], result[2]] = cont
-
-                else:
-                    out_atlas[result[0], result[1], result[2]] = v
-
+                if len(ind) > 0:
+                    indexes.append(ind[0])
+                    if rearrange:
+                        index_new.append(i+1)
+                    else:
+                        index_new.append(self.index[ind[0]])
+        if rearrange:
+            self.data = out_atlas
+        else:
+            self.data = array_3d
         
-        # Find the indexes of the elements in a that are also in b
-        # If index is an attribute of self
         if hasattr(self, "index"):                       
             self.index = index_new
 
@@ -95,8 +100,6 @@ class Parcellation:
         # If color is an attribute of self
         if hasattr(self, "color"):
             self.color = self.color[indexes]
-
-        self.data = out_atlas
 
         # Detect minimum and maximum labels
         self._parc_range()
