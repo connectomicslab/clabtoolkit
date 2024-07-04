@@ -52,7 +52,7 @@ class Parcellation:
         out_atlas = np.zeros((dims[0], dims[1], dims[2]), dtype='int16') 
 
         array_3d = self.data
-        
+
         # Create a boolean mask where elements are True if they are in the retain list
         mask = np.isin(array_3d, codes2look)
 
@@ -60,11 +60,12 @@ class Parcellation:
         array_3d[~mask] = 0
 
         # Remove the elements from retain_list that are not present in the data
-        img_tmp_codes = np.unique(array_3d).tolist()
+        img_tmp_codes = np.unique(array_3d)
 
-        # Convert to integer
-        img_tmp_codes = [int(x) for x in img_tmp_codes]
-        codes2look    = cltmisc._list_intercept(codes2look, img_tmp_codes)
+        maskc = np.isin(codes2look, img_tmp_codes)
+
+        # Set elements to zero if they are not in the retain list
+        codes2look[~maskc] = 0
 
         if hasattr(self, "index"):
             temp_index = np.array(self.index) 
