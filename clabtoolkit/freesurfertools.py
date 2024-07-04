@@ -1238,8 +1238,8 @@ class FreeSurferSubject():
             cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
             
         elif os.path.isfile(ind_annot) and not force:
-                    # Print a message
-                    print(f"File {ind_annot} already exists. Use force=True to overwrite it")
+            # Print a message
+            print(f"File {ind_annot} already exists. Use force=True to overwrite it")
 
         return ind_annot
     
@@ -1301,8 +1301,7 @@ class FreeSurferSubject():
             # If the list is empty set its value to None
             if len(color_table) == 0:
                 color_table = ['lut']
-                
-        if len(color_table) != 0:
+
             fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
             fs_codes, fs_names, fs_colors = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
         
@@ -1382,9 +1381,12 @@ class FreeSurferSubject():
 
             selected_fs_color = cltmisc._multi_rgb2hex(selected_fs_color)
 
-            lh_obj = cltfree.AnnotParcellation(parc_file = '/media/COSAS/Yasser/Work2Do/TestChimera/derivatives/atlases-surfparc/sub-CHUVA002/ses-V1/sub-CHUVA002_ses-V1_run-1_hemi-L_atlas-Lausanne2018_scale-1_dseg.annot')
-            rh_obj = cltfree.AnnotParcellation(parc_file = '/media/COSAS/Yasser/Work2Do/TestChimera/derivatives/atlases-surfparc/sub-CHUVA002/ses-V1/sub-CHUVA002_ses-V1_run-1_hemi-R_atlas-Lausanne2018_scale-1_dseg.annot')
-
+            lh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'lh.' + atlas + '.annot')
+            rh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'rh.' + atlas + '.annot')
+            
+            lh_obj = AnnotParcellation(parc_file = lh_ctx_parc)
+            rh_obj = AnnotParcellation(parc_file = rh_ctx_parc)
+            
             df_lh, out_tsv = lh_obj._export_to_tsv(prefix2add='ctx-lh-', reg_offset=1000)
             df_rh, out_tsv = rh_obj._export_to_tsv(prefix2add='ctx-rh-', reg_offset=2000)
 
