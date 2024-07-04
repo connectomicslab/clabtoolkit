@@ -5,6 +5,7 @@ import sys
 from glob import glob
 from typing import Union
 from pathlib import Path
+from datetime import datetime
 import numpy as np
 import nibabel as nib
 import pandas as pd
@@ -1437,13 +1438,18 @@ class FreeSurferSubject():
                                                     out_file, force = force)
             if 'lut' in color_table:
                 out_file = out_nat.replace('.nii.gz', '.lut')
+                
+                now              = datetime.now()
+                date_time        = now.strftime("%m/%d/%Y, %H:%M:%S")
+                headerlines      = ['# $Id: {} {} \n'.format(out_nat, date_time),
+                                '{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format("#No.", "Label Name:", "R", "G", "B", "A")] 
 
                 cltparc.Parcellation.write_luttable(
                                     tsv_df['index'].tolist(), 
                                     tsv_df['name'].tolist(), 
                                     tsv_df['color'].tolist(), 
                                     out_file, 
-                                    headerlines=[f'# Color table corresponding to the parcellation {out_nat}', '# Created by clabtoolkit', '# '],
+                                    headerlines=headerlines,
                                     force = force)
 
         return out_nat
