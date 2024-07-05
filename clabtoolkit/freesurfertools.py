@@ -1448,16 +1448,16 @@ class FreeSurferSubject():
                         )
             
             if 'tsv' in color_table:
-                out_file = out_nat.replace('.nii.gz', '.tsv')
+                out_file = out_vol.replace('.nii.gz', '.tsv')
                 cltparc.Parcellation.write_tsvtable(
                                                     tsv_df, 
                                                     out_file, force = force)
             if 'lut' in color_table:
-                out_file = out_nat.replace('.nii.gz', '.lut')
+                out_file = out_vol.replace('.nii.gz', '.lut')
                 
                 now              = datetime.now()
                 date_time        = now.strftime("%m/%d/%Y, %H:%M:%S")
-                headerlines      = ['# $Id: {} {} \n'.format(out_nat, date_time),
+                headerlines      = ['# $Id: {} {} \n'.format(out_vol, date_time),
                                 '{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format("#No.", "Label Name:", "R", "G", "B", "A")] 
 
                 cltparc.Parcellation.write_luttable(
@@ -1468,7 +1468,7 @@ class FreeSurferSubject():
                                     headerlines=headerlines,
                                     force = force)
 
-        return out_nat
+        return out_vol
 
     def _conform2native(self, 
                         mgz_conform: str, 
