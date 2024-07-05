@@ -436,6 +436,27 @@ class Parcellation:
         if not hasattr(self, "index") or not hasattr(self, "name") or not hasattr(self, "color"):
             raise ValueError("The parcellation does not contain a color table. The index, name and color attributes must be present")
         
+        # Adjusting the colortable to the values in the parcellation
+        array_3d = self.data
+        unique_codes = np.unique(array_3d)
+        unique_codes = unique_codes[unique_codes != 0]
+
+        mask = np.isin(self.index, unique_codes)
+        indexes = np.where(mask)[0]
+
+        temp_index = np.array(self.index)
+        index_new = temp_index[mask]
+            
+        if hasattr(self, "index"):                       
+            self.index = index_new
+
+        # If name is an attribute of self
+        if hasattr(self, "name"):
+            self.name = [self.name[i] for i in indexes]
+
+        # If color is an attribute of self
+        if hasattr(self, "color"):
+            self.color = self.color[indexes]
 
         if lut_type == "lut":
 
