@@ -1418,7 +1418,7 @@ class FreeSurferSubject():
             rh_ctx_color = df_rh['color'].tolist()
 
 
-            if gm_grow == '0':
+            if gm_grow == '0' or bool_mixwm:
                 all_codes = selected_fs_code + lh_ctx_code + rh_ctx_code
                 all_names = selected_fs_name + lh_ctx_name + rh_ctx_name
                 all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color
