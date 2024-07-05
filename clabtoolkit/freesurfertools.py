@@ -1250,6 +1250,7 @@ class FreeSurferSubject():
                         gm_grow: Union[int, str] = '0', 
                         color_table: Union[list, str] = None,
                         bool_native: bool = False,
+                        bool_mixwm: bool = False,
                         cont_tech: str = "local", 
                         cont_image: str = None,
                         force: bool = False):
@@ -1262,15 +1263,23 @@ class FreeSurferSubject():
         atlas : str
             Atlas ID   
         
-        out_vol: str
+        out_vol : str
             Output volumetric parcellation file
             
         gm_grow : list or str
             Amount of milimiters to grow the GM labels
         
-        bool_native: bool
+        color_table : list or str
+            Save a color table in tsv or lookup table. The options are 'tsv' or 'lut'. 
+            A list with both formats can be also provided (e.g. ['tsv', 'lut'] ).
+        
+        bool_native : bool
             If True, the parcellation will be in native space. The parcellation in native space 
             will be saved in Nifti-1 format.
+        
+        bool_mixwm : bool
+            Mix the cortical WM growing with the cortical GM. This will be used to extend the cortical 
+            GM inside the WM.
             
         cont_tech : str
             Container technology ("singularity", "docker", "local")
@@ -1306,58 +1315,63 @@ class FreeSurferSubject():
             fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
             fs_codes, fs_names, fs_colors = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
         
-        # Creating the volumetric parcellation using the annot files
-        if out_vol.endswith('.mgz'):
-            out_nat = out_vol.replace('.mgz', '.nii.gz')
-        elif out_vol.endswith('.nii.gz'):
-            out_nat = out_vol
 
         if gm_grow == '0':
 
-            if not os.path.isfile(out_nat) or force:
+            if not os.path.isfile(out_vol) or force:
                 # Create the folder if it does not exist
-                temp_dir = os.path.dirname(out_nat)
+                temp_dir = os.path.dirname(out_vol)
                 temp_dir = Path(temp_dir)
                 temp_dir.mkdir(parents=True, exist_ok=True)
             
                 cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas,
-                                '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
+                                '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
                 
                 if bool_native:
                     
                     # Moving the resulting parcellation from conform space to native
-                    self._conform2native(mgz_conform = out_vol, nii_native = out_nat, force=force)
-                    
-            elif os.path.isfile(out_nat) and not force:
+                    self._conform2native(mgz_conform = out_vol, nii_native = out_vol, force=force)
+
+            elif os.path.isfile(out_vol) and not force:
                 # Print a message
-                print(f"File {out_nat} already exists. Use force=True to overwrite it")
+                print(f"File {out_vol} already exists. Use force=True to overwrite it")
 
         else:
-            if not os.path.isfile(out_nat) or force:
+            if not os.path.isfile(out_vol) or force:
                 # Create the folder if it does not exist
-                temp_dir = os.path.dirname(out_nat)
+                temp_dir = os.path.dirname(out_vol)
                 temp_dir = Path(temp_dir)
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 
                 # Creating the volumetric parcellation using the annot files
                 cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', gm_grow, '--labelwm',
-                                '--hypo-as-wm', '--new-ribbon', '--o', out_nat]
+                                '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
                 
                 if bool_native:
                     
                     # Moving the resulting parcellation from conform space to native
-                    self._conform2native(mgz_conform = out_vol, nii_native = out_nat, force=force)
+                    self._conform2native(mgz_conform = out_vol, nii_native = out_vol, force=force)
+                
+                if bool_mixwm:
                     
-            elif os.path.isfile(out_nat) and not force:
+                    # Substracting 2000 to the WM labels in order to mix them with the GM labels
+                    parc = cltparc.Parcellation(parc_file=out_vol)
+                    parc_vol = parc.data
+                    indexes = np.where((parc_vol >=  3000) | (parc_vol < 5000))
+                    parc_vol[indexes] = parc_vol[indexes] - 2000
+                    parc.data = parc_vol
+                    parc._save_parcellation(out_file=out_vol)
+
+            elif os.path.isfile(out_vol) and not force:
                 # Print a message
-                print(f"File {out_nat} already exists. Use force=True to overwrite it")
-        
+                print(f"File {out_vol} already exists. Use force=True to overwrite it")
+            
         if color_table is not None:
-            temp_iparc = nib.load(out_nat)
+            temp_iparc = nib.load(out_vol)
             
             # unique the values
             unique_vals = np.unique(temp_iparc.get_fdata())
@@ -1419,12 +1433,14 @@ class FreeSurferSubject():
                 # Add 2000 to each element of the list lh_ctx_code to create the WM code
                 rh_wm_code = [x + 2000 for x in rh_ctx_code]
 
-                lh_wm_color = lh_ctx_color.copy()
-                rh_wm_color = rh_ctx_color.copy()
+                
+                # Invert the colors lh_wm_color and rh_wm_color
+                ilh_wm_color = cltmisc._invert_colors(lh_ctx_color)
+                irh_wm_color = cltmisc._invert_colors(rh_ctx_color)
 
                 all_codes  = selected_fs_code  + lh_ctx_code  + rh_ctx_code  + lh_wm_code  + rh_wm_code
                 all_names  = selected_fs_name  + lh_ctx_name  + rh_ctx_name  + lh_wm_name  + rh_wm_name
-                all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color + lh_wm_color + rh_wm_color
+                all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color + ilh_wm_color + irh_wm_color
 
                             
             tsv_df = pd.DataFrame(
