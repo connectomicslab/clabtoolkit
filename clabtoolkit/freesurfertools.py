@@ -1382,7 +1382,6 @@ class FreeSurferSubject():
 
             # print them as integer numbers
             unique_vals = unique_vals.astype(int)
-            print(unique_vals)
 
             fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
             fs_codes, fs_names, fs_colors = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
