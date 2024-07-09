@@ -353,7 +353,7 @@ class Parcellation:
                 raise ValueError("The parcellation does not contain a color table")
             
     def _load_colortable(self, 
-                    lut_file: Union[str, dict], 
+                    lut_file: Union[str, dict] = None, 
                     lut_type: str = "lut"):
         """
         Add a lookup table to the parcellation
@@ -363,6 +363,11 @@ class Parcellation:
             lut_type     - Optional  : Type of the lut file: 'lut' or 'tsv'. Default = 'lut'
         """
 
+        if lut_file is None:
+            # Get the enviroment variable of $FREESURFER_HOME
+            freesurfer_home = os.getenv("FREESURFER_HOME")
+            lut_file = os.path.join(freesurfer_home, "FreeSurferColorLUT.txt")
+        
         if isinstance(lut_file, str):
             if os.path.exists(lut_file):
                 self.lut_file = lut_file
