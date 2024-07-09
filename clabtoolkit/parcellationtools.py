@@ -100,8 +100,8 @@ class Parcellation:
 
         # If color is an attribute of self
         if hasattr(self, "color"):
-            self.color = self.color[indexes]
-
+            self.color = [self.color[i] for i in indexes]
+            
         # Detect minimum and maximum labels
         self._parc_range()
 
