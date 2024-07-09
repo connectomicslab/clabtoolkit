@@ -79,9 +79,10 @@ def _str2entity(string:str):
 
     return ent_dict
 
+
 def _insert_entity(entity:dict, 
                     entity2add:dict, 
-                    prev_entity:str):
+                    prev_entity:str = None):
     """
     This function adds entities to an existing entity dictionary.
     
@@ -102,10 +103,10 @@ def _insert_entity(entity:dict,
         Dictionary containing the entities with the new entities added
         
     """
-    
-    ent_list = entity.keys()
-    if prev_entity not in ent_list:
-        raise ValueError("The entity to add is not in the entity dictionary")
+    if prev_entity is not None:
+        ent_list = entity.keys()
+        if prev_entity not in ent_list:
+            raise ValueError("The entity to add is not in the entity dictionary")
         
     if "suffix" in entity:
         suffix = entity["suffix"]
@@ -124,7 +125,10 @@ def _insert_entity(entity:dict,
                 ent_out[key2add] = value2add
         
         ent_out[key] = value
-            
+    
+    if prev_entity is None or prev_entity == "suffix":
+        for key2add, value2add in entity2add.items():
+            ent_out[key2add] = value2add
     
     if "suffix" in locals():
         ent_out["suffix"]  = suffix
@@ -134,6 +138,7 @@ def _insert_entity(entity:dict,
     
 
     return ent_out
+
 
 def _entity2str(entity:dict):
     """
