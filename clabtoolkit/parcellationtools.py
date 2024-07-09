@@ -504,7 +504,7 @@ class Parcellation:
         # Detecting the unique elements in the parcellation different from zero
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
-        if np.size(st_codes) > 0
+        if np.size(st_codes) > 0:
             self.minlab = np.min(st_codes)
             self.maxlab = np.max(st_codes)
         else:
