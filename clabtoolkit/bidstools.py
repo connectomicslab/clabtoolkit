@@ -79,6 +79,62 @@ def _str2entity(string:str):
 
     return ent_dict
 
+def _insert_entity(entity:dict, 
+                    entity2add:dict, 
+                    prev_entity:str):
+    """
+    This function adds entities to an existing entity dictionary.
+    
+    Parameters:
+    ----------
+    entity: dict
+        Dictionary containing the entities
+    
+    entity2add: dict
+        Dictionary containing the entities that will be added
+    
+    prev_entity: str
+        Previous entity. This value will serve as reference to add the new entities.
+        
+    Returns:
+    -------
+    ent_out: dict
+        Dictionary containing the entities with the new entities added
+        
+    """
+    
+    ent_list = entity.keys()
+    if prev_entity not in ent_list:
+        raise ValueError("The entity to add is not in the entity dictionary")
+        
+    if "suffix" in entity:
+        suffix = entity["suffix"]
+        entity.pop("suffix", None)
+    if "extension" in entity:
+        extension = entity["extension"]
+        entity.pop("extension", None)
+
+    
+    ent_string = ""
+    ent_out = {}
+    for key, value in entity.items():
+        
+        if key == prev_entity:
+            for key2add, value2add in entity2add.items():
+                ent_out[key2add] = value2add
+        
+        ent_out[key] = value
+            
+    
+    if "suffix" in locals():
+        ent_out["suffix"]  = suffix
+        
+    if "extension" in locals():
+        ent_out["extension"]  = extension
+    
+
+    return ent_out
+
 def _entity2str(entity:dict):
     """
     This function converts an entity dictionary to a string.
