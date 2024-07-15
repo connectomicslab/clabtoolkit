@@ -320,8 +320,19 @@ class Parcellation:
                             
                             if append:
                                 parc.index = [x + self.maxlab for x in parc.index]
-                                
-                            self.index = self.index + parc.index
+                            
+                            if isinstance(parc.index, list) and isinstance(self.index, list):
+                                self.index = self.index + parc.index
+                            
+                            elif isinstance(parc.index, np.ndarray) and isinstance(self.index, np.ndarray):    
+                                self.index = np.concatenate((self.index, parc.index), axis=0).tolist()
+                            
+                            elif isinstance(parc.index, list) and isinstance(self.index, np.ndarray):
+                                self.index = parc.index + self.index.tolist()
+                            
+                            elif isinstance(parc.index, np.ndarray) and isinstance(self.index, list):
+                                self.index = self.index + parc.index.tolist()
+                            
                             self.name = self.name + parc.name
                             self.color = np.concatenate((self.color, parc.color), axis=0)
             else:
