@@ -600,8 +600,9 @@ def _readjust_colors(colors: Union[list, np.ndarray]):
     if isinstance(colors, list):
 
         # If all the values in the list are between 0 and 1, then the values are multiplied by 255
-        if all(map(lambda x: max(x) < 1, colors)):
-            colors = [color * 255 for color in colors]
+        if not isinstance(colors[0], str):
+            if all(map(lambda x: max(x) < 1, colors)):
+                colors = [color * 255 for color in colors]
 
     elif isinstance(colors, np.ndarray):
         nrows, ncols = colors.shape

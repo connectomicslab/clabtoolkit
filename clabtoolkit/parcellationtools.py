@@ -506,7 +506,18 @@ class Parcellation:
             )
             # Add color if it is present
             if self.color is not None:
-                tsv_df["color"] = cltmisc._multi_rgb2hex(self.color)
+                
+                if isinstance(self.color, list):
+                    if isinstance(self.color[0], str):
+                        if self.color[0][0] != "#":
+                            raise ValueError("The colors must be in hexadecimal format")
+                        else:
+                            tsv_df["color"] = self.color
+                    else:
+                        tsv_df["color"] = cltmisc._multi_rgb2hex(self.color)
+                        
+                elif isinstance(self.color, np.ndarray):
+                    tsv_df["color"] = cltmisc._multi_rgb2hex(self.color)
             
             
             self.write_tsvtable(
