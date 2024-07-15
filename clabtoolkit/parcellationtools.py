@@ -293,11 +293,14 @@ class Parcellation:
         self._parc_range()
 
     def _add_parcellation(self,
-                parc2add):
+                parc2add, 
+                append: bool = False):
         """
         Add a parcellation 
         @params:
             parc2add     - Required  : Parcellation to add:
+            append       - Optional  : If True, the parcellation will be appended. The labels will be 
+                                    added to the maximum label of the current parcellation. Default = False
         """
         if isinstance(parc2add, Parcellation):
             parc2add = [parc2add]
@@ -307,12 +310,17 @@ class Parcellation:
                 for parc in parc2add:
                     if isinstance(parc, Parcellation):
                         ind = np.where(parc.data != 0)
-                        parc.data[ind] = parc.data[ind] + self.maxlab
-                        self.data[ind] = self.data[ind] +  parc.data[ind]
+                        if append:
+                            parc.data[ind] = parc.data[ind] + self.maxlab
+                            self.data[ind] = self.data[ind] +  parc.data[ind]
+                        else:
+                            self.data[ind] = parc.data[ind]
                         
                         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-                            parc.index = [x + self.maxlab for x in parc.index]
-
+                            
+                            if append:
+                                parc.index = [x + self.maxlab for x in parc.index]
+                                
                             self.index = self.index + parc.index
                             self.name = self.name + parc.name
                             self.color = np.concatenate((self.color, parc.color), axis=0)
