@@ -34,6 +34,87 @@ def _delete_from_entity(entity:dict, key2rem:Union[list, str]):
     return entity_out
 
 
+def _delete_from_name(str_in:str, key2rem:Union[list, str]):
+    """
+    This function removes an entity and its value from a string that follows the BIDs naming specifications.  
+    
+    Parameters:
+    ----------
+    str_in: str
+        String of characters 
+    
+    key2rem: list or str
+        List of keys to remove
+        
+    Returns:
+    -------
+    str_out: str
+        Ouput string without the entities that were removed  
+    """
+
+    if isinstance(key2rem, list):
+        key2rem = [key2rem]
+
+    ent_in = _str2entity(str_in)
+    ent_out = _delete_from_entity(ent_in, key2rem =key2rem)
+    str_out = _entity2str(ent_out)
+
+
+    return str_out
+
+
+def _replace_entity_value(str_in:str, 
+                            ent_name:Union[list, str], 
+                            ent_value:Union[list, str],
+                            verbose: bool = False):
+    """
+    This function replace an entity value in a string that follows the BIDs naming specifications.  
+    
+    Parameters:
+    ----------
+    str_in: str
+        String of characters 
+    
+    ent_name: str or list
+        Name of the entities that will be replaced.
+        The length of names should coincide with the length of values.
+    
+    ent_value: str or list
+        New values for the entities that will be replaced. 
+        The length of values should coincide with the length of names.
+            
+    Returns:
+    -------
+    ent_out: dict
+        Dictionary containing the entities with the new entities added
+        
+    """
+
+    ent = _str2entity(str_in)
+
+    if isinstance(ent_name, str):
+        ent_name = [ent_name]
+
+    if isinstance(ent_value, str):
+        ent_value = [ent_value]
+
+    if len(ent_name) !=len(ent_value):
+        raise ValueError("The length of names and values should coincide.")
+
+    for i, key in enumerate(ent_name):
+
+        if key in ent:
+            ent[ent_name[i]] = ent_value[i]
+        else:
+            if verbose:
+                print(f"The entity {ent_name[i]} is not in the string")        
+
+    # Converting to string 
+    str_out = _entity2str(ent)
+
+    return str_out
+
+
 def _str2entity(string:str):
     """
     This function converts a string to a dictionary.
