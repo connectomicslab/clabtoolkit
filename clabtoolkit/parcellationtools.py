@@ -139,33 +139,81 @@ class Parcellation:
         # Detect minimum and maximum labels
         self._parc_range()
     
-    def _mask_by_code(self,
-                        codes2mask: Union[list, np.ndarray],
+    def _apply_mask(self, image_mask,
+                        codes2mask: Union[list, np.ndarray] = None,
                         mask_type: str = 'upright'
                         ):
         """
         Mask the structures with the codes specified in the list or array codes2mask.
         @params:
-            codes2mask     - Required  : List of codes to mask:
+            image_mask     - Required  : Image mask:
+            codes2mask     - Optional  : List of codes to mask:
             mask_type      - Optional  : Mask type: 'upright' or 'inverted'. Default = upright
         """
+        if isinstance(image_mask, str):
+            if os.path.exists(image_mask):
+                temp_mask = nib.load(image_mask)
+                mask_data = temp_mask.get_fdata()
+            else:
+                raise ValueError("The mask file does not exist")
+            
+        elif isinstance(image_mask, np.ndarray):
+            mask_data = image_mask
+            
+        elif isinstance(image_mask, Parcellation):
+            mask_data = image_mask.data 
+        
         mask_type.lower()
         if mask_type not in ['upright', 'inverted']:
             raise ValueError("The mask_type must be 'upright' or 'inverted'")
+        
+        if codes2mask is None:
+            codes2mask = np.unique(self.data)
+            codes2mask = codes2mask[codes2mask != 0]
         
         if isinstance(codes2mask, list):
             codes2look = cltmisc._build_indexes(codes2look)
             codes2mask = np.array(codes2mask)
         
         if mask_type == 'inverted':
-            self.data[np.isin(self.data, codes2mask)==True] = 0
+            self.data[np.isin(mask_data, codes2mask)==True] = 0
 
         else:
-            self.data[np.isin(self.data, codes2mask)==False] = 0
+            self.data[np.isin(mask_data, codes2mask)==False] = 0
+        
+        self._adjust_values()
         
         # Detect minimum and maximum labels
         self._parc_range()
     
+    def _adjust_values(self):
+        """
+        Adjust the codes, indexes, names and colors to the values present on the parcellation
+        
+        """
+
+        st_codes = np.unique(self.data)
+        unique_codes = st_codes[st_codes != 0]
+        
+        mask = np.isin(self.index, unique_codes)
+        indexes = np.where(mask)[0]
+
+        temp_index = np.array(self.index)
+        index_new = temp_index[mask]
+            
+        if hasattr(self, "index"):                       
+            self.index = index_new
+
+        # If name is an attribute of self
+        if hasattr(self, "name"):
+            self.name = [self.name[i] for i in indexes]
+
+        # If color is an attribute of self
+        if hasattr(self, "color"):
+            self.color = [self.color[i] for i in indexes]
+        
+        self._parc_range()
+        
     def _group_by_code(self,
                         codes2group: Union[list, np.ndarray],
                         new_codes: Union[list, np.ndarray] = None,
