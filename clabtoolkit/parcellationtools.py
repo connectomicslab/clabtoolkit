@@ -172,7 +172,7 @@ class Parcellation:
             codes2mask = codes2mask[codes2mask != 0]
         
         if isinstance(codes2mask, list):
-            codes2look = cltmisc._build_indexes(codes2look)
+            codes2mask = cltmisc._build_indexes(codes2mask)
             codes2mask = np.array(codes2mask)
         
         if mask_type == 'inverted':
