@@ -630,11 +630,11 @@ class Parcellation:
 
         for i, v in enumerate(codes2rep):
             if isinstance(v, list):
-                codes2rep[i] = cltmisc._build_indexes(v)
+                codes2rep[i] = cltmisc._build_indexes(v, nonzeros=False)
         
         # Convert the new_codes to a numpy array
         if isinstance(new_codes, list):
-            new_codes = cltmisc._build_indexes(new_codes)
+            new_codes = cltmisc._build_indexes(new_codes, nonzeros=False)
             new_codes = np.array(new_codes)
         elif isinstance(new_codes, np.integer):
             new_codes = np.array([new_codes])
