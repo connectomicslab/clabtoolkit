@@ -24,7 +24,27 @@ class Parcellation:
                     self.data = temp_iparc.get_fdata()
                     self.affine = affine
                     self.dtype = temp_iparc.get_data_dtype()
-
+                    
+                    if self.endswith('.nii.gz'):
+                        tsv_file = self.replace('.nii.gz', '.tsv')
+                        lut_file = self.replace('.nii.gz', '.lut')
+                        
+                        if os.path.isfile(tsv_file):
+                            self._load_colortable(lut_file=tsv_file, lut_type='tsv')
+                            
+                        elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
+                            self._load_colortable(lut_file=lut_file, lut_type='lut')
+                            
+                    elif self.endswith('.nii'):
+                        tsv_file = self.replace('.nii', '.tsv')
+                        lut_file = self.replace('.nii', '.lut')
+                    
+                        if os.path.isfile(tsv_file):
+                            self._load_colortable(lut_file=tsv_file, lut_type='tsv')
+                            
+                        elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
+                            self._load_colortable(lut_file=lut_file, lut_type='lut')
+                
             elif isinstance(parc_file, np.ndarray):
                 self.data = parc_file
                 self.affine = affine
@@ -430,6 +450,8 @@ class Parcellation:
             lut_type     - Optional  : Type of the lut file: 'lut' or 'tsv'. Default = 'lut'
         """
 
+        
+        
         if lut_file is None:
             # Get the enviroment variable of $FREESURFER_HOME
             freesurfer_home = os.getenv("FREESURFER_HOME")
