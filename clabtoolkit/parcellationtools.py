@@ -275,7 +275,7 @@ class Parcellation:
             if isinstance(new_codes, list):
                 new_codes = cltmisc._build_indexes(new_codes)
                 new_codes = np.array(new_codes)
-        elif isinstance(new_codes, int):
+        elif isinstance(new_codes, np.integer):
             new_codes = np.array([new_codes])
 
         elif new_codes is None:
@@ -632,7 +632,7 @@ class Parcellation:
         if isinstance(new_codes, list):
             new_codes = cltmisc._build_indexes(new_codes)
             new_codes = np.array(new_codes)
-        elif isinstance(new_codes, int):
+        elif isinstance(new_codes, np.integer):
             new_codes = np.array([new_codes])
 
         if len(new_codes) != n_groups:
