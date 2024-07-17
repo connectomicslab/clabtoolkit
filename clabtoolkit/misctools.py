@@ -223,7 +223,7 @@ def _build_indexes(range_vector: list,
             # Apend list from the minimum to the maximum value
             indexes.append(list(range(i[0], i[1]+1)))
 
-        elif isinstance(i, int):
+        elif isinstance(i, (int, np.integer)):
             # Append the value as an integer
             indexes.append([i])
 
