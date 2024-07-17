@@ -641,7 +641,10 @@ class Parcellation:
         for ng in np.arange(n_groups):
             code2look = np.array(codes2rep[ng])
             mask = np.isin(self.data, code2look)
-            arrayself.data[mask] = new_codes[ng]
+            self.data[mask] = new_codes[ng]
+        
+        self._adjust_values()
+        self._parc_range()
         
         
     def _parc_range(self):
