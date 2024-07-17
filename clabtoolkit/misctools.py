@@ -183,7 +183,9 @@ def _multi_hex2rgb(hexcodes: list):
     rgb_list = [_hex2rgb(hex_color) for hex_color in hexcodes]
     return np.array(rgb_list)
 
-def _build_indexes(range_vector: list):
+def _build_indexes(range_vector: list, 
+                    nonzeros: bool = False
+                    ):
     """
     Function to build the indexes from a range vector. The range vector can contain integers, tuples, lists or strings.
 
@@ -203,6 +205,9 @@ def _build_indexes(range_vector: list):
     ----------
     range_vector : list
         List of ranges
+    
+    nonzeros : bool
+        Boolean to indicate if the zeros are removed. Default is False
 
     Returns
     -------
@@ -254,8 +259,9 @@ def _build_indexes(range_vector: list):
                 
     indexes = [item for sublist in indexes for item in sublist]
 
-    # Remove the elements with 0
-    indexes = [x for x in indexes if x != 0]
+    if nonzeros:
+        # Remove the elements with 0
+        indexes = [x for x in indexes if x != 0]
 
     # Flatten the list and unique the values
     indexes = _remove_duplicates(indexes)
