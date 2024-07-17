@@ -735,6 +735,9 @@ class Parcellation:
                     ctemp = np.array([[int(row[2]), int(row[3]), int(row[4])]])
                     st_colors = np.append(st_colors, ctemp, axis=0)
                 cont = cont + 1
+        
+        # Convert the elements to integer 32 bits
+        st_codes = [np.int32(x) for x in st_codes]
 
         return st_codes, st_names, st_colors
 
@@ -764,6 +767,10 @@ class Parcellation:
         # Convert to dictionary
         tsv_dict = tsv_df.to_dict(orient="list")
         
+        if "index" in tsv_dict.keys():
+            # Convert the elements to integer 32 bits
+            tsv_dict["index"] = [np.int32(x) for x in tsv_dict["index"]]
+            
         # Test if index and name are keys
         if "index" not in tsv_dict.keys() or "name" not in tsv_dict.keys():
             raise ValueError("The tsv file must contain the columns 'index' and 'name'")
