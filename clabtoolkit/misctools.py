@@ -380,6 +380,7 @@ def _filter_by_substring(list1: list,
 
 def _get_indexes_by_substring(list1: list,
                         substr: Union[str, list], 
+                        invert: bool = False,
                         boolcase: bool = False):
     """
     Function extracts the indexes of the elements of a list of elements that contain
@@ -427,6 +428,9 @@ def _get_indexes_by_substring(list1: list,
     # Convert indexes to a numpy array
     indexes = np.array(indexes)
 
+    if invert:
+        indexes = np.setdiff1d(np.arange(0, len(list1)), indexes)
+        
     return indexes
 
 
