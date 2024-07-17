@@ -610,6 +610,10 @@ class Parcellation:
             new_codes        - Optional  : New codes:
 
         """
+        
+        # Correcting if new_codes is an integer
+        if isinstance(new_codes, int):
+            new_codes = [new_codes]
 
         # Detect thecodes2group is a list of list
         if isinstance(codes2rep, list):
