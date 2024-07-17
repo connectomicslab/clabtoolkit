@@ -258,7 +258,7 @@ class Parcellation:
             if isinstance(codes2group[0], list):
                 n_groups = len(codes2group)
             
-            elif isinstance(codes2group[0], str) or isinstance(codes2group[0], int) or isinstance(codes2group[0], tuple):
+            elif isinstance(codes2group[0], (str, int, tuple)):
                 codes2group = [codes2group]
                 n_groups = 1
             
@@ -599,7 +599,7 @@ class Parcellation:
         else:
             raise ValueError("The lut_type must be 'lut' or 'tsv'")
     
-    def _replace_values(self, 
+    def _replace_values(self,
                         codes2rep: Union[list, np.ndarray],
                         new_codes: Union[list, np.ndarray]
                         ):
