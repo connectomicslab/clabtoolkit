@@ -49,6 +49,9 @@ class Parcellation:
                 self.data = parc_file
                 self.affine = affine
 
+            # Adjust values to the ones present in the parcellation
+            self._adjust_values()
+            
             # Detect minimum and maximum labels
             self._parc_range()
 
