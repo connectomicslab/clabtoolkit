@@ -1058,9 +1058,10 @@ class FreeSurferSubject():
                             cmd_list.append(cmd_bashargs)
 
                     elif stage == 'hypothalamus': # Segment the hypothalamic subunits
-
+                        
+                        hy_files = glob(os.path.join(self.subjs_dir, self.subj_id, 'mri', 'hypothalamic_subunits*'))
                         os.system("WRITE_POSTERIORS=1")
-                        if len(bs_files) != 3 or force == True:
+                        if len(hy_files) != 3 or force == True:
                             cmd_bashargs = ['mri_segment_hypothalamic_subunits', '--s', self.subj_id, '--sd', self.subjs_dir, '--write_posteriors']
                             cmd_list.append(cmd_bashargs)
 
