@@ -25,9 +25,9 @@ class Parcellation:
                     self.affine = affine
                     self.dtype = temp_iparc.get_data_dtype()
                     
-                    if self.endswith('.nii.gz'):
-                        tsv_file = self.replace('.nii.gz', '.tsv')
-                        lut_file = self.replace('.nii.gz', '.lut')
+                    if parc_file.endswith('.nii.gz'):
+                        tsv_file = parc_file.replace('.nii.gz', '.tsv')
+                        lut_file = parc_file.replace('.nii.gz', '.lut')
                         
                         if os.path.isfile(tsv_file):
                             self._load_colortable(lut_file=tsv_file, lut_type='tsv')
@@ -35,9 +35,9 @@ class Parcellation:
                         elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
                             self._load_colortable(lut_file=lut_file, lut_type='lut')
                             
-                    elif self.endswith('.nii'):
-                        tsv_file = self.replace('.nii', '.tsv')
-                        lut_file = self.replace('.nii', '.lut')
+                    elif parc_file.endswith('.nii'):
+                        tsv_file = parc_file.replace('.nii', '.tsv')
+                        lut_file = parc_file.replace('.nii', '.lut')
                     
                         if os.path.isfile(tsv_file):
                             self._load_colortable(lut_file=tsv_file, lut_type='tsv')
