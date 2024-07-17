@@ -258,7 +258,7 @@ class Parcellation:
             if isinstance(codes2group[0], list):
                 n_groups = len(codes2group)
             
-            elif isinstance(codes2group[0], (str, int, tuple)):
+            elif isinstance(codes2group[0], (str, np.integer, tuple)):
                 codes2group = [codes2group]
                 n_groups = 1
             
@@ -616,7 +616,7 @@ class Parcellation:
             if isinstance(codes2rep[0], list):
                 n_groups = len(codes2rep)
             
-            elif isinstance(codes2rep[0], str) or isinstance(codes2rep[0], int) or isinstance(codes2rep[0], tuple):
+            elif isinstance(codes2rep[0], (str, np.integer, tuple)):
                 codes2rep = [codes2rep]
                 n_groups = 1
             
