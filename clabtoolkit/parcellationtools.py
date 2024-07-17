@@ -598,6 +598,51 @@ class Parcellation:
             )
         else:
             raise ValueError("The lut_type must be 'lut' or 'tsv'")
+    
+    def _replace_values(self, 
+                        codes2rep: Union[list, np.ndarray],
+                        new_codes: Union[list, np.ndarray]
+                        ):
+        """
+        Replace groups of values of the image with the new codes.
+        @params:
+            codes2rep        - Required  : List, numpy array or list of list of codes to be replaced:
+            new_codes        - Optional  : New codes:
+
+        """
+
+        # Detect thecodes2group is a list of list
+        if isinstance(codes2rep, list):
+            if isinstance(codes2rep[0], list):
+                n_groups = len(codes2rep)
+            
+            elif isinstance(codes2rep[0], str) or isinstance(codes2rep[0], int) or isinstance(codes2rep[0], tuple):
+                codes2rep = [codes2rep]
+                n_groups = 1
+            
+        elif isinstance(codes2rep, np.ndarray):
+            codes2rep = codes2rep.tolist()
+            n_groups = 1
+
+        for i, v in enumerate(codes2rep):
+            if isinstance(v, list):
+                codes2rep[i] = cltmisc._build_indexes(v)
+        
+        # Convert the new_codes to a numpy array
+        if isinstance(new_codes, list):
+            new_codes = cltmisc._build_indexes(new_codes)
+            new_codes = np.array(new_codes)
+        elif isinstance(new_codes, int):
+            new_codes = np.array([new_codes])
+
+        if len(new_codes) != n_groups:
+            raise ValueError("The number of new codes must be equal to the number of groups of values that will be replaced")
+        
+        for ng in np.arange(n_groups):
+            code2look = np.array(codes2rep[ng])
+            mask = np.isin(self.data, code2look)
+            arrayself.data[mask] = new_codes[ng]
+        
         
     def _parc_range(self):
         """
