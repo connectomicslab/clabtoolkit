@@ -79,7 +79,7 @@ def _replace_entity_value(entity:Union[dict, str],
             
     Returns:
     -------
-    ent_out: dict
+    entity_out: dict
         Dictionary containing the entities with the new values
         
         
@@ -87,32 +87,32 @@ def _replace_entity_value(entity:Union[dict, str],
 
     is_string = False
     if isinstance(entity, str):
-        entity = _str2entity(entity)
+        entity_out = _str2entity(entity)
         is_string = True
     
     elif isinstance(entity, dict):
-        pass
+        entity_out = entity.copy()
     
     else:
         raise ValueError("The entity must be a dictionary or a string")
     
     # Replace values from dictionary
-    ent_list = list(entity.keys())
+    ent_list = list(entity_out.keys())
         
     ent_name = list(ent2replace.keys())
 
     for key in ent_name:
         if key in ent_list:
-            entity[key] = ent2replace[key] 
+            entity_out[key] = ent2replace[key] 
         else:
             if verbose:
                 print(f"The entity {key} is not in the entities dictionary") 
             
     # Convert the dictionary to a string if the input was a string
     if is_string:
-        entity = _entity2str(entity)
+        entity_out = _entity2str(entity_out)
     
-    return entity
+    return entity_out
 
 
 
@@ -132,7 +132,7 @@ def _replace_entity_key(entity:Union[dict, str],
             
     Returns:
     -------
-    ent_out: dict
+    entity_out: dict
         Dictionary containing the entities with the new keys
     
     """
@@ -143,7 +143,8 @@ def _replace_entity_key(entity:Union[dict, str],
         is_string = True
         
     elif isinstance(entity, dict):
-        pass
+        entity_out  = entity.copy()
+        
     else:
         raise ValueError("The entity must be a dictionary or a string")
     
@@ -156,17 +157,17 @@ def _replace_entity_key(entity:Union[dict, str],
         
     # I want to replace keys names from the dictionary
     for key in old_keys:
-        if key in entity.keys():
-            entity[new_keys[old_keys.index(key)]] = entity.pop(key)
+        if key in entity_out.keys():
+            entity_out[new_keys[old_keys.index(key)]] = entity_out.pop(key)
         else:
             if verbose:
                 print(f"The entity {key} is not in the entities dictionary")
     
     # Convert the dictionary to a string if the input was a string
     if is_string:
-        entity = _entity2str(entity)
+        entity_out = _entity2str(entity_out)
     
-    return entity
+    return entity_out
 
 def _str2entity(string:str):
     """
