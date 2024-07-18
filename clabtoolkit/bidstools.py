@@ -63,57 +63,110 @@ def _delete_from_name(str_in:str, key2rem:Union[list, str]):
     return str_out
 
 
-def _replace_entity_value(str_in:str, 
-                            ent_name:Union[list, str], 
-                            ent_value:Union[list, str],
-                            verbose: bool = False):
+def _replace_entity_value(entity:Union[dict, str], 
+                            ent2replace:dict, 
+                            verbose:bool = False):
     """
-    This function replace an entity value in a string that follows the BIDs naming specifications.  
+    This function replace an entity value from an entity dictionary
     
     Parameters:
     ----------
-    str_in: str
-        String of characters 
+    entity: dict
+        Dictionary containing the entities
     
-    ent_name: str or list
-        Name of the entities that will be replaced.
-        The length of names should coincide with the length of values.
-    
-    ent_value: str or list
-        New values for the entities that will be replaced. 
-        The length of values should coincide with the length of names.
+    ent2replace: dict
+        Dictionary containing the entities to replace and their new values
             
     Returns:
     -------
     ent_out: dict
-        Dictionary containing the entities with the new entities added
+        Dictionary containing the entities with the new values
+        
         
     """
 
-    ent = _str2entity(str_in)
+    is_string = False
+    if isinstance(entity, str):
+        entity = _str2entity(entity)
+        is_string = True
+    
+    elif isinstance(entity, dict):
+        pass
+    
+    else:
+        raise ValueError("The entity must be a dictionary or a string")
+    
+    # Replace values from dictionary
+    ent_list = list(entity.keys())
+        
+    ent_name = list(ent2replace.keys())
 
-    if isinstance(ent_name, str):
-        ent_name = [ent_name]
-
-    if isinstance(ent_value, str):
-        ent_value = [ent_value]
-
-    if len(ent_name) !=len(ent_value):
-        raise ValueError("The length of names and values should coincide.")
-
-    for i, key in enumerate(ent_name):
-
-        if key in ent:
-            ent[ent_name[i]] = ent_value[i]
+    for key in ent_name:
+        if key in ent_list:
+            entity[key] = ent2replace[key] 
         else:
             if verbose:
-                print(f"The entity {ent_name[i]} is not in the string")        
+                print(f"The entity {key} is not in the entities dictionary") 
+            
+    # Convert the dictionary to a string if the input was a string
+    if is_string:
+        entity = _entity2str(entity)
+    
+    return entity
 
-    # Converting to string 
-    str_out = _entity2str(ent)
 
-    return str_out
 
+def _replace_entity_key(entity:Union[dict, str], 
+                            keys2replace:dict,
+                            verbose:bool = False):
+    """
+    This function replace the entity keys names from an entity dictionary
+    
+    Parameters:
+    ----------
+    entity: dict or str
+        Dictionary containing the entities or a string that follows the BIDs naming specifications
+    
+    keys2replace: dict
+        Dictionary containing the key to be renamed and the new key
+            
+    Returns:
+    -------
+    ent_out: dict
+        Dictionary containing the entities with the new keys
+    
+    """
+
+    is_string = False
+    if isinstance(entity, str):
+        entity = _str2entity(entity)
+        is_string = True
+        
+    elif isinstance(entity, dict):
+        pass
+    else:
+        raise ValueError("The entity must be a dictionary or a string")
+    
+    if not isinstance(keys2replace, dict):
+        raise ValueError("The keys2replace must be a dictionary")
+    
+    # Replace key names from dictionary
+    old_keys = list(keys2replace.keys())
+    new_keys = list(keys2replace.values())
+        
+    # I want to replace keys names from the dictionary
+    for key in old_keys:
+        if key in entity.keys():
+            entity[new_keys[old_keys.index(key)]] = entity.pop(key)
+        else:
+            if verbose:
+                print(f"The entity {key} is not in the entities dictionary")
+    
+    # Convert the dictionary to a string if the input was a string
+    if is_string:
+        entity = _entity2str(entity)
+    
+    return entity
 
 def _str2entity(string:str):
     """
