@@ -143,7 +143,7 @@ def _replace_entity_key(entity:Union[dict, str],
         is_string = True
         
     elif isinstance(entity, dict):
-        entity_out  = entity.copy()
+        pass
         
     else:
         raise ValueError("The entity must be a dictionary or a string")
@@ -152,16 +152,11 @@ def _replace_entity_key(entity:Union[dict, str],
         raise ValueError("The keys2replace must be a dictionary")
     
     # Replace key names from dictionary
-    old_keys = list(keys2replace.keys())
-    new_keys = list(keys2replace.values())
-        
-    # I want to replace keys names from the dictionary
-    for key in old_keys:
-        if key in entity_out.keys():
-            entity_out[new_keys[old_keys.index(key)]] = entity_out.pop(key)
-        else:
-            if verbose:
-                print(f"The entity {key} is not in the entities dictionary")
+    for old_key in keys2replace:
+        if old_key not in entity:
+            print(f"Warning: Key '{old_key}' not found in the original dictionary.")
+    
+    entity_out = {keys2replace.get(k, k): v for k, v in entity.items()}
     
     # Convert the dictionary to a string if the input was a string
     if is_string:
