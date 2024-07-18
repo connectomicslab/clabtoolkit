@@ -4,167 +4,57 @@ import clabtoolkit.misctools as cltmisc
 from typing import Union
 
 
-def _delete_from_entity(entity:dict, key2rem:Union[list, str]):
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############           Methods dedicated to work with BIDs naming conventions           ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+
+def _entity2str(entity:dict) -> str:
     """
-    This function removes some keys from a dictionary.
-
-    Parameters:
-    ----------
-    entity: dict
-        Dictionary containing the entities
-    key2rem: list or str
-        List of keys to remove
-        
-    Returns:
-    -------
-    entity_out: dict
-        Dictionary containing the entities without the keys to remove
-    
-    """
-    
-    if isinstance(key2rem, str):
-        key2rem = [key2rem]
-    
-    entity_out = entity.copy()
-    for key in key2rem:
-
-        if key in entity_out:
-            entity_out.pop(key, None)
-    
-    return entity_out
-
-
-def _delete_from_name(str_in:str, key2rem:Union[list, str]):
-    """
-    This function removes an entity and its value from a string that follows the BIDs naming specifications.  
-    
-    Parameters:
-    ----------
-    str_in: str
-        String of characters 
-    
-    key2rem: list or str
-        List of keys to remove
-        
-    Returns:
-    -------
-    str_out: str
-        Ouput string without the entities that were removed  
-    """
-
-    if isinstance(key2rem, list):
-        key2rem = [key2rem]
-
-    ent_in = _str2entity(str_in)
-    ent_out = _delete_from_entity(ent_in, key2rem =key2rem)
-    str_out = _entity2str(ent_out)
-
-
-    return str_out
-
-
-def _replace_entity_value(entity:Union[dict, str], 
-                            ent2replace:dict, 
-                            verbose:bool = False):
-    """
-    This function replace an entity value from an entity dictionary
+    This function converts an entity dictionary to a string.
     
     Parameters:
     ----------
     entity: dict
         Dictionary containing the entities
-    
-    ent2replace: dict
-        Dictionary containing the entities to replace and their new values
-            
+        
     Returns:
     -------
-    entity_out: dict
-        Dictionary containing the entities with the new values
-        
+    ent_string: str
+        String containing the entities
         
     """
+    entity = entity.copy()
+    
+    if "suffix" in entity:
+        suffix = entity["suffix"]
+        entity.pop("suffix", None)
+    if "extension" in entity:
+        extension = entity["extension"]
+        entity.pop("extension", None)
 
-    is_string = False
-    if isinstance(entity, str):
-        entity_out = _str2entity(entity)
-        is_string = True
+    ent_string = ""
+    for key, value in entity.items():
+        ent_string = ent_string + key + "-" + value + "_"
     
-    elif isinstance(entity, dict):
-        entity_out = entity.copy()
-    
+    if "suffix" in locals():
+        ent_string = ent_string + suffix
     else:
-        raise ValueError("The entity must be a dictionary or a string")
+        ent_string = ent_string[0:-1]
     
-    # Replace values from dictionary
-    ent_list = list(entity_out.keys())
-        
-    ent_name = list(ent2replace.keys())
+    if "extension" in locals():
+        ent_string = ent_string + "." + extension
 
-    for key in ent_name:
-        if key in ent_list:
-            entity_out[key] = ent2replace[key] 
-        else:
-            if verbose:
-                print(f"The entity {key} is not in the entities dictionary") 
-            
-    # Convert the dictionary to a string if the input was a string
-    if is_string:
-        entity_out = _entity2str(entity_out)
-    
-    return entity_out
+    return ent_string
 
 
-
-def _replace_entity_key(entity:Union[dict, str], 
-                            keys2replace:dict,
-                            verbose:bool = False):
-    """
-    This function replace the entity keys names from an entity dictionary
-    
-    Parameters:
-    ----------
-    entity: dict or str
-        Dictionary containing the entities or a string that follows the BIDs naming specifications
-    
-    keys2replace: dict
-        Dictionary containing the key to be renamed and the new key
-            
-    Returns:
-    -------
-    entity_out: dict
-        Dictionary containing the entities with the new keys
-    
-    """
-
-    is_string = False
-    if isinstance(entity, str):
-        entity = _str2entity(entity)
-        is_string = True
-        
-    elif isinstance(entity, dict):
-        pass
-        
-    else:
-        raise ValueError("The entity must be a dictionary or a string")
-    
-    if not isinstance(keys2replace, dict):
-        raise ValueError("The keys2replace must be a dictionary")
-    
-    # Replace key names from dictionary
-    for old_key in keys2replace:
-        if old_key not in entity:
-            print(f"Warning: Key '{old_key}' not found in the original dictionary.")
-    
-    entity_out = {keys2replace.get(k, k): v for k, v in entity.items()}
-    
-    # Convert the dictionary to a string if the input was a string
-    if is_string:
-        entity_out = _entity2str(entity_out)
-    
-    return entity_out
-
-def _str2entity(string:str):
+####################################################################################################
+def _str2entity(string:str) -> dict:
     """
     This function converts a string to a dictionary.
     
@@ -209,17 +99,163 @@ def _str2entity(string:str):
 
     return ent_dict
 
-
-def _insert_entity(entity:dict, 
-                    entity2add:dict, 
-                    prev_entity:str = None):
+####################################################################################################
+def _delete_entity(entity: Union[dict, str], 
+                    key2rem:Union[list, str]) -> Union[dict,  str]:
     """
-    This function adds entities to an existing entity dictionary.
+    This function removes some entities from a dictionary or string following the BIDs naming convention. 
+
+    Parameters:
+    ----------
+    entity: dict or str
+        Dictionary containing the entities
+    key2rem: list or str
+        List of keys to remove
+        
+    Returns:
+    -------
+    entity_out: dict
+        Dictionary containing the entities without the keys to remove
+    
+    """
+    
+    is_string = False
+    if isinstance(entity, str):
+        entity_out = _str2entity(entity)
+        is_string = True
+        
+    elif isinstance(entity, dict):
+        entity_out = entity.copy()
+    
+    else:
+        raise ValueError("The entity must be a dictionary or a string")
+    
+    if isinstance(key2rem, str):
+        key2rem = [key2rem]
+    
+
+    for key in key2rem:
+
+        if key in entity_out:
+            entity_out.pop(key, None)
+    
+    if is_string:
+        entity_out = _entity2str(entity_out)
+    
+    return entity_out
+
+####################################################################################################
+def _replace_entity_value(entity:Union[dict, str], 
+                            ent2replace:dict, 
+                            verbose:bool = False) -> Union[dict, str]:
+    """
+    This function replace an entity value from an entity dictionary
     
     Parameters:
     ----------
     entity: dict
         Dictionary containing the entities
+    
+    ent2replace: dict
+        Dictionary containing the entities to replace and their new values
+            
+    Returns:
+    -------
+    entity_out: dict or str
+        Dictionary containing the entities with the new values or a string if the input was a string
+        
+    """
+
+    is_string = False
+    if isinstance(entity, str):
+        entity_out = _str2entity(entity)
+        is_string = True
+    
+    elif isinstance(entity, dict):
+        entity_out = entity.copy()
+    
+    else:
+        raise ValueError("The entity must be a dictionary or a string")
+    
+    # Replace values from dictionary
+    ent_list = list(entity_out.keys())
+        
+    ent_name = list(ent2replace.keys())
+
+    for key in ent_name:
+        if key in ent_list:
+            entity_out[key] = ent2replace[key] 
+        else:
+            if verbose:
+                print(f"The entity {key} is not in the entities dictionary") 
+            
+    # Convert the dictionary to a string if the input was a string
+    if is_string:
+        entity_out = _entity2str(entity_out)
+    
+    return entity_out
+
+####################################################################################################
+def _replace_entity_key(entity:Union[dict, str], 
+                            keys2replace:dict,
+                            verbose:bool = False) -> Union[dict, str]:
+    """
+    This function replace the entity keys names from an entity dictionary
+    
+    Parameters:
+    ----------
+    entity: dict or str
+        Dictionary containing the entities or a string that follows the BIDs naming specifications
+    
+    keys2replace: dict
+        Dictionary containing the key to be renamed and the new key
+            
+    Returns:
+    -------
+    entity_out: dict or str
+        Dictionary containing the entities with the new keys or a string if the input was a string
+    
+    """
+
+    is_string = False
+    if isinstance(entity, str):
+        entity = _str2entity(entity)
+        is_string = True
+        
+    elif isinstance(entity, dict):
+        pass
+        
+    else:
+        raise ValueError("The entity must be a dictionary or a string")
+    
+    if not isinstance(keys2replace, dict):
+        raise ValueError("The keys2replace must be a dictionary")
+    
+    # Replace key names from dictionary
+    for old_key in keys2replace:
+        if old_key not in entity:
+            print(f"Warning: Key '{old_key}' not found in the original dictionary.")
+    
+    entity_out = {keys2replace.get(k, k): v for k, v in entity.items()}
+    
+    # Convert the dictionary to a string if the input was a string
+    if is_string:
+        entity_out = _entity2str(entity_out)
+    
+    return entity_out
+
+
+####################################################################################################
+def _insert_entity(entity:Union[dict, str], 
+                    entity2add:dict, 
+                    prev_entity:str = None) -> Union[dict, str]:
+    """
+    This function adds entities to an existing entity dictionary.
+    
+    Parameters:
+    ----------
+    entity: dict or str
+        Dictionary containing the entities or a string that follows the BIDs naming specifications
     
     entity2add: dict
         Dictionary containing the entities that will be added
@@ -229,10 +265,23 @@ def _insert_entity(entity:dict,
         
     Returns:
     -------
-    ent_out: dict
-        Dictionary containing the entities with the new entities added
+    ent_out: dict or str
+        Dictionary containing the entities with the new entities added or a string if the input was a string
         
     """
+    
+    is_string = False
+    if isinstance(entity, str):
+        entity = _str2entity(entity)
+        is_string = True
+        
+    elif isinstance(entity, dict):
+        pass
+        
+    else:
+        raise ValueError("The entity must be a dictionary or a string")
+    
+    
     if prev_entity is not None:
         ent_list = entity.keys()
         if prev_entity not in ent_list:
@@ -266,49 +315,21 @@ def _insert_entity(entity:dict,
     if "extension" in locals():
         ent_out["extension"]  = extension
     
+    # Converting to string if the input was a string
+    if is_string:
+        ent_out = _entity2str(ent_out)
 
     return ent_out
 
-
-def _entity2str(entity:dict):
-    """
-    This function converts an entity dictionary to a string.
-    
-    Parameters:
-    ----------
-    entity: dict
-        Dictionary containing the entities
-        
-    Returns:
-    -------
-    ent_string: str
-        String containing the entities
-        
-    """
-    entity = entity.copy()
-    
-    if "suffix" in entity:
-        suffix = entity["suffix"]
-        entity.pop("suffix", None)
-    if "extension" in entity:
-        extension = entity["extension"]
-        entity.pop("extension", None)
-
-    ent_string = ""
-    for key, value in entity.items():
-        ent_string = ent_string + key + "-" + value + "_"
-    
-    if "suffix" in locals():
-        ent_string = ent_string + suffix
-    else:
-        ent_string = ent_string[0:-1]
-    
-    if "extension" in locals():
-        ent_string = ent_string + "." + extension
-
-    return ent_string
-
-
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############           Methods dedicated to work with BIDs file organization            ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 
 # This function copies the BIDs folder and its derivatives for e given subjects to a new location
 def _copy_bids_folder(
