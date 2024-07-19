@@ -177,6 +177,8 @@ def _replace_entity_value(entity:Union[dict, str],
     else:
         raise ValueError("The entity must be a dictionary or a string")
     
+    ent2replace = cltmisc._remove_empty_keys_or_values(ent2replace) 
+    
     # Replace values from dictionary
     ent_list = list(entity_out.keys())
         
@@ -184,7 +186,12 @@ def _replace_entity_value(entity:Union[dict, str],
 
     for key in ent_name:
         if key in ent_list:
-            entity_out[key] = ent2replace[key] 
+
+            if len(ent2replace[key]) !=0:
+                entity_out[key] = ent2replace[key]
+            else:
+                if verbose
+                    print("Warning: The value to replace is empty for the entity: ", key)
         else:
             if verbose:
                 print(f"The entity {key} is not in the entities dictionary") 
@@ -230,6 +237,8 @@ def _replace_entity_key(entity:Union[dict, str],
     
     if not isinstance(keys2replace, dict):
         raise ValueError("The keys2replace must be a dictionary")
+    
+    keys2replace = cltmisc._remove_empty_keys_or_values(keys2replace) 
     
     # Replace key names from dictionary
     for old_key in keys2replace:
@@ -281,6 +290,7 @@ def _insert_entity(entity:Union[dict, str],
     else:
         raise ValueError("The entity must be a dictionary or a string")
     
+    entity2add = cltmisc._remove_empty_keys_or_values(entity2add)
     
     if prev_entity is not None:
         ent_list = entity.keys()
