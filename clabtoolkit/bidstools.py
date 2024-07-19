@@ -190,7 +190,7 @@ def _replace_entity_value(entity:Union[dict, str],
             if len(ent2replace[key]) !=0:
                 entity_out[key] = ent2replace[key]
             else:
-                if verbose
+                if verbose:
                     print("Warning: The value to replace is empty for the entity: ", key)
         else:
             if verbose:
