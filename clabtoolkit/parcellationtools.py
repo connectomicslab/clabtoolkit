@@ -50,7 +50,9 @@ class Parcellation:
                 self.affine = affine
 
             # Adjust values to the ones present in the parcellation
-            self._adjust_values()
+            
+            if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+                self._adjust_values()
             
             # Detect minimum and maximum labels
             self._parc_range()
@@ -204,7 +206,8 @@ class Parcellation:
         else:
             self.data[np.isin(mask_data, codes2mask)==False] = 0
         
-        self._adjust_values()
+        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+            self._adjust_values()
         
         # Detect minimum and maximum labels
         self._parc_range()
@@ -647,7 +650,9 @@ class Parcellation:
             mask = np.isin(self.data, code2look)
             self.data[mask] = new_codes[ng]
         
-        self._adjust_values()
+        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+            self._adjust_values()
+            
         self._parc_range()
         
         
