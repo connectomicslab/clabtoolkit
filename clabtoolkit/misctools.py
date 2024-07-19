@@ -472,7 +472,6 @@ def _list_intercept(list1: list,
     return int_list
 
 
-
 def _detect_recursive_files(in_dir):
     """
     Function to detect all the files in a directory and its subdirectories
@@ -729,6 +728,35 @@ def _ismember_from_list(a, b):
     idx = indices[is_in_list].astype(int)
 
     return values, idx
+
+def _remove_empty_keys_or_values(d: dict) -> dict:
+    """
+    Remove dictionary entries with empty keys, keys with only spaces, or empty values.
+
+    Parameters:
+    ----------
+    
+    d : dict
+        The dictionary to remove entries from.
+        
+    Returns:
+    --------
+    
+    d : dict
+        The dictionary with the empty entries removed.
+    
+    """
+    keys_to_remove = [
+        key for key in d 
+        if not key or (isinstance(key, str) and key.strip() == "") or 
+        not d[key] or (isinstance(d[key], str) and d[key].strip() == "")
+    ]
+
+    for key in keys_to_remove:
+        del d[key]
+
+    return d
+
 
 def _generate_container_command(bash_args, technology:str = "local", image_path:str = None):
     """
