@@ -386,28 +386,53 @@ class Parcellation:
                         ind = np.where(parc.data != 0)
                         if append:
                             parc.data[ind] = parc.data[ind] + self.maxlab
+
+                        if hasattr(parc, "index") and hasattr(parc, "name") and hasattr(parc, "color"):
+                            if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+                                
+                                if append:
+                                    parc.index = [x + self.maxlab for x in parc.index]
+                                
+                                if isinstance(parc.index, list) and isinstance(self.index, list):
+                                    self.index = self.index + parc.index
+                                
+                                elif isinstance(parc.index, np.ndarray) and isinstance(self.index, np.ndarray):    
+                                    self.index = np.concatenate((self.index, parc.index), axis=0).tolist()
+                                
+                                elif isinstance(parc.index, list) and isinstance(self.index, np.ndarray):
+                                    self.index = parc.index + self.index.tolist()
+                                
+                                elif isinstance(parc.index, np.ndarray) and isinstance(self.index, list):
+                                    self.index = self.index + parc.index.tolist()
+                                
+                                self.name = self.name + parc.name
+                                
+                                if isinstance(parc.color, list) and isinstance(self.color, list):
+                                    self.color = self.color + parc.color
+                                
+                                elif isinstance(parc.color, np.ndarray) and isinstance(self.color, np.ndarray):
+                                    self.color = np.concatenate((self.color, parc.color), axis=0)
+                                    
+                                elif isinstance(parc.color, list) and isinstance(self.color, np.ndarray):
+                                    temp_color = cltmisc._readjust_colors(self.color)
+                                    temp_color = cltmisc._multi_rgb2hex(temp_color)
+                                    
+                                    self.color = temp_color + parc.color
+                                elif isinstance(parc.color, np.ndarray) and isinstance(self.color, list):
+                                    temp_color = cltmisc._readjust_colors(parc.color)
+                                    temp_color = cltmisc._multi_rgb2hex(temp_color)
+                                    
+                                    self.color = self.color + temp_color
                             
-                        self.data[ind] = parc.data[ind]
+                            # If the parcellation self.data is all zeros  
+                            elif np.sum(self.data) == 0:
+                                self.index = parc.index
+                                self.name  = parc.name
+                                self.color = parc.color  
                         
-                        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-                            
-                            if append:
-                                parc.index = [x + self.maxlab for x in parc.index]
-                            
-                            if isinstance(parc.index, list) and isinstance(self.index, list):
-                                self.index = self.index + parc.index
-                            
-                            elif isinstance(parc.index, np.ndarray) and isinstance(self.index, np.ndarray):    
-                                self.index = np.concatenate((self.index, parc.index), axis=0).tolist()
-                            
-                            elif isinstance(parc.index, list) and isinstance(self.index, np.ndarray):
-                                self.index = parc.index + self.index.tolist()
-                            
-                            elif isinstance(parc.index, np.ndarray) and isinstance(self.index, list):
-                                self.index = self.index + parc.index.tolist()
-                            
-                            self.name = self.name + parc.name
-                            self.color = np.concatenate((self.color, parc.color), axis=0)
+                        # Concatenating the parcellation data
+                        self.data[ind] = parc.data[ind]  
+                                    
             else:
                 raise ValueError("The list is empty")
         
