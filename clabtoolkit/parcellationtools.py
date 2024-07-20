@@ -386,9 +386,8 @@ class Parcellation:
                         ind = np.where(parc.data != 0)
                         if append:
                             parc.data[ind] = parc.data[ind] + self.maxlab
-                            self.data[ind] = self.data[ind] +  parc.data[ind]
-                        else:
-                            self.data[ind] = parc.data[ind]
+                            
+                        self.data[ind] = parc.data[ind]
                         
                         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
                             
