@@ -453,6 +453,8 @@ class Parcellation:
 
         if affine is None:
             affine = self.affine
+            
+        self.data = np.int32(self.data)
 
         out_atlas = nib.Nifti1Image(self.data, affine)
         nib.save(out_atlas, out_file)
@@ -461,14 +463,14 @@ class Parcellation:
             if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
                 self._export_colortable(out_file=out_file.replace(".nii.gz", ".lut"))
             else:
-                raise ValueError("The parcellation does not contain a color table")
+                print("Warning: The parcellation does not contain a color table. The lut file will not be saved")
         
         if save_tsv:
             if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
                 self._export_colortable(out_file=out_file.replace(".nii.gz", ".tsv"), lut_type="tsv")
             else:
-                raise ValueError("The parcellation does not contain a color table")
-            
+                print("Warning: The parcellation does not contain a color table. The tsv file will not be saved")   
+                
     def _load_colortable(self, 
                     lut_file: Union[str, dict] = None, 
                     lut_type: str = "lut"):
