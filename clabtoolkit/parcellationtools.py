@@ -853,7 +853,7 @@ class Parcellation:
         # Check if the file already exists and if the force parameter is False
         if out_file is not None:
             if os.path.exists(out_file) and not force:
-                raise ValueError("The file already exists")
+                print("Warning: The file already exists")
             
             out_dir = os.path.dirname(out_file)
             if not os.path.exists(out_dir):
@@ -953,7 +953,7 @@ class Parcellation:
 
         # Check if the file already exists and if the force parameter is False
         if os.path.exists(out_file) and not force:
-            raise ValueError("The TSV file already exists")
+            print("Warning: The TSV file already exists")
         
         out_dir = os.path.dirname(out_file)
         if not os.path.exists(out_dir):
