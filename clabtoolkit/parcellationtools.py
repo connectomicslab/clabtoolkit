@@ -75,7 +75,7 @@ class Parcellation:
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             # Find the indexes of the names that contain the substring
             indexes = cltmisc._get_indexes_by_substring(list1=self.name, 
-                                names2look, 
+                                substr=names2look, 
                                 invert=False, 
                                 boolcase=False)
             
@@ -83,7 +83,7 @@ class Parcellation:
                 self._keep_by_code(codes2look=self.index[indexes], rearrange=rearrange)
             else:
                 print("The names were not found in the parcellation")
-  
+
 
     def _keep_by_code(self, 
                             codes2look: Union[list, np.ndarray], 
