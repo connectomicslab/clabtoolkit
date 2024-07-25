@@ -574,6 +574,9 @@ class Parcellation:
             self.index = lut_file["index"]
             self.color = st_colors
             self.name = lut_file["name"]
+            
+            self._adjust_values()
+            self._parc_range()
     
     def _export_colortable(self, 
                             out_file: str, 
