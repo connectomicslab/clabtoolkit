@@ -929,6 +929,8 @@ class Parcellation:
                 colors = cltmisc._multi_hex2rgb(colors)
             elif isinstance(colors[0], list):
                 colors = np.array(colors)
+            elif isinstance(colors[0], np.ndarray):
+                colors = np.vstack(colors)
         
         # Table for parcellation      
         for roi_pos, roi_name in enumerate(names):
