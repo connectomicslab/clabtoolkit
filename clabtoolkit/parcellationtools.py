@@ -57,6 +57,34 @@ class Parcellation:
             # Detect minimum and maximum labels
             self._parc_range()
 
+
+    def _keep_by_name(self, 
+                            names2look: Union[list, str], 
+                            rearrange: bool = False):
+        """
+        Filter the parcellation by a list of names or just a a substring that could be included in the name. 
+        It will keep only the structures with names containing the strings specified in the list.
+        @params:
+            names2look     - Required  : List or string of names to look for. It can be a list of strings or just a string. 
+            rearrange      - Required  : If True, the parcellation will be rearranged starting from 1. Default = False
+        """
+
+        if isinstance(names2look, str):
+            names2look = np.array(names2look)
+
+        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+            # Find the indexes of the names that contain the substring
+            indexes = cltmisc._get_indexes_by_substring(list1=self.name, 
+                                names2look, 
+                                invert=False, 
+                                boolcase=False)
+            
+            if len(indexes) > 0:
+                self._keep_by_code(codes2look=self.index[indexes], rearrange=rearrange)
+            else:
+                print("The names were not found in the parcellation")
+  
+
     def _keep_by_code(self, 
                             codes2look: Union[list, np.ndarray], 
                             rearrange: bool = False):
@@ -853,7 +881,7 @@ class Parcellation:
         # Check if the file already exists and if the force parameter is False
         if out_file is not None:
             if os.path.exists(out_file) and not force:
-                print("Warning: The file already exists")
+                print("Warning: The file already exists. It will be overwritten.")
             
             out_dir = os.path.dirname(out_file)
             if not os.path.exists(out_dir):
@@ -953,7 +981,7 @@ class Parcellation:
 
         # Check if the file already exists and if the force parameter is False
         if os.path.exists(out_file) and not force:
-            print("Warning: The TSV file already exists")
+            print("Warning: The TSV file already exists. It will be overwritten.")
         
         out_dir = os.path.dirname(out_file)
         if not os.path.exists(out_dir):
