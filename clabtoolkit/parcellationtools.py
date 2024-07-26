@@ -950,11 +950,6 @@ class Parcellation:
                 # Save the lut table
                 with open(out_file, 'w') as colorLUT_f:
                     colorLUT_f.write('\n'.join(luttable))
-                    
-            elif os.path.isfile(out_file) and not force:
-                raise ValueError("The file already exists. Please use the 'force' flag to overwrite the LUT file")
-            
-                
 
         return luttable
 
@@ -1063,9 +1058,6 @@ class Parcellation:
             # Save the tsv table
             with open(out_file, "w+") as tsv_file:
                 tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
-                
-        elif os.path.isfile(out_file) and not force:
-            raise ValueError("The file already exists. Please use the 'force' flag to overwrite the TSV file")
 
         return out_file
     
