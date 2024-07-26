@@ -70,7 +70,7 @@ class Parcellation:
         """
 
         if isinstance(names2look, str):
-            names2look = np.array(names2look)
+            names2look = [names2look]
 
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             # Find the indexes of the names that contain the substring
