@@ -191,6 +191,38 @@ class Parcellation:
 
         # Detect minimum and maximum labels
         self._parc_range()
+        
+    def _remove_by_name(self,
+                            names2remove: Union[list, str],
+                            rearrange: bool = False):
+        """
+        Remove the structures with the names specified in the list.
+        @params:
+            names2remove     - Required  : List of the names of the structures that will be removed:
+            rearrange        - Required  : If True, the parcellation will be rearranged starting from 1. Default = False
+        """
+
+        
+        if isinstance(names2remove, str):
+            names2remove = [names2remove]
+        
+        if hasattr(self, "name") and hasattr(self, "index") and hasattr(self, "color"):
+        
+            indexes = cltmisc._get_indexes_by_substring(list1=self.name, 
+                                substr=names2remove, 
+                                invert=True, 
+                                boolcase=False)
+            
+            if len(indexes) > 0:
+                self._keep_by_code(codes2look=self.index[indexes], rearrange=rearrange)
+            else:
+                print("The names were not found in the parcellation")
+        else:
+            print("The parcellation does not contain the attributes name, index and color")
+            
+        # Detect minimum and maximum labels
+        self._parc_range()
+    
     
     def _apply_mask(self, image_mask,
                         codes2mask: Union[list, np.ndarray] = None,
