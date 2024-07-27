@@ -102,7 +102,7 @@ class Parcellation:
 
         # Create 
         dims = np.shape(self.data)
-        out_atlas = np.zeros((dims[0], dims[1], dims[2]), dtype='int16') 
+        out_atlas = np.zeros((dims[0], dims[1], dims[2]), dtype='int32') 
 
         array_3d = self.data
 
