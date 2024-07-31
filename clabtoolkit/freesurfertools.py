@@ -1507,6 +1507,22 @@ class FreeSurferSubject():
             Force the processing
             
         """
+        raw_vol = os.path.join(self.subjs_dir, self.subj_id, 'mri', 'rawavg.mgz')
+        tmp_raw = os.path.join(self.subjs_dir, self.subj_id, 'tmp', 'rawavg.nii.gz')
+        
+        # Get image dimensions
+        if not os.path.isfile(raw_vol):
+            raise FileNotFoundError(f"File {raw_vol} does not exist")
+        
+        cmd_bashargs = ['mri_convert', '-i', raw_vol, '-o', tmp_raw]
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        img = nib.load(tmp_raw)
+        tmp_raw_hd = img.header["dim"]
+        
+        # Remove tmp_raw
+        os.remove(tmp_raw)
         
         if not os.path.isfile(nii_native) or force:
             # Moving the resulting parcellation from conform space to native
@@ -1519,7 +1535,21 @@ class FreeSurferSubject():
         
         elif os.path.isfile(nii_native) and not force:
             # Print a message
-            print(f"File {nii_native} already exists. Use force=True to overwrite it")
+            
+            img = nib.load(nii_native)
+            tmp_nii_hd = img.header["dim"]
+            
+            # Look if the dimensions are the same
+            if all(tmp_raw_hd == tmp_nii_hd):
+                print(f"File {nii_native} already exists and has the same dimensions")
+                print(f"File {nii_native} already exists. Use force=True to overwrite it")
+                
+            else:
+                cmd_bashargs = ['mri_vol2vol', '--mov', mgz_conform, '--targ', raw_vol,
+                            '--regheader', '--o', nii_native, '--no-save-reg', '--interp', interp_method]
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+
     
                 
 def _create_fsaverage_links(
