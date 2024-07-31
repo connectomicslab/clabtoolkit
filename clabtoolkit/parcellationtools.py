@@ -80,7 +80,8 @@ class Parcellation:
                                 boolcase=False)
             
             if len(indexes) > 0:
-                self._keep_by_code(codes2look=self.index[indexes], rearrange=rearrange)
+                sel_st_codes = [self.index[i] for i in indexes]
+                self._keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
             else:
                 print("The names were not found in the parcellation")
 
@@ -214,7 +215,9 @@ class Parcellation:
                                 boolcase=False)
             
             if len(indexes) > 0:
-                self._keep_by_code(codes2look=self.index[indexes], rearrange=rearrange)
+                sel_st_codes = [self.index[i] for i in indexes]
+                self._keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
+                
             else:
                 print("The names were not found in the parcellation")
         else:
