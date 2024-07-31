@@ -1362,10 +1362,15 @@ class FreeSurferSubject():
                     # Substracting 2000 to the WM labels in order to mix them with the GM labels
                     parc = cltparc.Parcellation(parc_file=out_vol)
                     parc_vol = parc.data
-                    indexes = np.where((parc_vol >=  3000) | (parc_vol < 5000))
-                    parc_vol[indexes] = parc_vol[indexes] - 2000
+
+                    # Detect the values in parc_vol that are bigger than 3000 and smaller than 5000
+                    # and substrac 2000 from them
+                    mask = np.logical_and(parc_vol >= 3000, parc_vol < 5000)
+                    parc_vol[mask] = parc_vol[mask] - 2000
                     parc.data = parc_vol
+                    parc._adjust_values
                     parc._save_parcellation(out_file=out_vol)
+                    
 
             elif os.path.isfile(out_vol) and not force:
                 # Print a message
