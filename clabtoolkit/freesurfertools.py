@@ -1314,7 +1314,10 @@ class FreeSurferSubject():
                 color_table = ['lut']
 
             fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
-            fs_codes, fs_names, fs_colors = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+            lut_dict = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+            fs_codes  = lut_dict["index"]
+            fs_names  = lut_dict["name"]
+            fs_colors = lut_dict["color"]
         
 
         if gm_grow == '0':
@@ -1390,8 +1393,11 @@ class FreeSurferSubject():
             unique_vals = unique_vals.astype(int)
 
             fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
-            fs_codes, fs_names, fs_colors = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
-
+            lut_dict = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+            fs_codes = lut_dict["index"]
+            fs_names = lut_dict["name"]
+            fs_colors = lut_dict["color"]
+            
             values, idx = cltmisc._ismember_from_list( fs_codes, unique_vals.tolist())
 
             # select the fs_names and fs_colors in the indexes idx
