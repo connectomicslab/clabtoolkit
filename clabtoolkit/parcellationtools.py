@@ -499,6 +499,9 @@ class Parcellation:
             else:
                 raise ValueError("The list is empty")
         
+        if hasattr(self, "color"):
+            self.color = cltmisc._harmonize_colors(self.color)
+        
         # Detect minimum and maximum labels
         self._parc_range()
 
