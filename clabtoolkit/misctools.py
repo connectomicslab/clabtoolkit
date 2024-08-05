@@ -112,8 +112,12 @@ def _multi_rgb2hex(colors: Union[list, np.ndarray]):
 
     hexcodes = []
     if isinstance(colors, list):
-        for color in colors:
-            hexcodes.append(_rgb2hex(color[0], color[1], color[2]))
+        for indcol, color in enumerate(colors):
+            if isinstance(colors[indcol], str):
+                hexcodes.append(colors[indcol])
+                
+            elif isinstance(colors[indcol], np.ndarray):
+                hexcodes.append(_rgb2hex(color[0], color[1], color[2]))
     
     elif isinstance(colors, np.ndarray):
         nrows, ncols = colors.shape
@@ -590,6 +594,36 @@ def _invert_colors(colors: Union[list, np.ndarray]):
     
     return colors
 
+def _harmonize_colors(colors: Union[list, np.ndarray]):
+    """
+    Function to harmonize the colors in a list. The colors can be in hexadecimal or rgb format. 
+    If the list contains colors in multiple formats, the function will convert all the colors to hexadecimal format.
+    
+    Parameters
+    ----------
+    colors : list or numpy array
+        List of colors
+        
+    Returns
+    -------
+    colors: list
+        List of colors in hexadecimal format
+    
+    """
+    
+    bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
+    if bool_tmp:
+        hexcodes = []
+        for indcol, color in enumerate(colors):
+            if isinstance(colors[indcol], str):
+                hexcodes.append(colors[indcol])
+                    
+            elif isinstance(colors[indcol], np.ndarray):
+                hexcodes.append(_rgb2hex(color[0], color[1], color[2]))
+        colors = hexcodes
+        
+    return colors
+
 def _readjust_colors(colors: Union[list, np.ndarray]):
     """
     Function to readjust the colors to the range 0-255
@@ -613,6 +647,17 @@ def _readjust_colors(colors: Union[list, np.ndarray]):
             if all(map(lambda x: max(x) < 1, colors)):
                 colors = [color * 255 for color in colors]
 
+        bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
+        if bool_tmp:
+            hexcodes = []
+            for indcol, color in enumerate(colors):
+                if isinstance(colors[indcol], str):
+                    hexcodes.append(colors[indcol])
+                        
+                elif isinstance(colors[indcol], np.ndarray):
+                    hexcodes.append(_rgb2hex(color[0], color[1], color[2]))
+            colors = hexcodes
+            
     elif isinstance(colors, np.ndarray):
         nrows, ncols = colors.shape
 
