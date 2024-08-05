@@ -560,31 +560,25 @@ class Parcellation:
                 self.lut_file = lut_file
 
                 if lut_type == "lut":
-                    st_codes, st_names, st_colors = self.read_luttable(in_file=lut_file)
+                    col_dict = self.read_luttable(in_file=lut_file)
 
                 elif lut_type == "tsv":
-                    
-                    tsv_dict = self.read_tsvtable(in_file=lut_file)
-                    if "index" in tsv_dict.keys() and "name" in tsv_dict.keys():
-                        st_codes = tsv_dict["index"]
-                        st_names = tsv_dict["name"]
-                    else: 
-                        raise ValueError("The dictionary must contain the keys 'index' and 'name'")
-                    
-                    if "color" in tsv_dict.keys():
-                        st_colors = tsv_dict["color"]
-                        
-                        if isinstance(st_colors[0], str):
-                            st_colors = cltmisc._multi_hex2rgb(st_colors)
-
-                        elif isinstance(st_colors[0], list):
-                            st_colors = np.array(st_colors)
-                    else:
-                        st_colors = None
-
+                    col_dict = self.read_tsvtable(in_file=lut_file)
+                
                 else:
                     raise ValueError("The lut_type must be 'lut' or 'tsv'")
-                    
+        
+                if "index" in col_dict.keys() and "name" in col_dict.keys():
+                    st_codes = col_dict["index"]
+                    st_names = col_dict["name"]
+                else: 
+                    raise ValueError("The dictionary must contain the keys 'index' and 'name'")
+                
+                if "color" in col_dict.keys():
+                    st_colors = col_dict["color"]
+                else:
+                    st_colors = None
+
                 self.index = st_codes
                 self.name = st_names
                 self.color = st_colors
@@ -598,20 +592,13 @@ class Parcellation:
             if "index" not in lut_file.keys() or "name" not in lut_file.keys():
                 raise ValueError("The dictionary must contain the keys 'index' and 'name'")
             
-            if "color" not in lut_file.keys():
-                st_colors = None
-            else:
-                
-                st_colors = lut_file["color"]
-                if isinstance(st_colors[0], str):
-                    st_colors = cltmisc._multi_hex2rgb(st_colors)
-
-                elif isinstance(st_colors[0], list):
-                    st_colors = np.array(st_colors)
-
             self.index = lut_file["index"]
-            self.color = st_colors
             self.name = lut_file["name"]
+            
+            if "color" not in lut_file.keys():
+                self.color = None
+            else:
+                self.color = lut_file["color"]
             
         self._adjust_values()
         self._parc_range()
@@ -777,7 +764,12 @@ class Parcellation:
         """
 
         # Reading FreeSurfer color lut
-        st_codes_lut, st_names_lut, st_colors_lut = Parcellation.read_luttable(lut_file_fs)
+        lut_dict = Parcellation.read_luttable(lut_file_fs)
+        st_codes_lut = lut_dict["index"]
+        st_names_lut = lut_dict["name"]
+        st_colors_lut = lut_dict["color"]
+        
+        st_colors_lut = cltmisc._multi_hex2rgb(st_colors_lut)
         
         lut_lines = []
         for roi_pos, st_code in enumerate(st_codes_lut):
@@ -838,12 +830,17 @@ class Parcellation:
         
         # Convert the elements to integer 32 bits
         st_codes = [np.int32(x) for x in st_codes]
+        
+        # Converting colors to hexadecimal format
+        st_colors = cltmisc._multi_rgb2hex(st_colors)
+        
+        # Create the dictionary
+        lut_dict = {"index": st_codes, "name": st_names, "color": st_colors}
 
-        return st_codes, st_names, st_colors
+        return lut_dict
 
     @staticmethod
-    def read_tsvtable(in_file: str, 
-                        cl_format: str = "rgb"):
+    def read_tsvtable(in_file: str):
         """
         Reading tsv table
         @params:
@@ -877,13 +874,6 @@ class Parcellation:
         
         if "color" in tsv_dict.keys():
             temp_colors = tsv_dict["color"]
-
-            if cl_format == "rgb":
-                st_colors = cltmisc._multi_hex2rgb(temp_colors)
-            elif cl_format == "hex":
-                st_colors = temp_colors
-                
-            tsv_dict["color"] = st_colors
 
         return tsv_dict
     
@@ -964,6 +954,7 @@ class Parcellation:
             
         if isinstance(colors, list):
             if isinstance(colors[0], str):
+                colors = cltmisc._harmonize_colors(colors)
                 colors = cltmisc._multi_hex2rgb(colors)
             elif isinstance(colors[0], list):
                 colors = np.array(colors)
@@ -1061,7 +1052,7 @@ class Parcellation:
             if not os.path.exists(out_file):
                 raise ValueError("The file does not exist")
             else:
-                tsv_orig = Parcellation.read_tsvtable(in_file=out_file, cl_format="hex")
+                tsv_orig = Parcellation.read_tsvtable(in_file=out_file)
                 
                 # Create a list with the common keys between tsv_orig and tsv_dict
                 common_keys = list(set(tsv_orig.keys()) & set(tsv_dict.keys()))
