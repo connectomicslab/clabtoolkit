@@ -198,9 +198,6 @@ def _find_closest_date(dates_list: list,
     
     """
     
-    if isinstance(target_date, str):
-        target_date = [target_date]
-    
     # Convert target_date to a datetime object
     target_date = datetime.strptime(target_date, date_fmt)
     
