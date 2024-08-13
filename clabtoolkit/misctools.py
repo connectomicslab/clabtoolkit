@@ -3,6 +3,7 @@ from typing import Union
 import shlex
 import os
 import argparse
+from datetime import datetime
 
 class SmartFormatter(argparse.HelpFormatter):
     """
@@ -167,6 +168,55 @@ def _search_in_list(ref_list, list2look):
         index = ref_list.index(v)
         ret.append(index)
     return ret
+
+def find_closest_date(dates_list: list,
+                        target_date: str,
+                        date_fmt:str='%Y%m%d'):
+    """
+    Function to find the closest date in a list of dates to a target date. 
+    It also returns the index of the closest date in the list.
+    
+    Parameters
+    ----------
+    dates_list : list
+        List of dates in string format.
+        
+    target_date : str
+        Target date in string format.
+        
+    date_fmt : str
+        Date format. Default is '%Y%m%d'
+        
+    Returns
+    -------
+    closest_date: str
+        Closest date in the list to the target date
+        
+    closest_index: int
+        Index of the closest date in the list
+        
+    
+    """
+    
+    if isinstance(target_date, str):
+        target_date = [target_date]
+    
+    # Convert target_date to a datetime object
+    target_date = datetime.strptime(target_date, date_fmt)
+    
+    # Convert all dates in the list to datetime objects
+    dates_list_dt = [datetime.strptime(date, date_fmt) for date in dates_list]
+    
+    # Find the index of the date with the minimum difference from the target date
+    closest_index = min(range(len(dates_list_dt)), key=lambda i: abs(dates_list_dt[i] - target_date))
+    
+    # Get the closest date from the list using the index
+    closest_date = dates_list_dt[closest_index]
+    
+    # Convert the closest date back to the 'YYYYMMDD' format
+    return closest_date.strftime('%Y%m%d'), closest_index
+
+
 
 def _multi_hex2rgb(hexcodes: list):
     """
