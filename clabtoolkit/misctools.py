@@ -210,8 +210,12 @@ def _find_closest_date(dates_list: list,
     # Get the closest date from the list using the index
     closest_date = dates_list_dt[closest_index]
     
+    # Get the time difference between the target date and the closest date in days
+    time_diff = abs(closest_date - target_date).days
+    
+    
     # Convert the closest date back to the 'YYYYMMDD' format
-    return closest_date.strftime('%Y%m%d'), closest_index
+    return closest_date.strftime(date_fmt), closest_index, time_diff
 
 
 
