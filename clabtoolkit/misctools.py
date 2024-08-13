@@ -169,7 +169,7 @@ def _search_in_list(ref_list, list2look):
         ret.append(index)
     return ret
 
-def find_closest_date(dates_list: list,
+def _find_closest_date(dates_list: list,
                         target_date: str,
                         date_fmt:str='%Y%m%d'):
     """
