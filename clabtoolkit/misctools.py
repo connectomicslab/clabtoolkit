@@ -199,10 +199,10 @@ def _find_closest_date(dates_list: list,
     """
     
     # Convert target_date to a datetime object
-    target_date = datetime.strptime(target_date, date_fmt)
+    target_date = datetime.strptime(str(target_date), date_fmt)
     
     # Convert all dates in the list to datetime objects
-    dates_list_dt = [datetime.strptime(date, date_fmt) for date in dates_list]
+    dates_list_dt = [datetime.strptime(str(date), date_fmt) for date in dates_list]
     
     # Find the index of the date with the minimum difference from the target date
     closest_index = min(range(len(dates_list_dt)), key=lambda i: abs(dates_list_dt[i] - target_date))
