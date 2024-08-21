@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import copy
 
 import numpy as np
 import pandas as pd
@@ -423,7 +424,11 @@ class Parcellation:
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
         self._keep_by_code(codes2look=st_codes, rearrange=True)
-
+        
+        # Adding the offset to the data
+        ind = np.where(self.data != 0)
+        self.data[ind] = self.data[ind] + offset
+        
         if offset != 0:
             self.index = [x + offset for x in self.index]
 
@@ -445,56 +450,57 @@ class Parcellation:
         if isinstance(parc2add, list):
             if len(parc2add) > 0:
                 for parc in parc2add:
+                    tmp_parc_obj = copy.deepcopy(parc)
                     if isinstance(parc, Parcellation):
-                        ind = np.where(parc.data != 0)
+                        ind = np.where(tmp_parc_obj.data != 0)
                         if append:
-                            parc.data[ind] = parc.data[ind] + self.maxlab
+                            tmp_parc_obj.data[ind] = tmp_parc_obj.data[ind] + self.maxlab
 
                         if hasattr(parc, "index") and hasattr(parc, "name") and hasattr(parc, "color"):
                             if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
                                 
                                 if append:
-                                    parc.index = [x + self.maxlab for x in parc.index]
+                                    tmp_parc_obj.index = [x + self.maxlab for x in tmp_parc_obj.index]
                                 
-                                if isinstance(parc.index, list) and isinstance(self.index, list):
-                                    self.index = self.index + parc.index
+                                if isinstance(tmp_parc_obj.index, list) and isinstance(self.index, list):
+                                    self.index = self.index + tmp_parc_obj.index
                                 
-                                elif isinstance(parc.index, np.ndarray) and isinstance(self.index, np.ndarray):    
-                                    self.index = np.concatenate((self.index, parc.index), axis=0).tolist()
+                                elif isinstance(tmp_parc_obj.index, np.ndarray) and isinstance(self.index, np.ndarray):    
+                                    self.index = np.concatenate((self.index, tmp_parc_obj.index), axis=0).tolist()
                                 
-                                elif isinstance(parc.index, list) and isinstance(self.index, np.ndarray):
-                                    self.index = parc.index + self.index.tolist()
+                                elif isinstance(tmp_parc_obj.index, list) and isinstance(self.index, np.ndarray):
+                                    self.index = tmp_parc_obj.index + self.index.tolist()
                                 
-                                elif isinstance(parc.index, np.ndarray) and isinstance(self.index, list):
-                                    self.index = self.index + parc.index.tolist()
+                                elif isinstance(tmp_parc_obj.index, np.ndarray) and isinstance(self.index, list):
+                                    self.index = self.index + tmp_parc_obj.index.tolist()
                                 
-                                self.name = self.name + parc.name
+                                self.name = self.name + tmp_parc_obj.name
                                 
-                                if isinstance(parc.color, list) and isinstance(self.color, list):
-                                    self.color = self.color + parc.color
+                                if isinstance(tmp_parc_obj.color, list) and isinstance(self.color, list):
+                                    self.color = self.color + tmp_parc_obj.color
                                 
-                                elif isinstance(parc.color, np.ndarray) and isinstance(self.color, np.ndarray):
-                                    self.color = np.concatenate((self.color, parc.color), axis=0)
+                                elif isinstance(tmp_parc_obj.color, np.ndarray) and isinstance(self.color, np.ndarray):
+                                    self.color = np.concatenate((self.color, tmp_parc_obj.color), axis=0)
                                     
-                                elif isinstance(parc.color, list) and isinstance(self.color, np.ndarray):
+                                elif isinstance(tmp_parc_obj.color, list) and isinstance(self.color, np.ndarray):
                                     temp_color = cltmisc._readjust_colors(self.color)
                                     temp_color = cltmisc._multi_rgb2hex(temp_color)
                                     
-                                    self.color = temp_color + parc.color
-                                elif isinstance(parc.color, np.ndarray) and isinstance(self.color, list):
-                                    temp_color = cltmisc._readjust_colors(parc.color)
+                                    self.color = temp_color + tmp_parc_obj.color
+                                elif isinstance(tmp_parc_obj.color, np.ndarray) and isinstance(self.color, list):
+                                    temp_color = cltmisc._readjust_colors(tmp_parc_obj.color)
                                     temp_color = cltmisc._multi_rgb2hex(temp_color)
                                     
                                     self.color = self.color + temp_color
                             
                             # If the parcellation self.data is all zeros  
                             elif np.sum(self.data) == 0:
-                                self.index = parc.index
-                                self.name  = parc.name
-                                self.color = parc.color  
+                                self.index = tmp_parc_obj.index
+                                self.name  = tmp_parc_obj.name
+                                self.color = tmp_parc_obj.color  
                         
                         # Concatenating the parcellation data
-                        self.data[ind] = parc.data[ind]  
+                        self.data[ind] = tmp_parc_obj.data[ind]  
                                     
             else:
                 raise ValueError("The list is empty")
