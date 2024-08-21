@@ -155,7 +155,13 @@ class AnnotParcellation:
             )
 
         vert_lab = self.codes
-        vert_lab[vert_lab == -1] = 0
+        # Find the indexes where vert_lab = -1 
+        tmp_ind = np.where(vert_lab == -1)[0]
+        if tmp_ind.size > 0:
+            addreg = True
+            vert_lab[tmp_ind] = 0
+        else:
+            addreg = False
 
         reg_ctable = self.regtable
         reg_names = self.regnames
@@ -247,6 +253,9 @@ class AnnotParcellation:
 
                 bound = np.array_equal(bound_vert, bound_vert_orig)
 
+        if addreg and len(reg_names) != len(np.unique(vert_lab)):
+            reg_names = ['unknown'] + reg_names
+            
         # Save the annotation file
         if corr_annot is not None:
             if os.path.isfile(corr_annot):
