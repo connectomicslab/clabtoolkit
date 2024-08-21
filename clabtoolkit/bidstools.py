@@ -1,5 +1,6 @@
 import os
 import shutil
+import pandas as pd
 import clabtoolkit.misctools as cltmisc
 from typing import Union
 
@@ -201,6 +202,88 @@ def _replace_entity_value(entity:Union[dict, str],
         entity_out = _entity2str(entity_out)
     
     return entity_out
+
+####################################################################################################
+def _recursively_replace_entity_value_(root_dir:str, 
+                            dict2old: Union[dict, str],
+                            dict2new: Union[dict, str]):
+    
+    """
+    This method replaces the values of certain entities in all the files and folders of a BIDs dataset.
+    
+    Parameters:
+    ----------
+    root_dir: str
+        Root directory of the BIDs dataset
+        
+    dict2old: dict or str
+        Dictionary containing the entities to replace and their old values
+        
+    dict2new: dict or str
+        Dictionary containing the entities to replace and their new values
+        
+    
+    """        
+    
+    # Detect if the BIDs directory exists
+    if not os.path.isdir(root_dir):
+        raise ValueError("The BIDs directory does not exist.") 
+    
+    # Convert the strings to dictionaries
+    if isinstance(dict2old, str):
+        dict2old = _str2entity(dict2old)
+    if isinstance(dict2new, str):
+        dict2new = _str2entity(dict2new)
+        
+    
+    # Leave in the dictionaries only the keys that are common
+    dict2old = {k: dict2old[k] for k in dict2old if k in dict2new}
+    dict2new = {k: dict2new[k] for k in dict2new if k in dict2old}
+
+    # Order the dictionaries alphabetically by key
+    dict2old = dict(sorted(dict2old.items()))
+    dict2new = dict(sorted(dict2new.items()))
+
+    # Creating the list of strings
+    dict2old_list = [f"{key}-{value}" for key, value in dict2old.items()]
+    dict2new_list = [f"{key}-{value}" for key, value in dict2new.items()]
+                    
+    # Find all the files and folders that contain a certain string any of the key values in the dictionary dict2old
+
+    # Walk through the directory from bottom to top (reverse)
+    for root, dirs, files in os.walk(root_dir, topdown=False):
+        # Rename files
+        for file_name in files:
+            
+            for i, subst_x in enumerate(dict2old_list):
+                subst_y = dict2new_list[i]
+                if subst_x in file_name:
+                    old_path = os.path.join(root, file_name)
+                    new_name = file_name.replace(subst_x, subst_y)
+                    new_path = os.path.join(root, new_name)
+                    os.rename(old_path, new_path)
+                    file_name = new_name
+                
+                # the file is the tsv open the file and replace the string
+                if file_name.endswith('sessions.tsv'):
+                    tsv_file = os.path.join(root,file_name)
+                    # Read line by line and replace the string
+                    # Load the TSV file
+                    df = pd.read_csv(tsv_file, sep='\t')
+
+                    # Replace subst_x with subst_y in all string columns
+                    df = df.applymap(lambda x: x.replace(subst_x, subst_y) if isinstance(x, str) else x)
+
+                    # Save the modified DataFrame as a TSV file
+                    df.to_csv(tsv_file, sep='\t', index=False)
+
+        # Rename directories
+        for dir_name in dirs:
+            if subst_x in dir_name:
+                old_path = os.path.join(root, dir_name)
+                new_name = dir_name.replace(subst_x, subst_y)
+                new_path = os.path.join(root, new_name)
+                os.rename(old_path, new_path)
 
 ####################################################################################################
 def _replace_entity_key(entity:Union[dict, str], 
