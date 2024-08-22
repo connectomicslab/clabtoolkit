@@ -425,10 +425,10 @@ class Parcellation:
         st_codes = st_codes[st_codes != 0]
         self._keep_by_code(codes2look=st_codes, rearrange=True)
         
-        # Adding the offset to the data
         ind = np.where(self.data != 0)
         self.data[ind] = self.data[ind] + offset
         
+
         if offset != 0:
             self.index = [x + offset for x in self.index]
 
@@ -513,7 +513,8 @@ class Parcellation:
 
     def _save_parcellation(self,
                             out_file: str,
-                            affine: np.float_ = None, 
+                            affine: np.float_ = None,
+                            headerlines: Union[list, str] = None,
                             save_lut: bool = False,
                             save_tsv: bool = False):
         """
@@ -525,7 +526,11 @@ class Parcellation:
 
         if affine is None:
             affine = self.affine
-            
+        
+        if headerlines is not None:
+            if isinstance(headerlines, str):
+                headerlines = [headerlines]
+        
         self.data = np.int32(self.data)
 
         out_atlas = nib.Nifti1Image(self.data, affine)
@@ -533,7 +538,7 @@ class Parcellation:
 
         if save_lut:
             if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-                self._export_colortable(out_file=out_file.replace(".nii.gz", ".lut"))
+                self._export_colortable(out_file=out_file.replace(".nii.gz", ".lut"), headerlines=headerlines)
             else:
                 print("Warning: The parcellation does not contain a color table. The lut file will not be saved")
         
@@ -612,6 +617,7 @@ class Parcellation:
     def _export_colortable(self, 
                             out_file: str, 
                             lut_type: str = "lut",
+                            headerlines: Union[list, str] = None,
                             force: bool = True):
         """
         Export the lookup table to a file
@@ -621,6 +627,10 @@ class Parcellation:
             force        - Optional  : If True, it will overwrite the file. Default = True
         """
 
+        if headerlines is not None:
+            if isinstance(headerlines, str):
+                headerlines = [headerlines]
+        
         if not hasattr(self, "index") or not hasattr(self, "name") or not hasattr(self, "color"):
             raise ValueError("The parcellation does not contain a color table. The index, name and color attributes must be present")
         
@@ -650,12 +660,14 @@ class Parcellation:
 
             now              = datetime.now()
             date_time        = now.strftime("%m/%d/%Y, %H:%M:%S")
-            headerlines      = ['# $Id: {} {} \n'.format(out_file, date_time)]
             
-            if os.path.isfile(self.parc_file):
-                headerlines.append('# Corresponding parcellation: {} \n'.format(self.parc_file))
+            if headerlines is None:
+                headerlines      = ['# $Id: {} {} \n'.format(out_file, date_time)]
+                
+                if os.path.isfile(self.parc_file):
+                    headerlines.append('# Corresponding parcellation: {} \n'.format(self.parc_file))
 
-            headerlines.append('{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format("#No.", "Label Name:", "R", "G", "B", "A"))
+                headerlines.append('{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format("#No.", "Label Name:", "R", "G", "B", "A"))
 
             self.write_luttable(
                 self.index, self.name, self.color, out_file, headerlines=headerlines
