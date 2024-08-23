@@ -995,7 +995,7 @@ class FreeSurferSubject():
                     else:
                         raise ValueError("The T1w image does not exist")
 
-                cmd_bashargs = ['recon-all', '-subjid', '-i', t1w_img, self.subj_id, '-all']
+                cmd_bashargs = ['recon-all', '-i', t1w_img, '-subjid', self.subj_id, '-all']
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             elif proc_status == 'autorecon1':
