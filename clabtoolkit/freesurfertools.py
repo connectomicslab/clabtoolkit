@@ -711,14 +711,16 @@ class FreeSurferSubject():
         if subjs_dir is None:
             self.subjs_dir = os.environ.get('SUBJECTS_DIR')
         else:
+
             if not os.path.exists(subjs_dir):
-                raise FileNotFoundError(f"Directory {subjs_dir} does not exist")
+                # Create the folder
+                os.makedirs(subjs_dir, exist_ok=True)
+                
+                print(f"Warning: Directory {subjs_dir} does not exist. It will be created.")
+                
             self.subjs_dir = subjs_dir
         
         subj_dir= os.path.join(self.subjs_dir, subj_id)
-        if not os.path.exists(subj_dir):
-            raise FileNotFoundError(f"Directory {subj_id} does not exist in {self.subjs_dir}")
-        
         self.subj_id = subj_id
 
         # Generate a dictionary of the FreeSurfer files
