@@ -981,6 +981,26 @@ class Parcellation:
         
         # Table for parcellation      
         for roi_pos, roi_name in enumerate(names):
+            
+            if roi_pos == 0:
+                luttable.append('\n')
+                
+                # Get the name of the roi
+                name_roi = names[roi_pos]
+                nm_part = name_roi.split('-')   
+                
+                supra_reg = nm_part[0]
+                hemi = nm_part[1]
+                
+                if hemi == 'lh':
+                    hemi_cad = 'Left Hemisphere'
+                elif hemi == 'rh':
+                    hemi_cad = 'Right Hemisphere'
+                else:
+                    hemi_cad = ''
+                
+                
+                
             luttable.append('{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format(codes[roi_pos], 
                                                                         names[roi_pos], 
                                                                         colors[roi_pos,0], 
