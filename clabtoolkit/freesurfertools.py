@@ -818,6 +818,22 @@ class FreeSurferSubject():
         if not os.path.isdir(os.path.join(self.subjs_dir, self.subj_id)):
             pstatus = 'unprocessed'
         else:
+            
+            # Check if the pial files exist because this file is missing in some FreeSurfer versions
+            lh_pial = os.path.join(self.subjs_dir, self.subj_id, 'surf', 'lh.pial')
+            lh_pial_t1 = os.path.join(self.subjs_dir, self.subj_id, 'surf', 'lh.pial.T1')
+            rh_pial = os.path.join(self.subjs_dir, self.subj_id, 'surf', 'rh.pial')
+            rh_pial_t1 = os.path.join(self.subjs_dir, self.subj_id, 'surf', 'rh.pial.T1')
+            
+            if os.path.isfile(lh_pial_t1) and not os.path.isfile(lh_pial):
+                # Copy the lh.pial.T1 to lh.pial
+                shutil.copy(lh_pial_t1, lh_pial)
+            
+            if os.path.isfile(rh_pial_t1) and not os.path.isfile(rh_pial):
+                # Copy the rh.pial.T1 to rh.pial
+                shutil.copy(rh_pial_t1, rh_pial)
+                
+            # Check the FreeSurfer files
             arecon1_files = [self.fs_files["mri"]['T1'], self.fs_files["mri"]['brainmask'], 
                             self.fs_files["mri"]['orig']]
 
