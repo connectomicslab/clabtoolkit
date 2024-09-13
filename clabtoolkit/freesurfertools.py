@@ -6,6 +6,7 @@ from glob import glob
 from typing import Union
 from pathlib import Path
 from datetime import datetime
+import shutil 
 import numpy as np
 import nibabel as nib
 import pandas as pd
