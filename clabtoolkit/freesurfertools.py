@@ -6,7 +6,8 @@ from glob import glob
 from typing import Union
 from pathlib import Path
 from datetime import datetime
-import shutil 
+import shutil
+import uuid
 import numpy as np
 import nibabel as nib
 import pandas as pd
@@ -1193,11 +1194,27 @@ class FreeSurferSubject():
             temp_dir = Path(temp_dir)
             temp_dir.mkdir(parents=True, exist_ok=True)
             
+            if cont_tech != "local":
+                cmd_bashargs = ['echo', '$SUBJECTS_DIR']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+                subjs_dir_cont = out_cmd.stdout.split('\n')[0]
+                dir_cad = self.subjs_dir + ':' + subjs_dir_cont
+                
             # Moving the Annot to individual space
             cmd_bashargs = ['mri_surf2surf', '--srcsubject', ref_id, '--trgsubject', self.subj_id,
                                     '--hemi', hemi, '--sval-annot', fs_annot,
                                     '--tval', ind_annot]
             cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            
+            # Bind the FreeSurfer subjects directory
+            if cont_tech == "singularity":
+                cmd_cont.insert(2, '--bind')
+                cmd_cont.insert(3, dir_cad)
+            elif cont_tech == "docker":
+                cmd_cont.insert(2, '-v')
+                cmd_cont.insert(3, dir_cad)
+                
             subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             
             # Correcting the parcellation file in order to refill the parcellation with the correct labels    
@@ -1323,6 +1340,14 @@ class FreeSurferSubject():
         
         FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
         
+        if cont_tech != "local":
+            cmd_bashargs = ['echo', '$SUBJECTS_DIR']
+            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+            subjs_dir_cont = out_cmd.stdout.split('\n')[0]
+            dir_cad = self.subjs_dir + ':' + subjs_dir_cont
+        
+        
         if isinstance(gm_grow, int):
             gm_grow = str(gm_grow)
         
@@ -1341,13 +1366,34 @@ class FreeSurferSubject():
             if len(color_table) == 0:
                 color_table = ['lut']
 
-            fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
-            lut_dict = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+            if cont_tech != "local":
+                cmd_bashargs = ['echo', '$FREESURFER_HOME']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+                fslut_file_cont = os.path.join(out_cmd.stdout.split('\n')[0], 'FreeSurferColorLUT.txt')
+                tmp_name = str(uuid.uuid4())
+                cmd_bashargs = ['cp', 'replace_cad', '/tmp/' + tmp_name]
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                
+                # Replace the element of the list equal to replace_cad by the path of the lut file
+                cmd_cont = [w.replace('replace_cad', fslut_file_cont) for w in cmd_cont]
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+                fslut_file = os.path.join('/tmp', tmp_name)
+                
+                lut_dict = cltparc.Parcellation.read_luttable(in_file=fslut_file)
+                
+                # Remove the temporary file
+                os.remove(fslut_file)
+                
+            else:
+            
+                fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
+                lut_dict = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+                
             fs_codes  = lut_dict["index"]
             fs_names  = lut_dict["name"]
             fs_colors = lut_dict["color"]
         
-
         if gm_grow == '0':
 
             if not os.path.isfile(out_vol) or force:
@@ -1728,7 +1774,6 @@ def get_version(cont_tech: str = "local",
     # Running the version command
     cmd_bashargs = ['recon-all', '-version']
     cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-    subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
     out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
     
     vers_cad = out_cmd.stdout.split('-')[3]
