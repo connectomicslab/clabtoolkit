@@ -854,7 +854,10 @@ def _remove_empty_keys_or_values(d: dict) -> dict:
     return d
 
 
-def _generate_container_command(bash_args, technology:str = "local", image_path:str = None):
+def _generate_container_command(bash_args, 
+                                technology:str = "local", 
+                                image_path:str = None, 
+                                license_path:str = None):
     """
     This function generates the command to run a bash command inside a container
 
