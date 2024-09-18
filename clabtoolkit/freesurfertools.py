@@ -987,7 +987,6 @@ class FreeSurferSubject():
                 if stage not in val_extra_stages:
                     raise ValueError(f"Stage {stage} is not valid")
 
-        
         if force:
 
             if t1w_img is None:
@@ -995,13 +994,13 @@ class FreeSurferSubject():
                     for st in proc_stage:
                         cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-' + st]
                         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
-                        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                        subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             else:
                 if os.path.isfile(t1w_img):
                     for st in proc_stage:
                         cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-i', t1w_img,'-' + st]
                         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                        subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
                 else:
                     raise ValueError("The T1w image does not exist")
         else:
@@ -1017,20 +1016,20 @@ class FreeSurferSubject():
 
                 cmd_bashargs = ['recon-all', '-i', t1w_img, '-subjid', self.subj_id, '-all']
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             elif proc_status == 'autorecon1':
                 cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon2']
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
                 cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon3']
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
             elif proc_status == 'autorecon2':
                 cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon3']
                 cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
         self._get_proc_status() 
         proc_status = self.pstatus
@@ -1097,7 +1096,7 @@ class FreeSurferSubject():
             if len(cmd_list) > 0:
                 for cmd_bashargs in cmd_list:
                     cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
-                    subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+                    subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
         return proc_status
 
@@ -1141,7 +1140,8 @@ class FreeSurferSubject():
                     ind_annot:str, 
                     cont_tech:str="local", 
                     cont_image:str = None,
-                    force = False):
+                    force = False,
+                    verbose = False):
         """
         Map ANNOT parcellation files to individual space.
         
@@ -1167,6 +1167,9 @@ class FreeSurferSubject():
         
         force : bool
             Force the processing    
+        
+        verbose : bool
+            Verbose mode. Default is False.
             
         """
         
@@ -1215,7 +1218,7 @@ class FreeSurferSubject():
                 cmd_cont.insert(2, '-v')
                 cmd_cont.insert(3, dir_cad)
                 
-            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             
             # Correcting the parcellation file in order to refill the parcellation with the correct labels    
             cort_parc = AnnotParcellation(parc_file=ind_annot)
@@ -1225,7 +1228,8 @@ class FreeSurferSubject():
             
         elif os.path.isfile(ind_annot) and not force:
             # Print a message
-            print(f"File {ind_annot} already exists. Use force=True to overwrite it")
+            if verbose: 
+                print(f"File {ind_annot} already exists. Use force=True to overwrite it")
             
         return ind_annot
     
@@ -1235,7 +1239,8 @@ class FreeSurferSubject():
                     hemi: str, 
                     cont_tech: str = "local", 
                     cont_image: str = None,
-                    force = False):
+                    force = False,
+                    verbose = False):
         """
         Map GCS parcellation files to individual space.
         
@@ -1258,15 +1263,28 @@ class FreeSurferSubject():
                 
         force : bool
             Force the processing  
+        
+        verbose : bool
+            Verbose mode. Default is False.
             
         """
 
         if not os.path.isfile(ind_annot) or force:
             
+            FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
+
             # Create the folder if it does not exist
             temp_dir = os.path.dirname(ind_annot)
             temp_dir = Path(temp_dir)
             temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            if cont_tech != "local":
+                cmd_bashargs = ['echo', '$SUBJECTS_DIR']
+                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+                subjs_dir_cont = out_cmd.stdout.split('\n')[0]
+                dir_cad = self.subjs_dir + ':' + subjs_dir_cont
+            
             
             # Moving the GCS to individual space
             cort_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
@@ -1276,7 +1294,16 @@ class FreeSurferSubject():
                             fs_gcs, ind_annot]
             
             cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            
+            # Bind the FreeSurfer subjects directory
+            if cont_tech == "singularity":
+                cmd_cont.insert(2, '--bind')
+                cmd_cont.insert(3, dir_cad)
+            elif cont_tech == "docker":
+                cmd_cont.insert(2, '-v')
+                cmd_cont.insert(3, dir_cad)
+                
+            subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             
             # Correcting the parcellation file in order to refill the parcellation with the correct labels    
             cort_parc = AnnotParcellation(parc_file=ind_annot)
@@ -1286,7 +1313,8 @@ class FreeSurferSubject():
             
         elif os.path.isfile(ind_annot) and not force:
             # Print a message
-            print(f"File {ind_annot} already exists. Use force=True to overwrite it")
+            if verbose:
+                print(f"File {ind_annot} already exists. Use force=True to overwrite it")
 
         return ind_annot
     
@@ -1299,7 +1327,8 @@ class FreeSurferSubject():
                         bool_mixwm: bool = False,
                         cont_tech: str = "local", 
                         cont_image: str = None,
-                        force: bool = False):
+                        force: bool = False,
+                        verbose: bool = False):
     
         """
         Create volumetric parcellation from annot files.
@@ -1334,7 +1363,10 @@ class FreeSurferSubject():
             Container image to use
         
         force : bool
-            Force the processing.  
+            Force the processing. 
+            
+        verbose : bool
+            Verbose mode. Default is False.
             
         """
         
@@ -1346,7 +1378,6 @@ class FreeSurferSubject():
             out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
             subjs_dir_cont = out_cmd.stdout.split('\n')[0]
             dir_cad = self.subjs_dir + ':' + subjs_dir_cont
-        
         
         if isinstance(gm_grow, int):
             gm_grow = str(gm_grow)
@@ -1387,171 +1418,164 @@ class FreeSurferSubject():
                 
             else:
             
-                fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
-                lut_dict = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+                fslut_file = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
+                lut_dict = cltparc.Parcellation.read_luttable(in_file=fslut_file)
                 
             fs_codes  = lut_dict["index"]
             fs_names  = lut_dict["name"]
             fs_colors = lut_dict["color"]
         
-        if gm_grow == '0':
-
-            if not os.path.isfile(out_vol) or force:
-                # Create the folder if it does not exist
-                temp_dir = os.path.dirname(out_vol)
-                temp_dir = Path(temp_dir)
-                temp_dir.mkdir(parents=True, exist_ok=True)
+        # Create the folder if it does not exist
+        temp_dir = os.path.dirname(out_vol)
+        temp_dir = Path(temp_dir)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        if not os.path.isfile(out_vol) or force:
             
+            if gm_grow == '0':
+                            
                 cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas,
                                 '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
                 
-                if bool_native:
-                    
-                    # Moving the resulting parcellation from conform space to native
-                    self._conform2native(mgz_conform = out_vol, nii_native = out_vol, force=force)
-
-            elif os.path.isfile(out_vol) and not force:
-                # Print a message
-                print(f"File {out_vol} already exists. Use force=True to overwrite it")
-
-        else:
-            if not os.path.isfile(out_vol) or force:
-                # Create the folder if it does not exist
-                temp_dir = os.path.dirname(out_vol)
-                temp_dir = Path(temp_dir)
-                temp_dir.mkdir(parents=True, exist_ok=True)
-                
+            else:
                 # Creating the volumetric parcellation using the annot files
                 cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', gm_grow, '--labelwm',
                                 '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-                subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
                 
-                if bool_native:
+            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+
+            # Bind the FreeSurfer subjects directory
+            if cont_tech == "singularity":
+                cmd_cont.insert(2, '--bind')
+                cmd_cont.insert(3, dir_cad)
+            elif cont_tech == "docker":
+                cmd_cont.insert(2, '-v')
+                cmd_cont.insert(3, dir_cad)
                     
-                    # Moving the resulting parcellation from conform space to native
-                    self._conform2native(mgz_conform = out_vol, nii_native = out_vol, force=force)
+            subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
                 
-                if bool_mixwm:
-                    
-                    # Substracting 2000 to the WM labels in order to mix them with the GM labels
-                    parc = cltparc.Parcellation(parc_file=out_vol)
-                    parc_vol = parc.data
+            if bool_native:
 
-                    # Detect the values in parc_vol that are bigger than 3000 and smaller than 5000
-                    # and substrac 2000 from them
-                    mask = np.logical_and(parc_vol >= 3000, parc_vol < 5000)
-                    parc_vol[mask] = parc_vol[mask] - 2000
-                    parc.data = parc_vol
-                    parc._adjust_values
-                    parc._save_parcellation(out_file=out_vol)
+                # Moving the resulting parcellation from conform space to native
+                self._conform2native(mgz_conform = out_vol, nii_native = out_vol, force=force)
+                
+            if bool_mixwm:
                     
+                # Substracting 2000 to the WM labels in order to mix them with the GM labels
+                parc = cltparc.Parcellation(parc_file=out_vol)
+                parc_vol = parc.data
 
-            elif os.path.isfile(out_vol) and not force:
-                # Print a message
+                # Detect the values in parc_vol that are bigger than 3000 and smaller than 5000
+                # and substrac 2000 from them
+                mask = np.logical_and(parc_vol >= 3000, parc_vol < 5000)
+                parc_vol[mask] = parc_vol[mask] - 2000
+                parc.data = parc_vol
+                parc._adjust_values
+                parc._save_parcellation(out_file=out_vol)
+
+            if color_table is not None:
+                temp_iparc = nib.load(out_vol)
+                
+                # unique the values
+                unique_vals = np.unique(temp_iparc.get_fdata())
+
+                # Select only the values different from 0 that are lower than 1000 or higher than 5000
+                unique_vals = unique_vals[unique_vals != 0]
+                unique_vals = unique_vals[(unique_vals <  1000) | (unique_vals >  5000)]
+
+                # print them as integer numbers
+                unique_vals = unique_vals.astype(int)
+
+                fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
+                lut_dict = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
+                fs_codes = lut_dict["index"]
+                fs_names = lut_dict["name"]
+                fs_colors = lut_dict["color"]
+                
+                values, idx = cltmisc._ismember_from_list( fs_codes, unique_vals.tolist())
+
+                # select the fs_names and fs_colors in the indexes idx
+                selected_fs_code = [fs_codes[i] for i in idx]
+                selected_fs_name = [fs_names[i] for i in idx]
+                selected_fs_color = [fs_colors[i] for i in idx]
+
+                selected_fs_color = cltmisc._multi_rgb2hex(selected_fs_color)
+
+                lh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'lh.' + atlas + '.annot')
+                rh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'rh.' + atlas + '.annot')
+                
+                lh_obj = AnnotParcellation(parc_file = lh_ctx_parc)
+                rh_obj = AnnotParcellation(parc_file = rh_ctx_parc)
+                
+                df_lh, out_tsv = lh_obj._export_to_tsv(prefix2add='ctx-lh-', reg_offset=1000)
+                df_rh, out_tsv = rh_obj._export_to_tsv(prefix2add='ctx-rh-', reg_offset=2000)
+
+                # Convert the column name of the dataframe to a list
+                lh_ctx_code = df_lh['parcid'].tolist()
+                rh_ctx_code = df_rh['parcid'].tolist()
+
+                # Convert the column name of the dataframe to a list
+                lh_ctx_name = df_lh['name'].tolist()
+                rh_ctx_name = df_rh['name'].tolist()
+
+                # Convert the column color of the dataframe to a list
+                lh_ctx_color = df_lh['color'].tolist()
+                rh_ctx_color = df_rh['color'].tolist()
+
+                if gm_grow == '0' or bool_mixwm:
+                    all_codes = selected_fs_code + lh_ctx_code + rh_ctx_code
+                    all_names = selected_fs_name + lh_ctx_name + rh_ctx_name
+                    all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color
+                    
+                else:
+
+                    lh_wm_name = cltmisc._correct_names(lh_ctx_name, replace=['ctx-lh-','wm-lh-'])
+                    # Add 2000 to each element of the list lh_ctx_code to create the WM code
+                    lh_wm_code = [x + 2000 for x in lh_ctx_code]
+
+                    rh_wm_name = cltmisc._correct_names(rh_ctx_name, replace=['ctx-rh-','wm-rh-'])
+                    # Add 2000 to each element of the list lh_ctx_code to create the WM code
+                    rh_wm_code = [x + 2000 for x in rh_ctx_code]
+
+                    # Invert the colors lh_wm_color and rh_wm_color
+                    ilh_wm_color = cltmisc._invert_colors(lh_ctx_color)
+                    irh_wm_color = cltmisc._invert_colors(rh_ctx_color)
+
+                    all_codes  = selected_fs_code  + lh_ctx_code  + rh_ctx_code  + lh_wm_code  + rh_wm_code
+                    all_names  = selected_fs_name  + lh_ctx_name  + rh_ctx_name  + lh_wm_name  + rh_wm_name
+                    all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color + ilh_wm_color + irh_wm_color
+
+                # Save the color table
+                tsv_df = pd.DataFrame(
+                                {"index": np.asarray(all_codes), "name": all_names, "color": all_colors}
+                            )
+                
+                if 'tsv' in color_table:
+                    out_file = out_vol.replace('.nii.gz', '.tsv')
+                    cltparc.Parcellation.write_tsvtable(
+                                                        tsv_df, 
+                                                        out_file, force = force)
+                if 'lut' in color_table:
+                    out_file = out_vol.replace('.nii.gz', '.lut')
+                    
+                    now              = datetime.now()
+                    date_time        = now.strftime("%m/%d/%Y, %H:%M:%S")
+                    headerlines      = ['# $Id: {} {} \n'.format(out_vol, date_time),
+                                    '{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format("#No.", "Label Name:", "R", "G", "B", "A")] 
+
+                    cltparc.Parcellation.write_luttable(
+                                        tsv_df['index'].tolist(), 
+                                        tsv_df['name'].tolist(), 
+                                        tsv_df['color'].tolist(), 
+                                        out_file, 
+                                        headerlines=headerlines,
+                                        force = force)
+
+        elif os.path.isfile(out_vol) and not force:
+            # Print a message
+            if verbose:
                 print(f"File {out_vol} already exists. Use force=True to overwrite it")
-            
-        if color_table is not None:
-            temp_iparc = nib.load(out_vol)
-            
-            # unique the values
-            unique_vals = np.unique(temp_iparc.get_fdata())
 
-            # Select only the values different from 0 that are lower than 1000 or higher than 5000
-            unique_vals = unique_vals[unique_vals != 0]
-            unique_vals = unique_vals[(unique_vals <  1000) | (unique_vals >  5000)]
-
-            # print them as integer numbers
-            unique_vals = unique_vals.astype(int)
-
-            fs_colortable = os.path.join(os.environ.get('FREESURFER_HOME'), 'FreeSurferColorLUT.txt')
-            lut_dict = cltparc.Parcellation.read_luttable(in_file=fs_colortable)
-            fs_codes = lut_dict["index"]
-            fs_names = lut_dict["name"]
-            fs_colors = lut_dict["color"]
-            
-            values, idx = cltmisc._ismember_from_list( fs_codes, unique_vals.tolist())
-
-            # select the fs_names and fs_colors in the indexes idx
-            selected_fs_code = [fs_codes[i] for i in idx]
-            selected_fs_name = [fs_names[i] for i in idx]
-            selected_fs_color = [fs_colors[i] for i in idx]
-
-            selected_fs_color = cltmisc._multi_rgb2hex(selected_fs_color)
-
-            lh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'lh.' + atlas + '.annot')
-            rh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'rh.' + atlas + '.annot')
-            
-            lh_obj = AnnotParcellation(parc_file = lh_ctx_parc)
-            rh_obj = AnnotParcellation(parc_file = rh_ctx_parc)
-            
-            df_lh, out_tsv = lh_obj._export_to_tsv(prefix2add='ctx-lh-', reg_offset=1000)
-            df_rh, out_tsv = rh_obj._export_to_tsv(prefix2add='ctx-rh-', reg_offset=2000)
-
-            # Convert the column name of the dataframe to a list
-            lh_ctx_code = df_lh['parcid'].tolist()
-            rh_ctx_code = df_rh['parcid'].tolist()
-
-            # Convert the column name of the dataframe to a list
-            lh_ctx_name = df_lh['name'].tolist()
-            rh_ctx_name = df_rh['name'].tolist()
-
-            # Convert the column color of the dataframe to a list
-            lh_ctx_color = df_lh['color'].tolist()
-            rh_ctx_color = df_rh['color'].tolist()
-
-
-            if gm_grow == '0' or bool_mixwm:
-                all_codes = selected_fs_code + lh_ctx_code + rh_ctx_code
-                all_names = selected_fs_name + lh_ctx_name + rh_ctx_name
-                all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color
-                
-            else:
-
-                lh_wm_name = cltmisc._correct_names(lh_ctx_name, replace=['ctx-lh-','wm-lh-'])
-                # Add 2000 to each element of the list lh_ctx_code to create the WM code
-                lh_wm_code = [x + 2000 for x in lh_ctx_code]
-
-                rh_wm_name = cltmisc._correct_names(rh_ctx_name, replace=['ctx-rh-','wm-rh-'])
-                # Add 2000 to each element of the list lh_ctx_code to create the WM code
-                rh_wm_code = [x + 2000 for x in rh_ctx_code]
-
-                
-                # Invert the colors lh_wm_color and rh_wm_color
-                ilh_wm_color = cltmisc._invert_colors(lh_ctx_color)
-                irh_wm_color = cltmisc._invert_colors(rh_ctx_color)
-
-                all_codes  = selected_fs_code  + lh_ctx_code  + rh_ctx_code  + lh_wm_code  + rh_wm_code
-                all_names  = selected_fs_name  + lh_ctx_name  + rh_ctx_name  + lh_wm_name  + rh_wm_name
-                all_colors = selected_fs_color + lh_ctx_color + rh_ctx_color + ilh_wm_color + irh_wm_color
-
-                            
-            tsv_df = pd.DataFrame(
-                            {"index": np.asarray(all_codes), "name": all_names, "color": all_colors}
-                        )
-            
-            if 'tsv' in color_table:
-                out_file = out_vol.replace('.nii.gz', '.tsv')
-                cltparc.Parcellation.write_tsvtable(
-                                                    tsv_df, 
-                                                    out_file, force = force)
-            if 'lut' in color_table:
-                out_file = out_vol.replace('.nii.gz', '.lut')
-                
-                now              = datetime.now()
-                date_time        = now.strftime("%m/%d/%Y, %H:%M:%S")
-                headerlines      = ['# $Id: {} {} \n'.format(out_vol, date_time),
-                                '{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format("#No.", "Label Name:", "R", "G", "B", "A")] 
-
-                cltparc.Parcellation.write_luttable(
-                                    tsv_df['index'].tolist(), 
-                                    tsv_df['name'].tolist(), 
-                                    tsv_df['color'].tolist(), 
-                                    out_file, 
-                                    headerlines=headerlines,
-                                    force = force)
 
         return out_vol
 
