@@ -204,7 +204,7 @@ def _replace_entity_value(entity:Union[dict, str],
     return entity_out
 
 ####################################################################################################
-def _recursively_replace_entity_value_(root_dir:str, 
+def _recursively_replace_entity_value(root_dir:str, 
                             dict2old: Union[dict, str],
                             dict2new: Union[dict, str]):
     
