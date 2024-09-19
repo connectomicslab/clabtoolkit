@@ -853,7 +853,6 @@ def _remove_empty_keys_or_values(d: dict) -> dict:
 
     return d
 
-
 def _generate_container_command(bash_args, 
                                 technology:str = "local", 
                                 image_path:str = None, 
@@ -879,20 +878,20 @@ def _generate_container_command(bash_args,
 
     """
 
-    # Adding the container image path and the bash command arguments
-    if image_path is not None:
-        if not os.path.exists(image_path):
-            raise ValueError(f"The container image {image_path} does not exist.")
-    else:
-        raise ValueError("The image path is required for Singularity containerization.")
-    
-    
     # Checks if the variable "a_list" is a list
     if isinstance(bash_args, str):
         bash_args = shlex.split(bash_args)
 
-    path2mount = []
-    if technology in ["docker", "singularity"]:
+        path2mount = []
+        if technology in ["docker", "singularity"]:
+            
+            # Adding the container image path and the bash command arguments
+            if image_path is not None:
+                if not os.path.exists(image_path):
+                    raise ValueError(f"The container image {image_path} does not exist.")
+            else:
+                raise ValueError("The image path is required for Singularity containerization.")
+        
         # Checking if the arguments are files or directories
         container_cmd = []
         bind_mounts = []
