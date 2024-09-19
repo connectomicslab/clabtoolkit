@@ -614,6 +614,17 @@ class Parcellation:
         self._adjust_values()
         self._parc_range()
     
+    def _sort_index(self):
+        """
+        This method sorts the index, name and color attributes of the parcellation according to the index
+        """
+        
+        # Sort the all_index and apply the order to all_name and all_color
+        sort_index = np.argsort(self.index)
+        self.index = [self.index[i] for i in sort_index]
+        self.name = [self.name[i] for i in sort_index]
+        self.color = [self.color[i] for i in sort_index]
+    
     def _export_colortable(self, 
                             out_file: str, 
                             lut_type: str = "lut",
