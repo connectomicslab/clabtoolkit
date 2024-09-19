@@ -891,55 +891,38 @@ def _generate_container_command(bash_args,
     if isinstance(bash_args, str):
         bash_args = shlex.split(bash_args)
 
-        
-    container_cmd = []
-    # Creating the container command
-    if technology == "singularity": # Using Singularity technology
-        container_cmd.append('singularity') # singularity command
-        container_cmd.append('run')
-
+    path2mount = []
+    if technology in ["docker", "singularity"]:
         # Checking if the arguments are files or directories
+        container_cmd = []
         bind_mounts = []
-
+            
         for arg in bash_args: # Checking if the arguments are files or directories
             abs_arg_path = os.path.dirname(arg)
             if os.path.exists(abs_arg_path):
                 bind_mounts.append(abs_arg_path) # Adding the argument to the bind mounts
 
         if bind_mounts: # Adding the bind mounts to the container command
+            # Detect only the unique elements in the list bind_mounts
+            bind_mounts = list(set(bind_mounts))
             for mount_path in bind_mounts:
-                container_cmd.extend(['--bind', f'{mount_path}:{mount_path}'])
+                if technology == "singularity": # Using Singularity technology
+                    path2mount.extend(['--bind', f'{mount_path}:{mount_path}'])
+                    
+                elif technology == "docker": # Using Docker technology
+                    path2mount.extend(['-v', f'{mount_path}:{mount_path}'])
 
-        # Adding the container image path and the bash command arguments
-        if image_path is not None:
-            if not os.path.exists(image_path):
-                raise ValueError(f"The container image {image_path} does not exist.")
-        else:
-            raise ValueError("The image path is required for Singularity containerization.")
+        # Creating the container command
+        if technology == "singularity": # Using Singularity technology
+            container_cmd.append('singularity') # singularity command
+            container_cmd.append('run')
+
+        # Using Docker technology
+        elif technology == "docker":
+            container_cmd.append('docker') # docker command
+            container_cmd.append('run')
         
-        container_cmd.append(image_path)
-        container_cmd.extend(bash_args)
-
-    # Using Docker technology
-    elif technology == "docker":
-        container_cmd.append('docker') # docker command
-        container_cmd.append('run')
-        
-        for arg in bash_args: # Checking if the arguments are files or directories
-            abs_arg_path = os.path.dirname(arg)
-            if os.path.exists(abs_arg_path):
-                bind_mounts.append(abs_arg_path) # Adding the argument to the bind mounts
-
-        if bind_mounts: # Adding the bind mounts to the container command
-            for mount_path in bind_mounts:
-                container_cmd.extend(['-v', f'{mount_path}:{mount_path}'])
-
-        # Adding the container image path and the bash command arguments
-        if image_path is not None:
-            if not os.path.exists(image_path):
-                raise ValueError(f"The container image {image_path} does not exist.")
-        else:
-            raise ValueError("The image path is required for Docker containerization.")
+        container_cmd = container_cmd + path2mount
         
         container_cmd.append(image_path)
         container_cmd.extend(bash_args)
