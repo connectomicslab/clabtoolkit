@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import nibabel as nib
 import clabtoolkit.misctools as cltmisc
+import clabtoolkit.bidstools as cltbids
 
 
 
@@ -85,22 +86,35 @@ def _abased_parcellation(t1: str,
     
     if stransf_name.endswith('.nii.gz'):
         stransf_name = stransf_name[:-7]
-    elif stransf_name.endswith('.nii'):
+    elif stransf_name.endswith('.nii') or stransf_name.endswith('.mat'):
         stransf_name = stransf_name[:-4]
     
+    if stransf_name.endswith('_xfm'):
+        stransf_name = stransf_name[:-4]
+    
+    if "_desc-" in stransf_name:
+        affine_name = cltbids._replace_entity_value(stransf_name, {'desc':'affine'})
+        nl_name = cltbids._replace_entity_value(stransf_name, {'desc':'warp'})
+        invnl_name = cltbids._replace_entity_value(stransf_name, {'desc':'iwarp'})
+    else:
+        affine_name = stransf_name + '_desc-affine'
+        nl_name = stransf_name + '_desc-warp'
+        invnl_name = stransf_name + '_desc-iwarp'
+    
+    
     # Affine transformation filename
-    xfm_affine = os.path.join(stransf_dir, stransf_name + '_desc-affine_xfm.mat')
+    xfm_affine = os.path.join(stransf_dir, affine_name + '_xfm.mat')
     
     # Non-linear transformation filename
-    xfm_nl= os.path.join(stransf_dir, stransf_name + '_desc-warp_xfm.mat')
+    xfm_nl= os.path.join(stransf_dir, nl_name + '_xfm.nii.gz')
     
     # Filename for the inverse of the Non-linear transformation 
-    xfm_invnl= os.path.join(stransf_dir, stransf_name + '_desc-iwarp_xfm.mat')
+    xfm_invnl= os.path.join(stransf_dir, invnl_name + '_xfm.nii.gz')
     
     if not os.path.isfile(xfm_invnl) or force:
         # Registration to MNI template
         
-        cmd_bashargs = ['antsRegistrationSyNQuick.sh', '-d', '3', '-f', t1_temp, '-m', t1, '-t', 's',
+        cmd_bashargs = ['antsRegistrationSyN.sh', '-d', '3', '-f', t1_temp, '-m', t1, '-t', 's',
                         '-o', tmp_xfm_basename + '_']
         
         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
@@ -116,6 +130,10 @@ def _abased_parcellation(t1: str,
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         cmd_bashargs = ['mv', temp_xfm_invnl, xfm_invnl]
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        
+        cmd_bashargs = ['rm', tmp_xfm_basename + '*Warped.nii.gz']
         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
