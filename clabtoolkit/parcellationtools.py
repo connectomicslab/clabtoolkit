@@ -12,7 +12,7 @@ class Parcellation:
 
     def __init__(self, 
                     parc_file: Union[str, np.uint] = None, 
-                    affine:np.float_ = None):
+                    affine:np.float64 = None):
         
         self.parc_file = parc_file
         
@@ -513,7 +513,7 @@ class Parcellation:
 
     def _save_parcellation(self,
                             out_file: str,
-                            affine: np.float_ = None,
+                            affine: np.float64 = None,
                             headerlines: Union[list, str] = None,
                             save_lut: bool = False,
                             save_tsv: bool = False):
