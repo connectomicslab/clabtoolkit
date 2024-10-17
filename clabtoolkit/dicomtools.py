@@ -204,21 +204,6 @@ def _org_conv_dicoms(in_dic_dir: str,
                                 # wait for all tasks to complete
                         
                         
-                        # if nthreads > 4:
-                        #     nthreads = nthreads - 4
-                        # with concurrent.futures.ProcessPoolExecutor(nthreads) as executor:
-                        # #     results = [executor.submit(do_something, sec) for sec in secs]
-                        #     results = list(executor.map(_copy_dicom_file, dicom_files,
-                        #     [subj_id] * ndwis, [out_dic_dir] * ndwis, [ses_id] * ndwis, [date_times] * ndwis, [demobool] * ndwis, [subTB] * ndwis, [force] * ndwis))
-
-                        # t1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=ndics)
-                        
-                        # for cont_dic, dfiles in enumerate(dicom_files):
-                        #     ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force)
-                        #     all_ser_dirs.append(ser_dir)
-                        #     pb.update(task_id=t1, completed=cont_dic+1)
-                        # pb.update(task_id=t1, completed=ndics)
-                        
                     else:
 
                         for ses_id in os.listdir(subj_dir):  # Loop along the session
