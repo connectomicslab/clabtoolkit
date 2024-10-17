@@ -325,7 +325,7 @@ class Parcellation:
             if isinstance(codes2group[0], list):
                 n_groups = len(codes2group)
             
-            elif isinstance(codes2group[0], (str, np.integer, tuple)):
+            elif isinstance(codes2group[0], (str, np.integer, int, tuple)):
                 codes2group = [codes2group]
                 n_groups = 1
             
@@ -342,10 +342,10 @@ class Parcellation:
             if isinstance(new_codes, list):
                 new_codes = cltmisc._build_indexes(new_codes)
                 new_codes = np.array(new_codes)
-        elif isinstance(new_codes, np.integer):
-            new_codes = np.array([new_codes])
+            elif isinstance(new_codes, (str, np.integer, int)):
+                new_codes = np.array([new_codes])
 
-        elif new_codes is None:
+        else:
             new_codes = np.arange(1, n_groups + 1)
 
         if len(new_codes) != n_groups:
@@ -995,23 +995,7 @@ class Parcellation:
             
             if roi_pos == 0:
                 luttable.append('\n')
-                
-                # Get the name of the roi
-                name_roi = names[roi_pos]
-                nm_part = name_roi.split('-')   
-                
-                supra_reg = nm_part[0]
-                hemi = nm_part[1]
-                
-                if hemi == 'lh':
-                    hemi_cad = 'Left Hemisphere'
-                elif hemi == 'rh':
-                    hemi_cad = 'Right Hemisphere'
-                else:
-                    hemi_cad = ''
-                
-                
-                
+
             luttable.append('{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}'.format(codes[roi_pos], 
                                                                         names[roi_pos], 
                                                                         colors[roi_pos,0], 
