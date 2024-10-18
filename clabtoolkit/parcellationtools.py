@@ -541,11 +541,42 @@ class Parcellation:
                 parc2add, 
                 append: bool = False):
         """
-        Add a parcellation 
-        @params:
-            parc2add     - Required  : Parcellation to add:
-            append       - Optional  : If True, the parcellation will be appended. The labels will be 
-                                    added to the maximum label of the current parcellation. Default = False
+        Combines another parcellation object into the current parcellation.
+
+        This method appends the regions of another parcellation into the 
+        current object. The behavior of the combination depends on the `append`:
+        
+        - "True": Adds the new regions with new labels by adding the maximum label of the
+        current parcellation to the data of the other parcellation.
+        
+        - "False": Integrates the data of the other parcellation, keeping the labels of the
+        current parcellation.
+
+        Parameters
+        ----------
+        parc2add : Parcellation
+                Another instance of the `Parcellation` class to be combined with the current 
+                parcellation.
+        append : bool
+                If True, the new regions will be added with new labels. If False, the labels
+                of the current parcellation will be kept.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If `other` is not an instance of the `Parcellation` class.
+        ValueError
+            If `merge_method` is not one of the supported values ("append" or "merge").
+
+        Example
+        -------
+        >>> parcellation1 = Parcellation(parc1.nii.gz)
+        >>> parcellation2 = Parcellation(parc2.nii.gz)
+        >>> parcellation1._add_parcellation(parcellation2, append=False)
         """
         if isinstance(parc2add, Parcellation):
             parc2add = [parc2add]
