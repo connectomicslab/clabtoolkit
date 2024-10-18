@@ -276,6 +276,109 @@ class Parcellation:
         # Detect minimum and maximum labels
         self._parc_range()
     
+    def _mask_image(self, 
+                        image_2mask: Union[str, list, np.ndarray],
+                        masked_image: Union[str, list, np.ndarray] = None,
+                        codes2mask: Union[str, list, np.ndarray] = None,
+                        mask_type: str = 'upright'
+                        ):
+        
+        """
+            Masks the images specified in `image_2mask` with a binary mask created from the parcellation data.
+            It will use the regions with the codes specified in `codes2mask` to create a binary mask. The mask can
+            be created with all the regions in the parcellation if `codes2mask` is None. The mask can be applied
+            to the regions with the codes specified in `codes2mask` or to the regions with codes different from
+            those specified in `codes2mask`. The masked images will be saved in the paths specified in `masked_image`.
+                        
+            Parameters
+            ----------
+            image_2mask: str, list, np.ndarray
+                The path to the image file or a list of paths to the images that will be masked. It can also be a
+                3D numpy array with the same shape as `self.data`.
+                
+            masked_image: str, list
+                The path to the image file or a list of paths to the images where the masked images will be saved.
+                If None, the masked images will not be saved. Default is None.
+                
+            codes2mask: int, list, np.ndarray
+                The codes of the regions that will be masked. If None, all regions with non-zero values will be masked.
+                Default is None.
+                
+            mask_type: str
+                The type of mask to apply. If 'upright', the mask will use the regions with the codes specified in
+                `codes2mask` to create the binary mask. If 'inverted', the mask will use the regions with codes different
+                from those specified in `codes2mask` to create the binary mask. Default is 'upright'.
+                
+            Returns
+            -------
+            None
+
+            Raises
+            ------
+            ValueError
+                If the number of images to mask is different from the number of images to be saved.
+
+            Example
+            -------
+            >>> parcellation = Parcellation("parc_file.nii")
+            >>> image = "image.nii"
+            >>> masked_image = "masked_image.nii"
+            >>> parcellation._mask_image(image_2mask=image, masked_image=masked_image, codes2mask=[1, 2, 3], mask_type='upright')
+            
+            This will mask the image with the parcellation, using the regions with codes 1, 2, and 3 to create the binary mask.
+            The masked image will be saved in the path specified in `masked_image`.
+            
+            
+        """
+        
+        if isinstance(image_2mask, str):
+            image_2mask = [image_2mask]
+        
+        if isinstance(masked_image, str):
+            masked_image = [masked_image]
+        
+        if isinstance(masked_image, list) and isinstance(image_2mask, list):
+            if len(masked_image) != len(image_2mask):
+                raise ValueError("The number of images to mask must be equal to the number of images to be saved")
+        
+        if codes2mask is None:
+            # Get the indexes of all values different from zero
+            codes2mask = np.unique(self.data)
+            codes2mask = codes2mask[codes2mask != 0]
+
+        if isinstance(codes2mask, list):
+            codes2mask = cltmisc._build_indexes(codes2mask)
+            codes2mask = np.array(codes2mask)
+        
+        if mask_type == 'inverted':
+            ind2rem = np.isin(self.data, codes2mask)==True
+
+        else:
+            ind2rem = np.isin(self.data, codes2mask)==False
+        
+        if isinstance(image_2mask, list):
+            if isinstance(image_2mask[0], str):
+                for cont, img in enumerate(image_2mask):
+                    if os.path.exists(img):
+                        temp_img = nib.load(img)
+                        img_data = temp_img.get_fdata()
+                        img_data[ind2rem] = 0
+                        
+                        # Save the masked image
+                        out_img = nib.Nifti1Image(img_data, temp_img.affine)
+                        nib.save(out_img, masked_image[cont])
+                        
+                    else:
+                        raise ValueError("The image file does not exist")
+            else:
+                raise ValueError("The image_2mask must be a list of strings containing the paths to the images")
+            
+        elif isinstance(image_2mask, np.ndarray):
+            img_data = image_2mask
+            img_data[ind2rem] = 0
+            
+            return img_data
+
     def _adjust_values(self):
         """
         Adjust the codes, indexes, names and colors to the values present on the parcellation
