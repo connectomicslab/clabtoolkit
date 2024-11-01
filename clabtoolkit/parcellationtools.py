@@ -233,12 +233,50 @@ class Parcellation:
                         mask_type: str = 'upright'
                         ):
         """
-        Mask the structures with the codes specified in the list or array codes2mask.
-        @params:
-            image_mask     - Required  : Image mask:
-            codes2mask     - Optional  : List of codes to mask:
-            mask_type      - Optional  : Mask type: 'upright' or 'inverted'. Default = upright
-        """
+            Applies a mask to the parcellation data, restricting the spatial extension of the 
+            parcellation with values equal codes2mask only to the voxels included in the image_mask.
+
+            This method modifies the 3D parcellation data (`self.data`) by applying a given 
+            3D mask array. All voxels where the mask has a value of zero will be set to 
+            zero in the parcellation data, effectively excluding those regions 
+            from further analysis.
+
+            Parameters
+            ----------
+            image_mask : np.ndarray, Parcellation or str
+                A 3D numpy array with the same shape as `self.data`. The mask indicates 
+                which voxels should be retained (non-zero values) and which should be set 
+                to `mask_value` (zero values).
+                
+            codes2mask : int, list, np.ndarray
+                The codes of the regions that will be masked. If None, all regions with
+                non-zero values will be masked. Default is None.
+                
+            mask_type : str
+                The type of mask to apply. If 'upright', the mask will be applied to the
+                regions with the codes specified in `codes2mask`. If 'inverted', the mask
+                will be applied to the regions with codes different from those specified
+                in `codes2mask`. Default is 'upright'.
+
+            Returns
+            -------
+            None
+
+            Raises
+            ------
+            ValueError
+                If the mask shape does not match the shape of `self.data`.
+            
+            Example
+            -------
+            >>> parcellation = Parcellation("parc_file.nii")
+            >>> mask = np.array([...])  # A 3D mask array of the same shape as `data`
+            >>> parcellation._apply_mask(mask, codes2mask=[1, 2, 3], mask_type='upright')
+            
+            This will apply the mask to the regions with codes 1, 2, and 3 in the parcellation.
+            
+            """
+
         if isinstance(image_mask, str):
             if os.path.exists(image_mask):
                 temp_mask = nib.load(image_mask)
