@@ -1,10 +1,12 @@
 import os
 import nibabel as nib
 import numpy as np
+import subprocess
 from pathlib import Path
 from typing import Union
 
 import clabtoolkit.misctools as cltmisc
+import clabtoolkit.bidstools as cltbids
 
 
 def crop_image_from_mask(in_image: str, 
@@ -58,7 +60,6 @@ def crop_image_from_mask(in_image: str,
         mask_data = mask
     else:
         raise ValueError("The 'mask' parameter must be a string or a numpy array.")
-    
     
     if st_codes is None:
         st_codes = np.unique(mask_data)
@@ -202,3 +203,135 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str):
     nib.save(new_img2, out_image)
     
     return out_image
+
+def apply_multi_transf(in_image:str, 
+                        out_image:str, 
+                        ref_image:str, 
+                        xfm_output, 
+                        interp_order:int=0, 
+                        invert:bool=False,
+                        cont_tech:str="local", 
+                        cont_image:str = None,
+                        force:bool=False ):
+    """
+    This function applies an ANTs transformation to an image.
+
+    Parameters
+    ----------
+    in_image : str
+        Input image file path.
+    out_image : str
+        Output image file path.
+    ref_image : str
+        Reference image file path.
+    xfm_output : str
+        Spatial transformation file path.
+    interp_order : int
+        Interpolation order. Default is 0 (NearestNeighbor). Options are: 0 (NearestNeighbor), 1 (Linear), 2 (BSpline[3]), 3 (CosineWindowedSinc), 4 (WelchWindowedSinc), 5 (HammingWindowedSinc), 6 (LanczosWindowedSinc), 7 (Welch).
+    invert : bool
+        Invert the transformation. Default is False.
+    cont_tech : str
+        Containerization technology. Default is 'local'. Options are: 'local', 'singularity', 'docker'.
+    cont_image : str
+        Container image. Default is None.
+    force : bool
+        Force the computation. Default is False.
+        
+    Raises
+    ------
+    ValueError
+        If the 'interp_order' is not an integer.
+        If the 'interp_order' is not between 0 and 7.
+        If the 'invert' is not a boolean.
+        If the 'cont_tech' is not a string.
+        If the 'cont_image' is not a string.
+        If the 'force' is not a boolean.
+        If the 'in_image' is not a string.
+        If the 'in_image' does not exist.
+        If the 'out_image' is not a string.
+        If the 'ref_image' is not a string.
+        If the 'ref_image' does not exist.
+        If the 'xfm_output' is not a string.
+        
+    Examples
+    --------
+    >>> apply_multi_transf(in_image='/path/to/in_image.nii.gz', out_image='/path/to/out_image.nii.gz', ref_image='/path/to/ref_image.nii.gz', xfm_output='/path/to/xfm_output.nii.gz', interp_order=0, invert=False, cont_tech='local', cont_image=None, force=False)
+    
+    """
+
+    # Check if the path of out_basename exists
+    out_path = os.path.dirname(out_image)
+    if not os.path.isdir(out_path):
+        os.makedirs(out_path)
+
+    if interp_order == 0:
+        interp_cad = "NearestNeighbor"
+    elif interp_order == 1:
+        interp_cad = "Linear"
+    elif interp_order == 2:
+        interp_cad = "BSpline[3]"
+    elif interp_order == 3:
+        interp_cad = "CosineWindowedSinc"
+    elif interp_order == 4:
+        interp_cad = "WelchWindowedSinc"
+    elif interp_order == 5:
+        interp_cad = "HammingWindowedSinc"
+    elif interp_order == 6:
+        interp_cad = "LanczosWindowedSinc"
+    elif interp_order == 7:
+        interp_cad = "Welch"
+
+    # Check if out_image is not computed and force is True
+    if not os.path.isfile(out_image) or force:
+
+        if not os.path.isfile(xfm_output):
+            print("The spatial transformation file does not exist.")
+            sys.exit()
+        
+        ######## -- Registration to the template space  ------------ #
+        # Creating spatial transformation folder
+        stransf_dir  = Path(os.path.dirname(xfm_output))
+        stransf_name = os.path.basename(xfm_output)
+        
+        
+        if stransf_name.endswith('.nii.gz'):
+            stransf_name = stransf_name[:-7]
+        elif stransf_name.endswith('.nii') or stransf_name.endswith('.mat'):
+            stransf_name = stransf_name[:-4]
+        
+        if stransf_name.endswith('_xfm'):
+            stransf_name = stransf_name[:-4]
+        
+        if "_desc-" in stransf_name:
+            affine_name = cltbids._replace_entity_value(stransf_name, {'desc':'affine'})
+            nl_name = cltbids._replace_entity_value(stransf_name, {'desc':'warp'})
+            invnl_name = cltbids._replace_entity_value(stransf_name, {'desc':'iwarp'})
+        else:
+            affine_name = stransf_name + '_desc-affine'
+            nl_name = stransf_name + '_desc-warp'
+            invnl_name = stransf_name + '_desc-iwarp'
+        
+        affine_transf = os.path.join(stransf_dir, affine_name + '.mat')
+        nl_transf = os.path.join(stransf_dir, nl_name + '.nii.gz')
+        invnl_transf = os.path.join(stransf_dir, invnl_name + '.nii.gz')
+        
+    
+        if os.path.isfile(invnl_transf) and os.path.isfile(nl_transf):
+            if invert:
+                bashargs_transforms = ["-t", invnl_transf, "-t", "[" + affine_transf + ",1]"]
+            else:
+                bashargs_transforms = ["-t", nl_transf, "-t", affine_transf]
+        else:
+            if invert:
+                bashargs_transforms = ["-t", "[" + affine_transf + ",1]"]
+            else:
+                bashargs_transforms = ["-t", affine_transf]
+        
+        
+        # Creating the command
+        cmd_bashargs = ["antsApplyTransforms", "-d", "3", "-i" , in_image, "-r", ref_image, "-o", out_image, "-n", interp_cad]
+        cmd_bashargs.extend(bashargs_transforms)
+
+        # Running containerization
+        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
