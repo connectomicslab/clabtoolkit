@@ -1,4 +1,5 @@
 import os
+import sys
 import nibabel as nib
 import numpy as np
 import subprocess
@@ -281,41 +282,40 @@ def apply_multi_transf(in_image:str,
     elif interp_order == 7:
         interp_cad = "Welch"
 
+    ######## -- Registration to the template space  ------------ #
+    # Creating spatial transformation folder
+    stransf_dir  = Path(os.path.dirname(xfm_output))
+    stransf_name = os.path.basename(xfm_output)
+    
+    
+    if stransf_name.endswith('.nii.gz'):
+        stransf_name = stransf_name[:-7]
+    elif stransf_name.endswith('.nii') or stransf_name.endswith('.mat'):
+        stransf_name = stransf_name[:-4]
+    
+    if stransf_name.endswith('_xfm'):
+        stransf_name = stransf_name[:-4]
+    
+    if "_desc-" in stransf_name:
+        affine_name = cltbids._replace_entity_value(stransf_name, {'desc':'affine'})
+        nl_name = cltbids._replace_entity_value(stransf_name, {'desc':'warp'})
+        invnl_name = cltbids._replace_entity_value(stransf_name, {'desc':'iwarp'})
+    else:
+        affine_name = stransf_name + '_desc-affine'
+        nl_name = stransf_name + '_desc-warp'
+        invnl_name = stransf_name + '_desc-iwarp'
+    
+    affine_transf = os.path.join(stransf_dir, affine_name + '_xfm.mat')
+    nl_transf = os.path.join(stransf_dir, nl_name + '_xfm.nii.gz')
+    invnl_transf = os.path.join(stransf_dir, invnl_name + '_xfm.nii.gz')
+
     # Check if out_image is not computed and force is True
     if not os.path.isfile(out_image) or force:
 
-        if not os.path.isfile(xfm_output):
+        if not os.path.isfile(affine_transf):
             print("The spatial transformation file does not exist.")
             sys.exit()
         
-        ######## -- Registration to the template space  ------------ #
-        # Creating spatial transformation folder
-        stransf_dir  = Path(os.path.dirname(xfm_output))
-        stransf_name = os.path.basename(xfm_output)
-        
-        
-        if stransf_name.endswith('.nii.gz'):
-            stransf_name = stransf_name[:-7]
-        elif stransf_name.endswith('.nii') or stransf_name.endswith('.mat'):
-            stransf_name = stransf_name[:-4]
-        
-        if stransf_name.endswith('_xfm'):
-            stransf_name = stransf_name[:-4]
-        
-        if "_desc-" in stransf_name:
-            affine_name = cltbids._replace_entity_value(stransf_name, {'desc':'affine'})
-            nl_name = cltbids._replace_entity_value(stransf_name, {'desc':'warp'})
-            invnl_name = cltbids._replace_entity_value(stransf_name, {'desc':'iwarp'})
-        else:
-            affine_name = stransf_name + '_desc-affine'
-            nl_name = stransf_name + '_desc-warp'
-            invnl_name = stransf_name + '_desc-iwarp'
-        
-        affine_transf = os.path.join(stransf_dir, affine_name + '.mat')
-        nl_transf = os.path.join(stransf_dir, nl_name + '.nii.gz')
-        invnl_transf = os.path.join(stransf_dir, invnl_name + '.nii.gz')
-        
-    
         if os.path.isfile(invnl_transf) and os.path.isfile(nl_transf):
             if invert:
                 bashargs_transforms = ["-t", invnl_transf, "-t", "[" + affine_transf + ",1]"]
@@ -329,7 +329,7 @@ def apply_multi_transf(in_image:str,
         
         
         # Creating the command
-        cmd_bashargs = ["antsApplyTransforms", "-d", "3", "-i" , in_image, "-r", ref_image, "-o", out_image, "-n", interp_cad]
+        cmd_bashargs = ["antsApplyTransforms", "-e", "3", "-i" , in_image, "-r", ref_image, "-o", out_image, "-n", interp_cad]
         cmd_bashargs.extend(bashargs_transforms)
 
         # Running containerization
