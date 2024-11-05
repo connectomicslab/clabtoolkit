@@ -118,12 +118,12 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]):
                 hexcodes.append(colors[indcol])
                 
             elif isinstance(colors[indcol], np.ndarray):
-                hexcodes.append(_rgb2hex(color[0], color[1], color[2]))
+                hexcodes.append(rgb2hex(color[0], color[1], color[2]))
     
     elif isinstance(colors, np.ndarray):
         nrows, ncols = colors.shape
         for i in np.arange(0, nrows):
-            hexcodes.append(_rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
+            hexcodes.append(rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
 
     return hexcodes
 
@@ -670,7 +670,7 @@ def harmonize_colors(colors: Union[list, np.ndarray]):
                 hexcodes.append(colors[indcol])
                     
             elif isinstance(colors[indcol], np.ndarray):
-                hexcodes.append(_rgb2hex(color[0], color[1], color[2]))
+                hexcodes.append(rgb2hex(color[0], color[1], color[2]))
         colors = hexcodes
         
     return colors
@@ -706,7 +706,7 @@ def readjust_colors(colors: Union[list, np.ndarray]):
                     hexcodes.append(colors[indcol])
                         
                 elif isinstance(colors[indcol], np.ndarray):
-                    hexcodes.append(_rgb2hex(color[0], color[1], color[2]))
+                    hexcodes.append(rgb2hex(color[0], color[1], color[2]))
             colors = hexcodes
             
     elif isinstance(colors, np.ndarray):

@@ -5,7 +5,7 @@ from skimage import measure
 
 
 # This function removes the B0s volumes located at the end of the diffusion 4D volume.
-def _remove_empty_dwi_Volume(dwifile: str):
+def remove_empty_dwi_Volume(dwifile: str):
     """
     Remove the B0s volumes located at the end of the diffusion 4D volume.
     @params:

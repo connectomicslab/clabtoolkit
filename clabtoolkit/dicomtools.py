@@ -192,10 +192,10 @@ def org_conv_dicoms(in_dic_dir: str,
                             # start the thread pool
                             with ThreadPoolExecutor(nthreads) as executor:
                                 # send in the tasks
-                                # futures = [executor.submit(_build_parcellation, t1s[i],
+                                # futures = [executor.submit(build_parcellation, t1s[i],
                                 # bids_dir, deriv_dir, parccode, growwm) for i in range(n_subj)]
                                 
-                                futures = [executor.submit(_copy_dicom_file, dicom_files[i], subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force) for i in range(n_dics)]
+                                futures = [executor.submit(copy_dicom_file, dicom_files[i], subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force) for i in range(n_dics)]
                                 #futures = [executor.submit(test, i) for i in range(n_dics)]
 
                                 # register the progress indicator callback
