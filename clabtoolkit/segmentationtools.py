@@ -10,6 +10,7 @@ import nibabel as nib
 from typing import Union
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.bidstools as cltbids
+import clabtoolkit.imagetools as cltimg
 
 
 
@@ -282,7 +283,7 @@ def region_growing(iparc: np.ndarray,
             x, y, z = coord
             
             # Detecting the neighbors
-            neighbors = get_vox_neighbors(coord=coord, neighborhood='26', dims= '3')
+            neighbors = cltimg.get_vox_neighbors(coord=coord, neighborhood='26', dims= '3')
             # Remove from motion the coordinates out of the bounding box
             neighbors = neighbors[(neighbors[:, 0] >= 0) & (neighbors[:, 0] < iparc.shape[0]) &
                             (neighbors[:, 1] >= 0) & (neighbors[:, 1] < iparc.shape[1]) &
