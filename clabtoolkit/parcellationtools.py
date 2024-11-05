@@ -7,6 +7,8 @@ import pandas as pd
 import nibabel as nib
 from typing import Union
 import clabtoolkit.misctools as cltmisc
+import clabtoolkit.segmentationtools as cltseg
+from scilpy.image.labels import dilate_labels
 
 class Parcellation:
 
@@ -230,7 +232,8 @@ class Parcellation:
     
     def _apply_mask(self, image_mask,
                         codes2mask: Union[list, np.ndarray] = None,
-                        mask_type: str = 'upright'
+                        mask_type: str = 'upright',
+                        fill: bool = False
                         ):
         """
             Applies a mask to the parcellation data, restricting the spatial extension of the 
@@ -257,6 +260,9 @@ class Parcellation:
                 regions with the codes specified in `codes2mask`. If 'inverted', the mask
                 will be applied to the regions with codes different from those specified
                 in `codes2mask`. Default is 'upright'.
+            
+            fill : bool
+                If True, the regions will grow until the fill the provided mask. Default is False.
 
             Returns
             -------
@@ -304,10 +310,17 @@ class Parcellation:
         
         if mask_type == 'inverted':
             self.data[np.isin(mask_data, codes2mask)==True] = 0
+            bool_mask = np.isin(mask_data, codes2mask)==False
 
         else:
             self.data[np.isin(mask_data, codes2mask)==False] = 0
-        
+            bool_mask = np.isin(mask_data, codes2mask)==True
+            
+        if fill:
+            
+            # Refilling the unlabeled voxels according to a supplied mask
+            self.data = cltseg.region_growing(self.data, bool_mask)
+
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             self._adjust_values()
         
