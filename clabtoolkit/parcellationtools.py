@@ -8,7 +8,6 @@ import nibabel as nib
 from typing import Union
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.segmentationtools as cltseg
-from scilpy.image.labels import dilate_labels
 
 class Parcellation:
 
