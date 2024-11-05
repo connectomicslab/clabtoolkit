@@ -169,7 +169,7 @@ def replace_entity_value(entity:Union[dict, str],
 
     is_string = False
     if isinstance(entity, str):
-        entity_out = _str2entity(entity)
+        entity_out = str2entity(entity)
         is_string = True
     
     elif isinstance(entity, dict):
