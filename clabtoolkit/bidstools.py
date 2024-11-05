@@ -122,7 +122,7 @@ def delete_entity(entity: Union[dict, str],
     
     is_string = False
     if isinstance(entity, str):
-        entity_out = _str2entity(entity)
+        entity_out = str2entity(entity)
         is_string = True
         
     elif isinstance(entity, dict):
@@ -141,7 +141,7 @@ def delete_entity(entity: Union[dict, str],
             entity_out.pop(key, None)
     
     if is_string:
-        entity_out = _entity2str(entity_out)
+        entity_out = entity2str(entity_out)
     
     return entity_out
 
@@ -199,7 +199,7 @@ def replace_entity_value(entity:Union[dict, str],
             
     # Convert the dictionary to a string if the input was a string
     if is_string:
-        entity_out = _entity2str(entity_out)
+        entity_out = entity2str(entity_out)
     
     return entity_out
 
@@ -231,9 +231,9 @@ def recursively_replace_entity_value(root_dir:str,
     
     # Convert the strings to dictionaries
     if isinstance(dict2old, str):
-        dict2old = _str2entity(dict2old)
+        dict2old = str2entity(dict2old)
     if isinstance(dict2new, str):
-        dict2new = _str2entity(dict2new)
+        dict2new = str2entity(dict2new)
         
     
     # Leave in the dictionaries only the keys that are common
@@ -309,7 +309,7 @@ def replace_entity_key(entity:Union[dict, str],
 
     is_string = False
     if isinstance(entity, str):
-        entity = _str2entity(entity)
+        entity = str2entity(entity)
         is_string = True
         
     elif isinstance(entity, dict):
@@ -332,7 +332,7 @@ def replace_entity_key(entity:Union[dict, str],
     
     # Convert the dictionary to a string if the input was a string
     if is_string:
-        entity_out = _entity2str(entity_out)
+        entity_out = entity2str(entity_out)
     
     return entity_out
 
@@ -364,7 +364,7 @@ def insert_entity(entity:Union[dict, str],
     
     is_string = False
     if isinstance(entity, str):
-        entity = _str2entity(entity)
+        entity = str2entity(entity)
         is_string = True
         
     elif isinstance(entity, dict):
@@ -410,7 +410,7 @@ def insert_entity(entity:Union[dict, str],
     
     # Converting to string if the input was a string
     if is_string:
-        ent_out = _entity2str(ent_out)
+        ent_out = entity2str(ent_out)
 
     return ent_out
 

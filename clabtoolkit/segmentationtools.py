@@ -14,7 +14,7 @@ import clabtoolkit.imagetools as cltimg
 
 
 
-def _abased_parcellation(t1: str,
+def abased_parcellation(t1: str,
                             t1_temp: str,
                             atlas: str, 
                             out_parc: str, 
@@ -97,9 +97,9 @@ def _abased_parcellation(t1: str,
         stransf_name = stransf_name[:-4]
     
     if "_desc-" in stransf_name:
-        affine_name = cltbids._replace_entity_value(stransf_name, {'desc':'affine'})
-        nl_name = cltbids._replace_entity_value(stransf_name, {'desc':'warp'})
-        invnl_name = cltbids._replace_entity_value(stransf_name, {'desc':'iwarp'})
+        affine_name = cltbids.replace_entity_value(stransf_name, {'desc':'affine'})
+        nl_name = cltbids.replace_entity_value(stransf_name, {'desc':'warp'})
+        invnl_name = cltbids.replace_entity_value(stransf_name, {'desc':'iwarp'})
     else:
         affine_name = stransf_name + '_desc-affine'
         nl_name = stransf_name + '_desc-warp'
@@ -121,24 +121,24 @@ def _abased_parcellation(t1: str,
         cmd_bashargs = ['antsRegistrationSyN.sh', '-d', '3', '-f', t1_temp, '-m', t1, '-t', 's',
                         '-o', tmp_xfm_basename + '_']
         
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         # Changing the names
         cmd_bashargs = ['mv', temp_xfm_affine, xfm_affine]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
         cmd_bashargs = ['mv', temp_xfm_nl, xfm_nl]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         cmd_bashargs = ['mv', temp_xfm_invnl, xfm_invnl]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         cmd_bashargs = ['rm', tmp_xfm_basename + '*Warped.nii.gz']
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
 
@@ -156,7 +156,7 @@ def _abased_parcellation(t1: str,
                             '-o', out_parc, '-r', t1, '-t', xfm_invnl,
                             '-t','[' + xfm_affine + ',1]', '-n', 'NearestNeighbor']
 
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         # Removing the Warped images
@@ -168,7 +168,7 @@ def _abased_parcellation(t1: str,
         
     return out_parc
 
-def _spams2maxprob(spam_image:str,
+def spams2maxprob(spam_image:str,
                     prob_thresh:float=0.05,
                     vol_indexes:np.array=None,
                     maxp_name:str=None):

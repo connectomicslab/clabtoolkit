@@ -174,7 +174,7 @@ class Parcellation:
         """
 
         if isinstance(codes2remove, list):
-            codes2look = cltmisc.build_indexes(codes2look)
+            codes2remove = cltmisc.build_indexes(codes2remove)
             codes2remove = np.array(codes2remove)
 
         for i, v in enumerate(codes2remove):
