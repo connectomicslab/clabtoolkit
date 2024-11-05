@@ -235,7 +235,7 @@ def multi_hex2rgb(hexcodes: list):
 
     """
 
-    rgb_list = [_hex2rgb(hex_color) for hex_color in hexcodes]
+    rgb_list = [hex2rgb(hex_color) for hex_color in hexcodes]
     return np.array(rgb_list)
 
 def build_indexes(range_vector: list, 
