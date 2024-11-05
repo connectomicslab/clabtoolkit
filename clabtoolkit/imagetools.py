@@ -335,3 +335,100 @@ def apply_multi_transf(in_image:str,
         # Running containerization
         cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+
+def get_vox_neighbors(coord: np.ndarray, 
+                    neighborhood: str = '26', 
+                    dims: str = '3', 
+                    order: int = 1):
+    """
+    Get the neighborhood of a voxel.
+    
+    Parameters:
+    -----------
+    
+    coord : np.ndarray
+        Coordinates of the voxel.
+    
+    neighborhood : str
+        Neighborhood type (e.g. 6, 18, 26).
+        
+    dims : str
+        Number of dimensions (e.g. 2, 3).
+        
+    Returns:
+    --------
+    
+    neighbors : list
+        List of neighbors.
+    
+    Raises:
+    -------
+    
+    ValueError
+        If the number of dimensions is not supported.
+        
+    Examples:
+    ---------
+        
+        >>> neigh = get_vox_neighbors(neighborhood = '6', dims = '3')
+    
+    """
+    
+    # Check if the number of dimensions in coord supported by the supplied coordinates
+    if len(coord) != int(dims):
+        raise ValueError("The number of dimensions in the coordinates is not supported.")
+    
+    # Check if the number of dimensions is supported
+    if dims == '3':
+        
+        # Check if it is a valid neighborhood
+        if neighborhood not in ['6', '18', '26']:
+            raise ValueError("The neighborhood type is not supported.")
+
+        # Constructing the neighborhood
+        if neighborhood == '6':
+            neighbors = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]])
+
+        elif neighborhood == '12':
+            neighbors = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+                                    [1, 1, 0], [-1, -1, 0], [1, -1, 0], [-1, 1, 0], [1, 0, 1], [-1, 0, -1]])
+            
+        elif neighborhood == '18':
+            neighbors = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+                                    [1, 1, 0], [-1, -1, 0], [1, -1, 0], [-1, 1, 0], [1, 0, 1], [-1, 0, -1],
+                                    [1, 0, -1], [-1, 0, 1], [0, 1, 1], [0, -1, -1], [0, 1, -1], [0, -1, 1]])
+            
+        elif neighborhood == '26':
+            neighbors = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+                                    [1, 1, 0], [-1, -1, 0], [1, -1, 0], [-1, 1, 0], [1, 0, 1], [-1, 0, -1],
+                                    [1, 0, -1], [-1, 0, 1], [0, 1, 1], [0, -1, -1], [0, 1, -1], [0, -1, 1],
+                                    [1, 1, 1], [-1, -1, -1], [1, -1, -1], [-1, 1, -1], [1, 1, -1], [-1, -1, 1],
+                                    [1, -1, 1], [-1, 1, 1]])
+    elif dims == '2':
+        
+        if neighborhood not in ['4', '8']:
+            raise ValueError("The neighborhood type is not supported.")
+
+        if neighborhood == '4':
+            neighbors = np.array([[1, 0], [-1, 0], [0, 1], [0, -1]])
+        elif neighborhood == '8':
+            neighbors = np.array([[1, 0], [-1, 0], [0, 1], [0, -1],
+                                    [1, 1], [-1, -1], [1, -1], [-1, 1]])
+        
+    else:
+        raise ValueError("The number of dimensions is not supported.")
+    
+    neighbors = np.array([coord + n for n in neighbors])
+            
+    # # Loop around the order of the neighborhood
+    # if order > 1:
+    #     if dims == '3':
+    #         neighbors = np.vstack([np.array([x, y, z]) for x, y, z in neighbors])
+    #         neighbors = np.unique(neighbors, axis=0)
+    #         neighbors = np.vstack([get_vox_neighbors(neighborhood, dims, order - 1) for x, y, z in neighbors])    
+    #     elif dims == '2':
+    #         neighbors = np.vstack([np.array([x, y]) for x, y in neighbors])
+    #         neighbors = np.unique(neighbors, axis=0)
+    #         neighbors = np.vstack([get_vox_neighbors(neighborhood, dims, order - 1) for x, y in neighbors])
+        
+    return neighbors
