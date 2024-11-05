@@ -1,10 +1,13 @@
-
 import os
 import sys
 import subprocess
 from pathlib import Path
 import numpy as np
+from scipy.spatial import distance
+from scipy.ndimage import convolve
+from scipy.ndimage import label
 import nibabel as nib
+from typing import Union
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.bidstools as cltbids
 
@@ -232,3 +235,92 @@ def _spams2maxprob(spam_image:str,
         maxp_name = maxprob_thl
     
     return maxp_name
+
+def region_growing(iparc: np.ndarray,
+                    mask: Union[np.ndarray, np.bool_], 
+                    neighborhood='26'):
+    """
+    Region growing algorithm for parcellation correction. It labels the unlabeled voxels of 
+    the image mask with the most frequent label among the neighbors of each voxel.
+    
+    Parameters:
+    -----------
+    iparc : np.ndarray
+        Parcellation image.
+        
+    mask : np.ndarray
+        Mask image.
+        
+        neighborhood : str
+        Neighborhood type (e.g. 6, 18, 26).
+        
+    Returns:
+    --------
+    
+    
+    """
+
+    # Create a binary array where labeled voxels are marked as 1
+    binary_labels = (iparc > 0).astype(int)
+
+    # Convolve with the kernel to count labeled neighbors for each voxel
+    kernel = np.array([[[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+                        [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
+                        [[1, 1, 1], [1, 1, 1], [1, 1, 1]]])
+    labeled_neighbor_count = convolve(binary_labels, kernel, mode='constant', cval=0)
+
+    # Mask for voxels that have at least one labeled neighbor
+    mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
+    ind = np.argwhere((mask_with_labeled_neighbors != 0)& (binary_labels == 0)& (mask))
+    ind_orig = ind.copy() * 0
+    
+    # Loop until no more voxels could be labeled or all the voxels are labeled
+    while (len(ind) > 0)& (np.array_equal(ind, ind_orig) == False):
+        ind_orig = ind.copy()
+        # Process each unlabeled voxel
+        for coord in ind:
+            x, y, z = coord
+            
+            # Detecting the neighbors
+            neighbors = get_vox_neighbors(coord=coord, neighborhood='26', dims= '3')
+            # Remove from motion the coordinates out of the bounding box
+            neighbors = neighbors[(neighbors[:, 0] >= 0) & (neighbors[:, 0] < iparc.shape[0]) &
+                            (neighbors[:, 1] >= 0) & (neighbors[:, 1] < iparc.shape[1]) &
+                            (neighbors[:, 2] >= 0) & (neighbors[:, 2] < iparc.shape[2])]
+                        
+            # Labels of the neighbors
+            neigh_lab = iparc[neighbors[:,0],neighbors[:,1],neighbors[:,2]]
+            
+            if len(np.argwhere(neigh_lab > 0)) > 2:
+                
+                # Remove the neighbors that are not labeled
+                neighbors = neighbors[neigh_lab > 0]
+                neigh_lab = neigh_lab[neigh_lab > 0]
+                
+                unique_labels, counts = np.unique(neigh_lab, return_counts=True)
+                max_count = counts.max()
+                max_labels = unique_labels[counts == max_count]
+                
+                if len(max_labels) == 1:
+                    iparc[x, y, z] = max_labels[0]
+                    
+                else:
+                    # In case of tie, choose the label of the closest neighbor
+                    distances = [distance.euclidean(coord, (dx, dy, dz))
+                                for (dx, dy, dz), lbl in zip(neighbors, neigh_lab) if lbl in max_labels]
+                    closest_label = max_labels[np.argmin(distances)]
+                    iparc[x, y, z] = closest_label
+                # most_frequent_label = np.bincount(neigh_lab[neigh_lab != 0]).argmax()
+
+        
+        # Create a binary array where labeled voxels are marked as 1
+        binary_labels = (iparc > 0).astype(int)
+
+        # Convolve with the kernel to count labeled neighbors for each voxel
+        labeled_neighbor_count = convolve(binary_labels, kernel, mode='constant', cval=0)
+
+        # Mask for voxels that have at least one labeled neighbor
+        mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
+        ind = np.argwhere((mask_with_labeled_neighbors != 0)& (binary_labels == 0)& (mask))
+
+    return iparc * mask
