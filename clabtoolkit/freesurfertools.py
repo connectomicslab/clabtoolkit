@@ -14,8 +14,6 @@ import pandas as pd
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.parcellationtools as cltparc
 
-
-
 class AnnotParcellation:
     """
     This class contains methods to work with FreeSurfer annot files
@@ -61,7 +59,7 @@ class AnnotParcellation:
         temp_name = self.name.lower()
         
         # Find in the string annot_name if it is lh. or rh.
-        hemi = _detect_hemi(self.name)
+        hemi = detect_hemi(self.name)
 
         self.hemi = hemi
 
@@ -94,7 +92,7 @@ class AnnotParcellation:
         self.regnames = reg_names
 
     
-    def _save_annotation(self, out_file: str = None):
+    def save_annotation(self, out_file: str = None):
         """
         Save the annotation file
         @params:
@@ -114,7 +112,7 @@ class AnnotParcellation:
             out_file, self.codes, self.regtable, self.regnames
         )
 
-    def _fill_parcellation(
+    def fill_parcellation(
         self, 
         label_file: str, 
         surf_file: str, 
@@ -272,7 +270,7 @@ class AnnotParcellation:
 
         return corr_annot, vert_lab, reg_ctable, reg_names
     
-    def _export_to_tsv(self, 
+    def export_to_tsv(self, 
                         prefix2add: str = None,
                         reg_offset: int = 1000,
                         tsv_file: str = None):
@@ -298,12 +296,12 @@ class AnnotParcellation:
         """
     
         # Creating the hexadecimal colors for the regions
-        parc_hexcolor = cltmisc._multi_rgb2hex(self.regtable[:, 0:3])
+        parc_hexcolor = cltmisc.multi_rgb2hex(self.regtable[:, 0:3])
 
         # Creating the region names
         parc_names = self.regnames
         if prefix2add is not None:
-            parc_names = cltmisc._correct_names(parc_names, prefix=prefix2add)
+            parc_names = cltmisc.correct_names(parc_names, prefix=prefix2add)
         
         parc_index = np.arange(0, len(parc_names))
         
@@ -377,7 +375,7 @@ class AnnotParcellation:
                 freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], 'subjects')
                 subj_id = "fsaverage"
 
-                hemi = _detect_hemi(gii_file)
+                hemi = detect_hemi(gii_file)
                 ref_surf = os.path.join(freesurfer_dir, subj_id, "surf", hemi + ".white")
             else:
                 raise ValueError("Impossible to set the reference surface file. Please provide it as an argument")
@@ -392,7 +390,7 @@ class AnnotParcellation:
         # Generating the bash command
         cmd_bashargs = ['mris_convert', '--annot', gii_file, ref_surf, annot_file]
         
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         return annot_file
@@ -430,7 +428,7 @@ class AnnotParcellation:
                 freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], 'subjects')
                 subj_id = "fsaverage"
 
-                hemi = _detect_hemi(gii_file)
+                hemi = detect_hemi(gii_file)
                 ref_surf = os.path.join(freesurfer_dir, subj_id, "surf", hemi + ".white")
             else:
                 raise ValueError("Impossible to set the reference surface file. Please provide it as an argument")
@@ -452,7 +450,7 @@ class AnnotParcellation:
         # Generating the bash command
         cmd_bashargs = ['mris_convert', '--annot', annot_file, ref_surf, gii_file]
         
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
     @staticmethod
@@ -522,7 +520,7 @@ class AnnotParcellation:
         # Set freesurfer directory as subjects directory
         os.environ["SUBJECTS_DIR"] = freesurfer_dir
             
-        hemi_cad = _detect_hemi(gcs_file)
+        hemi_cad = detect_hemi(gcs_file)
         
         if annot_file is None:
             annot_file = os.path.join(os.path.dirname(gcs_file), os.path.basename(gcs_file).replace(".gcs", ".annot"))
@@ -534,12 +532,12 @@ class AnnotParcellation:
         cmd_bashargs = ['mris_ca_label', '-l', ctx_label, '-aseg', aseg_presurf, ref_id,
                         hemi_cad, sphere_reg, gcs_file, annot_file]
         
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         return annot_file
     
-    def _annot2tsv(self, tsv_file: str = None):
+    def annot2tsv(self, tsv_file: str = None):
         """
         Save the annotation file as a tsv file
         @params:
@@ -559,7 +557,7 @@ class AnnotParcellation:
 
         return tsv_file
     
-    def _annot2gcs(
+    def annot2gcs(
         self,
         gcs_file: str = None,
         freesurfer_dir: str = None,
@@ -678,7 +676,7 @@ class AnnotParcellation:
             gcs_file,
         ]
         
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
         # Delete the ctab file
@@ -744,8 +742,8 @@ class FreeSurferSubject():
         # Creating the Surf dictionary
         surf_dict = {}
 
-        lh_s_dict, lh_t_dict = self._get_hemi_dicts(subj_dir=subj_dir, hemi='lh')
-        rh_s_dict, rh_t_dict = self._get_hemi_dicts(subj_dir=subj_dir, hemi='rh')
+        lh_s_dict, lh_t_dict = self.get_hemi_dicts(subj_dir=subj_dir, hemi='lh')
+        rh_s_dict, rh_t_dict = self.get_hemi_dicts(subj_dir=subj_dir, hemi='rh')
 
         surf_dict['lh'] = lh_s_dict
         surf_dict['rh'] = rh_s_dict
@@ -764,7 +762,7 @@ class FreeSurferSubject():
         self.fs_files['stats'] = stats_dict
 
 
-    def _get_hemi_dicts(self, subj_dir:str, hemi:str):
+    def get_hemi_dicts(self, subj_dir:str, hemi:str):
         """
         This method creates the dictionaries for the hemisphere files.
         
@@ -802,7 +800,7 @@ class FreeSurferSubject():
 
         return s_dict, t_dict
     
-    def _get_proc_status(self):
+    def get_proc_status(self):
         """
         This method checks the processing status
             
@@ -892,7 +890,7 @@ class FreeSurferSubject():
         self.pstatus = pstatus
 
     
-    def _launch_freesurfer(self, t1w_img:str = None, 
+    def launch_freesurfer(self, t1w_img:str = None, 
                             proc_stage: Union[str, list] = 'all',
                             extra_proc: Union[str, list] = None,
                             cont_tech: str = "local",
@@ -952,7 +950,7 @@ class FreeSurferSubject():
         vert_int = int(''.join(ver_ent))
 
         if not hasattr(self, 'pstatus'):
-            self._get_proc_status() 
+            self.get_proc_status() 
         proc_status = self.pstatus
 
         # Check if the processing stage is valid
@@ -993,13 +991,13 @@ class FreeSurferSubject():
                 if os.path.isdir(os.path.join(self.subjs_dir, self.subj_id)) and os.path.isfile(self.fs_files['mri']['orig']):
                     for st in proc_stage:
                         cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-' + st]
-                        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image)
                         subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             else:
                 if os.path.isfile(t1w_img):
                     for st in proc_stage:
                         cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-i', t1w_img,'-' + st]
-                        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                         subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
                 else:
                     raise ValueError("The T1w image does not exist")
@@ -1015,23 +1013,23 @@ class FreeSurferSubject():
                         raise ValueError("The T1w image does not exist")
 
                 cmd_bashargs = ['recon-all', '-i', t1w_img, '-subjid', self.subj_id, '-all']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
             elif proc_status == 'autorecon1':
                 cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon2']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
                 cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon3']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
             elif proc_status == 'autorecon2':
                 cmd_bashargs = ['recon-all', '-subjid', self.subj_id, '-autorecon3']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image)
                 subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
-        self._get_proc_status() 
+        self.get_proc_status() 
         proc_status = self.pstatus
 
         # Processing extra stages
@@ -1095,13 +1093,13 @@ class FreeSurferSubject():
 
             if len(cmd_list) > 0:
                 for cmd_bashargs in cmd_list:
-                    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                    cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image)
                     subprocess.run(cmd_cont, stderr=subprocess.DEVNULL, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
         return proc_status
 
     @staticmethod
-    def _set_freesurfer_directory(fs_dir: str = None):
+    def set_freesurfer_directory(fs_dir: str = None):
         """
         Function to set up the FreeSurfer directory
         
@@ -1133,7 +1131,7 @@ class FreeSurferSubject():
         os.environ["SUBJECTS_DIR"] = str(fs_dir)
 
     
-    def _annot2ind(self, 
+    def annot2ind(self, 
                     ref_id:str, 
                     hemi:str, 
                     fs_annot:str, 
@@ -1190,7 +1188,7 @@ class FreeSurferSubject():
 
         if not os.path.isfile(ind_annot) or force:
             
-            FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
+            FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
             
             # Create the folder if it does not exist
             temp_dir = os.path.dirname(ind_annot)
@@ -1199,7 +1197,7 @@ class FreeSurferSubject():
             
             if cont_tech != "local":
                 cmd_bashargs = ['echo', '$SUBJECTS_DIR']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
                 subjs_dir_cont = out_cmd.stdout.split('\n')[0]
                 dir_cad = self.subjs_dir + ':' + subjs_dir_cont
@@ -1208,7 +1206,7 @@ class FreeSurferSubject():
             cmd_bashargs = ['mri_surf2surf', '--srcsubject', ref_id, '--trgsubject', self.subj_id,
                                     '--hemi', hemi, '--sval-annot', fs_annot,
                                     '--tval', ind_annot]
-            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
             
             # Bind the FreeSurfer subjects directory
             if cont_tech == "singularity":
@@ -1224,7 +1222,7 @@ class FreeSurferSubject():
             cort_parc = AnnotParcellation(parc_file=ind_annot)
             label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
             surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
-            cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+            cort_parc.fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
             
         elif os.path.isfile(ind_annot) and not force:
             # Print a message
@@ -1233,7 +1231,7 @@ class FreeSurferSubject():
             
         return ind_annot
     
-    def _gcs2ind(self,
+    def gcs2ind(self,
                     fs_gcs: str, 
                     ind_annot: str, 
                     hemi: str, 
@@ -1271,7 +1269,7 @@ class FreeSurferSubject():
 
         if not os.path.isfile(ind_annot) or force:
             
-            FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
+            FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
 
             # Create the folder if it does not exist
             temp_dir = os.path.dirname(ind_annot)
@@ -1280,7 +1278,7 @@ class FreeSurferSubject():
             
             if cont_tech != "local":
                 cmd_bashargs = ['echo', '$SUBJECTS_DIR']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
                 subjs_dir_cont = out_cmd.stdout.split('\n')[0]
                 dir_cad = self.subjs_dir + ':' + subjs_dir_cont
@@ -1293,7 +1291,7 @@ class FreeSurferSubject():
             cmd_bashargs = ['mris_ca_label', '-l', cort_file, self.subj_id, hemi, sph_file,
                             fs_gcs, ind_annot]
             
-            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
             
             # Bind the FreeSurfer subjects directory
             if cont_tech == "singularity":
@@ -1309,7 +1307,7 @@ class FreeSurferSubject():
             cort_parc = AnnotParcellation(parc_file=ind_annot)
             label_file = os.path.join(self.subjs_dir, self.subj_id, 'label', hemi + '.cortex.label')
             surf_file = os.path.join(self.subjs_dir, self.subj_id, 'surf', hemi + '.inflated')
-            cort_parc._fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
+            cort_parc.fill_parcellation(corr_annot=ind_annot, label_file=label_file, surf_file=surf_file)
             
         elif os.path.isfile(ind_annot) and not force:
             # Print a message
@@ -1318,7 +1316,7 @@ class FreeSurferSubject():
 
         return ind_annot
     
-    def _surf2vol(self, 
+    def surf2vol(self, 
                         atlas: str,
                         out_vol: str, 
                         gm_grow: Union[int, str] = '0', 
@@ -1370,11 +1368,11 @@ class FreeSurferSubject():
             
         """
         
-        FreeSurferSubject._set_freesurfer_directory(self.subjs_dir)
+        FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
         
         if cont_tech != "local":
             cmd_bashargs = ['echo', '$SUBJECTS_DIR']
-            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
             out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
             subjs_dir_cont = out_cmd.stdout.split('\n')[0]
             dir_cad = self.subjs_dir + ':' + subjs_dir_cont
@@ -1391,7 +1389,7 @@ class FreeSurferSubject():
             
             # Check if the elements of the list are tsv or lut. If the elements are not tsv or lut delete them
             # Lower all the elements in the list
-            color_table = cltmisc._filter_by_substring(color_table, ['tsv', 'lut'], boolcase=False)
+            color_table = cltmisc.filter_by_substring(color_table, ['tsv', 'lut'], boolcase=False)
             
             # If the list is empty set its value to None
             if len(color_table) == 0:
@@ -1399,12 +1397,12 @@ class FreeSurferSubject():
 
             if cont_tech != "local":
                 cmd_bashargs = ['echo', '$FREESURFER_HOME']
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
                 fslut_file_cont = os.path.join(out_cmd.stdout.split('\n')[0], 'FreeSurferColorLUT.txt')
                 tmp_name = str(uuid.uuid4())
                 cmd_bashargs = ['cp', 'replace_cad', '/tmp/' + tmp_name]
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image)
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image)
                 
                 # Replace the element of the list equal to replace_cad by the path of the lut file
                 cmd_cont = [w.replace('replace_cad', fslut_file_cont) for w in cmd_cont]
@@ -1442,7 +1440,7 @@ class FreeSurferSubject():
                 cmd_bashargs = ['mri_aparc2aseg', '--s', self.subj_id, '--annot', atlas, '--wmparc-dmax', gm_grow, '--labelwm',
                                 '--hypo-as-wm', '--new-ribbon', '--o', out_vol]
                 
-            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
 
             # Bind the FreeSurfer subjects directory
             if cont_tech == "singularity":
@@ -1457,7 +1455,7 @@ class FreeSurferSubject():
             if bool_native:
 
                 # Moving the resulting parcellation from conform space to native
-                self._conform2native(mgz_conform = out_vol, nii_native = out_vol, force=force)
+                self.conform2native(mgz_conform = out_vol, nii_native = out_vol, force=force)
                 
             if bool_mixwm:
                     
@@ -1470,8 +1468,8 @@ class FreeSurferSubject():
                 mask = np.logical_and(parc_vol >= 3000, parc_vol < 5000)
                 parc_vol[mask] = parc_vol[mask] - 2000
                 parc.data = parc_vol
-                parc._adjust_values
-                parc._save_parcellation(out_file=out_vol)
+                parc.adjust_values
+                parc.save_parcellation(out_file=out_vol)
 
             if color_table is not None:
                 temp_iparc = nib.load(out_vol)
@@ -1492,14 +1490,14 @@ class FreeSurferSubject():
                 fs_names = lut_dict["name"]
                 fs_colors = lut_dict["color"]
                 
-                values, idx = cltmisc._ismember_from_list( fs_codes, unique_vals.tolist())
+                values, idx = cltmisc.ismember_from_list( fs_codes, unique_vals.tolist())
 
                 # select the fs_names and fs_colors in the indexes idx
                 selected_fs_code = [fs_codes[i] for i in idx]
                 selected_fs_name = [fs_names[i] for i in idx]
                 selected_fs_color = [fs_colors[i] for i in idx]
 
-                selected_fs_color = cltmisc._multi_rgb2hex(selected_fs_color)
+                selected_fs_color = cltmisc.multi_rgb2hex(selected_fs_color)
 
                 lh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'lh.' + atlas + '.annot')
                 rh_ctx_parc = os.path.join(self.subjs_dir, self.subj_id, 'label', 'rh.' + atlas + '.annot')
@@ -1507,8 +1505,8 @@ class FreeSurferSubject():
                 lh_obj = AnnotParcellation(parc_file = lh_ctx_parc)
                 rh_obj = AnnotParcellation(parc_file = rh_ctx_parc)
                 
-                df_lh, out_tsv = lh_obj._export_to_tsv(prefix2add='ctx-lh-', reg_offset=1000)
-                df_rh, out_tsv = rh_obj._export_to_tsv(prefix2add='ctx-rh-', reg_offset=2000)
+                df_lh, out_tsv = lh_obj.export_to_tsv(prefix2add='ctx-lh-', reg_offset=1000)
+                df_rh, out_tsv = rh_obj.export_to_tsv(prefix2add='ctx-rh-', reg_offset=2000)
 
                 # Convert the column name of the dataframe to a list
                 lh_ctx_code = df_lh['parcid'].tolist()
@@ -1529,17 +1527,17 @@ class FreeSurferSubject():
                     
                 else:
 
-                    lh_wm_name = cltmisc._correct_names(lh_ctx_name, replace=['ctx-lh-','wm-lh-'])
+                    lh_wm_name = cltmisc.correct_names(lh_ctx_name, replace=['ctx-lh-','wm-lh-'])
                     # Add 2000 to each element of the list lh_ctx_code to create the WM code
                     lh_wm_code = [x + 2000 for x in lh_ctx_code]
 
-                    rh_wm_name = cltmisc._correct_names(rh_ctx_name, replace=['ctx-rh-','wm-rh-'])
+                    rh_wm_name = cltmisc.correct_names(rh_ctx_name, replace=['ctx-rh-','wm-rh-'])
                     # Add 2000 to each element of the list lh_ctx_code to create the WM code
                     rh_wm_code = [x + 2000 for x in rh_ctx_code]
 
                     # Invert the colors lh_wm_color and rh_wm_color
-                    ilh_wm_color = cltmisc._invert_colors(lh_ctx_color)
-                    irh_wm_color = cltmisc._invert_colors(rh_ctx_color)
+                    ilh_wm_color = cltmisc.invert_colors(lh_ctx_color)
+                    irh_wm_color = cltmisc.invert_colors(rh_ctx_color)
 
                     all_codes  = selected_fs_code  + lh_ctx_code  + rh_ctx_code  + lh_wm_code  + rh_wm_code
                     all_names  = selected_fs_name  + lh_ctx_name  + rh_ctx_name  + lh_wm_name  + rh_wm_name
@@ -1579,7 +1577,7 @@ class FreeSurferSubject():
 
         return out_vol
 
-    def _conform2native(self, 
+    def conform2native(self, 
                         mgz_conform: str, 
                         nii_native: str, 
                         interp_method: str = "nearest", 
@@ -1624,7 +1622,7 @@ class FreeSurferSubject():
             raise FileNotFoundError(f"File {raw_vol} does not exist")
         
         cmd_bashargs = ['mri_convert', '-i', raw_vol, '-o', tmp_raw]
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         img = nib.load(tmp_raw)
@@ -1639,7 +1637,7 @@ class FreeSurferSubject():
 
             cmd_bashargs = ['mri_vol2vol', '--mov', mgz_conform, '--targ', raw_vol,
                             '--regheader', '--o', nii_native, '--no-save-reg', '--interp', interp_method]
-            cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
             subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
         elif os.path.isfile(nii_native) and not force:
@@ -1656,12 +1654,12 @@ class FreeSurferSubject():
             else:
                 cmd_bashargs = ['mri_vol2vol', '--mov', mgz_conform, '--targ', raw_vol,
                             '--regheader', '--o', nii_native, '--no-save-reg', '--interp', interp_method]
-                cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+                cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
                 subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
 
     
                 
-def _create_fsaverage_links(
+def create_fsaverage_links(
     fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
 ):
     """
@@ -1721,7 +1719,7 @@ def _create_fsaverage_links(
     return link_folder
 
 
-def _remove_fsaverage_links(linkavg_folder: str):
+def remove_fsaverage_links(linkavg_folder: str):
     """
     Remove the links to the average folder
     @params:
@@ -1743,7 +1741,7 @@ def _remove_fsaverage_links(linkavg_folder: str):
     ):
         os.remove(linkavg_folder)
         
-def _detect_hemi(file_name: str):
+def detect_hemi(file_name: str):
     """
     Detect the hemisphere from the filename
     
@@ -1797,7 +1795,7 @@ def get_version(cont_tech: str = "local",
     
     # Running the version command
     cmd_bashargs = ['recon-all', '-version']
-    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+    cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
     out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
     
     vers_cad = out_cmd.stdout.split('-')[3]
@@ -1805,7 +1803,7 @@ def get_version(cont_tech: str = "local",
     return vers_cad
 
 
-def _conform2native(cform_mgz: str, 
+def conform2native(cform_mgz: str, 
                         nat_nii: str, 
                         fssubj_dir: str, 
                         fullid: str,
@@ -1845,5 +1843,5 @@ def _conform2native(cform_mgz: str,
 
     cmd_bashargs = ['mri_vol2vol', '--mov', cform_mgz, '--targ', raw_vol,
                     '--regheader', '--o', nat_nii, '--no-save-reg', '--interp', interp_method]
-    cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+    cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
     subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command

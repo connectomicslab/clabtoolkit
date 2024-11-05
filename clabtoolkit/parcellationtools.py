@@ -33,20 +33,20 @@ class Parcellation:
                         lut_file = parc_file.replace('.nii.gz', '.lut')
                         
                         if os.path.isfile(tsv_file):
-                            self._load_colortable(lut_file=tsv_file, lut_type='tsv')
+                            self.load_colortable(lut_file=tsv_file, lut_type='tsv')
                             
                         elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
-                            self._load_colortable(lut_file=lut_file, lut_type='lut')
+                            self.load_colortable(lut_file=lut_file, lut_type='lut')
                             
                     elif parc_file.endswith('.nii'):
                         tsv_file = parc_file.replace('.nii', '.tsv')
                         lut_file = parc_file.replace('.nii', '.lut')
                     
                         if os.path.isfile(tsv_file):
-                            self._load_colortable(lut_file=tsv_file, lut_type='tsv')
+                            self.load_colortable(lut_file=tsv_file, lut_type='tsv')
                             
                         elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
-                            self._load_colortable(lut_file=lut_file, lut_type='lut')
+                            self.load_colortable(lut_file=lut_file, lut_type='lut')
                 
             elif isinstance(parc_file, np.ndarray):
                 self.data = parc_file
@@ -55,13 +55,13 @@ class Parcellation:
             # Adjust values to the ones present in the parcellation
             
             if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-                self._adjust_values()
+                self.adjust_values()
             
             # Detect minimum and maximum labels
-            self._parc_range()
+            self.parc_range()
 
 
-    def _keep_by_name(self, 
+    def keep_by_name(self, 
                             names2look: Union[list, str], 
                             rearrange: bool = False):
         """
@@ -77,19 +77,19 @@ class Parcellation:
 
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             # Find the indexes of the names that contain the substring
-            indexes = cltmisc._get_indexes_by_substring(list1=self.name, 
+            indexes = cltmisc.get_indexes_by_substring(list1=self.name, 
                                 substr=names2look, 
                                 invert=False, 
                                 boolcase=False)
             
             if len(indexes) > 0:
                 sel_st_codes = [self.index[i] for i in indexes]
-                self._keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
+                self.keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
             else:
                 print("The names were not found in the parcellation")
 
 
-    def _keep_by_code(self, 
+    def keep_by_code(self, 
                             codes2look: Union[list, np.ndarray], 
                             rearrange: bool = False):
         """
@@ -101,7 +101,7 @@ class Parcellation:
 
         # Convert the codes2look to a numpy array
         if isinstance(codes2look, list):
-            codes2look = cltmisc._build_indexes(codes2look)
+            codes2look = cltmisc.build_indexes(codes2look)
             codes2look = np.array(codes2look)
 
         # Create 
@@ -160,10 +160,10 @@ class Parcellation:
             self.color = [self.color[i] for i in indexes]
             
         # Detect minimum and maximum labels
-        self._parc_range()
+        self.parc_range()
 
     
-    def _remove_by_code(self,
+    def remove_by_code(self,
                             codes2remove: Union[list, np.ndarray],
                             rearrange: bool = False):
         """
@@ -174,7 +174,7 @@ class Parcellation:
         """
 
         if isinstance(codes2remove, list):
-            codes2look = cltmisc._build_indexes(codes2look)
+            codes2look = cltmisc.build_indexes(codes2look)
             codes2remove = np.array(codes2remove)
 
         for i, v in enumerate(codes2remove):
@@ -189,14 +189,14 @@ class Parcellation:
 
         # If rearrange is True, the parcellation will be rearranged starting from 1
         if rearrange:
-            self._keep_by_code(codes2look=st_codes, rearrange=True)
+            self.keep_by_code(codes2look=st_codes, rearrange=True)
         else:
-            self._keep_by_code(codes2look=st_codes, rearrange=False)
+            self.keep_by_code(codes2look=st_codes, rearrange=False)
 
         # Detect minimum and maximum labels
-        self._parc_range()
+        self.parc_range()
         
-    def _remove_by_name(self,
+    def remove_by_name(self,
                             names2remove: Union[list, str],
                             rearrange: bool = False):
         """
@@ -212,14 +212,14 @@ class Parcellation:
         
         if hasattr(self, "name") and hasattr(self, "index") and hasattr(self, "color"):
         
-            indexes = cltmisc._get_indexes_by_substring(list1=self.name, 
+            indexes = cltmisc.get_indexes_by_substring(list1=self.name, 
                                 substr=names2remove, 
                                 invert=True, 
                                 boolcase=False)
             
             if len(indexes) > 0:
                 sel_st_codes = [self.index[i] for i in indexes]
-                self._keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
+                self.keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
                 
             else:
                 print("The names were not found in the parcellation")
@@ -227,10 +227,10 @@ class Parcellation:
             print("The parcellation does not contain the attributes name, index and color")
             
         # Detect minimum and maximum labels
-        self._parc_range()
+        self.parc_range()
     
     
-    def _apply_mask(self, image_mask,
+    def apply_mask(self, image_mask,
                         codes2mask: Union[list, np.ndarray] = None,
                         mask_type: str = 'upright',
                         fill: bool = False
@@ -277,7 +277,7 @@ class Parcellation:
             -------
             >>> parcellation = Parcellation("parc_file.nii")
             >>> mask = np.array([...])  # A 3D mask array of the same shape as `data`
-            >>> parcellation._apply_mask(mask, codes2mask=[1, 2, 3], mask_type='upright')
+            >>> parcellation.apply_mask(mask, codes2mask=[1, 2, 3], mask_type='upright')
             
             This will apply the mask to the regions with codes 1, 2, and 3 in the parcellation.
             
@@ -305,7 +305,7 @@ class Parcellation:
             codes2mask = codes2mask[codes2mask != 0]
         
         if isinstance(codes2mask, list):
-            codes2mask = cltmisc._build_indexes(codes2mask)
+            codes2mask = cltmisc.build_indexes(codes2mask)
             codes2mask = np.array(codes2mask)
         
         if mask_type == 'inverted':
@@ -322,12 +322,12 @@ class Parcellation:
             self.data = cltseg.region_growing(self.data, bool_mask)
 
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            self._adjust_values()
+            self.adjust_values()
         
         # Detect minimum and maximum labels
-        self._parc_range()
+        self.parc_range()
     
-    def _mask_image(self, 
+    def mask_image(self, 
                         image_2mask: Union[str, list, np.ndarray],
                         masked_image: Union[str, list, np.ndarray] = None,
                         codes2mask: Union[str, list, np.ndarray] = None,
@@ -374,7 +374,7 @@ class Parcellation:
             >>> parcellation = Parcellation("parc_file.nii")
             >>> image = "image.nii"
             >>> masked_image = "masked_image.nii"
-            >>> parcellation._mask_image(image_2mask=image, masked_image=masked_image, codes2mask=[1, 2, 3], mask_type='upright')
+            >>> parcellation.mask_image(image_2mask=image, masked_image=masked_image, codes2mask=[1, 2, 3], mask_type='upright')
             
             This will mask the image with the parcellation, using the regions with codes 1, 2, and 3 to create the binary mask.
             The masked image will be saved in the path specified in `masked_image`.
@@ -398,7 +398,7 @@ class Parcellation:
             codes2mask = codes2mask[codes2mask != 0]
 
         if isinstance(codes2mask, list):
-            codes2mask = cltmisc._build_indexes(codes2mask)
+            codes2mask = cltmisc.build_indexes(codes2mask)
             codes2mask = np.array(codes2mask)
         
         if mask_type == 'inverted':
@@ -430,7 +430,7 @@ class Parcellation:
             
             return img_data
 
-    def _adjust_values(self):
+    def adjust_values(self):
         """
         Adjust the codes, indexes, names and colors to the values present on the parcellation
         
@@ -456,9 +456,9 @@ class Parcellation:
         if hasattr(self, "color"):
             self.color = [self.color[i] for i in indexes]
         
-        self._parc_range()
+        self.parc_range()
         
-    def _group_by_code(self,
+    def group_by_code(self,
                         codes2group: Union[list, np.ndarray],
                         new_codes: Union[list, np.ndarray] = None,
                         new_names: Union[list, str] = None,
@@ -489,12 +489,12 @@ class Parcellation:
 
         for i, v in enumerate(codes2group):
             if isinstance(v, list):
-                codes2group[i] = cltmisc._build_indexes(v)
+                codes2group[i] = cltmisc.build_indexes(v)
         
         # Convert the new_codes to a numpy array
         if new_codes is not None:
             if isinstance(new_codes, list):
-                new_codes = cltmisc._build_indexes(new_codes)
+                new_codes = cltmisc.build_indexes(new_codes)
                 new_codes = np.array(new_codes)
             elif isinstance(new_codes, (str, np.integer, int)):
                 new_codes = np.array([new_codes])
@@ -518,7 +518,7 @@ class Parcellation:
             if isinstance(new_colors, list):
 
                 if isinstance(new_colors[0], str):
-                    new_colors = cltmisc._multi_hex2rgb(new_colors)
+                    new_colors = cltmisc.multi_hex2rgb(new_colors)
 
                 elif isinstance(new_colors[0], np.ndarray):
                     new_colors = np.array(new_colors)
@@ -532,7 +532,7 @@ class Parcellation:
             else:
                 raise ValueError("The new_colors must be a list of colors or a numpy array")
 
-            new_colors = cltmisc._readjust_colors(new_colors)
+            new_colors = cltmisc.readjust_colors(new_colors)
 
             if new_colors.shape[0] != n_groups:
                 raise ValueError("The number of new colors must be equal to the number of groups that will be created")
@@ -562,13 +562,13 @@ class Parcellation:
             self.color = new_colors
         else:
             # If new_colors is not provided, the colors will be created
-            self.color = cltmisc._create_random_colors(n_groups)
+            self.color = cltmisc.create_random_colors(n_groups)
 
             
         # Detect minimum and maximum labels
-        self._parc_range()
+        self.parc_range()
 
-    def _rearange_parc(self, offset: int = 0):
+    def rearange_parc(self, offset: int = 0):
         """
         Rearrange the parcellation starting from 1
         @params:
@@ -577,7 +577,7 @@ class Parcellation:
 
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
-        self._keep_by_code(codes2look=st_codes, rearrange=True)
+        self.keep_by_code(codes2look=st_codes, rearrange=True)
         
         ind = np.where(self.data != 0)
         self.data[ind] = self.data[ind] + offset
@@ -586,9 +586,9 @@ class Parcellation:
         if offset != 0:
             self.index = [x + offset for x in self.index]
 
-        self._parc_range()
+        self.parc_range()
 
-    def _add_parcellation(self,
+    def add_parcellation(self,
                 parc2add, 
                 append: bool = False):
         """
@@ -627,7 +627,7 @@ class Parcellation:
         -------
         >>> parcellation1 = Parcellation(parc1.nii.gz)
         >>> parcellation2 = Parcellation(parc2.nii.gz)
-        >>> parcellation1._add_parcellation(parcellation2, append=False)
+        >>> parcellation1.add_parcellation(parcellation2, append=False)
         """
         if isinstance(parc2add, Parcellation):
             parc2add = [parc2add]
@@ -668,13 +668,13 @@ class Parcellation:
                                     self.color = np.concatenate((self.color, tmp_parc_obj.color), axis=0)
                                     
                                 elif isinstance(tmp_parc_obj.color, list) and isinstance(self.color, np.ndarray):
-                                    temp_color = cltmisc._readjust_colors(self.color)
-                                    temp_color = cltmisc._multi_rgb2hex(temp_color)
+                                    temp_color = cltmisc.readjust_colors(self.color)
+                                    temp_color = cltmisc.multi_rgb2hex(temp_color)
                                     
                                     self.color = temp_color + tmp_parc_obj.color
                                 elif isinstance(tmp_parc_obj.color, np.ndarray) and isinstance(self.color, list):
-                                    temp_color = cltmisc._readjust_colors(tmp_parc_obj.color)
-                                    temp_color = cltmisc._multi_rgb2hex(temp_color)
+                                    temp_color = cltmisc.readjust_colors(tmp_parc_obj.color)
+                                    temp_color = cltmisc.multi_rgb2hex(temp_color)
                                     
                                     self.color = self.color + temp_color
                             
@@ -691,12 +691,12 @@ class Parcellation:
                 raise ValueError("The list is empty")
         
         if hasattr(self, "color"):
-            self.color = cltmisc._harmonize_colors(self.color)
+            self.color = cltmisc.harmonize_colors(self.color)
         
         # Detect minimum and maximum labels
-        self._parc_range()
+        self.parc_range()
 
-    def _save_parcellation(self,
+    def save_parcellation(self,
                             out_file: str,
                             affine: np.float64 = None,
                             headerlines: Union[list, str] = None,
@@ -723,17 +723,17 @@ class Parcellation:
 
         if save_lut:
             if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-                self._export_colortable(out_file=out_file.replace(".nii.gz", ".lut"), headerlines=headerlines)
+                self.export_colortable(out_file=out_file.replace(".nii.gz", ".lut"), headerlines=headerlines)
             else:
                 print("Warning: The parcellation does not contain a color table. The lut file will not be saved")
         
         if save_tsv:
             if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-                self._export_colortable(out_file=out_file.replace(".nii.gz", ".tsv"), lut_type="tsv")
+                self.export_colortable(out_file=out_file.replace(".nii.gz", ".tsv"), lut_type="tsv")
             else:
                 print("Warning: The parcellation does not contain a color table. The tsv file will not be saved")   
                 
-    def _load_colortable(self, 
+    def load_colortable(self, 
                     lut_file: Union[str, dict] = None, 
                     lut_type: str = "lut"):
         """
@@ -796,10 +796,10 @@ class Parcellation:
             else:
                 self.color = lut_file["color"]
             
-        self._adjust_values()
-        self._parc_range()
+        self.adjust_values()
+        self.parc_range()
     
-    def _sort_index(self):
+    def sort_index(self):
         """
         This method sorts the index, name and color attributes of the parcellation according to the index
         """
@@ -810,7 +810,7 @@ class Parcellation:
         self.name = [self.name[i] for i in sort_index]
         self.color = [self.color[i] for i in sort_index]
     
-    def _export_colortable(self, 
+    def export_colortable(self, 
                             out_file: str, 
                             lut_type: str = "lut",
                             headerlines: Union[list, str] = None,
@@ -886,10 +886,10 @@ class Parcellation:
                         else:
                             tsv_df["color"] = self.color
                     else:
-                        tsv_df["color"] = cltmisc._multi_rgb2hex(self.color)
+                        tsv_df["color"] = cltmisc.multi_rgb2hex(self.color)
                         
                 elif isinstance(self.color, np.ndarray):
-                    tsv_df["color"] = cltmisc._multi_rgb2hex(self.color)
+                    tsv_df["color"] = cltmisc.multi_rgb2hex(self.color)
             
             
             self.write_tsvtable(
@@ -898,7 +898,7 @@ class Parcellation:
         else:
             raise ValueError("The lut_type must be 'lut' or 'tsv'")
     
-    def _replace_values(self,
+    def replace_values(self,
                         codes2rep: Union[list, np.ndarray],
                         new_codes: Union[list, np.ndarray]
                         ):
@@ -929,11 +929,11 @@ class Parcellation:
 
         for i, v in enumerate(codes2rep):
             if isinstance(v, list):
-                codes2rep[i] = cltmisc._build_indexes(v, nonzeros=False)
+                codes2rep[i] = cltmisc.build_indexes(v, nonzeros=False)
         
         # Convert the new_codes to a numpy array
         if isinstance(new_codes, list):
-            new_codes = cltmisc._build_indexes(new_codes, nonzeros=False)
+            new_codes = cltmisc.build_indexes(new_codes, nonzeros=False)
             new_codes = np.array(new_codes)
         elif isinstance(new_codes, np.integer):
             new_codes = np.array([new_codes])
@@ -947,12 +947,12 @@ class Parcellation:
             self.data[mask] = new_codes[ng]
         
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            self._adjust_values()
+            self.adjust_values()
             
-        self._parc_range()
+        self.parc_range()
         
         
-    def _parc_range(self):
+    def parc_range(self):
         """
         Detect the range of labels
 
@@ -983,7 +983,7 @@ class Parcellation:
         st_names_lut = lut_dict["name"]
         st_colors_lut = lut_dict["color"]
         
-        st_colors_lut = cltmisc._multi_hex2rgb(st_colors_lut)
+        st_colors_lut = cltmisc.multi_hex2rgb(st_colors_lut)
         
         lut_lines = []
         for roi_pos, st_code in enumerate(st_codes_lut):
@@ -1046,7 +1046,7 @@ class Parcellation:
         st_codes = [np.int32(x) for x in st_codes]
         
         # Converting colors to hexadecimal format
-        st_colors = cltmisc._multi_rgb2hex(st_colors)
+        st_colors = cltmisc.multi_rgb2hex(st_colors)
         
         # Create the dictionary
         lut_dict = {"index": st_codes, "name": st_names, "color": st_colors}
@@ -1168,8 +1168,8 @@ class Parcellation:
             
         if isinstance(colors, list):
             if isinstance(colors[0], str):
-                colors = cltmisc._harmonize_colors(colors)
-                colors = cltmisc._multi_hex2rgb(colors)
+                colors = cltmisc.harmonize_colors(colors)
+                colors = cltmisc.multi_hex2rgb(colors)
             elif isinstance(colors[0], list):
                 colors = np.array(colors)
             elif isinstance(colors[0], np.ndarray):
@@ -1258,11 +1258,11 @@ class Parcellation:
                 
                 elif isinstance(temp_colors[0], list):
                     colors = np.array(temp_colors)
-                    seg_hexcol = cltmisc._multi_rgb2hex(colors)
+                    seg_hexcol = cltmisc.multi_rgb2hex(colors)
                     tsv_dict["color"] = seg_hexcol  
                     
             elif isinstance(temp_colors, np.ndarray):
-                seg_hexcol = cltmisc._multi_rgb2hex(temp_colors)
+                seg_hexcol = cltmisc.multi_rgb2hex(temp_colors)
                 tsv_dict["color"] = seg_hexcol 
                 
         
@@ -1337,7 +1337,7 @@ class Parcellation:
         nrows, ncols = seg_rgbcol.shape
         for i in np.arange(0, nrows):
             seg_hexcol.append(
-                cltmisc._rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2])
+                cltmisc.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2])
             )
 
         seg_df = pd.DataFrame(
@@ -1355,7 +1355,7 @@ class Parcellation:
         return seg_df
     
 
-    def _print_properties(self):
+    def print_properties(self):
         """
         Print the properties of the parcellation
         """

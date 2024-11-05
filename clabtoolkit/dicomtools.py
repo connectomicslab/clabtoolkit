@@ -41,7 +41,7 @@ def test(name):
     time.sleep(1)
 
 
-def _org_conv_dicoms(in_dic_dir: str, 
+def org_conv_dicoms(in_dic_dir: str, 
                     out_dic_dir: str, 
                     demog_file: str=None, 
                     ids_file:str=None,
@@ -104,14 +104,14 @@ def _org_conv_dicoms(in_dic_dir: str,
     
     if ids_file != None:
         if os.path.isfile(ids_file):
-            subj_ids = cltmisc._select_ids_from_file(subj_ids, ids_file)
+            subj_ids = cltmisc.select_ids_from_file(subj_ids, ids_file)
             
         else:
             s_ids = ids_file.split(',')
 
             if nosub == False:
                 temp_ids = [s.strip('sub-') for s in subj_ids]
-                s_ids = cltmisc._list_intercept(s_ids, temp_ids)
+                s_ids = cltmisc.list_intercept(s_ids, temp_ids)
 
             if not s_ids:
                 s_ids = subj_ids
@@ -166,7 +166,7 @@ def _org_conv_dicoms(in_dic_dir: str,
                         date_times.append(date_time)
                 try:
                     if booldic:
-                        dicom_files = cltmisc._detect_recursive_files(subj_dir)
+                        dicom_files = cltmisc.detect_recursive_files(subj_dir)
                         ses_idprev = []
                         ser_idprev = []
                         
@@ -176,7 +176,7 @@ def _org_conv_dicoms(in_dic_dir: str,
                             
                             pb1 = pb.add_task(f'[red]Copying DICOMs: Subject {subj_id} ({cont_subj + 1}/{n_subj}) ', total=n_dics)
                             for cont_dic, dfiles in enumerate(dicom_files):
-                                ser_dir = _copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force)
+                                ser_dir = copy_dicom_file(dfiles, subj_id, out_dic_dir, ses_id, date_times, demobool, subTB, force)
                                 all_ser_dirs.append(ser_dir)
                                 pb.update(task_id=pb1, description= f'[red]Copying DICOMs: Subject {subj_id} ({cont_dic+1}/{n_dics})', completed=cont_dic+1) 
                                 
@@ -242,7 +242,7 @@ def _org_conv_dicoms(in_dic_dir: str,
         _compress_dicom_session(out_dic_dir)
 
 
-def _copy_dicom_file(dic_file: str, 
+def copy_dicom_file(dic_file: str, 
                     subj_id: str,
                     out_dic_dir: str,
                     ses_id: str = None,
@@ -301,7 +301,7 @@ def _copy_dicom_file(dic_file: str,
             sdate_time = datetime(day=day, month=month, year=year)
 
             # Creating default current Session ID
-            ses_id, ser_id = _create_session_series_names(dataset)
+            ses_id, ser_id = create_session_series_names(dataset)
 
             if not ses_id == None:
                 ses_id = 'ses-' + ses_id
@@ -347,7 +347,7 @@ def _copy_dicom_file(dic_file: str,
 
 
 # Extract Series Id and Sessions Id from a pydicom object
-def _create_session_series_names(dataset):
+def create_session_series_names(dataset):
 
     # % This function creates the session and the series name for a dicom object
 
@@ -390,7 +390,7 @@ def _create_session_series_names(dataset):
         ser_id = ser_id.replace(cad, '')
 
     # Removing the dupplicated _ characters and replacing the remaining by -
-    ser_id = cltmisc._rem_dupplicate_char(ser_id, '_')
+    ser_id = cltmisc.rem_dupplicate_char(ser_id, '_')
     ser_id = ser_id.replace("_", "-")
 
     if any("SeriesNumber" in s for s in attributes):
@@ -402,7 +402,7 @@ def _create_session_series_names(dataset):
 
     return ses_id, ser_id
 
-def _uncompress_dicom_session(dic_dir: str, 
+def uncompress_dicom_session(dic_dir: str, 
                             boolrmtar: bool = False,
                             subj_ids=None):
     """
@@ -480,7 +480,7 @@ def _uncompress_dicom_session(dic_dir: str,
     print("End of the uncompression process.")
 
 
-def _compress_dicom_session(dic_dir: str, subj_ids=None):
+def compress_dicom_session(dic_dir: str, subj_ids=None):
     """
     Compress session folders
     @params:

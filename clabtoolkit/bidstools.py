@@ -15,7 +15,7 @@ from typing import Union
 ####################################################################################################
 ####################################################################################################
 
-def _entity2str(entity:dict) -> str:
+def entity2str(entity:dict) -> str:
     """
     This function converts an entity dictionary to a string.
     
@@ -55,7 +55,7 @@ def _entity2str(entity:dict) -> str:
 
 
 ####################################################################################################
-def _str2entity(string:str) -> dict:
+def str2entity(string:str) -> dict:
     """
     This function converts a string to a dictionary.
     
@@ -101,7 +101,7 @@ def _str2entity(string:str) -> dict:
     return ent_dict
 
 ####################################################################################################
-def _delete_entity(entity: Union[dict, str], 
+def delete_entity(entity: Union[dict, str], 
                     key2rem:Union[list, str]) -> Union[dict,  str]:
     """
     This function removes some entities from a dictionary or string following the BIDs naming convention. 
@@ -146,7 +146,7 @@ def _delete_entity(entity: Union[dict, str],
     return entity_out
 
 ####################################################################################################
-def _replace_entity_value(entity:Union[dict, str], 
+def replace_entity_value(entity:Union[dict, str], 
                             ent2replace:dict, 
                             verbose:bool = False) -> Union[dict, str]:
     """
@@ -178,7 +178,7 @@ def _replace_entity_value(entity:Union[dict, str],
     else:
         raise ValueError("The entity must be a dictionary or a string")
     
-    ent2replace = cltmisc._remove_empty_keys_or_values(ent2replace) 
+    ent2replace = cltmisc.remove_empty_keys_or_values(ent2replace) 
     
     # Replace values from dictionary
     ent_list = list(entity_out.keys())
@@ -204,7 +204,7 @@ def _replace_entity_value(entity:Union[dict, str],
     return entity_out
 
 ####################################################################################################
-def _recursively_replace_entity_value(root_dir:str, 
+def recursively_replace_entity_value(root_dir:str, 
                             dict2old: Union[dict, str],
                             dict2new: Union[dict, str]):
     
@@ -286,7 +286,7 @@ def _recursively_replace_entity_value(root_dir:str,
                 os.rename(old_path, new_path)
 
 ####################################################################################################
-def _replace_entity_key(entity:Union[dict, str], 
+def replace_entity_key(entity:Union[dict, str], 
                             keys2replace:dict,
                             verbose:bool = False) -> Union[dict, str]:
     """
@@ -321,7 +321,7 @@ def _replace_entity_key(entity:Union[dict, str],
     if not isinstance(keys2replace, dict):
         raise ValueError("The keys2replace must be a dictionary")
     
-    keys2replace = cltmisc._remove_empty_keys_or_values(keys2replace) 
+    keys2replace = cltmisc.remove_empty_keys_or_values(keys2replace) 
     
     # Replace key names from dictionary
     for old_key in keys2replace:
@@ -338,7 +338,7 @@ def _replace_entity_key(entity:Union[dict, str],
 
 
 ####################################################################################################
-def _insert_entity(entity:Union[dict, str], 
+def insert_entity(entity:Union[dict, str], 
                     entity2add:dict, 
                     prev_entity:str = None) -> Union[dict, str]:
     """
@@ -373,7 +373,7 @@ def _insert_entity(entity:Union[dict, str],
     else:
         raise ValueError("The entity must be a dictionary or a string")
     
-    entity2add = cltmisc._remove_empty_keys_or_values(entity2add)
+    entity2add = cltmisc.remove_empty_keys_or_values(entity2add)
     
     if prev_entity is not None:
         ent_list = entity.keys()
@@ -425,7 +425,7 @@ def _insert_entity(entity:Union[dict, str],
 ####################################################################################################
 
 # This function copies the BIDs folder and its derivatives for e given subjects to a new location
-def _copy_bids_folder(
+def copy_bids_folder(
     bids_dir: str,
     out_dir: str,
     fold2copy: list = ["anat"],
@@ -485,7 +485,7 @@ def _copy_bids_folder(
         subj_dir = os.path.join(bids_dir, subj_id)
         out_subj_dir = os.path.join(out_dir, subj_id)
 
-        cltmisc._printprogressbar(
+        cltmisc.printprogressbar(
             i + 1,
             nsubj,
             "Processing subject "

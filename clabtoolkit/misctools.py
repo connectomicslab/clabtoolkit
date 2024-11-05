@@ -29,14 +29,14 @@ class SmartFormatter(argparse.HelpFormatter):
         HelpFormatter class from the argparse module
     
     """
-    def _split_lines(self, text, width):
+    def split_lines(self, text, width):
         if text.startswith('R|'):
             return text[2:].splitlines()
-        # this is the RawTextHelpFormatter._split_lines
-        return argparse.HelpFormatter._split_lines(self, text, width)
+        # this is the RawTextHelpFormatter.split_lines
+        return argparse.HelpFormatter.split_lines(self, text, width)
     
 # Print iterations progress
-def _printprogressbar(
+def printprogressbar(
     iteration,
     total,
     prefix="",
@@ -67,7 +67,7 @@ def _printprogressbar(
         print()
 
 
-def _rgb2hex(r:int, 
+def rgb2hex(r:int, 
             g:int, 
             b:int):
     
@@ -92,7 +92,7 @@ def _rgb2hex(r:int,
 
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
-def _multi_rgb2hex(colors: Union[list, np.ndarray]):
+def multi_rgb2hex(colors: Union[list, np.ndarray]):
     """
     Function to convert rgb to hex for an array of colors
 
@@ -109,7 +109,7 @@ def _multi_rgb2hex(colors: Union[list, np.ndarray]):
     """
 
     # If all the values in the list are between 0 and 1, then the values are multiplied by 255
-    colors = _readjust_colors(colors)
+    colors = readjust_colors(colors)
 
     hexcodes = []
     if isinstance(colors, list):
@@ -127,7 +127,7 @@ def _multi_rgb2hex(colors: Union[list, np.ndarray]):
 
     return hexcodes
 
-def _hex2rgb(hexcode: str):
+def hex2rgb(hexcode: str):
     """
     Function to convert hex to rgb
 
@@ -146,7 +146,7 @@ def _hex2rgb(hexcode: str):
     hexcode = hexcode.lstrip('#')
     return tuple(int(hexcode[i:i+2], 16) for i in (0, 2, 4))
 
-def _search_in_list(ref_list, list2look):
+def search_in_list(ref_list, list2look):
     """
     Search for the index of the elements in list2look in ref_list
     
@@ -169,7 +169,7 @@ def _search_in_list(ref_list, list2look):
         ret.append(index)
     return ret
 
-def _find_closest_date(dates_list: list,
+def find_closest_date(dates_list: list,
                         target_date: str,
                         date_fmt:str='%Y%m%d'):
     """
@@ -219,7 +219,7 @@ def _find_closest_date(dates_list: list,
 
 
 
-def _multi_hex2rgb(hexcodes: list):
+def multi_hex2rgb(hexcodes: list):
     """
     Function to convert hex to rgb for an array of colors
 
@@ -238,7 +238,7 @@ def _multi_hex2rgb(hexcodes: list):
     rgb_list = [_hex2rgb(hex_color) for hex_color in hexcodes]
     return np.array(rgb_list)
 
-def _build_indexes(range_vector: list, 
+def build_indexes(range_vector: list, 
                     nonzeros: bool = True
                     ):
     """
@@ -319,11 +319,11 @@ def _build_indexes(range_vector: list,
         indexes = [x for x in indexes if x != 0]
 
     # Flatten the list and unique the values
-    indexes = _remove_duplicates(indexes)
+    indexes = remove_duplicates(indexes)
 
     return indexes
 
-def _remove_duplicates(input_list: list):
+def remove_duplicates(input_list: list):
     """
     Function to remove duplicates from a list while preserving the order
 
@@ -350,7 +350,7 @@ def _remove_duplicates(input_list: list):
 
     return unique_list
 
-def _select_ids_from_file(subids: list, 
+def select_ids_from_file(subids: list, 
                             idfile: Union[list, str]):
     """
     Function to select the ids from a list of ids that are in a file.
@@ -379,12 +379,12 @@ def _select_ids_from_file(subids: list,
             out_ids = [s for s in subids if any(xs in s for xs in t1s2run)]
     
     if isinstance(idfile, list):
-        out_ids = _list_intercept(subids, idfile)
+        out_ids = list_intercept(subids, idfile)
 
     return out_ids
 
 
-def _filter_by_substring(list1: list,
+def filter_by_substring(list1: list,
                         substr: Union[str, list], 
                         boolcase: bool = False):
     """
@@ -435,11 +435,11 @@ def _filter_by_substring(list1: list,
     # Select the atlas_files with the indexes
     filt_list = [list1[i] for i in indexes]
     
-    filt_list = _remove_duplicates(filt_list)
+    filt_list = remove_duplicates(filt_list)
     
     return filt_list
 
-def _get_indexes_by_substring(list1: list,
+def get_indexes_by_substring(list1: list,
                         substr: Union[str, list], 
                         invert: bool = False,
                         boolcase: bool = False):
@@ -495,7 +495,7 @@ def _get_indexes_by_substring(list1: list,
     return indexes
 
 
-def _list_intercept(list1: list,
+def list_intercept(list1: list,
                     list2: list):
     """
     Function to intercept the elements from 2 different lists.
@@ -527,7 +527,7 @@ def _list_intercept(list1: list,
     return int_list
 
 
-def _detect_recursive_files(in_dir):
+def detect_recursive_files(in_dir):
     """
     Function to detect all the files in a directory and its subdirectories
     
@@ -551,7 +551,7 @@ def _detect_recursive_files(in_dir):
 
     return files
 
-def _rem_dupplicate_char(strcad: str, 
+def rem_dupplicate_char(strcad: str, 
                         dchar: str):
     """
     This function removes duplicate characters from strings.
@@ -583,7 +583,7 @@ def _rem_dupplicate_char(strcad: str,
 
     return ''.join(chars)
 
-def _invert_colors(colors: Union[list, np.ndarray]):
+def invert_colors(colors: Union[list, np.ndarray]):
     """
     Function to invert the colors by finding its complementary color. 
 
@@ -604,7 +604,7 @@ def _invert_colors(colors: Union[list, np.ndarray]):
 
         if isinstance(colors[0], str):
             # Convert the hexadecimal colors to rgb
-            colors = _multi_hex2rgb(colors)
+            colors = multi_hex2rgb(colors)
             color_type = 'hex'
             
         elif isinstance(colors[0], np.ndarray):
@@ -630,7 +630,7 @@ def _invert_colors(colors: Union[list, np.ndarray]):
     colors = 255 - colors
     
     if color_type == 'hex':
-        colors = _multi_rgb2hex(colors)
+        colors = multi_rgb2hex(colors)
     
     elif color_type == 'arraylist':
         if bool_norm:
@@ -645,7 +645,7 @@ def _invert_colors(colors: Union[list, np.ndarray]):
     
     return colors
 
-def _harmonize_colors(colors: Union[list, np.ndarray]):
+def harmonize_colors(colors: Union[list, np.ndarray]):
     """
     Function to harmonize the colors in a list. The colors can be in hexadecimal or rgb format. 
     If the list contains colors in multiple formats, the function will convert all the colors to hexadecimal format.
@@ -675,7 +675,7 @@ def _harmonize_colors(colors: Union[list, np.ndarray]):
         
     return colors
 
-def _readjust_colors(colors: Union[list, np.ndarray]):
+def readjust_colors(colors: Union[list, np.ndarray]):
     """
     Function to readjust the colors to the range 0-255
 
@@ -718,7 +718,7 @@ def _readjust_colors(colors: Union[list, np.ndarray]):
     
     return colors
 
-def _create_random_colors(n: int):
+def create_random_colors(n: int):
     """
     Function to create a list of n random colors
 
@@ -739,7 +739,7 @@ def _create_random_colors(n: int):
 
     return colors
 
-def _correct_names(regnames: list, 
+def correct_names(regnames: list, 
                     prefix: str = None, 
                     sufix: str = None, 
                     lower: bool = False,
@@ -799,7 +799,7 @@ def _correct_names(regnames: list,
     return regnames
 
 
-def _ismember_from_list(a, b):
+def ismember_from_list(a, b):
     """
     Function to check if elements of a are in b
 
@@ -825,7 +825,7 @@ def _ismember_from_list(a, b):
 
     return values, idx
 
-def _remove_empty_keys_or_values(d: dict) -> dict:
+def remove_empty_keys_or_values(d: dict) -> dict:
     """
     Remove dictionary entries with empty keys, keys with only spaces, or empty values.
 
@@ -853,7 +853,7 @@ def _remove_empty_keys_or_values(d: dict) -> dict:
 
     return d
 
-def _generate_container_command(bash_args, 
+def generate_container_command(bash_args, 
                                 technology:str = "local", 
                                 image_path:str = None, 
                                 license_path:str = None):

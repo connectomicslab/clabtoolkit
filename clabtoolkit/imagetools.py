@@ -66,7 +66,7 @@ def crop_image_from_mask(in_image: str,
         st_codes = np.unique(mask_data)
         st_codes = st_codes[st_codes != 0]
     
-    st_codes = cltmisc._build_indexes(st_codes)
+    st_codes = cltmisc.build_indexes(st_codes)
     st_codes = np.array(st_codes)
     
     
@@ -297,9 +297,9 @@ def apply_multi_transf(in_image:str,
         stransf_name = stransf_name[:-4]
     
     if "_desc-" in stransf_name:
-        affine_name = cltbids._replace_entity_value(stransf_name, {'desc':'affine'})
-        nl_name = cltbids._replace_entity_value(stransf_name, {'desc':'warp'})
-        invnl_name = cltbids._replace_entity_value(stransf_name, {'desc':'iwarp'})
+        affine_name = cltbids.replace_entity_value(stransf_name, {'desc':'affine'})
+        nl_name = cltbids.replace_entity_value(stransf_name, {'desc':'warp'})
+        invnl_name = cltbids.replace_entity_value(stransf_name, {'desc':'iwarp'})
     else:
         affine_name = stransf_name + '_desc-affine'
         nl_name = stransf_name + '_desc-warp'
@@ -333,7 +333,7 @@ def apply_multi_transf(in_image:str,
         cmd_bashargs.extend(bashargs_transforms)
 
         # Running containerization
-        cmd_cont = cltmisc._generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
 
 def get_vox_neighbors(coord: np.ndarray, 
