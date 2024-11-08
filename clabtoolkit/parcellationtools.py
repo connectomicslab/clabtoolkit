@@ -5,9 +5,10 @@ import copy
 import numpy as np
 import pandas as pd
 import nibabel as nib
-from typing import Union
+from typing import Union, List
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.segmentationtools as cltseg
+from scilpy.image.labels import dilate_labels
 
 class Parcellation:
 
@@ -473,6 +474,10 @@ class Parcellation:
 
         """
 
+        # if all the  elements in codes2group are numeric then convert codes2group to a numpy array
+        if all(isinstance(x, (int, np.integer, float)) for x in codes2group):
+            codes2group = np.array(codes2group)
+        
         # Detect thecodes2group is a list of list
         if isinstance(codes2group, list):
             if isinstance(codes2group[0], list):
@@ -483,7 +488,7 @@ class Parcellation:
                 n_groups = 1
             
         elif isinstance(codes2group, np.ndarray):
-            codes2group = codes2group.tolist()
+            codes2group = [codes2group.tolist()]
             n_groups = 1
 
         for i, v in enumerate(codes2group):
@@ -540,6 +545,115 @@ class Parcellation:
         out_atlas = np.zeros_like(self.data, dtype='int16')
         for i in range(n_groups):
             code2look = np.array(codes2group[i])
+
+            if new_codes is not None:
+                out_atlas[np.isin(self.data, code2look)==True] = new_codes[i]
+            else:
+                out_atlas[np.isin(self.data, code2look)==True] = i + 1
+
+        self.data = out_atlas
+
+        if new_codes is not None:
+            self.index = new_codes.tolist()
+        
+        if new_names is not None:
+            self.name = new_names
+        else:
+            # If new_names is not provided, the names will be created
+            self.name = ["group_{}".format(i) for i in new_codes]
+        
+        if new_colors is not None:
+            self.color = new_colors
+        else:
+            # If new_colors is not provided, the colors will be created
+            self.color = cltmisc.create_random_colors(n_groups)
+
+            
+        # Detect minimum and maximum labels
+        self.parc_range()
+
+    def group_by_name(self,
+                        names2group: Union[List[list], List[str]],
+                        new_codes: Union[list, np.ndarray] = None,
+                        new_names: Union[list, str] = None,
+                        new_colors: Union[list, np.ndarray] = None):
+        """
+        Group the structures with the names specified in the list or array names2group.
+        @params:
+            names2group      - Required  : List or list of list of names to group:
+            new_codes        - Optional  : New codes for the groups. It can assign new codes 
+                                            otherwise it will assign the codes from 1 to number of groups:
+            new_names        - Optional  : New names for the groups:
+            new_colors       - Optional  : New colors for the groups:
+
+        """
+
+        # Detect thecodes2group is a list of list
+        if isinstance(names2group, list):
+            if isinstance(names2group[0], list):
+                n_groups = len(names2group)
+            
+            elif isinstance(codes2group[0], (str)):
+                codes2group = [codes2group]
+                n_groups = 1
+
+        for i, v in enumerate(codes2group):
+            if isinstance(v, list):
+                codes2group[i] = cltmisc.build_indexes(v)
+        
+        # Convert the new_codes to a numpy array
+        if new_codes is not None:
+            if isinstance(new_codes, list):
+                new_codes = cltmisc.build_indexes(new_codes)
+                new_codes = np.array(new_codes)
+            elif isinstance(new_codes, (str, np.integer, int)):
+                new_codes = np.array([new_codes])
+
+        else:
+            new_codes = np.arange(1, n_groups + 1)
+
+        if len(new_codes) != n_groups:
+            raise ValueError("The number of new codes must be equal to the number of groups that will be created")
+        
+        # Convert the new_names to a list
+        if new_names is not None:
+            if isinstance(new_names, str):
+                new_names = [new_names]
+
+            if len(new_names) != n_groups:
+                raise ValueError("The number of new names must be equal to the number of groups that will be created")
+        
+        # Convert the new_colors to a numpy array
+        if new_colors is not None:
+            if isinstance(new_colors, list):
+
+                if isinstance(new_colors[0], str):
+                    new_colors = cltmisc.multi_hex2rgb(new_colors)
+
+                elif isinstance(new_colors[0], np.ndarray):
+                    new_colors = np.array(new_colors)
+
+                else:
+                    raise ValueError("If new_colors is a list, it must be a list of hexadecimal colors or a list of rgb colors")
+                
+            elif isinstance(new_colors, np.ndarray):
+                pass
+
+            else:
+                raise ValueError("The new_colors must be a list of colors or a numpy array")
+
+            new_colors = cltmisc.readjust_colors(new_colors)
+
+            if new_colors.shape[0] != n_groups:
+                raise ValueError("The number of new colors must be equal to the number of groups that will be created")
+        
+        # Creating the grouped parcellation
+        out_atlas = np.zeros_like(self.data, dtype='int16')
+        
+        for i in range(n_groups):
+            indexes = cltmisc.get_indexes_by_substring(list1=self.name, 
+                                    substr=names2group[i])
+            code2look = np.array(indexes) + 1
 
             if new_codes is not None:
                 out_atlas[np.isin(self.data, code2look)==True] = new_codes[i]
