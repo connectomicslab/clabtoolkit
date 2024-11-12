@@ -931,3 +931,39 @@ def generate_container_command(bash_args,
     
 
     return container_cmd
+
+# simple progress indicator callback function
+def parallel_progress_indicator(future, lock, n_total, n_comp, pb, pb1, text_cad):
+    """
+    A simple progress indicator for the concurrent futures
+    
+    Parameters
+    ----------
+    future : concurrent.futures.Future
+        Future object
+    lock : threading.Lock
+        Lock object
+    n_total : int
+        Total number of tasks
+    n_comp : int
+        Number of completed tasks
+    pb : rich.progress.Progress
+        Progress bar object
+    pb1 : rich.progress.TaskID
+        Task ID
+    text_cad : str
+        Text to show in the progress bar
+        
+    Returns
+    -------
+    None
+    
+    """
+    # obtain the lock
+    with lock:
+        # update the counter
+        n_comp += 1
+        # report progress
+        # print(f'{tasks_completed}/{n_subj} completed, {n_subj-tasks_completed} remain.')
+        # pb.update(task_id=pb1, description= f'[red]Completed {n_comp}/{n_subj}', completed=n_subj)
+        pb.update(task_id=pb1, description= f'[red]{text_cad}: Finished ({n_comp}/{n_total})', completed=n_comp) 

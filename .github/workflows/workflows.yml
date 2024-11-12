@@ -1,14 +1,6 @@
 name: Publish Python distribution to PyPI and TestPyPI
 
-on: 
-  push:
-    branches:
-      - release/*
-    tags:
-      - '[1-9]+.[0-9]+.[0-9]+' # Only deploy on tags with semantic versioning
-      - '[1-9]+.[0-9]+.[0-9]+-[a-z]+' # Only deploy on tags with semantic versioning
-      - 'v[1-9]+.[0-9]+.[0-9]+' # Only deploy on tags with semantic versioning
-      - 'v[1-9]+.[0-9]+.[0-9]+-[a-z]+' # Only deploy on tags with semantic versioning
+on: push
 
 jobs:
   build:
