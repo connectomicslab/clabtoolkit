@@ -718,6 +718,36 @@ def readjust_colors(colors: Union[list, np.ndarray]):
     
     return colors
 
+class bcolors:
+    """
+    Class to define the colors for the terminal output.
+    
+    
+    """
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    OKYELLOW = '\033[93m'
+    OKRED = '\033[91m'
+    OKMAGENTA = '\033[95m'
+    PURPLE = '\033[35m'
+    OKCYAN = '\033[96m'
+    DARKCYAN = "\033[36m"
+    ORANGE = "\033[48:5:208m%s\033[m"
+    OKWHITE = '\033[97m'
+    DARKWHITE = '\033[37m'
+    OKBLACK = '\033[30m'
+    OKGRAY = '\033[90m'
+    OKPURPLE = '\033[35m'
+    
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    ITALIC = '\033[3m'
+    UNDERLINE = '\033[4m'
+
 def create_random_colors(n: int):
     """
     Function to create a list of n random colors
