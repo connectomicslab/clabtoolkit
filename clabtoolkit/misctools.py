@@ -912,16 +912,16 @@ def generate_container_command(bash_args,
     if isinstance(bash_args, str):
         bash_args = shlex.split(bash_args)
 
-        path2mount = []
-        if technology in ["docker", "singularity"]:
-            
-            # Adding the container image path and the bash command arguments
-            if image_path is not None:
-                if not os.path.exists(image_path):
-                    raise ValueError(f"The container image {image_path} does not exist.")
-            else:
-                raise ValueError("The image path is required for Singularity containerization.")
+    path2mount = []
+    if technology in ["docker", "singularity"]:
         
+        # Adding the container image path and the bash command arguments
+        if image_path is not None:
+            if not os.path.exists(image_path):
+                raise ValueError(f"The container image {image_path} does not exist.")
+        else:
+            raise ValueError("The image path is required for Singularity containerization.")
+    
         # Checking if the arguments are files or directories
         container_cmd = []
         bind_mounts = []
@@ -961,39 +961,3 @@ def generate_container_command(bash_args,
     
 
     return container_cmd
-
-# simple progress indicator callback function
-def parallel_progress_indicator(future, lock, n_total, n_comp, pb, pb1, text_cad):
-    """
-    A simple progress indicator for the concurrent futures
-    
-    Parameters
-    ----------
-    future : concurrent.futures.Future
-        Future object
-    lock : threading.Lock
-        Lock object
-    n_total : int
-        Total number of tasks
-    n_comp : int
-        Number of completed tasks
-    pb : rich.progress.Progress
-        Progress bar object
-    pb1 : rich.progress.TaskID
-        Task ID
-    text_cad : str
-        Text to show in the progress bar
-        
-    Returns
-    -------
-    None
-    
-    """
-    # obtain the lock
-    with lock:
-        # update the counter
-        n_comp += 1
-        # report progress
-        # print(f'{tasks_completed}/{n_subj} completed, {n_subj-tasks_completed} remain.')
-        # pb.update(task_id=pb1, description= f'[red]Completed {n_comp}/{n_subj}', completed=n_subj)
-        pb.update(task_id=pb1, description= f'[red]{text_cad}: Finished ({n_comp}/{n_total})', completed=n_comp) 
