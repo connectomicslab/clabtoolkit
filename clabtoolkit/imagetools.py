@@ -180,6 +180,11 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str):
 
     # Get data from IM2
     img2_data = img2.get_fdata()
+    img2_shape = img2_data.shape
+    
+    # If the img2 is a 4D add the forth dimension to the shape of the img1
+    if len(img2_shape) == 4:
+        img1_shape = (img1_shape[0], img1_shape[1], img1_shape[2], img2_shape[3])
 
     # Create an empty array with the same dimensions as IM1
     new_data = np.zeros(img1_shape)
