@@ -5,13 +5,13 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import distance
 from scipy.ndimage import convolve
-from scipy.ndimage import label
+from glob import glob
 import nibabel as nib
 from typing import Union
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.bidstools as cltbids
 import clabtoolkit.imagetools as cltimg
-
+import clabtoolkit.parcellationtools as cltparc
 
 
 def abased_parcellation(t1: str,
@@ -137,11 +137,14 @@ def abased_parcellation(t1: str,
         cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
         subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
         
+        # Deleting the warped images
         cmd_bashargs = ['rm', tmp_xfm_basename + '*Warped.nii.gz']
-        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+        warped_imgs = glob(tmp_xfm_basename + '*Warped.nii.gz')
+        if len(warped_imgs) > 0:
+            for w_img in warped_imgs:
+                os.remove(w_img)
         
-
+    # Applying spatial transform to the atlas
     if not os.path.isfile(out_parc):
         
         if atlas_type == 'spam':
@@ -149,16 +152,22 @@ def abased_parcellation(t1: str,
             cmd_bashargs = ['antsApplyTransforms', '-d', '3', '-e', '3', '-i', atlas,
                             '-o', out_parc, '-r', t1, '-t', xfm_invnl,
                             '-t','[' + xfm_affine + ',1]', '-n', interp]
-    
+
+            cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            
         elif atlas_type == 'maxprob':
             # Applying spatial transform
-            cmd_bashargs = ['antsApplyTransforms', '-d', '3', '-e', '3', '-i', atlas,
+            cmd_bashargs = ['antsApplyTransforms', '-d', '3', '-i', atlas,
                             '-o', out_parc, '-r', t1, '-t', xfm_invnl,
                             '-t','[' + xfm_affine + ',1]', '-n', 'NearestNeighbor']
 
-        cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
-        subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
-        
+            cmd_cont = cltmisc.generate_container_command(cmd_bashargs, cont_tech, cont_image) # Generating container command
+            subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True) # Running container command
+            
+            tmp_parc = cltparc.Parcellation(parc_file=out_parc)
+            tmp_parc.save_parcellation(out_file= out_parc, affine=tmp_parc.affine, save_lut=False, save_tsv=False)
+            
         # Removing the Warped images
         if os.path.isfile(temp_xfm_invnlw):
             os.remove(temp_xfm_invnlw)

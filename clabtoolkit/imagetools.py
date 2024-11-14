@@ -174,33 +174,43 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str):
     img1_data = img1.get_fdata()
     img1_shape = img1_data.shape
     
-    # If the img2 is a 4D add the forth dimension to the shape of the img1
-    if len(img2.shape) == 4:
-        img1_shape = (img1_shape[0], img1_shape[1], img1_shape[2], img2.shape[3])
-
     # Get data from IM2
     img2_data = img2.get_fdata()
     img2_shape = img2_data.shape
+    
+    
+    # Multiply the inverse of the affine matrix of img1 by the affine matrix of img2
+    affine_mult = np.linalg.inv(img1_affine) @ img2_affine
     
     # If the img2 is a 4D add the forth dimension to the shape of the img1
     if len(img2_shape) == 4:
         img1_shape = (img1_shape[0], img1_shape[1], img1_shape[2], img2_shape[3])
 
-    # Create an empty array with the same dimensions as IM1
-    new_data = np.zeros(img1_shape)
-    
-    for vol in range(img2_data.shape[-1]):
-        # Find the coordinates in voxels of the voxels different from 0 on the img2
-        indices = np.argwhere(img2_data[..., vol] != 0)
+        # Create an empty array with the same dimensions as IM1
+        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
+        
+        for vol in range(img2_data.shape[-1]):
+            # Find the coordinates in voxels of the voxels different from 0 on the img2
+            indices = np.argwhere(img2_data[..., vol] != 0)
 
-        # Multiply the inverse of the affine matrix of img1 by the affine matrix of img2
-        affine_mult = np.linalg.inv(img1_affine) @ img2_affine
+            # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
+            new_coords = np.round(affine_mult @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)).astype(int)
+
+            # Fill the new image with the values of the voxels different from 0 on img2
+            new_data[new_coords[0], new_coords[1], new_coords[2], vol] = img2_data[indices[:, 0], indices[:, 1], indices[:, 2], vol]
+            
+    elif len(img2_shape) == 3:
+        # Create an empty array with the same dimensions as IM1
+        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
+        
+        # Find the coordinates in voxels of the voxels different from 0 on the img2
+        indices = np.argwhere(img2_data != 0)
 
         # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
         new_coords = np.round(affine_mult @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)).astype(int)
 
         # Fill the new image with the values of the voxels different from 0 on img2
-        new_data[new_coords[0], new_coords[1], new_coords[2], vol] = img2_data[indices[:, 0], indices[:, 1], indices[:, 2], vol]
+        new_data[new_coords[0], new_coords[1], new_coords[2]] = img2_data[indices[:, 0], indices[:, 1], indices[:, 2]]
 
     # Create a new Nifti image with the same affine and header as IM1
     new_img2 = nib.Nifti1Image(new_data, affine=img1_affine, header=img1.header)
