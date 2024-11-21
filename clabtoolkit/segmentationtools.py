@@ -12,6 +12,7 @@ import clabtoolkit.bidstools as cltbids
 import clabtoolkit.imagetools as cltimg
 import clabtoolkit.parcellationtools as cltparc
 from scipy.ndimage import convolve
+from scipy.spatial import distance
 
 
 # pylint: disable=too-many-arguments
