@@ -283,7 +283,7 @@ def copy_dicom_file(dic_file: str,
     
     
     try:
-        dataset = pydicom.read_file(dic_file)
+        dataset = pydicom.dcmread(dic_file)
         dic_path = os.path.dirname(dic_file)
         dic_name = os.path.basename(dic_file)
 
