@@ -59,6 +59,32 @@ class Parcellation:
             # Detect minimum and maximum labels
             self.parc_range()
 
+    def prepare_for_tracking(self):
+        """
+        Prepare the parcellation for fibre tracking. It will add the parcellated wm voxels to its
+        corresponding gm label. It also puts to zero the voxels that are not in the gm.
+        
+        """
+        
+        # Unique of non-zero values
+        sts_vals = np.unique(self.data)
+
+        # sts_vals as integers
+        sts_vals = sts_vals.astype(int)
+
+        # get the values of sts_vals that are bigger or equaal to 5000 and create a list with them
+        indexes = [x for x in sts_vals if x >= 5000]
+
+        self.remove_by_code(codes2remove=indexes)
+
+        # Get the labeled wm values
+        ind = np.argwhere(self.data >=3000)
+        
+        # Add the wm voxels to the gm label
+        self.data[ind[:,0],ind[:,1],ind[:,2]] = self.data[ind[:,0],ind[:,1],ind[:,2]] - 3000
+        
+        # Adjust the values
+        self.adjust_values()
 
     def keep_by_name(self, 
                             names2look: Union[list, str], 
