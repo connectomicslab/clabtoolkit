@@ -66,3 +66,74 @@ def remove_empty_dwi_Volume(dwifile: str):
             np.savetxt(tmp_bvals_file, select_bvals, newline=" ", fmt="%d")
 
     return dwifile, bvecfile, bvalfile, jsonfile
+
+def prepare_parcellation_for_tracking(parc_file: Union[str, np.uint] = None, 
+                                    out_file: Union[str, np.uint] = None):
+    """
+    Prepare the parcellation for fibre tracking. It will add the parcellated wm voxels to its
+    corresponding gm label. It also puts to zero the voxels that are not in the gm.
+
+    Parameters
+    ----------
+    parc_file : str or np.uint
+        The path to the parcellation file or the parcellation data. The parcellation data 
+        should be a numpy array.
+        
+    out_file : str or np.uint
+        The path to save the parcellation file or the parcellation data. The parcellation data 
+        should be a numpy array.
+
+    Returns
+    -------
+    out_file : str or np.uint
+        The path to the parcellation file or numpy array with the parcellation data.
+        
+    Examples
+    --------
+    >>> out_file = prepare_parcellation_for_tracking(parc_file='/home/yaleman/parc.nii.gz')
+        
+    
+    """
+    
+    # Verify if the input is a numpy array or a file
+    if isinstance(parc_file, np.ndarray):
+        iparc = cltparc.Parcellation(data=parc_file)  
+
+    elif isinstance(parc_file, str):
+        if not os.path.exists(parc_file):
+            raise ValueError(f"File {parc_file} does not exist.")
+        else:
+            iparc = cltparc.Parcellation(parc_file=parc_file)
+            
+    else:
+        raise ValueError(f"Invalid input for parc_file: {parc_file}")
+
+    # Unique of non-zero values
+    sts_vals = np.unique(iparc.data)
+
+    # sts_vals as integers
+    sts_vals = sts_vals.astype(int)
+
+    # get the values of sts_vals that are bigger or equaal to 5000 and create a list with them
+    indexes = [x for x in sts_vals if x >= 5000]
+
+    iparc.remove_by_code(codes2remove=indexes)
+
+    # Get the labeled wm values
+    ind = np.argwhere(iparc.data >=3000)
+    
+    # Add the wm voxels to the gm label
+    iparc.data[ind[:,0],ind[:,1],ind[:,2]] = iparc.data[ind[:,0],ind[:,1],ind[:,2]] - 3000
+    
+    # Adjust the values
+    iparc.adjust_values()
+
+    # Save the parcellation
+    if isinstance(out_file, str):
+        iparc.save_parcellation(out_file=out_file, save_lut=True)
+        
+    elif isinstance(out_file, np.ndarray):
+        return iparc.data
+        
+    
+    return out_file
