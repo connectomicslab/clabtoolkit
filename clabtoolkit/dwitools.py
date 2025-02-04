@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import nibabel as nib
+from nibabel.streamlines import Field
+from nibabel.orientations import aff2axcodes
 from skimage import measure
 
 
@@ -8,10 +10,29 @@ from skimage import measure
 def remove_empty_dwi_Volume(dwifile: str):
     """
     Remove the B0s volumes located at the end of the diffusion 4D volume.
-    @params:
-        dwifile     - Required  : Diffusion 4D volume:
+
+    Parameters
+    ----------
+    dwifile : str
+        Path to the diffusion weighted image file.
+
+    Returns
+    -------
+    dwifile : str
+        Path to the diffusion weighted image file.
+
+    bvecfile : str
+        Path to the bvec file.
+
+    bvalfile : str
+        Path to the bval file.
+
+    jsonfile : str
+        Path to the json file.
+
+
     """
-    
+
     # Creating the name for the json file
     pth = os.path.dirname(dwifile)
     fname = os.path.basename(dwifile)
@@ -67,73 +88,105 @@ def remove_empty_dwi_Volume(dwifile: str):
 
     return dwifile, bvecfile, bvalfile, jsonfile
 
-def prepare_parcellation_for_tracking(parc_file: Union[str, np.uint] = None, 
-                                    out_file: Union[str, np.uint] = None):
+
+def tck2trk(
+    in_tract: str, ref_img: str, out_tract: str = None, force: bool = False
+) -> str:
     """
-    Prepare the parcellation for fibre tracking. It will add the parcellated wm voxels to its
-    corresponding gm label. It also puts to zero the voxels that are not in the gm.
+    Convert a TCK file to a TRK file using a reference image for the header.
 
     Parameters
     ----------
-    parc_file : str or np.uint
-        The path to the parcellation file or the parcellation data. The parcellation data 
-        should be a numpy array.
-        
-    out_file : str or np.uint
-        The path to save the parcellation file or the parcellation data. The parcellation data 
-        should be a numpy array.
+    in_tract : str
+        Path to the input TCK file.
+    ref_img : str
+        Path to the reference NIfTI image for creating the TRK header.
+    out_tract : str, optional
+        Path for the output TRK file. Defaults to replacing the .tck extension with .trk.
+    force : bool, optional
+        If True, overwrite the output file if it exists. Defaults to False.
 
     Returns
     -------
-    out_file : str or np.uint
-        The path to the parcellation file or numpy array with the parcellation data.
-        
+    str
+        Path to the output TRK file.
+    """
+    # Validate input file format
+    if nib.streamlines.detect_format(in_tract) is not nib.streamlines.TckFile:
+        raise ValueError(f"Invalid input file format: {in_tract} is not a TCK file.")
+
+    # Define output filename
+    if out_tract is None:
+        out_tract = in_tract.replace(".tck", ".trk")
+
+    # Handle overwrite scenario
+    if os.path.exists(out_tract) and not force:
+        raise FileExistsError(
+            f"Output file '{out_tract}' already exists. Use force=True to overwrite."
+        )
+
+    # Load reference image
+    ref_nifti = nib.load(ref_img)
+
+    # Construct TRK header
+    header = {
+        Field.VOXEL_TO_RASMM: ref_nifti.affine.copy(),
+        Field.VOXEL_SIZES: ref_nifti.header.get_zooms()[:3],
+        Field.DIMENSIONS: ref_nifti.shape[:3],
+        Field.VOXEL_ORDER: "".join(aff2axcodes(ref_nifti.affine)),
+    }
+
+    # Load and save tractogram
+    tck = nib.streamlines.load(in_tract)
+    nib.streamlines.save(tck.tractogram, out_tract, header=header)
+
+    return out_tract
+
+
+def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
+    """
+    Convert a TRK file to a TCK file.
+
+    Parameters
+    ----------
+    in_tract : str
+        Input TRK file.
+
+    out_tract : str, optional
+        Output TCK file. If None, the output file will have the same name as the input with the extension changed to TCK.
+
+    force : bool, optional
+        If True, overwrite the output file if it exists.
+
+    Returns
+    -------
+    out_tract : str
+        Output TCK file.
+
     Examples
     --------
-    >>> out_file = prepare_parcellation_for_tracking(parc_file='/home/yaleman/parc.nii.gz')
-        
-    
+    >>> trk2tck('input.trk', 'output.tck')  # Saves as 'output.tck'
+    >>> trk2tck('input.trk')  # Saves as 'input.tck'
     """
-    
-    # Verify if the input is a numpy array or a file
-    if isinstance(parc_file, np.ndarray):
-        iparc = cltparc.Parcellation(data=parc_file)  
 
-    elif isinstance(parc_file, str):
-        if not os.path.exists(parc_file):
-            raise ValueError(f"File {parc_file} does not exist.")
-        else:
-            iparc = cltparc.Parcellation(parc_file=parc_file)
-            
-    else:
-        raise ValueError(f"Invalid input for parc_file: {parc_file}")
+    # Ensure the input is a TRK file
+    if nib.streamlines.detect_format(in_tract) is not nib.streamlines.TrkFile:
+        raise ValueError(f"Input file '{in_tract}' is not a valid TRK file.")
 
-    # Unique of non-zero values
-    sts_vals = np.unique(iparc.data)
+    # Set output filename
+    if out_tract is None:
+        out_tract = in_tract.replace(".trk", ".tck")
 
-    # sts_vals as integers
-    sts_vals = sts_vals.astype(int)
+    # Check if output file exists
+    if os.path.isfile(out_tract) and not force:
+        raise FileExistsError(
+            f"File '{out_tract}' already exists. Use 'force=True' to overwrite."
+        )
 
-    # get the values of sts_vals that are bigger or equaal to 5000 and create a list with them
-    indexes = [x for x in sts_vals if x >= 5000]
+    # Load the TRK file
+    trk = nib.streamlines.load(in_tract)
 
-    iparc.remove_by_code(codes2remove=indexes)
+    # Save as a TCK file
+    nib.streamlines.save(trk.tractogram, out_tract)
 
-    # Get the labeled wm values
-    ind = np.argwhere(iparc.data >=3000)
-    
-    # Add the wm voxels to the gm label
-    iparc.data[ind[:,0],ind[:,1],ind[:,2]] = iparc.data[ind[:,0],ind[:,1],ind[:,2]] - 3000
-    
-    # Adjust the values
-    iparc.adjust_values()
-
-    # Save the parcellation
-    if isinstance(out_file, str):
-        iparc.save_parcellation(out_file=out_file, save_lut=True)
-        
-    elif isinstance(out_file, np.ndarray):
-        return iparc.data
-        
-    
-    return out_file
+    return out_tract
