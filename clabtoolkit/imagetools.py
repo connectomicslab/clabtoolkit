@@ -586,3 +586,56 @@ def vox2mm(vox_coords, affine):
         raise ValueError("The number of columns of the input matrix must be 3")
 
     return mm_coords
+
+
+def mm2vox(mm_coords, affine):
+    """
+    Convert mm coordinates to voxel coordinates. The input matrix must have 3 columns.
+
+    Parameters
+    ----------
+    mm_coords : numpy array
+        Matrix with the mm coordinates. The matrix must have 3 columns.
+    affine : numpy array
+        Affine matrix of the image.
+
+    Returns
+    -------
+    vox_coords : numpy array
+        Matrix with the voxel coordinates. The matrix has the same number of rows as the input matrix, and 3 columns.
+
+    Raises:
+    -------
+
+    ValueError : The number of columns of the input matrix must be 3
+
+    Examples
+    --------
+    >>> mm2vox(np.array([[1,2,3]]), np.eye(4))
+    array([[1, 2, 3]])
+
+    """
+
+    # Detect if the number of rows is bigger than the number of columns. If not, transpose the matrix
+    nrows = np.shape(mm_coords)[0]
+    ncols = np.shape(mm_coords)[1]
+    if (nrows < ncols) and (ncols > 3):
+        mm_coords = np.transpose(mm_coords)
+
+    if np.shape(mm_coords)[1] == 3:
+        mm_coords = np.concatenate(
+            (mm_coords, np.ones((np.shape(mm_coords)[0], 1))), axis=1
+        )
+
+        npoints = np.shape(mm_coords)
+        tones = np.ones((npoints[0], 1))
+        A = np.transpose(np.concatenate((mm_coords, tones), axis=1))
+        vox_coords = np.matmul(np.linalg.inv(affine), A)
+        vox_coords = np.transpose(vox_coords)
+        vox_coords = vox_coords[:, :3]
+
+    else:
+        # Launch an error if the number of columns is different from 3
+        raise ValueError("The number of columns of the input matrix must be 3")
+
+    return vox_coords
