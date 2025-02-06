@@ -120,25 +120,21 @@ def tck2trk(
         out_tract = in_tract.replace(".tck", ".trk")
 
     # Handle overwrite scenario
-    if os.path.exists(out_tract) and not force:
-        raise FileExistsError(
-            f"Output file '{out_tract}' already exists. Use force=True to overwrite."
-        )
+    if not os.path.exists(out_tract) or force:
+        # Load reference image
+        ref_nifti = nib.load(ref_img)
 
-    # Load reference image
-    ref_nifti = nib.load(ref_img)
+        # Construct TRK header
+        header = {
+            Field.VOXEL_TO_RASMM: ref_nifti.affine.copy(),
+            Field.VOXEL_SIZES: ref_nifti.header.get_zooms()[:3],
+            Field.DIMENSIONS: ref_nifti.shape[:3],
+            Field.VOXEL_ORDER: "".join(aff2axcodes(ref_nifti.affine)),
+        }
 
-    # Construct TRK header
-    header = {
-        Field.VOXEL_TO_RASMM: ref_nifti.affine.copy(),
-        Field.VOXEL_SIZES: ref_nifti.header.get_zooms()[:3],
-        Field.DIMENSIONS: ref_nifti.shape[:3],
-        Field.VOXEL_ORDER: "".join(aff2axcodes(ref_nifti.affine)),
-    }
-
-    # Load and save tractogram
-    tck = nib.streamlines.load(in_tract)
-    nib.streamlines.save(tck.tractogram, out_tract, header=header)
+        # Load and save tractogram
+        tck = nib.streamlines.load(in_tract)
+        nib.streamlines.save(tck.tractogram, out_tract, header=header)
 
     return out_tract
 
