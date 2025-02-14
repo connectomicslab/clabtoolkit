@@ -2345,7 +2345,7 @@ def detect_hemi(file_name: str):
     return hemi
 
 # Loading the JSON file containing the available parcellations
-def load_lobes_json(pipe_json: str = None):
+def load_lobes_json(lobes_json: str = None):
     """
     Load the JSON file containing the pipeline configuration.
 
