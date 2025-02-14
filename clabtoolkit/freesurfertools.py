@@ -745,6 +745,71 @@ class AnnotParcellation:
 
         return gcs_name
 
+    def group_into_lobes(
+        self, grouping: str = "desikan", lobes_json: str = None, out_annot: str = None
+    ):
+        """
+        Function to group into lobes the regions of the parcellation.
+
+        Parameters
+        ----------
+        lobes_json     - Required  : JSON file with the lobes and regions that belong to each lobe:
+
+        Output
+        ------
+        annot_file: str : Annot filename
+
+        """
+
+        lobes_dict = load_lobes_json(lobes_json)
+
+        if "lobes" not in lobes_dict.keys():
+            lobes_dict = lobes_dict[grouping]
+
+        # Lobes names
+        lobe_names = list(lobes_dict["lobes"].keys())
+
+        # Create the new parcellation
+        new_codes = np.zeros_like(self.codes)
+
+        # Create an empty numpy array to store the new table
+        new_table = np.zeros((1, 5), dtype=np.int32)
+
+        for lobe in lobe_names:
+            lobe_regions = lobes_dict["lobes"][lobe]
+            lobe_color = lobes_dict["colors"][lobe]
+
+            # Converting to RGB
+            rgb = cltmisc.hex2rgb(lobe_color)
+
+            # Creating the value
+            vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
+            reg_tab = np.array([rgb[0], rgb[1], rgb[2], 0, vert_val], dtype=np.int32)
+
+            # Detect the codes of the regions that belong to the lobe
+            reg_indexes = cltmisc.search_in_list(self.regnames, lobe_regions)
+
+            if len(reg_indexes) != 0:
+                reg_values = self.codes[reg_indexes]
+                new_codes[np.isin(self.codes, reg_values) == True] = vert_val
+
+                # Concatenate the new table
+                new_table = np.concatenate((new_table, reg_tab.reshape(1, 5)), axis=0)
+
+        # Remove the first row
+        new_table = new_table[1:, :]
+        self.codes = new_codes
+        self.regnames = lobe_names
+        self.regtable = new_table
+        self.name = ""
+        self.path = ""
+
+        # Saving the annot file
+        if out_annot is not None:
+            self.name = os.path.basename(out_annot)
+            self.path = os.path.dirname(out_annot)
+            self.save_annotation(out_file=out_annot)
+
 
 class FreeSurferSubject:
     """
