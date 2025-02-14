@@ -2149,6 +2149,83 @@ class FreeSurferSubject:
                     cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
                 )  # Running container command
 
+    def get_surface(self, hemi: str, surf_type: str):
+        """
+        This method returns the surface file according to the hemisphere and the surface type.
+
+        Parameters
+        ----------
+        hemi: str        - Required  : Hemisphere (lh or rh):
+        surf_type: str   - Required  : Surface type (pial, white, inflated, sphere):
+
+        Returns
+        -------
+        surf_file: str : Surface file
+
+        """
+
+        if hemi not in ["lh", "rh"]:
+            raise ValueError("The hemisphere must be lh or rh")
+
+        if surf_type not in ["pial", "white", "inflated", "sphere"]:
+            raise ValueError("The surface type must be pial, white, inflated or sphere")
+
+        surf_file = self.fs_files["surf"][hemi][surf_type]
+
+        return surf_file
+
+    def get_vertexwise_map(self, hemi: str, map_type: str):
+        """
+        This method returns the vertexwise map file according to the hemisphere and the map type.
+
+        Parameters
+        ----------
+        hemi: str        - Required  : Hemisphere (lh or rh):
+        map_type: str    - Required  : Map type (curv, sulc, thickness, area, volume):
+
+        Returns
+        -------
+        map_file: str : Vertexwise map file
+
+        """
+
+        if hemi not in ["lh", "rh"]:
+            raise ValueError("The hemisphere must be lh or rh")
+
+        if map_type not in ["curv", "sulc", "thickness", "area", "volume"]:
+            raise ValueError(
+                "The map type must be curv, sulc, thickness, area or volume"
+            )
+
+        map_file = self.fs_files["surf"][hemi][map_type]
+
+        return map_file
+
+    def get_annotation(self, hemi: str, annot_type: str):
+        """
+        This method returns the annotation file according to the hemisphere and the annotation type.
+
+        Parameters
+        ----------
+        hemi: str        - Required  : Hemisphere (lh or rh):
+        annot_type: str  - Required  : Annotation type (desikan, destrieux, dkt):
+
+        Returns
+        -------
+        annot_file: str : Annotation file
+
+        """
+
+        if hemi not in ["lh", "rh"]:
+            raise ValueError("The hemisphere must be lh or rh")
+
+        if annot_type not in ["desikan", "destrieux", "dkt"]:
+            raise ValueError("The annotation type must be desikan, destrieux or dkt")
+
+        annot_file = self.fs_files["surf"][hemi][annot_type]
+
+        return annot_file
+
 
 def create_fsaverage_links(
     fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
@@ -2266,6 +2343,39 @@ def detect_hemi(file_name: str):
         )
 
     return hemi
+
+# Loading the JSON file containing the available parcellations
+def load_lobes_json(pipe_json: str = None):
+    """
+    Load the JSON file containing the pipeline configuration.
+
+    Parameters:
+    ----------
+    pipe_json : str
+        JSON file containing the pipeline configuration dictionary.
+
+    Returns:
+    --------
+    pipe_dict : dict
+        Dictionary containing the pipeline information
+
+    """
+    cwd = os.path.dirname(os.path.abspath(__file__))
+
+    # Get the absolute of this file
+    if pipe_json is None:
+
+        pipe_json = os.path.join(cwd, "config", "pipe_config.json")
+    else:
+        if not os.path.isfile(pipe_json):
+            raise ValueError(
+                "Please, provide a valid JSON file containing the pipeline configuration dictionary."
+            )
+
+    with open(pipe_json) as f:
+        pipe_dict = json.load(f)
+
+    return pipe_dict
 
 
 def get_version(cont_tech: str = "local", cont_image: str = None):
