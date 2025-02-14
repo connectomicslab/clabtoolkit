@@ -89,7 +89,9 @@ class AnnotParcellation:
             booldel = True
 
         # Read the annot file using nibabel
-        codes, reg_table, reg_names = nib.freesurfer.io.read_annot(annot_file)
+        codes, reg_table, reg_names = nib.freesurfer.read_annot(
+            annot_file, orig_ids=True)
+
 
         if booldel:
             os.remove(annot_file)
