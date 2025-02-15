@@ -99,6 +99,15 @@ class AnnotParcellation:
         # Correcting region names
         reg_names = [name.decode("utf-8") for name in reg_names]
 
+        # Detect the codes in the table that are not in the vertex wise data
+        # Find the indexes where the codes are not in the vertex wise data
+        tmp_ind = np.where(np.isin(reg_table[:, 4], np.unique(codes))==False)[0]
+        
+        # If there are codes that are not in the vertex wise data, then remove them from the table
+        if tmp_ind.size > 0:
+            reg_table = np.delete(reg_table, tmp_ind, axis=0)
+            reg_names = np.delete(reg_names, tmp_ind).tolist()
+
         # Storing the codes, colors and names in the object
         self.codes = codes
         self.regtable = reg_table
