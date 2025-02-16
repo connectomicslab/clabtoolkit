@@ -2406,8 +2406,11 @@ def detect_hemi(file_name: str):
         hemi = "lh"
     elif "rh." in file_name:
         hemi = "rh"
-    elif "hemi-l" in file_name:
-        hemi = "lh"
+    elif "hemi-" in surf_name:
+        tmp_hemi = surf_name.split("-")[1].split("_")[0]
+
+        if tmp_hemi in ["lh", "l", "left", "lefthemisphere"]:
+            hemi = "lh"
     elif "hemi-r" in file_name:
         hemi = "rh"
     else:
@@ -2415,6 +2418,12 @@ def detect_hemi(file_name: str):
         raise ValueError(
             "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
         )
+    else:
+        hemi = None
+        warnings.warn(
+            "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
+        )
+        
 
     return hemi
 
