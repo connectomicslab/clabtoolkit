@@ -54,6 +54,17 @@ class Parcellation:
                 self.data = parc_file
                 self.affine = affine
 
+                # Create a list with all the values different from 0
+                st_codes = np.unique(self.data)
+                st_codes = st_codes[st_codes != 0]
+
+                self.index = st_codes.tolist()
+                self.name = ["ROI{}".format(i) for i in self.index]
+
+                # Generate the colors
+                color = cltmisc.create_random_colors(len(self.index))
+                self.color = cltmisc.multi_rgb2hex(color)
+
             # Adjust values to the ones present in the parcellation
 
             if (
