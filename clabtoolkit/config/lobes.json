@@ -1,0 +1,112 @@
+{
+    "desikan_w_cingulate": {
+        "lobes": {
+            "frontal": [
+                "caudalmiddlefrontal",
+                "lateralorbitofrontal",
+                "medialorbitofrontal",
+                "paracentral",
+                "parsopercularis",
+                "parsorbitalis",
+                "parstriangularis",
+                "precentral",
+                "rostralmiddlefrontal",
+                "superiorfrontal",
+                "frontalpole"
+            ],
+            "parietal": [
+                "inferiorparietal",
+                "isthmuscingulate",
+                "postcentral",
+                "precuneus",
+                "superiorparietal",
+                "supramarginal"
+            ],
+            "cingulate": [
+                "rostralanteriorcingulate",
+                "caudalanteriorcingulate",
+                "posteriorcingulate",
+                "isthmuscingulate"
+            ],
+            "temporal": [
+                "bankssts",
+                "entorhinal",
+                "fusiform",
+                "inferiortemporal",
+                "middletemporal",
+                "parahippocampal",
+                "superiortemporal",
+                "temporalpole",
+                "transversetemporal"
+                ],
+            "occipital": [
+                "cuneus",
+                "lateraloccipital",
+                "lingual",
+                "pericalcarine"
+                ],
+            "insula": ["insula"]
+        },
+        "colors": {
+            "frontal": "#0c4999",
+            "parietal": "#076020",
+            "cingulate": "#783692",
+            "temporal": "#d2711a",
+            "occipital": "#7e1221",
+            "insula": "#ffc020"
+        }
+},
+    "desikan": {
+        "lobes":{ 
+            "frontal": [
+                "caudalanteriorcingulate",
+                "caudalmiddlefrontal",
+                "lateralorbitofrontal",
+                "medialorbitofrontal",
+                "paracentral",
+                "parsopercularis",
+                "parsorbitalis",
+                "parstriangularis",
+                "precentral",
+                "rostralanteriorcingulate",
+                "rostralmiddlefrontal",
+                "superiorfrontal",
+                "frontalpole"
+            ],
+            "parietal": [
+                "inferiorparietal",
+                "isthmuscingulate",
+                "postcentral",
+                "posteriorcingulate",
+                "precuneus",
+                "superiorparietal",
+                "supramarginal"
+            ],
+            "temporal": [
+                "bankssts",
+                "entorhinal",
+                "fusiform",
+                "inferiortemporal",
+                "middletemporal",
+                "parahippocampal",
+                "superiortemporal",
+                "temporalpole",
+                "transversetemporal"
+            ],
+            "occipital": [
+                "cuneus",
+                "lateraloccipital",
+                "lingual",
+                "pericalcarine"
+            ],
+            "insula": ["insula"]
+        },
+        "colors": {
+            "frontal": "#0c4999",
+            "parietal": "#076020",
+            "temporal": "#d2711a",
+            "occipital": "#7e1221",
+            "insula": "#ffc020"
+        }
+    }
+}
