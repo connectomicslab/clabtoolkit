@@ -52,10 +52,14 @@ class Parcellation:
 
             elif isinstance(parc_file, np.ndarray):
                 self.data = parc_file
-                
-                if affine is None
+
+                # Creating a new affine matrix if the affine matrix is None
+                if affine is None:
                     affine = np.eye(4)
-                
+
+                    center = np.array(self.data.shape) // 2
+                    affine[:3, 3] = -center
+
                 self.affine = affine
 
                 # Create a list with all the values different from 0
