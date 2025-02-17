@@ -10,10 +10,10 @@ import pandas as pd
 import nibabel as nib
 import numpy as np
 
-import clabtoolkit.misctools as cltmisc
-import clabtoolkit.freesurfertools as cltfree
-import clabtoolkit.surfacetools as cltsurf
-import clabtoolkit.parcellationtools as cltparc
+import misctools as cltmisc
+import freesurfertools as cltfree
+import surfacetools as cltsurf
+import parcellationtools as cltparc
 
 ####################################################################################################
 ####################################################################################################
@@ -32,7 +32,7 @@ def compute_reg_val_fromannot(
     hemi: str,  # Hemisphere id. It could be lh or rh
     metric: str = "unknown",
     stats_list: Union[str, list] = ["mean", "median", "std", "min", "max"],
-    format: str = "region",
+    format: str = "metric",
     include_unknown: bool = False,
 ) -> pd.DataFrame:
     """
@@ -57,7 +57,7 @@ def compute_reg_val_fromannot(
 
 
     format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "region".
+        Format of the output. It could be "region" or "metric". The default is "metric".
         With the "region" format, the output is a DataFrame with the regional values where each column
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
@@ -205,6 +205,13 @@ def compute_reg_val_fromannot(
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
+        
+        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
+        reg_names = df["region"].str.split("-", expand=True)
+        
+        # Insert the new columns before the column "region"
+        df.insert(0, "supraregion", reg_names[0])
+        df.insert(1, "side", reg_names[1])
 
     nrows = df.shape[0]
 
@@ -222,7 +229,7 @@ def compute_reg_area_fromsurf(
     surf_file: Union[str, cltsurf.Surface],
     parc_file: Union[str, cltfree.AnnotParcellation],
     hemi: str,  # Hemisphere id. It could be lh or rh
-    format: str = "region",
+    format: str = "metric",
     include_unknown: bool = False,
 ) -> pd.DataFrame:
     """
@@ -240,7 +247,7 @@ def compute_reg_area_fromsurf(
         Hemisphere id. It could be lh or rh.
 
     format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "region".
+        Format of the output. It could be "region" or "metric". The default is "metric".
         With the "region" format, the output is a DataFrame with the regional values where each column
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
@@ -388,6 +395,13 @@ def compute_reg_area_fromsurf(
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
+        
+        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
+        reg_names = df["region"].str.split("-", expand=True)
+        
+        # Insert the new columns before the column "region"
+        df.insert(0, "supraregion", reg_names[0])
+        df.insert(1, "side", reg_names[1])
 
     nrows = df.shape[0]
 
@@ -402,7 +416,7 @@ def compute_reg_area_fromsurf(
 def compute_euler_fromsurf(
     surf_file: Union[str, cltsurf.Surface],
     hemi: str,  # Hemisphere id. It could be lh or rh
-    format: str = "region",
+    format: str = "metric",
 ) -> pd.DataFrame:
     """
     This method computes the Euler characteristic of a surface.
@@ -416,7 +430,7 @@ def compute_euler_fromsurf(
         Hemisphere id. It could be lh or rh.
 
     format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "region".
+        Format of the output. It could be "region" or "metric". The default is "metric".
         With the "region" format, the output is a DataFrame with the regional values where each column
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
@@ -488,6 +502,13 @@ def compute_euler_fromsurf(
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
+        
+        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
+        reg_names = df["region"].str.split("-", expand=True)
+        
+        # Insert the new columns before the column "region"
+        df.insert(0, "supraregion", reg_names[0])
+        df.insert(1, "side", reg_names[1])
 
     nrows = df.shape[0]
 
@@ -720,7 +741,7 @@ def compute_reg_val_fromparcellation(
     parc_file: Union[str, cltparc.Parcellation, np.ndarray],
     metric: str = "unknown",
     stats_list: Union[str, list] = ["mean", "median", "std", "min", "max"],
-    format: str = "region",
+    format: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
 ) -> pd.DataFrame:
@@ -742,7 +763,7 @@ def compute_reg_val_fromparcellation(
         List of statistics to compute. The default is ["mean", "median", "std", "min", "max"].
 
     format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "region".
+        Format of the output. It could be "region" or "metric". The default is "metric".
         With the "region" format, the output is a DataFrame with the regional values where each column
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
@@ -855,7 +876,7 @@ def compute_reg_val_fromparcellation(
         df = df.reset_index()
         df = df.rename(columns={"index": "statistics"})
 
-        # Convert the index to a column with name "metric"
+        
 
     else:
         df = df.T
@@ -864,6 +885,13 @@ def compute_reg_val_fromparcellation(
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
+        
+                # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
+        reg_names = df["region"].str.split("-", expand=True)
+        
+        # Insert the new columns before the column "region"
+        df.insert(0, "supraregion", reg_names[0])
+        df.insert(1, "side", reg_names[1])
 
     nrows = df.shape[0]
 
@@ -879,7 +907,7 @@ def compute_reg_val_fromparcellation(
 
 def compute_reg_volume_fromparcellation(
     parc_file: Union[str, cltparc.Parcellation, np.ndarray],
-    format: str = "region",
+    format: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
 ) -> pd.DataFrame:
@@ -893,7 +921,7 @@ def compute_reg_volume_fromparcellation(
         Path to the parcellation file.
 
     format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "region".
+        Format of the output. It could be "region" or "metric". The default is "metric".
         With the "region" format, the output is a DataFrame with the regional values where each column
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
@@ -969,7 +997,7 @@ def compute_reg_volume_fromparcellation(
 
     # Computing global metric
     temp = len(vparc_data.data[vparc_data.data != 0]) * vox_vol
-    dict_of_cols["brain-wholebrain"] = temp
+    dict_of_cols["brain-whole-wholebrain"] = temp
 
     for i, index in enumerate(vparc_data.index):
         regname = vparc_data.name[i]
@@ -999,6 +1027,13 @@ def compute_reg_volume_fromparcellation(
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
+        
+        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
+        reg_names = df["region"].str.split("-", expand=True)
+        
+        # Insert the new columns before the column "region"
+        df.insert(0, "supraregion", reg_names[0])
+        df.insert(1, "side", reg_names[1])
 
     nrows = df.shape[0]
 
