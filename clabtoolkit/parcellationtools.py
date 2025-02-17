@@ -52,6 +52,10 @@ class Parcellation:
 
             elif isinstance(parc_file, np.ndarray):
                 self.data = parc_file
+                
+                if affine is None
+                    affine = np.eye(4)
+                
                 self.affine = affine
 
                 # Create a list with all the values different from 0
