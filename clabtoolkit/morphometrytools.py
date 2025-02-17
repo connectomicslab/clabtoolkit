@@ -974,7 +974,7 @@ def compute_reg_volume_fromparcellation(
     for i, index in enumerate(vparc_data.index):
         regname = vparc_data.name[i]
         ind = np.where(vparc_data.data == index)
-        temp = len(ind)
+        temp = len(ind[0])
         if temp > 0:
             dict_of_cols[regname] = [temp * vox_vol]
 
