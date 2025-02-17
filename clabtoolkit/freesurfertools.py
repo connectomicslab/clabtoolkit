@@ -6,13 +6,16 @@ from glob import glob
 from typing import Union
 from pathlib import Path
 from datetime import datetime
+import warnings
 import shutil
+import json
 import uuid
 import numpy as np
 import nibabel as nib
 import pandas as pd
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.parcellationtools as cltparc
+import clabtoolkit.morphometrytools as cltmorph
 
 
 class AnnotParcellation:
@@ -90,8 +93,8 @@ class AnnotParcellation:
 
         # Read the annot file using nibabel
         codes, reg_table, reg_names = nib.freesurfer.read_annot(
-            annot_file, orig_ids=True)
-
+            annot_file, orig_ids=True
+        )
 
         if booldel:
             os.remove(annot_file)
@@ -101,8 +104,8 @@ class AnnotParcellation:
 
         # Detect the codes in the table that are not in the vertex wise data
         # Find the indexes where the codes are not in the vertex wise data
-        tmp_ind = np.where(np.isin(reg_table[:, 4], np.unique(codes))==False)[0]
-        
+        tmp_ind = np.where(np.isin(reg_table[:, 4], np.unique(codes)) == False)[0]
+
         # If there are codes that are not in the vertex wise data, then remove them from the table
         if tmp_ind.size > 0:
             reg_table = np.delete(reg_table, tmp_ind, axis=0)
@@ -113,11 +116,20 @@ class AnnotParcellation:
         self.regtable = reg_table
         self.regnames = reg_names
 
-    def save_annotation(self, out_file: str = None):
+    def save_annotation(self, out_file: str = None, force: bool = True):
         """
-        Save the annotation file
-        @params:
-            out_file     - Required  : Output annotation file:
+        Save the annotation file. If the file already exists, it will be overwritten.
+
+        Parameters
+        ----------
+        out_file     - Optional  : Output annotation file:
+        force        - Optional  : Force to overwrite the annotation file. Default is True:
+
+        Returns
+        -------
+
+
+
         """
 
         if out_file is None:
@@ -128,10 +140,20 @@ class AnnotParcellation:
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
 
+        if os.path.exists(out_file) and not force:
+            raise ValueError(
+                "The annotation file already exists. Set force to True to overwrite it."
+            )
+        elif os.path.exists(out_file) and force:
+            os.remove(out_file)
+
+        # Restructuring the codes to consecutive numbers
+        new_codes = np.zeros_like(self.codes) - 1
+        for i, code in enumerate(self.regtable[:, 4]):
+            new_codes[self.codes == code] = i
+
         # Save the annotation file
-        nib.freesurfer.io.write_annot(
-            out_file, self.codes, self.regtable, self.regnames
-        )
+        nib.freesurfer.io.write_annot(out_file, new_codes, self.regtable, self.regnames)
 
     def fill_parcellation(
         self, label_file: str, surf_file: str, corr_annot: str = None
@@ -755,18 +777,41 @@ class AnnotParcellation:
         return gcs_name
 
     def group_into_lobes(
-        self, grouping: str = "desikan", lobes_json: str = None, out_annot: str = None
+        self,
+        grouping: str = "desikan",
+        lobes_json: str = None,
+        out_annot: str = None,
+        ctxprefix: str = None,
+        force: bool = False,
     ):
         """
         Function to group into lobes the regions of the parcellation.
 
         Parameters
         ----------
-        lobes_json     - Required  : JSON file with the lobes and regions that belong to each lobe:
+        grouping       - Required  : Grouping method. Default is desikan:
+        lobes_json     - Optional  : Lobes json file: Default is None:
+                                        JSON file with the lobes and regions that belong to each lobe.
+                                        If not provided, it will use the default lobes json file:
+        out_annot      - Optional  : Output annotation file. Default is None:
+        ctxprefix      - Optional  : Prefix to add to the names of the regions. Default is None:
+        force          - Optional  : Force to overwrite the lobar parcellation. Default is False:
 
         Output
         ------
-        annot_file: str : Annot filename
+        New parcellation object with the regions grouped into lobes
+
+        Examples
+        --------
+        # Group the regions into lobes using the desikan parcellation
+        >>> parc.group_into_lobes(grouping='desikan')
+
+        # Group the regions into lobes using the desikan parcellation and save the new parcellation
+        >>> parc.group_into_lobes(grouping='desikan', out_annot='desikan_lobes.annot')
+
+        # Group the regions into lobes using a custom json file. The json file must contain the lobes and regions that belong to each lobe
+        in the following format: {"mylobes": {"lobe1": ["region1", "region2"], "lobe2": ["region3", "region4"]}, "colors": {"lobe1": "#FF0000", "lobe2": "#00FF00"}}
+        >>> parc.group_into_lobes(grouping='mylobes', lobes_json='lobes.json')
 
         """
 
@@ -780,35 +825,48 @@ class AnnotParcellation:
 
         # Create the new parcellation
         new_codes = np.zeros_like(self.codes)
+        orig_codes = np.zeros_like(self.codes)
+
+        reg_codes = self.regtable[:, 4]
 
         # Create an empty numpy array to store the new table
-        new_table = np.zeros((1, 5), dtype=np.int32)
+        rgb = np.array([250, 250, 250])
+        vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
+        orig_codes += vert_val
 
-        for lobe in lobe_names:
+        new_table = np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])
+
+        for i, lobe in enumerate(lobe_names):
             lobe_regions = lobes_dict["lobes"][lobe]
-            lobe_color = lobes_dict["colors"][lobe]
+            lobe_colors = lobes_dict["colors"][lobe]
 
-            # Converting to RGB
-            rgb = cltmisc.hex2rgb(lobe_color)
-
-            # Creating the value
-            vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
-            reg_tab = np.array([rgb[0], rgb[1], rgb[2], 0, vert_val], dtype=np.int32)
+            rgb = cltmisc.hex2rgb(lobe_colors)
 
             # Detect the codes of the regions that belong to the lobe
             reg_indexes = cltmisc.search_in_list(self.regnames, lobe_regions)
 
             if len(reg_indexes) != 0:
-                reg_values = self.codes[reg_indexes]
-                new_codes[np.isin(self.codes, reg_values) == True] = vert_val
+                reg_values = reg_codes[reg_indexes]
+                vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
+                orig_codes[np.isin(self.codes, reg_values) == True] = vert_val
+                new_codes[np.isin(self.codes, reg_values) == True] = i + 1
 
                 # Concatenate the new table
-                new_table = np.concatenate((new_table, reg_tab.reshape(1, 5)), axis=0)
+                new_table = np.concatenate(
+                    (new_table, np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])),
+                    axis=0,
+                )
 
         # Remove the first row
-        new_table = new_table[1:, :]
+        # new_table = new_table[1:, :]
         self.codes = new_codes
-        self.regnames = lobe_names
+        if ctxprefix is not None:
+            self.regnames = ["unknown"] + cltmisc.correct_names(
+                lobe_names, prefix=ctxprefix
+            )
+        else:
+            self.regnames = ["unknown"] + lobe_names
+
         self.regtable = new_table
         self.name = ""
         self.path = ""
@@ -817,7 +875,22 @@ class AnnotParcellation:
         if out_annot is not None:
             self.name = os.path.basename(out_annot)
             self.path = os.path.dirname(out_annot)
+
+            if not os.path.exists(self.path):
+                os.makedirs(self.path, exist_ok=True)
+
+            if os.path.exists(out_annot) and not force:
+                raise ValueError(
+                    "The output annotation file already exists. Use the force option to overwrite it."
+                )
+            elif os.path.exists(out_annot) and force:
+                os.remove(out_annot)
+
+            # Save the annotation file
             self.save_annotation(out_file=out_annot)
+
+        else:
+            self.codes = orig_codes
 
 
 class FreeSurferSubject:
@@ -2399,63 +2472,63 @@ def detect_hemi(file_name: str):
     """
 
     # Detecting the hemisphere
-    file_name = file_name.lower()
+    surf_name = os.path.basename(file_name)
+    file_name = surf_name.lower()
 
     # Find in the string annot_name if it is lh. or rh.
-    if "lh." in file_name:
+    if "lh." in surf_name:
         hemi = "lh"
-    elif "rh." in file_name:
+    elif "rh." in surf_name:
         hemi = "rh"
     elif "hemi-" in surf_name:
         tmp_hemi = surf_name.split("-")[1].split("_")[0]
 
         if tmp_hemi in ["lh", "l", "left", "lefthemisphere"]:
             hemi = "lh"
-    elif "hemi-r" in file_name:
-        hemi = "rh"
-    else:
-        hemi = None
-        raise ValueError(
-            "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
-        )
+        elif tmp_hemi in ["rh", "r", "right", "righthemisphere"]:
+            hemi = "rh"
+        else:
+            hemi = None
+            warnings.warn(
+                "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
+            )
     else:
         hemi = None
         warnings.warn(
             "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
         )
-        
 
     return hemi
+
 
 # Loading the JSON file containing the available parcellations
 def load_lobes_json(lobes_json: str = None):
     """
-    Load the JSON file containing the pipeline configuration.
+    Load the JSON file containing the lobes definition.
 
     Parameters:
     ----------
-    pipe_json : str
-        JSON file containing the pipeline configuration dictionary.
+    lobes_json : str
+        JSON file containing the lobes definition.
 
     Returns:
     --------
     pipe_dict : dict
-        Dictionary containing the pipeline information
+        Dictionary containing the default lobes definition.
 
     """
-    cwd = os.path.dirname(os.path.abspath(__file__))
 
     # Get the absolute of this file
-    if pipe_json is None:
-
-        pipe_json = os.path.join(cwd, "config", "pipe_config.json")
+    if lobes_json is None:
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        lobes_json = os.path.join(cwd, "config", "lobes.json")
     else:
-        if not os.path.isfile(pipe_json):
+        if not os.path.isfile(lobes_json):
             raise ValueError(
-                "Please, provide a valid JSON file containing the pipeline configuration dictionary."
+                "Please, provide a valid JSON file containing the lobes definition dictionary."
             )
 
-    with open(pipe_json) as f:
+    with open(lobes_json) as f:
         pipe_dict = json.load(f)
 
     return pipe_dict
@@ -2626,10 +2699,10 @@ def parse_freesurfer_statsfile(stat_file: str, format: str = "metric") -> pd.Dat
                 
         # Create a dictionary with the values
         dict_of_cols = {}
-        dict_of_cols["brain-brain-intracraneal"] =  [eTIV]
-        dict_of_cols["brain-brain-wholebrain"] = [brain_seg]
-        dict_of_cols["gm-brain-graymatter"] = [total_grey]
-        dict_of_cols["wm-brain-whitematter"] = [white_matter]
+        dict_of_cols["brain-whole-intracraneal"] =  [eTIV]
+        dict_of_cols["brain-whole-wholebrain"] = [brain_seg]
+        dict_of_cols["gm-whole-graymatter"] = [total_grey]
+        dict_of_cols["wm-whole-whitematter"] = [white_matter]
         dict_of_cols["vent-lh-lateral"] = [left_lat_vent]
         dict_of_cols["vent-lh-inferior"] = [left_inf_lat_vent]
         dict_of_cols["vent-rh-lateral"] = [right_lat_vent]
@@ -2663,7 +2736,7 @@ def parse_freesurfer_statsfile(stat_file: str, format: str = "metric") -> pd.Dat
     nrows = df.shape[0]
 
     # Inserting the units
-    units = cltmorphtools.get_units("volume")
+    units = cltmorph.get_units("volume")
     df.insert(0, "metric", ["volume"] * nrows)
     df.insert(1, "units", units * nrows)
         
