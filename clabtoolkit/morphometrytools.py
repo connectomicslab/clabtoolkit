@@ -717,10 +717,12 @@ def get_units(metrics: Union[str, list], metrics_json: str = None) -> list:
 
 def compute_reg_val_fromparcellation(
     metric_file: Union[str, np.ndarray],
-    parc_file: Union[str, cltparc.Parcellation],
+    parc_file: Union[str, cltparc.Parcellation, np.ndarray],
     metric: str = "unknown",
     stats_list: Union[str, list] = ["mean", "median", "std", "min", "max"],
     format: str = "region",
+    exclude_by_code: Union[list, np.ndarray] = None,
+    exclude_by_name: Union[list, str] = None,
 ) -> pd.DataFrame:
     """
     This method computes the regional values of a scalar map inside each region of a specified parcellation.
@@ -739,13 +741,20 @@ def compute_reg_val_fromparcellation(
     stats_list : Union[str, list], optional
         List of statistics to compute. The default is ["mean", "median", "std", "min", "max"].
 
-
     format : str, optional
         Format of the output. It could be "region" or "metric". The default is "region".
         With the "region" format, the output is a DataFrame with the regional values where each column
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
         for each region.
+
+    exclude_by_code : Union[list, np.ndarray], optional
+        List of codes to exclude from the analysis. The default is None. If None, no codes are excluded.
+        Please see the method "build_indexes" in the miscellaneous module inside clabtoolkit to see how to build the list of codes.
+
+    exclude_by_name : Union[list, str], optional
+        List of names to exclude from the analysis. The default is None. If None, no names are excluded.
+
 
     Returns
     -------
@@ -756,12 +765,12 @@ def compute_reg_val_fromparcellation(
 
     Examples
     --------
-    >>> import clabtoolkit.morphometrytools as clmorphtools
+    >>> import clabtoolkit.morphometrytools as cltmorphtools
     >>> import os
     >>> import pandas as pd
     >>> metric_file = os.path.join('..', 'data', 'metric.nii.gz')
     >>> parc_file = os.path.join('..', 'data', 'parcellation.nii.gz')
-    >>> df = clmorphtools.compute_reg_val_fromparcellation(metric_file, parc_file)
+    >>> df = cltmorphtools.compute_reg_val_fromparcellation(metric_file, parc_file)
     >>> print(df.head())
 
     """
@@ -779,16 +788,21 @@ def compute_reg_val_fromparcellation(
         # Checking if the file exists if the file is a string. If exists, read the file and create the object
         # Otherwise, raise an error
         if not os.path.exists(parc_file):
-            raise FileNotFoundError("The annotation file does not exist.")
+            raise FileNotFoundError("The parcellation file does not exist.")
         else:
             # Reading the annot file
             vparc_data = cltparc.Parcellation(
                 parc_file=parc_file,
             )
-
+            affine = vparc_data.affine
     elif isinstance(parc_file, cltfree.AnnotParcellation):
         # If the file is an object, copy the object
         vparc_data = copy.deepcopy(parc_file)
+        affine = vparc_data.affine
+
+    elif isinstance(parc_file, np.ndarray):
+        vparc_data = cltparc.Parcellation(parc_file=parc_file)
+        affine = vparc_data.affine
 
     # Detecting if the needed metric file as a string or an object. If the file is a string, check if the file exists
     # Otherwise, raise an error
@@ -805,69 +819,34 @@ def compute_reg_val_fromparcellation(
     # Converting to lower case
     stats_list = list(map(lambda x: x.lower(), stats_list))  # Converting to lower case
 
-    if not include_unknown:
-        tmp_names = sparc_data.regnames
-        unk_indexes = cltmisc.get_indexes_by_substring(
-            tmp_names, ["medialwall", "unknown", "corpuscallosum"]
-        ).astype(int)
+    if exclude_by_code is not None:
+        vparc_data.remove_by_code(codes2remove=exclude_by_code)
 
-        if len(unk_indexes) > 0:
-            # get the values of the unknown regions
-            unk_codes = sparc_data.regtable[unk_indexes, 4]
-            unk_vert = np.isin(sparc_data.codes, unk_codes)
-
-            sparc_data.codes[unk_vert] = 0
-            sparc_data.regnames = np.delete(sparc_data.regnames, unk_indexes).tolist()
-            sparc_data.regtable = np.delete(sparc_data.regtable, unk_indexes, axis=0)
-
-    # Setting the vertex values to 0 if the values are not in the table
-    # Set to 0 the values of sparc_data.codes that are not in the regtable
-    unique_codes = np.unique(sparc_data.codes)
-
-    # Get the indexes of the unique codes that are not in the regtable
-    not_in_table = np.setdiff1d(unique_codes, sparc_data.regtable[:, 4])
-
-    # Set to 0 the values of the codes that are not in the regtable
-    sparc_data.codes[np.isin(sparc_data.codes, not_in_table)] = 0
-
-    sts = np.unique(sparc_data.codes)
-    # Remove the 0
-    sts = sts[sts != 0]
-    nreg = len(sts)
+    if exclude_by_name is not None:
+        vparc_data.remove_by_name(names2remove=exclude_by_name)
 
     dict_of_cols = {}
 
     # Values for each region in the annot
     df = pd.DataFrame()
 
-    # Compute the whole hemisphere
-    temp = stats_from_vector(
-        metric_vect[np.isin(sparc_data.codes, sparc_data.regtable[:, 4])], stats_list
-    )
-    dict_of_cols["ctx-" + hemi + "-hemisphere"] = temp
+    # Computing global metric
+    temp = stats_from_vector(metric_vol[vparc_data.data != 0], stats_list)
+    dict_of_cols["brain-wholebrain"] = temp
 
-    for regname in sparc_data.regnames:
+    for i, index in enumerate(vparc_data.index):
+        regname = vparc_data.name[i]
+        ind = np.where(vparc_data.data == index)
 
-        # Get the index of the region in the color table
-        index = cltmisc.get_indexes_by_substring(
-            sparc_data.regnames, regname, matchww=True
-        )
-
-        if len(index):
-            temp = stats_from_vector(
-                metric_vect[sparc_data.codes == sparc_data.regtable[index, 4]],
-                stats_list,
-            )
+        if len(ind) > 0:
+            temp_vect = metric_vol[ind[0], ind[1], ind[2]]
+            temp = stats_from_vector(temp_vect, stats_list)
             dict_of_cols[regname] = temp
 
         else:
             dict_of_cols[regname] = np.zeros_like(stats_list).tolist()
 
     df = pd.DataFrame.from_dict(dict_of_cols)
-
-    colnames = df.columns.tolist()
-    colnames = cltmisc.correct_names(colnames, prefix="ctx-" + hemi + "-")
-    df.columns = colnames
 
     if format == "region":
         df.index = stats_list
@@ -895,4 +874,139 @@ def compute_reg_val_fromparcellation(
 
     # Insert a column at the begining of the dataframe
 
-    return df, metric_vect
+    return df
+
+
+def compute_reg_volume_fromparcellation(
+    parc_file: Union[str, cltparc.Parcellation, np.ndarray],
+    format: str = "region",
+    exclude_by_code: Union[list, np.ndarray] = None,
+    exclude_by_name: Union[list, str] = None,
+) -> pd.DataFrame:
+    """
+    This method computes the volume for all the regions of a specified parcellation.
+
+    Parameters
+    ----------
+
+    parc_file : str
+        Path to the parcellation file.
+
+    format : str, optional
+        Format of the output. It could be "region" or "metric". The default is "region".
+        With the "region" format, the output is a DataFrame with the regional values where each column
+        represent the value of column metric for each specific region. With the "metric" format, the output
+        is a DataFrame with the regional values where each column represent the value of a specific metric
+        for each region.
+
+    exclude_by_code : Union[list, np.ndarray], optional
+        List of codes to exclude from the analysis. The default is None. If None, no codes are excluded.
+        Please see the method "build_indexes" in the miscellaneous module inside clabtoolkit to see how to build the list of codes.
+
+    exclude_by_name : Union[list, str], optional
+        List of names to exclude from the analysis. The default is None. If None, no names are excluded.
+
+
+    Returns
+    -------
+    df : pd.DataFrame
+        DataFrame with the regional values.
+    metric_vect : np.ndarray
+
+
+    Examples
+    --------
+    >>> import clabtoolkit.morphometrytools as cltmorphtools
+    >>> import os
+    >>> import pandas as pd
+    >>> metric_file = os.path.join('..', 'data', 'metric.nii.gz')
+    >>> parc_file = os.path.join('..', 'data', 'parcellation.nii.gz')
+    >>> df = cltmorphtools.compute_reg_volume_fromparcellation(parc_file)
+    >>> print(df.head())
+
+    """
+
+    # Detect if the format is not region or metric
+    if format not in ["region", "metric"]:
+        raise ValueError("The format should be region or metric.")
+
+    # Detecting if the needed parcellation file as a string or an object
+    if isinstance(parc_file, str):
+        # Checking if the file exists if the file is a string. If exists, read the file and create the object
+        # Otherwise, raise an error
+        if not os.path.exists(parc_file):
+            raise FileNotFoundError("The parcellation file does not exist.")
+        else:
+            # Reading the annot file
+            vparc_data = cltparc.Parcellation(
+                parc_file=parc_file,
+            )
+            affine = vparc_data.affine
+    elif isinstance(parc_file, cltfree.AnnotParcellation):
+        # If the file is an object, copy the object
+        vparc_data = copy.deepcopy(parc_file)
+        affine = vparc_data.affine
+
+    elif isinstance(parc_file, np.ndarray):
+        vparc_data = cltparc.Parcellation(parc_file=parc_file)
+        affine = vparc_data.affine
+
+    # Excluding regions
+    if exclude_by_code is not None:
+        vparc_data.remove_by_code(codes2remove=exclude_by_code)
+
+    if exclude_by_name is not None:
+        vparc_data.remove_by_name(names2remove=exclude_by_name)
+
+    # Computing the voxel volume
+    vox_size = np.linalg.norm(affine[:3, :3], axis=1)
+    vox_vol = np.prod(vox_size)
+
+    dict_of_cols = {}
+
+    # Values for each region in the annot
+    df = pd.DataFrame()
+
+    # Computing global metric
+    temp = len(vparc_data.data[vparc_data.data != 0]) * vox_vol
+    dict_of_cols["brain-wholebrain"] = temp
+
+    for i, index in enumerate(vparc_data.index):
+        regname = vparc_data.name[i]
+        ind = np.where(vparc_data.data == index)
+        temp = len(ind)
+        if temp > 0:
+            dict_of_cols[regname] = [temp * vox_vol]
+
+        else:
+            dict_of_cols[regname] = [0]
+
+    df = pd.DataFrame.from_dict(dict_of_cols)
+
+    if format == "region":
+        df.index = ["global"]
+
+        # Converting the row names to a new column called statistics
+        df = df.reset_index()
+        df = df.rename(columns={"index": "statistics"})
+
+        # Convert the index to a column with name "metric"
+
+    else:
+        df = df.T
+        df.columns = ["global"]
+
+        # Converting the row names to a new column called statistics
+        df = df.reset_index()
+        df = df.rename(columns={"index": "region"})
+
+    nrows = df.shape[0]
+
+    # Inserting the units
+    units = get_units("volume")
+    df.insert(0, "metric", ["volume"] * nrows)
+    df.insert(1, "units", units * nrows)
+
+    # Insert a column at the begining of the dataframe
+
+    return df
