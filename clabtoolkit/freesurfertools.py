@@ -2525,6 +2525,9 @@ def detect_hemi(file_name: str):
         hemi = "rh"
     elif "hemi-" in surf_name:
         tmp_hemi = surf_name.split("-")[1].split("_")[0]
+        tmp_ent = cltbids.str2entity(file_name)
+        if "hemi" in tmp_ent.keys():
+            tmp_hemi = tmp_ent["hemi"]
 
         if tmp_hemi in ["lh", "l", "left", "lefthemisphere"]:
             hemi = "lh"
