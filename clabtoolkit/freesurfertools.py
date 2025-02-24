@@ -2456,6 +2456,49 @@ def remove_fsaverage_links(linkavg_folder: str):
     ):
         os.remove(linkavg_folder)
 
+def colors2colortable(colors: Union[list, np.ndarray]):
+    """
+    Convert a list of colors to a FreeSurfer color table
+
+    Parameters
+    ----------
+        colors     - Required  : List of colors in hexadecimal format:
+
+    Returns
+    -------
+    ctab: np.array
+        FreeSurfer color table
+        
+    Usage
+    -----
+    >>> colors = ["#FF0000", "#00FF00", "#0000FF"]
+    >>> ctab = colors2colortable(colors
+
+    """
+
+    if not isinstance(colors, (list, np.ndarray)):
+        raise ValueError("The colors must be a list or a numpy array")
+    
+    if isinstance(colors, np.ndarray):
+        colors = cltmisc.multi_rgb2hex(colors)
+        
+    
+    # Create the new table
+    ctab = np.array([[0, 0, 0, 0, 0]])
+    for i, color in enumerate(colors):
+        rgb = cltmisc.hex2rgb(color)
+        vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
+
+        # Concatenate the new table
+        ctab = np.concatenate(
+                        (ctab, np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])),
+                        axis=0,
+                    )
+
+    # Remove the first row
+    ctab = ctab[1:]
+
+    return ctab
 
 def detect_hemi(file_name: str):
     """
