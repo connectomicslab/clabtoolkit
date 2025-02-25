@@ -14,6 +14,7 @@ import clabtoolkit.misctools as cltmisc
 import clabtoolkit.freesurfertools as cltfree
 import clabtoolkit.surfacetools as cltsurf
 import clabtoolkit.parcellationtools as cltparc
+import clabtoolkit.bidstools as cltbids
 
 ####################################################################################################
 ####################################################################################################
@@ -222,6 +223,12 @@ def compute_reg_val_fromannot(
 
     # Insert a column at the begining of the dataframe
 
+    # Adding the entities related to BIDs        
+    if add_bids_entities:
+        ent_list = entities4morphotable()
+        df_add = df2add(in_file = metric_file, ent_list = ent_list)
+        df = pd.concat([df_add, df], axis=1)
+
     return df, metric_vect
 
 
@@ -231,6 +238,7 @@ def compute_reg_area_fromsurf(
     hemi: str,  # Hemisphere id. It could be lh or rh
     format: str = "metric",
     include_unknown: bool = False,
+    add_bids_entities: bool = False
 ) -> pd.DataFrame:
     """
     This method computes the surface area for each region in the annotation file.
@@ -413,6 +421,13 @@ def compute_reg_area_fromsurf(
     df.insert(0, "metric", ["area"] * nrows)
     df.insert(1, "units", units * nrows)
 
+    # Adding the entities related to BIDs        
+    if add_bids_entities:
+        ent_list = entities4morphotable()
+        df_add = df2add(in_file = parc_file, ent_list = ent_list)
+        df = pd.concat([df_add, df], axis=1)
+    
+
     return df
 
 
@@ -420,6 +435,7 @@ def compute_euler_fromsurf(
     surf_file: Union[str, cltsurf.Surface],
     hemi: str,  # Hemisphere id. It could be lh or rh
     format: str = "metric",
+    add_bids_entities: bool = False
 ) -> pd.DataFrame:
     """
     This method computes the Euler characteristic of a surface.
@@ -519,6 +535,12 @@ def compute_euler_fromsurf(
     units = get_units("euler")
     df.insert(0, "metric", ["euler"] * nrows)
     df.insert(1, "units", units * nrows)
+
+    # Adding the entities related to BIDs
+    if add_bids_entities:
+        ent_list = entities4morphotable()
+        df_add = df2add(in_file=surf_file, ent_list=ent_list)
+        df = pd.concat([df_add, df], axis=1)
 
     return df
 
@@ -804,6 +826,7 @@ def compute_reg_val_fromparcellation(
     format: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
+    add_bids_entities: bool = False,
 ) -> pd.DataFrame:
     """
     This method computes the regional values of a scalar map inside each region of a specified parcellation.
@@ -959,8 +982,12 @@ def compute_reg_val_fromparcellation(
     df.insert(0, "metric", [metric] * nrows)
     df.insert(1, "units", units * nrows)
 
-    # Insert a column at the begining of the dataframe
-
+    # Adding the entities related to BIDs        
+    if add_bids_entities:
+        ent_list = entities4morphotable()
+        df_add = df2add(in_file = metric_file, ent_list = ent_list)
+        df = pd.concat([df_add, df], axis=1)
+        
     return df
 
 
@@ -969,6 +996,7 @@ def compute_reg_volume_fromparcellation(
     format: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
+    add_bids_entities: bool = False,
 ) -> pd.DataFrame:
     """
     This method computes the volume for all the regions of a specified parcellation.
@@ -1101,7 +1129,11 @@ def compute_reg_volume_fromparcellation(
     df.insert(0, "metric", ["volume"] * nrows)
     df.insert(1, "units", units * nrows)
 
-    # Insert a column at the begining of the dataframe
+    # Adding the entities related to BIDs
+    if add_bids_entities:
+        ent_list = entities4morphotable()
+        df_add = df2add(in_file=parc_file, ent_list=ent_list)
+        df = pd.concat([df_add, df], axis=1)
 
     return df
 
@@ -1229,3 +1261,229 @@ def parse_freesurfer_statsfile(stat_file: str, format: str = "metric") -> pd.Dat
     df.insert(1, "units", units * nrows)
 
     return df
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                        Auxiliary methods                                   ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+
+
+def stats_from_vector(metric_vect, stats_list):
+    """
+    This method computes the statistics from a vector.
+
+    Parameters
+    ----------
+    metric_vect : np.ndarray
+        Vector with the values of the metric.
+
+    stats_list : list
+        List of statistics to compute.
+
+    Returns
+    -------
+
+    out_vals : list
+        List with the computed statistics.
+
+    """
+
+    stats_list = list(map(lambda x: x.lower(), stats_list))  # Converting to lower case
+
+    out_vals = []
+    for v in stats_list:
+        if v == "mean" or v == "summary":
+            val = np.mean(metric_vect)
+
+        if v == "median":
+            val = np.median(metric_vect)
+
+        if v == "std":
+            val = np.std(metric_vect)
+
+        if v == "min":
+            val = np.min(metric_vect)
+
+        if v == "max":
+            val = np.max(metric_vect)
+
+        out_vals.append(val)
+    return out_vals
+
+
+def entities4morphotable(entities_json: str = None) -> list:
+    """
+    This method returns the BIDs entities that will be included in the morphometric table.
+
+    Parameters
+    ----------
+    entities_json : str, optional
+        Path to the json file with the information of the metrics. The default is None.
+        If None, the method uses the default config json file.
+
+    Returns
+    -------
+    entities : list
+        List of valid entities.
+
+    Examples
+    --------
+    >>> import clabtoolkit.morphometrytools as clmorphtools
+    >>> clmorphtools.entities4morphotable()
+    ["sub",
+    "ses",
+    "acq",
+    "dir",
+    "run",
+    "ce",
+    "rec",
+    "space",
+    "res",
+    "model",
+    "desc",
+    "atlas",
+    "scale",
+    "seg",
+    "grow"]
+    """
+    config_json = os.path.join(os.path.dirname(__file__), "config", "config.json")
+
+    if entities_json is None:
+        with open(config_json) as f:
+            config_json = json.load(f)
+        entities = config_json["bids_entities"]
+    elif isinstance(entities_json, str):
+        if not os.path.isfile(entities_json):
+            raise ValueError(
+                "Please, provide a valid JSON file containing the entities dictionary."
+            )
+        else:
+            with open(entities_json) as f:
+                entities = json.load(f)
+
+    return entities
+
+
+def get_units(metrics: Union[str, list], metrics_json: Union[str, dict] = None) -> list:
+    """
+    This method returns the units of a specific metric.
+
+    Parameters
+    ----------
+    metrics : str or list
+        Name of the metrics. It could be a string or a list of strings.
+
+    metrics_json : str, optional
+        Path to the json file with the information of the metrics. The default is None.
+        If None, the method uses the default json file.
+
+    Returns
+    -------
+    units : list
+        Units of the supplied metrics.
+
+    Examples
+    --------
+    >>> import clabtoolkit.morphometrytools as clmorphtools
+    >>> clmorphtools.get_units('thickness')
+    ['mm']
+    """
+
+    if isinstance(metrics, str):
+        metrics = [metrics]
+
+    if metrics_json is None:
+        config_json = os.path.join(os.path.dirname(__file__), "config", "config.json")
+        with open(config_json) as f:
+            config_json = json.load(f)
+        metric_dict = config_json["metrics_units"]
+    else:
+        if isinstance(metrics_json, str):
+            if not os.path.isfile(metrics_json):
+                raise ValueError(
+                    "Please, provide a valid JSON file containing the units dictionary."
+                )
+            else:
+                with open(metrics_json) as f:
+                    metric_dict = json.load(f)
+        elif isinstance(metrics_json, dict):
+            metric_dict = metrics_json
+
+    # get dictionary keys
+    metric_keys = metric_dict.keys()
+    # lower all the metric_keys
+    metric_keys = list(map(lambda x: x.lower(), metric_keys))
+
+    # Search for the metric in the dictionary
+    units = []
+
+    for metric in metrics:
+        if metric.lower() in metric_keys:
+            units.append(metric_dict[metric.lower()])
+        else:
+            units.append("unknown")
+
+    return units
+
+
+def df2add(in_file: str, ent_list: Union[str, list] == None):
+    """
+    Method to create a dataframe that could be added in front of the metrics dataframe.
+
+    Parameters:
+    in_file : str
+        Filename path to extract the entities from.
+
+    """
+
+    file_path = os.path.dirname(in_file)
+    file_name = os.path.basename(in_file)
+    ent_dict = cltbids.str2entity(file_name)
+
+    df2add = pd.DataFrame()
+
+    if ent_list is not None:
+        if isinstance(ent_list, str):
+            ent_list = [ent_list]
+        for entity in reversed(ent_list):
+
+            if entity in ent_dict.keys():
+                value = ent_dict[entity]
+            else:
+                value = ""
+
+            if entity == "sub":
+                df2add.insert(0, "participant_id", value)
+            elif entity == "ses":
+                df2add.insert(0, "session_id", value)
+            elif entity == "atlas":
+                if "chimera" in value:
+                    df2add.insert(0, "atlas_id", "chimera")
+                    # Remove the word chimera from tmp string
+                    tmp = value.replace("chimera", "")
+                    df2add.insert(1, "chimera_id", tmp)
+                else:
+                    df2add.insert(0, "atlas_id", value)
+                    df2add.insert(1, "chimera_id", "")
+
+            elif entity == "desc":
+                df2add.insert(0, "desc_id", value)
+                if "grow" in value:
+                    tmp = value.replace("grow", "")
+                    df2add.insert(1, "grow", tmp)
+            else:
+                df2add.insert(0, entity + "_id", value)
+    else:
+        # Adding the participant_id as the full name of the file without the extension
+        if "extension" in ent_dict.keys():
+            ent_dict["suffix"] = ""
+
+        df2add.insert(0, "participant_id", cltbids.entity2str(ent_dict))
+
+    return df2add
