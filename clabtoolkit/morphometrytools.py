@@ -232,12 +232,8 @@ def compute_reg_val_fromannot(
         ent_list = entities4morphotable()
         df_add = df2add(in_file=metric_file, ent_list=ent_list)
 
-        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
-        # Concatenate along columns (axis=1)
-        # Reset index to ensures clean concatenation
-        df = df.reset_index(drop=True)
-        # Concatenate along columns (axis=1)
-        df = pd.concat([df_expanded, df], axis=1)
+        # Expand a first dataframe and concatenate with the second dataframe
+        df = cltmisc.expand_and_concatenate(df_add, df)
 
     return df, metric_vect
 
@@ -439,12 +435,8 @@ def compute_reg_area_fromsurf(
         ent_list = entities4morphotable()
         df_add = df2add(in_file=parc_file, ent_list=ent_list)
 
-        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
-        # Concatenate along columns (axis=1)
-        # Reset index to ensures clean concatenation
-        df = df.reset_index(drop=True)
-        # Concatenate along columns (axis=1)
-        df = pd.concat([df_expanded, df], axis=1)
+        # Expand a first dataframe and concatenate with the second dataframe
+        df = cltmisc.expand_and_concatenate(df_add, df)
 
     return df
 
@@ -562,12 +554,8 @@ def compute_euler_fromsurf(
         ent_list = entities4morphotable()
         df_add = df2add(in_file=surf_file, ent_list=ent_list)
 
-        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
-        # Concatenate along columns (axis=1)
-        # Reset index to ensures clean concatenation
-        df = df.reset_index(drop=True)
-        # Concatenate along columns (axis=1)
-        df = pd.concat([df_expanded, df], axis=1)
+        # Expand a first dataframe and concatenate with the second dataframe
+        df = cltmisc.expand_and_concatenate(df_add, df)
 
     return df
 
@@ -859,12 +847,8 @@ def compute_reg_val_fromparcellation(
         ent_list = entities4morphotable()
         df_add = df2add(in_file=metric_file, ent_list=ent_list)
 
-        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
-        # Concatenate along columns (axis=1)
-        # Reset index to ensures clean concatenation
-        df = df.reset_index(drop=True)
-        # Concatenate along columns (axis=1)
-        df = pd.concat([df_expanded, df], axis=1)
+        # Expand a first dataframe and concatenate with the second dataframe
+        df = cltmisc.expand_and_concatenate(df_add, df)
 
     return df
 
@@ -1015,12 +999,8 @@ def compute_reg_volume_fromparcellation(
         ent_list = entities4morphotable()
         df_add = df2add(in_file=parc_file, ent_list=ent_list)
 
-        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
-        # Concatenate along columns (axis=1)
-        # Reset index to ensures clean concatenation
-        df = df.reset_index(drop=True)
-        # Concatenate along columns (axis=1)
-        df = pd.concat([df_expanded, df], axis=1)
+        # Expand a first dataframe and concatenate with the second dataframe
+        df = cltmisc.expand_and_concatenate(df_add, df)
 
     return df
 
@@ -1055,6 +1035,9 @@ def parse_freesurfer_statsfile(
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
         for each region.
+
+    add_bids_entities: bool, optional
+        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
 
     Returns
 
@@ -1149,6 +1132,14 @@ def parse_freesurfer_statsfile(
     units = get_units("volume")
     df.insert(0, "metric", ["volume"] * nrows)
     df.insert(1, "units", units * nrows)
+
+    # Adding the entities related to BIDs
+    if add_bids_entities:
+        ent_list = entities4morphotable()
+        df_add = df2add(in_file=stat_file, ent_list=ent_list)
+
+        # Expand a first dataframe and concatenate with the second dataframe
+        df = cltmisc.expand_and_concatenate(df_add, df)
 
     return df
 
