@@ -10,10 +10,10 @@ import pandas as pd
 import nibabel as nib
 import numpy as np
 
-import misctools as cltmisc
-import freesurfertools as cltfree
-import surfacetools as cltsurf
-import parcellationtools as cltparc
+import clabtoolkit.misctools as cltmisc
+import clabtoolkit.freesurfertools as cltfree
+import clabtoolkit.surfacetools as cltsurf
+import clabtoolkit.parcellationtools as cltparc
 
 ####################################################################################################
 ####################################################################################################
@@ -205,10 +205,10 @@ def compute_reg_val_fromannot(
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
-        
+
         # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
         reg_names = df["region"].str.split("-", expand=True)
-        
+
         # Insert the new columns before the column "region"
         df.insert(0, "supraregion", reg_names[0])
         df.insert(1, "side", reg_names[1])
@@ -290,19 +290,22 @@ def compute_reg_area_fromsurf(
             sparc_data = cltfree.AnnotParcellation(
                 parc_file=parc_file,
             )
+    elif isinstance(parc_file, cltfree.AnnotParcellation):
+        # If the file is an object, copy the object
+        sparc_data = copy.deepcopy(parc_file)
 
-        if isinstance(surf_file, str):
-            # Checking if the file exists if the file is a string. If exists, read the file and create the object
-            # Otherwise, raise an error
-            if not os.path.exists(surf_file):
-                raise FileNotFoundError("The surface file does not exist.")
-            else:
-                # Reading the surface file
-                surf = cltsurf.Surface(surface_file=surf_file)
+    if isinstance(surf_file, str):
+        # Checking if the file exists if the file is a string. If exists, read the file and create the object
+        # Otherwise, raise an error
+        if not os.path.exists(surf_file):
+            raise FileNotFoundError("The surface file does not exist.")
+        else:
+            # Reading the surface file
+            surf = cltsurf.Surface(surface_file=surf_file)
 
-        elif isinstance(surf_file, cltsurf.Surface):
-            # If the file is an object, copy the object
-            surf = copy.deepcopy(surf_file)
+    elif isinstance(surf_file, cltsurf.Surface):
+        # If the file is an object, copy the object
+        surf = copy.deepcopy(surf_file)
 
     coords = surf.mesh.points
     cells = surf.mesh.GetPolys()
@@ -382,7 +385,7 @@ def compute_reg_area_fromsurf(
     df.columns = colnames
 
     if format == "region":
-        df.index = ["global"]
+        df.index = ["summary"]
         df = df.reset_index()
         df = df.rename(columns={"index": "statistics"})
 
@@ -390,15 +393,15 @@ def compute_reg_area_fromsurf(
 
     else:
         df = df.T
-        df.columns = ["global"]
+        df.columns = ["summary"]
 
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
-        
+
         # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
         reg_names = df["region"].str.split("-", expand=True)
-        
+
         # Insert the new columns before the column "region"
         df.insert(0, "supraregion", reg_names[0])
         df.insert(1, "side", reg_names[1])
@@ -489,7 +492,7 @@ def compute_euler_fromsurf(
     df.columns = colnames
 
     if format == "region":
-        df.index = ["global"]
+        df.index = ["summary"]
         df = df.reset_index()
         df = df.rename(columns={"index": "statistics"})
 
@@ -497,15 +500,15 @@ def compute_euler_fromsurf(
 
     else:
         df = df.T
-        df.columns = ["global"]
+        df.columns = ["summary"]
 
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
-        
+
         # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
         reg_names = df["region"].str.split("-", expand=True)
-        
+
         # Insert the new columns before the column "region"
         df.insert(0, "supraregion", reg_names[0])
         df.insert(1, "side", reg_names[1])
@@ -648,7 +651,7 @@ def stats_from_vector(metric_vect, stats_list):
 
     out_vals = []
     for v in stats_list:
-        if v == "mean":
+        if v == "mean" or v == "summary":
             val = np.mean(metric_vect)
 
         if v == "median":
@@ -667,7 +670,7 @@ def stats_from_vector(metric_vect, stats_list):
     return out_vals
 
 
-def get_units(metrics: Union[str, list], metrics_json: str = None) -> list:
+def get_units(metrics: Union[str, list], metrics_json: Union[str, dict] = None) -> list:
     """
     This method returns the units of a specific metric.
 
@@ -688,7 +691,7 @@ def get_units(metrics: Union[str, list], metrics_json: str = None) -> list:
     Examples
     --------
     >>> import clabtoolkit.morphometrytools as clmorphtools
-    >>> clmorphtools.units_from_metric('thickness')
+    >>> clmorphtools.get_units('thickness')
     ['mm']
     """
 
@@ -696,17 +699,21 @@ def get_units(metrics: Union[str, list], metrics_json: str = None) -> list:
         metrics = [metrics]
 
     if metrics_json is None:
-        metrics_json = os.path.join(
-            os.path.dirname(__file__), "config", "metrics_units.json"
-        )
+        config_json = os.path.join(os.path.dirname(__file__), "config", "config.json")
+        with open(config_json) as f:
+            config_json = json.load(f)
+        metric_dict = config_json["metrics_units"]
     else:
-        if not os.path.isfile(metrics_json):
-            raise ValueError(
-                "Please, provide a valid JSON file containing the units dictionary."
-            )
-
-    with open(metrics_json) as f:
-        metric_dict = json.load(f)
+        if isinstance(metrics_json, str):
+            if not os.path.isfile(metrics_json):
+                raise ValueError(
+                    "Please, provide a valid JSON file containing the units dictionary."
+                )
+            else:
+                with open(metrics_json) as f:
+                    metric_dict = json.load(f)
+        elif isinstance(metrics_json, dict):
+            metric_dict = metrics_json
 
     # get dictionary keys
     metric_keys = metric_dict.keys()
@@ -740,7 +747,7 @@ def compute_reg_val_fromparcellation(
     metric_file: Union[str, np.ndarray],
     parc_file: Union[str, cltparc.Parcellation, np.ndarray],
     metric: str = "unknown",
-    stats_list: Union[str, list] = ["mean", "median", "std", "min", "max"],
+    stats_list: Union[str, list] = ["summary", "median", "std", "min", "max"],
     format: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
@@ -760,7 +767,8 @@ def compute_reg_val_fromparcellation(
         Name of the metric. It is used to create the column names of the output DataFrame.
 
     stats_list : Union[str, list], optional
-        List of statistics to compute. The default is ["mean", "median", "std", "min", "max"].
+        List of statistics to compute. The default is ["summary", "median", "std", "min", "max"].
+        Summary is equivalent to the mean value. This is used to merge different metrics in the same table.
 
     format : str, optional
         Format of the output. It could be "region" or "metric". The default is "metric".
@@ -853,7 +861,7 @@ def compute_reg_val_fromparcellation(
 
     # Computing global metric
     temp = stats_from_vector(metric_vol[vparc_data.data != 0], stats_list)
-    dict_of_cols["brain-wholebrain"] = temp
+    dict_of_cols["brain-brain-wholebrain"] = temp
 
     for i, index in enumerate(vparc_data.index):
         regname = vparc_data.name[i]
@@ -876,8 +884,6 @@ def compute_reg_val_fromparcellation(
         df = df.reset_index()
         df = df.rename(columns={"index": "statistics"})
 
-        
-
     else:
         df = df.T
         df.columns = stats_list
@@ -885,10 +891,10 @@ def compute_reg_val_fromparcellation(
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
-        
-                # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
+
+        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
         reg_names = df["region"].str.split("-", expand=True)
-        
+
         # Insert the new columns before the column "region"
         df.insert(0, "supraregion", reg_names[0])
         df.insert(1, "side", reg_names[1])
@@ -997,14 +1003,14 @@ def compute_reg_volume_fromparcellation(
 
     # Computing global metric
     temp = len(vparc_data.data[vparc_data.data != 0]) * vox_vol
-    dict_of_cols["brain-whole-wholebrain"] = temp
+    dict_of_cols["brain-brain-wholebrain"] = temp / 1000
 
     for i, index in enumerate(vparc_data.index):
         regname = vparc_data.name[i]
         ind = np.where(vparc_data.data == index)
-        temp = len(ind[0])
+        temp = len(ind[0]) * vox_vol
         if temp > 0:
-            dict_of_cols[regname] = [temp * vox_vol]
+            dict_of_cols[regname] = [temp / 1000]
 
         else:
             dict_of_cols[regname] = [0]
@@ -1012,7 +1018,7 @@ def compute_reg_volume_fromparcellation(
     df = pd.DataFrame.from_dict(dict_of_cols)
 
     if format == "region":
-        df.index = ["global"]
+        df.index = ["summary"]
 
         # Converting the row names to a new column called statistics
         df = df.reset_index()
@@ -1022,15 +1028,15 @@ def compute_reg_volume_fromparcellation(
 
     else:
         df = df.T
-        df.columns = ["global"]
+        df.columns = ["summary"]
 
         # Converting the row names to a new column called statistics
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
-        
+
         # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
         reg_names = df["region"].str.split("-", expand=True)
-        
+
         # Insert the new columns before the column "region"
         df.insert(0, "supraregion", reg_names[0])
         df.insert(1, "side", reg_names[1])
@@ -1043,5 +1049,130 @@ def compute_reg_volume_fromparcellation(
     df.insert(1, "units", units * nrows)
 
     # Insert a column at the begining of the dataframe
+
+    return df
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############       Methods dedicated to parse stats file from freesurfer results        ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+
+
+def parse_freesurfer_statsfile(stat_file: str, format: str = "metric") -> pd.DataFrame:
+    """
+    This function reads the estimated volume values from freesurfer aseg.stats file
+
+    Parameters
+
+    ----------
+    stat_file : str
+        Path to the aseg.stats file generated by freesurfer
+
+    format : str, optional
+        Format of the output. It could be "region" or "metric". The default is "metric".
+        With the "region" format, the output is a DataFrame with the regional values where each column
+        represent the value of column metric for each specific region. With the "metric" format, the output
+        is a DataFrame with the regional values where each column represent the value of a specific metric
+        for each region.
+
+    Returns
+
+    -------
+    df : pandas.DataFrame
+        A dataframe with the values of the estimated volume
+
+    """
+
+    # Verify if the file exists
+    if os.path.isfile(stat_file):
+
+        # Read the each file and extract the eTIV, total gray matter volume and cerebral white matter volume
+        with open(stat_file, "r") as file:
+            for line in file:
+                if (
+                    "EstimatedTotalIntraCranialVol" in line
+                ):  # Selecting the line with the eTIV
+                    eTIV = line.split()[-2].split(",")[
+                        0
+                    ]  # Splitting the line and selecting the eTIV value
+                    # Convert the value to float and divide by 1000 to convert to cm3
+                    eTIV = float(eTIV) / 1000
+
+                if "Brain Segmentation Volume," in line:
+                    brain_seg = line.split()[-2].split(",")[0]
+                    brain_seg = float(brain_seg) / 1000
+
+                if "TotalGrayVol" in line:
+                    total_grey = line.split()[-2].split(",")[0]
+                    total_grey = float(total_grey) / 1000
+
+                if "CerebralWhiteMatterVol" in line:
+                    white_matter = line.split()[-2].split(",")[0]
+                    white_matter = float(white_matter) / 1000
+
+                if "Left-Lateral-Ventricle" in line:
+                    left_lat_vent = line.split()[3]
+                    left_lat_vent = float(left_lat_vent) / 1000
+
+                if "Left-Inf-Lat-Vent" in line:
+                    left_inf_lat_vent = line.split()[3]
+                    left_inf_lat_vent = float(left_inf_lat_vent) / 1000
+
+                if "Right-Lateral-Ventricle" in line:
+                    right_lat_vent = line.split()[3]
+                    right_lat_vent = float(right_lat_vent) / 1000
+
+                if "Right-Inf-Lat-Vent" in line:
+                    right_inf_lat_vent = line.split()[3]
+                    right_inf_lat_vent = float(right_inf_lat_vent) / 1000
+
+        # Create a dictionary with the values
+        dict_of_cols = {}
+        dict_of_cols["brain-brain-intracraneal"] = [eTIV]
+        dict_of_cols["brain-brain-wholebrain"] = [brain_seg]
+        dict_of_cols["gm-brain-graymatter"] = [total_grey]
+        dict_of_cols["wm-brain-whitematter"] = [white_matter]
+        dict_of_cols["vent-lh-lateral"] = [left_lat_vent]
+        dict_of_cols["vent-lh-inferior"] = [left_inf_lat_vent]
+        dict_of_cols["vent-rh-lateral"] = [right_lat_vent]
+        dict_of_cols["vent-rh-inferior"] = [right_inf_lat_vent]
+
+    # Create a dataframe with the values
+    df = pd.DataFrame.from_dict(dict_of_cols)
+
+    if format == "region":
+        df.index = ["summary"]
+        df = df.reset_index()
+        df = df.rename(columns={"index": "statistics"})
+
+        # Convert the index to a column with name "metric"
+
+    else:
+        df = df.T
+        df.columns = ["summary"]
+
+        # Converting the row names to a new column called statistics
+        df = df.reset_index()
+        df = df.rename(columns={"index": "region"})
+
+        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
+        reg_names = df["region"].str.split("-", expand=True)
+
+        # Insert the new columns before the column "region"
+        df.insert(0, "supraregion", reg_names[0])
+        df.insert(1, "side", reg_names[1])
+
+    nrows = df.shape[0]
+
+    # Inserting the units
+    units = get_units("volume")
+    df.insert(0, "metric", ["volume"] * nrows)
+    df.insert(1, "units", units * nrows)
 
     return df
