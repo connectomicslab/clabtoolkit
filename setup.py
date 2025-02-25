@@ -36,6 +36,7 @@ setup(
     keywords="clabtoolkit",
     name="clabtoolkit",
     packages=find_packages(include=["clabtoolkit", "clabtoolkit.*"]),
+    package_data={"clabtoolkit": ["clabtoolkit/config/*"]},
     test_suite="tests",
     tests_require=test_requirements,
     url="https://github.com/connectomicslab/clabtoolkit",

@@ -108,24 +108,26 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]):
         List of hexadecimal codes for the colors
 
     """
+    if len(colors) > 0:
+        # If all the values in the list are between 0 and 1, then the values are multiplied by 255
+        colors = readjust_colors(colors)
 
-    # If all the values in the list are between 0 and 1, then the values are multiplied by 255
-    colors = readjust_colors(colors)
+        hexcodes = []
+        if isinstance(colors, list):
+            for indcol, color in enumerate(colors):
+                if isinstance(colors[indcol], str):
+                    hexcodes.append(colors[indcol])
 
-    hexcodes = []
-    if isinstance(colors, list):
-        for indcol, color in enumerate(colors):
-            if isinstance(colors[indcol], str):
-                hexcodes.append(colors[indcol])
+                elif isinstance(colors[indcol], np.ndarray):
+                    hexcodes.append(rgb2hex(color[0], color[1], color[2]))
 
-            elif isinstance(colors[indcol], np.ndarray):
-                hexcodes.append(rgb2hex(color[0], color[1], color[2]))
-
-    elif isinstance(colors, np.ndarray):
-        nrows, ncols = colors.shape
-        for i in np.arange(0, nrows):
-            hexcodes.append(rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
-
+        elif isinstance(colors, np.ndarray):
+            nrows, ncols = colors.shape
+            for i in np.arange(0, nrows):
+                hexcodes.append(rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
+    else:
+        hexcodes = []
+        
     return hexcodes
 
 
@@ -438,7 +440,11 @@ def filter_by_substring(list1: list, substr: Union[str, list], boolcase: bool = 
 
 
 def get_indexes_by_substring(
-    list1: list, substr: Union[str, list], invert: bool = False, boolcase: bool = False
+    list1: list,
+    substr: Union[str, list],
+    invert: bool = False,
+    boolcase: bool = False,
+    matchww: bool = False,
 ):
     """
     Function extracts the indexes of the elements of a list of elements that contain
@@ -454,6 +460,9 @@ def get_indexes_by_substring(
 
     boolcase : bool
         Boolean to indicate if the search is case sensitive. Default is False
+
+    matchww : bool
+        Boolean to indicate if the search is a whole word match. Default is False
 
     Returns
     -------
@@ -480,7 +489,14 @@ def get_indexes_by_substring(
         tmp_list1 = list1
 
     # Get the indexes of the list elements that contain any of the strings in the list aa
-    indexes = [i for i, x in enumerate(tmp_list1) if any(a in x for a in tmp_substr)]
+    if matchww:
+        indexes = [
+            i for i, x in enumerate(tmp_list1) if any(a == x for a in tmp_substr)
+        ]
+    else:
+        indexes = [
+            i for i, x in enumerate(tmp_list1) if any(a in x for a in tmp_substr)
+        ]
 
     # Convert indexes to a numpy array
     indexes = np.array(indexes)
