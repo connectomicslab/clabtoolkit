@@ -3,6 +3,7 @@ import shutil
 import pandas as pd
 import clabtoolkit.misctools as cltmisc
 from typing import Union, Dict, List
+import re
 
 
 ####################################################################################################
@@ -603,3 +604,66 @@ def copy_bids_folder(
     print(" ")
 
     print("End of copying the files.")
+
+
+def is_bids_filename(filename: str, is_derivative: bool = False) -> bool:
+    """
+    Check if a given filename follows the Brain Imaging Data Structure (BIDS) format.
+
+    Args:
+        filename (str): The filename to check.
+        is_derivative (bool): If True, allows derivative-specific entities.
+
+    Returns:
+        bool: True if the filename is in BIDS format, False otherwise.
+    """
+    # Common entities for both raw and derivative BIDS filenames
+    common_pattern = (
+        r"^(sub-[a-zA-Z0-9]+)"  # Subject (required)
+        r"(_ses-[a-zA-Z0-9]+)?"  # Session (optional)
+        r"(_task-[a-zA-Z0-9]+)?"  # Task (optional)
+        r"(_acq-[a-zA-Z0-9]+)?"  # Acquisition (optional)
+        r"(_run-[0-9]+)?"  # Run (optional)
+        r"(_echo-[0-9]+)?"  # Echo (optional)
+        r"(_dir-[a-zA-Z0-9]+)?"  # Phase-Encoding Direction (optional)
+        r"(_rec-[a-zA-Z0-9]+)?"  # Reconstruction (optional)
+        r"(_ce-[a-zA-Z0-9]+)?"  # Contrast-enhanced (optional)
+    )
+
+    # Additional entities allowed in derivative filenames
+    derivative_pattern = (
+        r"(_from-[a-zA-Z0-9]+)?"  # Original data source (e.g., "from-T1w")
+        r"(_to-[a-zA-Z0-9]+)?"  # Target space (e.g., "to-T1w")
+        r"(_space-[a-zA-Z0-9]+)?"  # Spatial reference (e.g., "space-MNI152NLin2009cAsym")
+        r"(_atlas-[a-zA-Z0-9]+)?"  # Atlas reference (e.g., "atlas-HarvardOxford")
+        r"(_scale-[a-zA-Z0-9]+)?"  # Scale reference (e.g., "scale-2mm")
+        r"(_desc-[a-zA-Z0-9]+)?"  # Description (e.g., "desc-brain_mask")
+        r"(_seg-[a-zA-Z0-9]+)?"  # Segmentation label (e.g., "seg-GM")
+    )
+
+    # Valid modality suffixes
+    modality_suffix = (
+        r"_(bold|T1w|T2w|dwi|fmap|pet|asl|"  # Standard imaging modalities
+        r"meg|eeg|ieeg|"  # Electrophysiology
+        r"mask|probseg|seg|synthseg|"  # Segmentation
+        r"surf|hemi-[LR]|midthickness|inflated|"  # Surface-based data
+        r"confounds|timeseries|events|"  # Functional derivatives
+        r"connectome|parcellation)"  # Connectivity and parcellation data
+    )
+
+    # Allowed file extensions
+    extensions = (
+        r"(\.nii\.gz|\.nii|\.json|\.bvec|\.bval|\.tsv|\.edf|\.tsv\.gz|"
+        r"\.gii|\.csv|\.mat|\.set|\.fif)$"  # Includes neuroimaging and electrophysiology formats
+    )
+
+    # Construct final regex based on whether the file is a derivative
+    pattern_str = common_pattern
+    if is_derivative:
+        pattern_str += derivative_pattern  # Include derivative-specific entities
+    pattern_str += modality_suffix + extensions  # Add modality and extension validation
+
+    # Compile regex
+    pattern = re.compile(pattern_str, re.IGNORECASE)
+
+    return bool(pattern.match(filename))
