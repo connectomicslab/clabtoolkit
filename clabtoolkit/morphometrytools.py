@@ -670,6 +670,45 @@ def stats_from_vector(metric_vect, stats_list):
     return out_vals
 
 
+def entities4morphotable(entities_json: str = None) -> list:
+    """
+    This method returns the BIDs entities that will be included in the morphometric table.
+
+    Parameters
+    ----------
+    entities_json : str, optional
+        Path to the json file with the information of the metrics. The default is None.
+        If None, the method uses the default config json file.
+
+    Returns
+    -------
+    entities : list
+        List of valid entities.
+
+    Examples
+    --------
+    >>> import clabtoolkit.morphometrytools as clmorphtools
+    >>> clmorphtools.entities4morphotable()
+    ['mm']
+    """
+    config_json = os.path.join(os.path.dirname(__file__), "config", "config.json")
+
+    if entities_json is None:
+        with open(config_json) as f:
+            config_json = json.load(f)
+        entities = config_json["bids_entities"]
+    elif isinstance(entities_json, str):
+        if not os.path.isfile(entities_json):
+            raise ValueError(
+                "Please, provide a valid JSON file containing the entities dictionary."
+            )
+        else:
+            with open(entities_json) as f:
+                entities = json.load(f)
+
+    return entities
+
+
 def get_units(metrics: Union[str, list], metrics_json: Union[str, dict] = None) -> list:
     """
     This method returns the units of a specific metric.
