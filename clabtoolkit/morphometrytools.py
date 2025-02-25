@@ -689,7 +689,21 @@ def entities4morphotable(entities_json: str = None) -> list:
     --------
     >>> import clabtoolkit.morphometrytools as clmorphtools
     >>> clmorphtools.entities4morphotable()
-    ['mm']
+    ["sub",
+    "ses",
+    "acq",
+    "dir",
+    "run",
+    "ce",
+    "rec",
+    "space",
+    "res",
+    "model",
+    "desc",
+    "atlas",
+    "scale",
+    "seg",
+    "grow"]
     """
     config_json = os.path.join(os.path.dirname(__file__), "config", "config.json")
 
