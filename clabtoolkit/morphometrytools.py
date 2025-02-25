@@ -69,6 +69,9 @@ def compute_reg_val_fromannot(
         If True, the unknown regions are included in the output. The default is False.
         This includes on the table the regions with the following names: medialwall, unknown, corpuscallosum.
 
+    add_bids_entities: bool, optional
+        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
+
     Returns
     -------
     df : pd.DataFrame
@@ -228,7 +231,13 @@ def compute_reg_val_fromannot(
     if add_bids_entities:
         ent_list = entities4morphotable()
         df_add = df2add(in_file=metric_file, ent_list=ent_list)
-        df = pd.concat([df_add, df], axis=1)
+
+        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+        # Concatenate along columns (axis=1)
+        # Reset index to ensures clean concatenation
+        df = df.reset_index(drop=True)
+        # Concatenate along columns (axis=1)
+        df = pd.concat([df_expanded, df], axis=1)
 
     return df, metric_vect
 
@@ -265,6 +274,9 @@ def compute_reg_area_fromsurf(
     include_unknown : bool, optional
         If True, the unknown regions are included in the output. The default is False.
         This includes on the table the regions with the following names: medialwall, unknown, corpuscallosum.
+
+    add_bids_entities: bool, optional
+        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
 
     Returns
     -------
@@ -426,7 +438,13 @@ def compute_reg_area_fromsurf(
     if add_bids_entities:
         ent_list = entities4morphotable()
         df_add = df2add(in_file=parc_file, ent_list=ent_list)
-        df = pd.concat([df_add, df], axis=1)
+
+        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+        # Concatenate along columns (axis=1)
+        # Reset index to ensures clean concatenation
+        df = df.reset_index(drop=True)
+        # Concatenate along columns (axis=1)
+        df = pd.concat([df_expanded, df], axis=1)
 
     return df
 
@@ -454,6 +472,9 @@ def compute_euler_fromsurf(
         represent the value of column metric for each specific region. With the "metric" format, the output
         is a DataFrame with the regional values where each column represent the value of a specific metric
         for each region.
+
+    add_bids_entities: bool, optional
+        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
 
 
     Returns
@@ -540,7 +561,13 @@ def compute_euler_fromsurf(
     if add_bids_entities:
         ent_list = entities4morphotable()
         df_add = df2add(in_file=surf_file, ent_list=ent_list)
-        df = pd.concat([df_add, df], axis=1)
+
+        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+        # Concatenate along columns (axis=1)
+        # Reset index to ensures clean concatenation
+        df = df.reset_index(drop=True)
+        # Concatenate along columns (axis=1)
+        df = pd.concat([df_expanded, df], axis=1)
 
     return df
 
@@ -702,6 +729,9 @@ def compute_reg_val_fromparcellation(
     exclude_by_name : Union[list, str], optional
         List of names to exclude from the analysis. The default is None. If None, no names are excluded.
 
+    add_bids_entities: bool, optional
+        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
+
 
     Returns
     -------
@@ -828,7 +858,13 @@ def compute_reg_val_fromparcellation(
     if add_bids_entities:
         ent_list = entities4morphotable()
         df_add = df2add(in_file=metric_file, ent_list=ent_list)
-        df = pd.concat([df_add, df], axis=1)
+
+        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+        # Concatenate along columns (axis=1)
+        # Reset index to ensures clean concatenation
+        df = df.reset_index(drop=True)
+        # Concatenate along columns (axis=1)
+        df = pd.concat([df_expanded, df], axis=1)
 
     return df
 
@@ -862,6 +898,9 @@ def compute_reg_volume_fromparcellation(
 
     exclude_by_name : Union[list, str], optional
         List of names to exclude from the analysis. The default is None. If None, no names are excluded.
+
+    add_bids_entities: bool, optional
+        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
 
 
     Returns
@@ -975,7 +1014,13 @@ def compute_reg_volume_fromparcellation(
     if add_bids_entities:
         ent_list = entities4morphotable()
         df_add = df2add(in_file=parc_file, ent_list=ent_list)
-        df = pd.concat([df_add, df], axis=1)
+
+        df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+        # Concatenate along columns (axis=1)
+        # Reset index to ensures clean concatenation
+        df = df.reset_index(drop=True)
+        # Concatenate along columns (axis=1)
+        df = pd.concat([df_expanded, df], axis=1)
 
     return df
 
@@ -991,7 +1036,10 @@ def compute_reg_volume_fromparcellation(
 ####################################################################################################
 
 
-def parse_freesurfer_statsfile(stat_file: str, format: str = "metric") -> pd.DataFrame:
+def parse_freesurfer_statsfile(
+    stat_file: str, format: str = "metric", 
+    add_bids_entities: bool = True
+) -> pd.DataFrame:
     """
     This function reads the estimated volume values from freesurfer aseg.stats file
 

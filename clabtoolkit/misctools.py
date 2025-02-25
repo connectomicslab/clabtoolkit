@@ -992,3 +992,19 @@ def generate_container_command(
         container_cmd = bash_args
 
     return container_cmd
+
+
+def expand_and_concatenate(df_add, df):
+    """
+    Expands df_add to match the number of rows in df and concatenates them along columns.
+
+    Parameters:
+        df_add (pd.DataFrame): DataFrame with a single row to be replicated.
+        df (pd.DataFrame): Target DataFrame with multiple rows.
+
+    Returns:
+        pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
+    """
+    df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+    df = df.reset_index(drop=True)  # Ensure clean index
+    return pd.concat([df_expanded, df], axis=1)
