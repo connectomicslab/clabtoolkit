@@ -13,8 +13,10 @@ import uuid
 import numpy as np
 import nibabel as nib
 import pandas as pd
+
 import clabtoolkit.misctools as cltmisc
 import clabtoolkit.parcellationtools as cltparc
+import clabtoolkit.bidstools as cltbids
 
 
 class AnnotParcellation:
@@ -942,29 +944,47 @@ class FreeSurferSubject:
         mri_dict = {}
         mri_dict["orig"] = os.path.join(subj_dir, "mri", "orig.mgz")
         mri_dict["brainmask"] = os.path.join(subj_dir, "mri", "brainmask.mgz")
-        mri_dict["aseg"] = os.path.join(subj_dir, "mri", "aseg.mgz")
-        mri_dict["desikan+aseg"] = os.path.join(subj_dir, "mri", "aparc+aseg.mgz")
-        mri_dict["destrieux+aseg"] = os.path.join(
-            subj_dir, "mri", "aparc.a2009s+aseg.mgz"
-        )
-        mri_dict["dkt+aseg"] = os.path.join(subj_dir, "mri", "aparc.DKTatlas+aseg.mgz")
         mri_dict["T1"] = os.path.join(subj_dir, "mri", "T1.mgz")
         mri_dict["talairach"] = os.path.join(
             subj_dir, "mri", "transforms", "talairach.lta"
         )
-        mri_dict["ribbon"] = os.path.join(subj_dir, "mri", "ribbon.mgz")
-        mri_dict["wm"] = os.path.join(subj_dir, "mri", "wm.mgz")
-        mri_dict["wmparc"] = os.path.join(subj_dir, "mri", "wmparc.mgz")
+        vol_parc_dict = {}
+        vol_parc_dict["aseg"] = os.path.join(subj_dir, "mri", "aseg.mgz")
+        vol_parc_dict["desikan+aseg"] = os.path.join(subj_dir, "mri", "aparc+aseg.mgz")
+        vol_parc_dict["destrieux+aseg"] = os.path.join(
+            subj_dir, "mri", "aparc.a2009s+aseg.mgz"
+        )
+        vol_parc_dict["dkt+aseg"] = os.path.join(
+            subj_dir, "mri", "aparc.DKTatlas+aseg.mgz"
+        )
+
+        vol_parc_dict["ribbon"] = os.path.join(subj_dir, "mri", "ribbon.mgz")
+        vol_parc_dict["wm"] = os.path.join(subj_dir, "mri", "wm.mgz")
+        vol_parc_dict["wmparc"] = os.path.join(subj_dir, "mri", "wmparc.mgz")
+
         self.fs_files["mri"] = mri_dict
+        self.fs_files["mri"]["parc"] = vol_parc_dict
 
         # Creating the Surf dictionary
         surf_dict = {}
 
-        lh_s_dict, lh_t_dict = self.get_hemi_dicts(subj_dir=subj_dir, hemi="lh")
-        rh_s_dict, rh_t_dict = self.get_hemi_dicts(subj_dir=subj_dir, hemi="rh")
+        lh_s_dict, lh_m_dict, lh_p_dict, lh_t_dict = self.get_hemi_dicts(
+            subj_dir=subj_dir, hemi="lh"
+        )
+        rh_s_dict, rh_m_dict, rh_p_dict, rh_t_dict = self.get_hemi_dicts(
+            subj_dir=subj_dir, hemi="rh"
+        )
 
-        surf_dict["lh"] = lh_s_dict
-        surf_dict["rh"] = rh_s_dict
+        surf_dict["lh"] = {}
+        surf_dict["lh"]["mesh"] = lh_s_dict
+        surf_dict["lh"]["map"] = lh_m_dict
+        surf_dict["lh"]["parc"] = lh_p_dict
+
+        surf_dict["rh"] = {}
+        surf_dict["rh"]["mesh"] = rh_s_dict
+        surf_dict["rh"]["map"] = rh_m_dict
+        surf_dict["rh"]["parc"] = rh_p_dict
+
         self.fs_files["surf"] = surf_dict
 
         # Creating the Stats dictionary
@@ -998,17 +1018,19 @@ class FreeSurferSubject:
         s_dict["white"] = os.path.join(subj_dir, "surf", hemi + ".white")
         s_dict["inflated"] = os.path.join(subj_dir, "surf", hemi + ".inflated")
         s_dict["sphere"] = os.path.join(subj_dir, "surf", hemi + ".sphere")
-        s_dict["curv"] = os.path.join(subj_dir, "surf", hemi + ".curv")
-        s_dict["sulc"] = os.path.join(subj_dir, "surf", hemi + ".sulc")
-        s_dict["thickness"] = os.path.join(subj_dir, "surf", hemi + ".thickness")
-        s_dict["area"] = os.path.join(subj_dir, "surf", hemi + ".area")
-        s_dict["volume"] = os.path.join(subj_dir, "surf", hemi + ".volume")
-        s_dict["lgi"] = os.path.join(subj_dir, "surf", hemi + ".pial_lgi")
-        s_dict["desikan"] = os.path.join(subj_dir, "label", hemi + ".aparc.annot")
-        s_dict["destrieux"] = os.path.join(
+        m_dict = {}
+        m_dict["curv"] = os.path.join(subj_dir, "surf", hemi + ".curv")
+        m_dict["sulc"] = os.path.join(subj_dir, "surf", hemi + ".sulc")
+        m_dict["thickness"] = os.path.join(subj_dir, "surf", hemi + ".thickness")
+        m_dict["area"] = os.path.join(subj_dir, "surf", hemi + ".area")
+        m_dict["volume"] = os.path.join(subj_dir, "surf", hemi + ".volume")
+        m_dict["lgi"] = os.path.join(subj_dir, "surf", hemi + ".pial_lgi")
+        p_dict = {}
+        p_dict["desikan"] = os.path.join(subj_dir, "label", hemi + ".aparc.annot")
+        p_dict["destrieux"] = os.path.join(
             subj_dir, "label", hemi + ".aparc.a2009s.annot"
         )
-        s_dict["dkt"] = os.path.join(subj_dir, "label", hemi + ".aparc.DKTatlas.annot")
+        p_dict["dkt"] = os.path.join(subj_dir, "label", hemi + ".aparc.DKTatlas.annot")
 
         # Statistics dictionary
         t_dict = {}
@@ -1019,7 +1041,7 @@ class FreeSurferSubject:
         t_dict["dkt"] = os.path.join(subj_dir, "stats", hemi + ".aparc.DKTatlas.stats")
         t_dict["curv"] = os.path.join(subj_dir, "stats", hemi + ".curv.stats")
 
-        return s_dict, t_dict
+        return s_dict, m_dict, p_dict, t_dict
 
     def get_proc_status(self):
         """
@@ -1067,42 +1089,42 @@ class FreeSurferSubject:
 
             arecon2_files = [
                 self.fs_files["mri"]["talairach"],
-                self.fs_files["mri"]["wm"],
-                self.fs_files["surf"]["lh"]["pial"],
-                self.fs_files["surf"]["rh"]["pial"],
-                self.fs_files["surf"]["lh"]["white"],
-                self.fs_files["surf"]["rh"]["white"],
-                self.fs_files["surf"]["lh"]["inflated"],
-                self.fs_files["surf"]["rh"]["inflated"],
-                self.fs_files["surf"]["lh"]["curv"],
-                self.fs_files["surf"]["rh"]["curv"],
+                self.fs_files["mri"]["parc"]["wm"],
+                self.fs_files["surf"]["lh"]["mesh"]["pial"],
+                self.fs_files["surf"]["rh"]["mesh"]["pial"],
+                self.fs_files["surf"]["lh"]["mesh"]["white"],
+                self.fs_files["surf"]["rh"]["mesh"]["white"],
+                self.fs_files["surf"]["lh"]["mesh"]["inflated"],
+                self.fs_files["surf"]["rh"]["mesh"]["inflated"],
+                self.fs_files["surf"]["lh"]["map"]["curv"],
+                self.fs_files["surf"]["rh"]["map"]["curv"],
+                self.fs_files["surf"]["lh"]["map"]["sulc"],
+                self.fs_files["surf"]["rh"]["map"]["sulc"],
                 self.fs_files["stats"]["lh"]["curv"],
                 self.fs_files["stats"]["rh"]["curv"],
-                self.fs_files["surf"]["lh"]["sulc"],
-                self.fs_files["surf"]["rh"]["sulc"],
             ]
 
             arecon3_files = [
-                self.fs_files["mri"]["aseg"],
-                self.fs_files["mri"]["desikan+aseg"],
-                self.fs_files["mri"]["destrieux+aseg"],
-                self.fs_files["mri"]["dkt+aseg"],
-                self.fs_files["mri"]["wmparc"],
-                self.fs_files["mri"]["ribbon"],
-                self.fs_files["surf"]["lh"]["sphere"],
-                self.fs_files["surf"]["rh"]["sphere"],
-                self.fs_files["surf"]["lh"]["thickness"],
-                self.fs_files["surf"]["rh"]["thickness"],
-                self.fs_files["surf"]["lh"]["area"],
-                self.fs_files["surf"]["rh"]["area"],
-                self.fs_files["surf"]["lh"]["volume"],
-                self.fs_files["surf"]["rh"]["volume"],
-                self.fs_files["surf"]["lh"]["desikan"],
-                self.fs_files["surf"]["rh"]["desikan"],
-                self.fs_files["surf"]["lh"]["destrieux"],
-                self.fs_files["surf"]["rh"]["destrieux"],
-                self.fs_files["surf"]["lh"]["dkt"],
-                self.fs_files["surf"]["rh"]["dkt"],
+                self.fs_files["mri"]["parc"]["aseg"],
+                self.fs_files["mri"]["parc"]["desikan+aseg"],
+                self.fs_files["mri"]["parc"]["destrieux+aseg"],
+                self.fs_files["mri"]["parc"]["dkt+aseg"],
+                self.fs_files["mri"]["parc"]["wmparc"],
+                self.fs_files["mri"]["parc"]["ribbon"],
+                self.fs_files["surf"]["lh"]["mesh"]["sphere"],
+                self.fs_files["surf"]["rh"]["mesh"]["sphere"],
+                self.fs_files["surf"]["lh"]["map"]["thickness"],
+                self.fs_files["surf"]["rh"]["map"]["thickness"],
+                self.fs_files["surf"]["lh"]["map"]["area"],
+                self.fs_files["surf"]["rh"]["map"]["area"],
+                self.fs_files["surf"]["lh"]["map"]["volume"],
+                self.fs_files["surf"]["rh"]["map"]["volume"],
+                self.fs_files["surf"]["lh"]["parc"]["desikan"],
+                self.fs_files["surf"]["rh"]["parc"]["desikan"],
+                self.fs_files["surf"]["lh"]["parc"]["destrieux"],
+                self.fs_files["surf"]["rh"]["parc"]["destrieux"],
+                self.fs_files["surf"]["lh"]["parc"]["dkt"],
+                self.fs_files["surf"]["rh"]["parc"]["dkt"],
                 self.fs_files["stats"]["lh"]["desikan"],
                 self.fs_files["stats"]["rh"]["desikan"],
                 self.fs_files["stats"]["lh"]["destrieux"],
@@ -1407,8 +1429,12 @@ class FreeSurferSubject:
                     if stage == "lgi":  # Compute the local gyrification index
 
                         if (
-                            not os.path.isfile(self.fs_files["surf"]["lh"]["lgi"])
-                            and not os.path.isfile(self.fs_files["surf"]["rh"]["lgi"])
+                            not os.path.isfile(
+                                self.fs_files["surf"]["lh"]["map"]["lgi"]
+                            )
+                            and not os.path.isfile(
+                                self.fs_files["surf"]["rh"]["map"]["lgi"]
+                            )
                         ) or force == True:
                             cmd_bashargs = [
                                 "recon-all",
@@ -1541,6 +1567,285 @@ class FreeSurferSubject:
                     )  # Running container command
 
         return proc_status
+
+    def create_stats_table(
+        self,
+        lobes_grouping: str = "desikan",
+        add_bids_entities: bool = False,
+        output_file: str = None,
+    ) -> pd.DataFrame:
+        """
+        Generates a comprehensive FreeSurfer statistics table by combining
+        surface-based morphometric metrics and volumetric measurements.
+
+        This function retrieves cortical and volumetric measurements from
+        FreeSurfer outputs and organizes them into a structured DataFrame.
+
+        Parameters
+        ----------
+        lobes_grouping : str, optional
+            Parcellation grouping method for lobar segmentation. Default is "desikan".
+            Valid options:
+            - "desikan" : Standard Desikan-Killiany atlas.
+            - "desikan+cingulate" : Includes an additional lobe including cingulate regions.
+
+        output_file : str, optional
+            Path to save the final DataFrame as a CSV file. If None (default),
+            the table is not saved.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing FreeSurfer statistics, including:
+            - Surface-based morphometric measurements (left & right hemispheres).
+            - Volumetric measurements.
+        """
+
+        import morphometrytools as morpho
+
+        # Compute morphometric statistics
+        lh_surf_df = self.surface_hemi_morpho(hemi="lh", lobes_grouping=lobes_grouping)
+        rh_surf_df = self.surface_hemi_morpho(hemi="rh", lobes_grouping=lobes_grouping)
+        vol_df = self.volume_morpho()
+
+        stat_file = self.fs_files["stats"]["global"]["aseg"]
+        stats_df = morpho.parse_freesurfer_statsfile(stat_file=stat_file)
+
+        # Combine all data into a single DataFrame
+        stats_table = pd.concat([stats_df, vol_df, lh_surf_df, rh_surf_df], axis=0)
+
+        # Adding the entities related to BIDs
+        if add_bids_entities:
+            ent_list = morpho.entities4morphotable(selected_entities=self.subj_id)
+
+            df_add = morpho.df2add(in_file=self.subj_id, ent2add=ent_list)
+
+            stats_table = cltmisc.expand_and_concatenate(df_add, stats_table)
+
+            # ent_list = cltbids.str2entity(self.subj_id)
+            # for entity in list(ent_list.keys())[::-1]:  # Reversing the list
+            #     value = ent_list[entity]
+
+            #     if entity == "sub":
+            #         stats_table.insert(0, "Participant", value)
+            #     elif entity == "ses":
+            #         stats_table.insert(0, "Session", value)
+            #     elif entity == "atlas":
+            #         if "chimera" in value:
+            #             stats_table.insert(0, "Altas", value)
+            #             stats_table.insert(
+            #                 0, "ChimeraCode", value.replace("chimera", "")
+            #             )
+            #         else:
+            #             stats_table.insert(0, "Altas", value)
+            #             stats_table.insert(0, "ChimeraCode", "")
+            #     elif entity == "desc":
+            #         stats_table.insert(0, "Description", value)
+            #         if "grow" in value:
+            #             stats_table.insert(0, "GrowIntoWM", value.replace("grow", ""))
+            #     else:
+            #         stats_table.insert(0, entity, value)
+
+            # ent_list = morpho.entities4morphotable(selected_entities=self.subj_id)
+            # df_add = morpho.df2add(in_file=self.subj_id, ent_list=ent_list)
+            # stats_table = cltmisc.expand_and_concatenate(df_add, stats_table)
+        else:
+            # Expand a first dataframe and concatenate with the second dataframe
+            stats_table.insert(0, "Participant", self.subj_id)
+
+        # Save the DataFrame to a file if an output path is specified
+        if output_file:
+            stats_table.to_csv(output_file, index=False)
+            print(f"Statistics table saved to: {output_file}")
+
+        return stats_table
+
+    def volume_morpho(
+        self,
+        parcellations: list = ["desikan+aseg", "destrieux+aseg", "dkt+aseg"],
+        lobes_grouping: str = "desikan",
+    ) -> pd.DataFrame:
+        """
+        Computes the volume of brain regions based on the specified parcellations.
+
+        This function extracts volumetric measurements from the provided FreeSurfer
+        parcellations and returns a DataFrame containing volume values.
+
+        Parameters
+        ----------
+        parcellations : list, optional
+            List of parcellation names for which to compute volume.
+            Default is ["desikan+aseg", "destrieux+aseg", "dkt+aseg"].
+
+        lobes_grouping : str, optional
+            Parcellation grouping method for lobar segmentation. Default is "desikan".
+            Valid options:
+            - "desikan" : Standard Desikan-Killiany atlas.
+            - "desikan+cingulate" : Includes additional cingulate regions.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing volume values per region, with columns:
+            - "atlas_id" : Name of the parcellation atlas.
+            - "source" : Measurement source (set as "volume").
+            - Other columns contain computed volume values for each region.
+        """
+
+        import parcellationtools as parc
+
+        # Initialize an empty DataFrame for results
+        df_vol = pd.DataFrame()
+
+        # Iterate over each specified parcellation
+        for volparc in parcellations:
+            parc_file = self.fs_files["mri"]["parc"].get(volparc, None)
+            if not parc_file or not os.path.isfile(parc_file):
+                continue  # Skip missing parcellations
+
+            # Load parcellation and compute volume table
+            vol_parc = parc.Parcellation(parc_file=parc_file)
+            vol_parc.load_colortable()
+            vol_parc.compute_volume_table()
+            df = vol_parc.volumetable
+
+            # Add identifying columns
+            df.insert(0, "MetricFile", parc_file)
+            df.insert(1, "Atlas", volparc)
+
+            # Concatenate results
+            df_vol = pd.concat([df_vol, df], axis=0)
+
+        nrows = df_vol.shape[0]
+
+        return df_vol
+
+    def surface_hemi_morpho(
+        self, hemi: str = "lh", lobes_grouping: str = "desikan"
+    ) -> pd.DataFrame:
+        """
+        Computes morphometric metrics for a given hemisphere using cortical surface maps
+        and parcellations from FreeSurfer.
+
+        This function extracts various morphometric properties such as mean thickness,
+        surface area, and Euler characteristic from the provided cortical surfaces,
+        maps, and parcellations.
+
+        Parameters
+        ----------
+        hemi : str, optional
+            Hemisphere to process ("lh" for left hemisphere, "rh" for right hemisphere).
+            Default is "lh".
+
+        lobes_grouping : str, optional
+            Parcellation grouping method for lobar segmentation. Default is "desikan".
+            Valid options:
+            - "desikan" : Standard Desikan-Killiany atlas.
+            - "desikan+cingulate" : Includes additional cingulate regions.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing computed morphometric values, including:
+            - Mean cortical thickness per region.
+            - Surface area measurements (pial and white surfaces).
+            - Euler characteristic values.
+            Each row corresponds to a different region or measurement source.
+        """
+
+        import morphometrytools as morpho
+
+        # Retrieve relevant FreeSurfer files
+        parc_files_dict = self.fs_files["surf"][hemi]["parc"]
+        metric_files_dict = self.fs_files["surf"][hemi]["map"]
+        pial_surf = self.fs_files["surf"][hemi]["mesh"]["pial"]
+        white_surf = self.fs_files["surf"][hemi]["mesh"]["white"]
+
+        # Initialize DataFrame for results
+        df_hemi = pd.DataFrame()
+
+        # Process lobar parcellation
+        desikan_parc = parc_files_dict.get("desikan", None)
+        include_lobes = os.path.isfile(desikan_parc) if desikan_parc else False
+        if include_lobes:
+            lobar_obj = AnnotParcellation(parc_file=desikan_parc)
+            lobar_obj.group_into_lobes(grouping=lobes_grouping)
+
+        # Iterate over parcellations
+        metric_filename = []
+        for parc_name, parc_file in parc_files_dict.items():
+            if not os.path.isfile(parc_file):
+                continue  # Skip missing parcellations
+
+            # Extract base name without extensions
+            parc_base_name = ".".join(os.path.basename(parc_file).split(".")[1:-1])
+
+            df_metric = pd.DataFrame()
+
+            # Compute mean thickness per region
+            for metric_name, metric_file in metric_files_dict.items():
+                if not os.path.isfile(metric_file):
+                    continue
+
+                # Compute lobar and regional metrics
+                df_lobes, _ = morpho.compute_reg_val_fromannot(
+                    metric_file, lobar_obj, hemi, metric_name
+                )
+                df_lobes.insert(0, "MetricFile", metric_file)
+                df_lobes.insert(1, "Atlas", f"lobes_{lobes_grouping}")
+
+                df_region, _ = morpho.compute_reg_val_fromannot(
+                    metric_file, parc_file, hemi, metric_name, include_global=False
+                )
+                df_region.insert(0, "MetricFile", metric_file)
+                df_region.insert(1, "Atlas", parc_base_name)
+
+                # Concatenate results
+                df_metric = pd.concat([df_metric, df_lobes, df_region], axis=0)
+
+            # Compute surface area and Euler characteristic for both pial and white surfaces
+            df_parc = pd.DataFrame()
+            df_e = pd.DataFrame()
+            for surface, source_label in zip(
+                [pial_surf, white_surf], ["pial", "white"]
+            ):
+                df_area_region = morpho.compute_reg_area_fromsurf(
+                    surface,
+                    parc_file,
+                    hemi,
+                    include_global=False,
+                    surf_type=source_label,
+                )
+
+                df_area_region.insert(0, "MetricFile", surface)
+                df_area_region.insert(1, "Atlas", parc_base_name)
+
+                df_area_lobes = morpho.compute_reg_area_fromsurf(
+                    surface, lobar_obj, hemi, surf_type=source_label
+                )
+                df_area_lobes.insert(0, "MetricFile", surface)
+                df_area_lobes.insert(1, "Atlas", f"lobes_{lobes_grouping}")
+
+                # Compute Euler characteristic
+                df_euler = morpho.compute_euler_fromsurf(
+                    surface, hemi, surf_type=source_label
+                )
+                df_euler.insert(0, "MetricFile", surface)
+                df_euler.insert(1, "Atlas", "")
+
+                # Concatenate all the results
+                df_parc = pd.concat(
+                    [df_parc, df_area_lobes, df_area_region, df_euler], axis=0
+                )
+
+            # Merge morphometric and area metrics
+            if not df_metric.empty:
+                df_parc = pd.concat([df_parc, df_metric], axis=0)
+
+            if not df_parc.empty:
+                df_hemi = pd.concat([df_hemi, df_parc], axis=0)
+
+        return df_hemi
 
     @staticmethod
     def set_freesurfer_directory(fs_dir: str = None):
@@ -2320,7 +2625,7 @@ class FreeSurferSubject:
         if surf_type not in ["pial", "white", "inflated", "sphere"]:
             raise ValueError("The surface type must be pial, white, inflated or sphere")
 
-        surf_file = self.fs_files["surf"][hemi][surf_type]
+        surf_file = self.fs_files["surf"][hemi]["mesh"][surf_type]
 
         return surf_file
 
@@ -2347,7 +2652,7 @@ class FreeSurferSubject:
                 "The map type must be curv, sulc, thickness, area or volume"
             )
 
-        map_file = self.fs_files["surf"][hemi][map_type]
+        map_file = self.fs_files["surf"][hemi]["map"][map_type]
 
         return map_file
 
@@ -2372,7 +2677,7 @@ class FreeSurferSubject:
         if annot_type not in ["desikan", "destrieux", "dkt"]:
             raise ValueError("The annotation type must be desikan, destrieux or dkt")
 
-        annot_file = self.fs_files["surf"][hemi][annot_type]
+        annot_file = self.fs_files["surf"][hemi]["parc"][annot_type]
 
         return annot_file
 
@@ -2459,6 +2764,7 @@ def remove_fsaverage_links(linkavg_folder: str):
     ):
         os.remove(linkavg_folder)
 
+
 def colors2colortable(colors: Union[list, np.ndarray]):
     """
     Convert a list of colors to a FreeSurfer color table
@@ -2471,7 +2777,7 @@ def colors2colortable(colors: Union[list, np.ndarray]):
     -------
     ctab: np.array
         FreeSurfer color table
-        
+
     Usage
     -----
     >>> colors = ["#FF0000", "#00FF00", "#0000FF"]
@@ -2481,11 +2787,10 @@ def colors2colortable(colors: Union[list, np.ndarray]):
 
     if not isinstance(colors, (list, np.ndarray)):
         raise ValueError("The colors must be a list or a numpy array")
-    
+
     if isinstance(colors, np.ndarray):
         colors = cltmisc.multi_rgb2hex(colors)
-        
-    
+
     # Create the new table
     ctab = np.array([[0, 0, 0, 0, 0]])
     for i, color in enumerate(colors):
@@ -2494,14 +2799,15 @@ def colors2colortable(colors: Union[list, np.ndarray]):
 
         # Concatenate the new table
         ctab = np.concatenate(
-                        (ctab, np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])),
-                        axis=0,
-                    )
+            (ctab, np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])),
+            axis=0,
+        )
 
     # Remove the first row
     ctab = ctab[1:]
 
     return ctab
+
 
 def detect_hemi(file_name: str):
     """
@@ -2605,8 +2911,15 @@ def get_version(cont_tech: str = "local", cont_image: str = None):
     )  # Generating container command
     out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
 
-    vers_cad = out_cmd.stdout.split("-")[3]
+    
+    for st_ver in out_cmd.stdout.split("-"):
+        if "." in st_ver:
+            vers_cad = st_ver
+            break
 
+    # Delete all the non numeric characters from the string except the "."
+    vers_cad = ''.join(filter(lambda x: x.isdigit() or x == ".", vers_cad))
+    
     return vers_cad
 
 
