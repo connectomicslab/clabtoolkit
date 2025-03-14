@@ -292,7 +292,7 @@ def org_conv_dicoms(
     all_ser_dirs.sort()
 
     if boolcomp:
-        _compress_dicom_session(out_dic_dir)
+        compress_dicom_session(out_dic_dir)
 
 
 def copy_dicom_file(
