@@ -607,64 +607,100 @@ def copy_bids_folder(
     print("End of copying the files.")
 
 
-def is_bids_filename(filename: str, is_derivative: bool = False) -> bool:
+####################################################################################################
+
+
+# def is_bids_filename(filename: str, json_file: str = None) -> bool:
+#     """
+#     Check if a given filename follows the Brain Imaging Data Structure (BIDS) format.
+#     Automatically detects whether it's a derivative or raw filename.
+
+#     Args:
+#         filename (str): The filename to check.
+#         json_file (str | dict, optional): Path to a JSON file containing BIDS patterns or a dictionary.
+
+#     Returns:
+#         bool: True if the filename is in BIDS format, False otherwise.
+#     """
+
+#     # Load JSON config
+#     if json_file is None:
+#         config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
+#         with open(config_path) as f:
+#             config_data = json.load(f)
+
+#         # Extract patterns
+#         valid_suffixes = (
+#             config_data["bids_entities"]["raw_suffix"]
+#             + config_data["bids_entities"]["derivatives_suffix"]
+#         )
+#     elif isinstance(json_file, str):
+#         if not os.path.isfile(json_file):
+#             raise ValueError(
+#                 "Please provide a valid JSON file containing the entities dictionary."
+#             )
+#         with open(json_file) as f:
+#             config_data = json.load(f)
+#             valid_suffixes = config_data["bids_suffixes"]
+#     elif isinstance(json_file, dict):
+#         config_data = json_file
+#         valid_suffixes = config_data["bids_suffixes"]
+#     else:
+#         raise TypeError("json_file must be a file path or a dictionary.")
+
+#     # Regular expression to match BIDS filenames
+#     # Remove extension
+
+#     base_name = os.path.basename(filename)
+
+#     ent_dict = entity2str(base_name)
+#     ent_dict["extension"] = ""
+#     ent_dict["suffix"] = ""
+
+#     base_name = entity2str(ent_dict)
+
+#     parts = base_name.split("_")
+
+#     if len(parts) < 2:
+#         return False  # At least one key-value pair and a suffix are needed
+
+#     key_value_pattern = re.compile(r"^[a-zA-Z0-9]+-[a-zA-Z0-9]+$")
+
+#     # Check key-value pairs (all except the last part)
+#     for part in parts:
+#         if not key_value_pattern.match(part):
+#             return False  # Invalid key-value pair
+
+#     return False  # Invalid if the last part is not a known suffix
+
+
+def is_bids_filename(filename: str) -> bool:
     """
-    Check if a given filename follows the Brain Imaging Data Structure (BIDS) format.
+    Validates a BIDS filename structure, handling extensions and entity order.
 
     Args:
-        filename (str): The filename to check.
-        is_derivative (bool): If True, allows derivative-specific entities.
+        filename (str): The filename to validate.
 
     Returns:
-        bool: True if the filename is in BIDS format, False otherwise.
+        bool: True if valid BIDS filename, False otherwise.
     """
-    # Common entities for both raw and derivative BIDS filenames
-    common_pattern = (
-        r"^(sub-[a-zA-Z0-9]+)"  # Subject (required)
-        r"(_ses-[a-zA-Z0-9]+)?"  # Session (optional)
-        r"(_task-[a-zA-Z0-9]+)?"  # Task (optional)
-        r"(_acq-[a-zA-Z0-9]+)?"  # Acquisition (optional)
-        r"(_run-[0-9]+)?"  # Run (optional)
-        r"(_echo-[0-9]+)?"  # Echo (optional)
-        r"(_dir-[a-zA-Z0-9]+)?"  # Phase-Encoding Direction (optional)
-        r"(_rec-[a-zA-Z0-9]+)?"  # Reconstruction (optional)
-        r"(_ce-[a-zA-Z0-9]+)?"  # Contrast-enhanced (optional)
-    )
+    # Remove extension if present
+    base_filename = filename.split(".")[0]
 
-    # Additional entities allowed in derivative filenames
-    derivative_pattern = (
-        r"(_from-[a-zA-Z0-9]+)?"  # Original data source (e.g., "from-T1w")
-        r"(_to-[a-zA-Z0-9]+)?"  # Target space (e.g., "to-T1w")
-        r"(_space-[a-zA-Z0-9]+)?"  # Spatial reference (e.g., "space-MNI152NLin2009cAsym")
-        r"(_atlas-[a-zA-Z0-9]+)?"  # Atlas reference (e.g., "atlas-HarvardOxford")
-        r"(_scale-[a-zA-Z0-9]+)?"  # Scale reference (e.g., "scale-2mm")
-        r"(_desc-[a-zA-Z0-9]+)?"  # Description (e.g., "desc-brain_mask")
-        r"(_seg-[a-zA-Z0-9]+)?"  # Segmentation label (e.g., "seg-GM")
-    )
+    parts = base_filename.split("_")
+    if not parts:
+        return False
 
-    # Valid modality suffixes
-    modality_suffix = (
-        r"_(bold|T1w|T2w|dwi|fmap|pet|asl|"  # Standard imaging modalities
-        r"meg|eeg|ieeg|"  # Electrophysiology
-        r"mask|probseg|seg|synthseg|"  # Segmentation
-        r"surf|hemi-[LR]|midthickness|inflated|"  # Surface-based data
-        r"confounds|timeseries|events|"  # Functional derivatives
-        r"connectome|parcellation)"  # Connectivity and parcellation data
-    )
+    entity_pattern = re.compile(r"^[a-zA-Z0-9]+-[a-zA-Z0-9]+$")
 
-    # Allowed file extensions
-    extensions = (
-        r"(\.nii\.gz|\.nii|\.json|\.bvec|\.bval|\.tsv|\.edf|\.tsv\.gz|"
-        r"\.gii|\.csv|\.mat|\.set|\.fif)$"  # Includes neuroimaging and electrophysiology formats
-    )
+    # Check that at least one entity-label pair is present
+    has_entity_label = False
+    for part in parts:
+        if "-" in part:
+            has_entity_label = True
+            if not entity_pattern.match(part):
+                return False
+    if not has_entity_label:
+        return False
 
-    # Construct final regex based on whether the file is a derivative
-    pattern_str = common_pattern
-    if is_derivative:
-        pattern_str += derivative_pattern  # Include derivative-specific entities
-    pattern_str += modality_suffix + extensions  # Add modality and extension validation
-
-    # Compile regex
-    pattern = re.compile(pattern_str, re.IGNORECASE)
-
-    return bool(pattern.match(filename))
+    return True
