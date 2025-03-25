@@ -128,7 +128,7 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]):
                 hexcodes.append(rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
     else:
         hexcodes = []
-        
+
     return hexcodes
 
 
@@ -537,6 +537,37 @@ def list_intercept(list1: list, list2: list):
     int_list = [value for value in list1 if value in list2]
 
     return int_list
+
+
+def detect_leaf_directories(root_dir: str) -> list:
+    """
+    Finds all folders inside the given directory that do not contain any subfolders.
+
+    Parameters:.
+    ----------
+    root_dir :str
+        The path to the root directory where the search will be performed.
+
+    Returns:
+    -------
+    list: A list of absolute paths to folders that do not contain any subfolders.
+
+    Example Usage:
+    --------------
+    root_directory = "/path/to/your/folder"
+    leaf_folders = find_leaf_folders(root_directory)
+    print("Leaf folders:", leaf_folders)
+    """
+
+    if not os.path.isdir(root_dir):
+        raise ValueError(f"Invalid directory: {root_dir}")
+
+    leaf_folders = []
+    for foldername, subfolders, _ in os.walk(root_dir):
+        if not subfolders:  # If the folder has no subfolders, it's a leaf folder
+            leaf_folders.append(foldername)
+
+    return leaf_folders
 
 
 def detect_recursive_files(in_dir):
@@ -1006,14 +1037,14 @@ def expand_and_concatenate(df_add, df):
     Returns:
         pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
     """
-        
+
     df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
-    
+
     # Detect if there is a column in df that exists in df_add. If so, assign the values from df to df_add and remove the column from df
     for col in df.columns:
         if col in df_add.columns:
             df_expanded[col] = df[col].values
             df = df.drop(columns=[col])
-    
+
     df = df.reset_index(drop=True)  # Ensure clean index
     return pd.concat([df_expanded, df], axis=1)
