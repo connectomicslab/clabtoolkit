@@ -1006,6 +1006,14 @@ def expand_and_concatenate(df_add, df):
     Returns:
         pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
     """
+        
     df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+    
+    # Detect if there is a column in df that exists in df_add. If so, assign the values from df to df_add and remove the column from df
+    for col in df.columns:
+        if col in df_add.columns:
+            df_expanded[col] = df[col].values
+            df = df.drop(columns=[col])
+    
     df = df.reset_index(drop=True)  # Ensure clean index
     return pd.concat([df_expanded, df], axis=1)
