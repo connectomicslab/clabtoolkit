@@ -1779,6 +1779,12 @@ class FreeSurferSubject:
 
             # Extract base name without extensions
             parc_base_name = ".".join(os.path.basename(parc_file).split(".")[1:-1])
+            if parc_base_name == "aparc":
+                parc_base_name = "desikan"
+            elif parc_base_name == "aparc.a2009s":
+                parc_base_name = "destrieux"
+            elif parc_base_name == "aparc.DKTatlas":
+                parc_base_name = "dkt"
 
             df_metric = pd.DataFrame()
 
@@ -1791,8 +1797,7 @@ class FreeSurferSubject:
                 df_lobes, _ = morpho.compute_reg_val_fromannot(
                     metric_file, lobar_obj, hemi, metric_name
                 )
-                df_lobes.insert(0, "MetricFile", metric_file)
-                df_lobes.insert(1, "Atlas", f"lobes_{lobes_grouping}")
+                df_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
 
                 df_region, _ = morpho.compute_reg_val_fromannot(
                     metric_file, parc_file, hemi, metric_name, include_global=False
@@ -2911,15 +2916,14 @@ def get_version(cont_tech: str = "local", cont_image: str = None):
     )  # Generating container command
     out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
 
-    
     for st_ver in out_cmd.stdout.split("-"):
         if "." in st_ver:
             vers_cad = st_ver
             break
 
     # Delete all the non numeric characters from the string except the "."
-    vers_cad = ''.join(filter(lambda x: x.isdigit() or x == ".", vers_cad))
-    
+    vers_cad = "".join(filter(lambda x: x.isdigit() or x == ".", vers_cad))
+
     return vers_cad
 
 
