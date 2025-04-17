@@ -1,3 +1,5 @@
+
+
 import numpy as np
 from typing import Union
 import shlex
@@ -9,6 +11,15 @@ import inspect
 import sys
 import types
 
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############           Methods dedicated to improve the documentation                   ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 
 class SmartFormatter(argparse.HelpFormatter):
     """
@@ -34,7 +45,8 @@ class SmartFormatter(argparse.HelpFormatter):
         HelpFormatter class from the argparse module
 
     """
-
+    
+    ###################################################################################################
     def split_lines(self, text, width):
         """
         This function is used to split the lines of the help message.
@@ -63,6 +75,15 @@ class SmartFormatter(argparse.HelpFormatter):
         # this is the RawTextHelpFormatter.split_lines
         return argparse.HelpFormatter.split_lines(self, text, width)
 
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                    Methods related to progress bar                         ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 
 # Print iterations progress
 def printprogressbar(
@@ -99,7 +120,46 @@ def printprogressbar(
     if iteration == total:
         print()
 
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                    Methods dedicated to work with colors                   ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+class bcolors:
+    """
+    This class is used to define the colors for the terminal output. 
+    It can be used to print the output in different colors.
+    """
 
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKCYAN = "\033[96m"
+    OKGREEN = "\033[92m"
+    OKYELLOW = "\033[93m"
+    OKRED = "\033[91m"
+    OKMAGENTA = "\033[95m"
+    PURPLE = "\033[35m"
+    OKCYAN = "\033[96m"
+    DARKCYAN = "\033[36m"
+    ORANGE = "\033[48:5:208m%s\033[m"
+    OKWHITE = "\033[97m"
+    DARKWHITE = "\033[37m"
+    OKBLACK = "\033[30m"
+    OKGRAY = "\033[90m"
+    OKPURPLE = "\033[35m"
+
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    ITALIC = "\033[3m"
+    UNDERLINE = "\033[4m"
+
+#################################################################################################### 
 def rgb2hex(r: int, g: int, b: int) -> str:
     """
     Function to convert rgb to hex
@@ -130,7 +190,7 @@ def rgb2hex(r: int, g: int, b: int) -> str:
 
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
-
+####################################################################################################
 def multi_rgb2hex(colors: Union[list, np.ndarray]) -> list:
     """
     Function to convert rgb to hex for an array of colors
@@ -174,7 +234,7 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]) -> list:
 
     return hexcodes
 
-
+####################################################################################################
 def hex2rgb(hexcode: str) -> tuple:
     """
     Function to convert hex to rgb
@@ -200,6 +260,230 @@ def hex2rgb(hexcode: str) -> tuple:
     hexcode = hexcode.lstrip("#")
     return tuple(int(hexcode[i : i + 2], 16) for i in (0, 2, 4))
 
+####################################################################################################
+def multi_hex2rgb(hexcodes: list) -> np.ndarray:
+    """
+    Function to convert a list of colores in hexadecimal format to rgb format.
+
+    Parameters
+    ----------
+    hexcodes : list
+        List of hexadecimal codes for the colors
+
+    Returns
+    -------
+    rgb_list: np.array
+        Array of rgb values
+
+    Example Usage:
+    --------------
+        >>> hexcodes = ["#FF5733", "#33FF57", "#3357FF"]
+        >>> rgb_list = multi_hex2rgb(hexcodes)
+        >>> print(rgb_list)  # Output: [[255, 87, 51], [51, 255, 87], [51, 87, 255]]
+        
+    """
+
+    rgb_list = [hex2rgb(hex_color) for hex_color in hexcodes]
+    return np.array(rgb_list)
+
+####################################################################################################
+def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
+    """
+    Function to invert the colors by finding its complementary color.
+
+    Parameters
+    ----------
+    colors : list or numpy array
+        List of colors
+
+    Returns
+    -------
+    colors: list or numpy array
+        List of inverted colors 
+        
+    Example Usage:
+    ----------------
+        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
+        >>> inverted_colors = invert_colors(colors)
+        >>> print(inverted_colors)  # Output: ['#00aacc', '#cc00a8', [204, 168, 0]]
+    """
+
+    bool_norm = False
+    if isinstance(colors, list):
+
+        if isinstance(colors[0], str):
+            # Convert the hexadecimal colors to rgb
+            colors = multi_hex2rgb(colors)
+            color_type = "hex"
+
+        elif isinstance(colors[0], np.ndarray):
+            colors = np.array(colors)
+            color_type = "arraylist"
+
+            if all(map(lambda x: max(x) < 1, colors)):
+                colors = [color * 255 for color in colors]
+                bool_norm = True
+
+        else:
+            raise ValueError(
+                "If colors is a list, it must be a list of hexadecimal colors or a list of rgb colors"
+            )
+
+    elif isinstance(colors, np.ndarray):
+        color_type = "array"
+        if np.max(colors) <= 1:
+            colors = colors * 255
+            bool_norm = True
+    else:
+        raise ValueError("The colors must be a list of colors or a numpy array")
+
+    ## Inverting the colors
+    colors = 255 - colors
+
+    if color_type == "hex":
+        colors = multi_rgb2hex(colors)
+
+    elif color_type == "arraylist":
+        if bool_norm:
+            colors = colors / 255
+
+        # Create a list of colors where each row is an element in the list
+        colors = [list(color) for color in colors]
+
+    elif color_type == "array":
+        if bool_norm:
+            colors = colors / 255
+
+    return colors
+
+####################################################################################################
+def harmonize_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
+    """
+    Function to harmonize the colors in a list. The colors can be in hexadecimal or rgb format.
+    If the list contains colors in multiple formats, the function will convert all the colors to hexadecimal format.
+
+    Parameters
+    ----------
+    colors : list or numpy array
+        List of colors
+
+    Returns
+    -------
+    colors: list
+        List of colors in hexadecimal format
+
+    Example Usage:
+    ----------------
+        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
+        >>> harmonized_colors = harmonize_colors(colors)
+        >>> print(harmonized_colors)  # Output: ['#ff5733', '#33ff57', '#3393ff']
+        
+    """
+
+    bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
+    if bool_tmp:
+        hexcodes = []
+        for indcol, color in enumerate(colors):
+            if isinstance(colors[indcol], str):
+                hexcodes.append(colors[indcol])
+
+            elif isinstance(colors[indcol], np.ndarray):
+                hexcodes.append(rgb2hex(color[0], color[1], color[2]))
+        colors = hexcodes
+
+    return colors
+
+####################################################################################################
+def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
+    """
+    Function to readjust the colors to the range 0-255
+
+    Parameters
+    ----------
+    colors : list or numpy array
+        List of colors
+
+    Returns
+    -------
+    colors: Numpy array
+        List of colors normalized
+
+    """
+
+    if isinstance(colors, list):
+
+        # If all the values in the list are between 0 and 1, then the values are multiplied by 255
+        if not isinstance(colors[0], str):
+            if all(map(lambda x: max(x) < 1, colors)):
+                colors = [color * 255 for color in colors]
+
+        bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
+        if bool_tmp:
+            hexcodes = []
+            for indcol, color in enumerate(colors):
+                if isinstance(colors[indcol], str):
+                    hexcodes.append(colors[indcol])
+
+                elif isinstance(colors[indcol], np.ndarray):
+                    hexcodes.append(rgb2hex(color[0], color[1], color[2]))
+            colors = hexcodes
+
+    elif isinstance(colors, np.ndarray):
+        nrows, ncols = colors.shape
+
+        # If all the values in the array are between 0 and 1, then the values are multiplied by 255
+        if np.max(colors) <= 1:
+            colors = colors * 255
+
+    return colors
+
+####################################################################################################
+def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
+    """
+    Function to create a list of n random colors
+
+    Parameters
+    ----------
+    n : int
+        Number of colors
+        
+    fmt : str
+        Format of the colors. It can be 'rgb', 'rgbnorm' or 'hex'. Default is 'rgb'.
+
+    Returns
+    -------
+    colors: list
+        List of random colors
+        
+    Example Usage:
+    ----------------
+        >>> colors = create_random_colors(5)
+        >>> print(colors)  # Output: [[123, 45, 67], [89, 12, 34], ...]
+        
+
+    """
+
+    # Create a numpy array with n random colors in the range 0-255
+    colors = np.random.randint(0, 255, size=(n, 3))
+    
+    if fmt == "hex":
+        # Convert the colors to hexadecimal format
+        colors = multi_rgb2hex(colors)
+    elif fmt == "rgbnorm":
+        # Normalize the colors to the range 0-1
+        colors = colors / 255
+
+    return colors
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                    Methods dedicated to work with dates                    ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 
 def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%d"):
     """
@@ -268,33 +552,16 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
     # Convert the closest date back to the 'YYYYMMDD' format
     return closest_date.strftime(date_fmt), closest_index, time_diff
 
-
-def multi_hex2rgb(hexcodes: list) -> np.ndarray:
-    """
-    Function to convert a list of colores in hexadecimal format to rgb format.
-
-    Parameters
-    ----------
-    hexcodes : list
-        List of hexadecimal codes for the colors
-
-    Returns
-    -------
-    rgb_list: np.array
-        Array of rgb values
-
-    Example Usage:
-    --------------
-        >>> hexcodes = ["#FF5733", "#33FF57", "#3357FF"]
-        >>> rgb_list = multi_hex2rgb(hexcodes)
-        >>> print(rgb_list)  # Output: [[255, 87, 51], [51, 255, 87], [51, 87, 255]]
-        
-    """
-
-    rgb_list = [hex2rgb(hex_color) for hex_color in hexcodes]
-    return np.array(rgb_list)
-
-
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############           Methods dedicated to create and work with indexes,               ############
+############           to search for elements in a list, etc                            ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def build_indexes(range_vector: list, nonzeros: bool = True):
     """
     Function to build the indexes from a range vector that can contain integers, tuples, lists or strings.
@@ -383,7 +650,7 @@ def build_indexes(range_vector: list, nonzeros: bool = True):
 
     return indexes
 
-
+####################################################################################################
 def remove_duplicates(input_list: list):
     """
     Function to remove duplicates from a list while preserving the order
@@ -416,7 +683,7 @@ def remove_duplicates(input_list: list):
 
     return unique_list
 
-
+####################################################################################################
 def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
     """
     Function to select the ids from a list of ids that are in a file.
@@ -455,7 +722,7 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
 
     return out_ids
 
-
+####################################################################################################
 def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: bool = False):
     """
     Function to filter a list of elements by a substrings.
@@ -516,7 +783,7 @@ def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: b
 
     return filtered_list
 
-
+####################################################################################################
 def get_indexes_by_substring(
     input_list: list,
     substr: Union[str, list],
@@ -604,7 +871,7 @@ def get_indexes_by_substring(
 
     return indexes
 
-
+####################################################################################################
 def list_intercept(list1: list, list2: list):
     """
     Function to intercept the elements from 2 different lists.
@@ -642,7 +909,50 @@ def list_intercept(list1: list, list2: list):
 
     return int_list
 
+####################################################################################################
+def ismember_from_list(a, b):
+    """
+    Function to check if elements of a are in b
 
+    Parameters
+    ----------
+    a : list
+        List of elements to check
+    b : list
+        List of elements to check against
+
+    Returns
+    -------
+    values: list
+        List of unique elements in a
+    idx: list
+        List of indices of elements in a that are in b
+
+    Example Usage:
+    --------------
+        >>> a = [1, 2, 3, 4, 5]
+        >>> b = [3, 4, 5, 6, 7]
+        >>> values, idx = ismember_from_list(a, b)
+        >>> print(values)  # Output: [3, 4, 5]
+        >>> print(idx)     # Output: [0, 1, 2]
+    """
+
+    values, indices = np.unique(a, return_inverse=True)
+    is_in_list = np.isin(a, b)
+    idx = indices[is_in_list].astype(int)
+
+    return values, idx
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############     Methods dedicated to find directories, remove empty folders            ############
+############     find all the files inside a certain directory, etc                     ############                                                 ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def detect_leaf_directories(root_dir: str) -> list:
     """
     Finds all folders inside the given directory that do not contain any subfolders.
@@ -674,7 +984,7 @@ def detect_leaf_directories(root_dir: str) -> list:
 
     return leaf_folders
 
-
+####################################################################################################
 def detect_recursive_files(in_dir):
     """
     Function to detect all the files in a directory and its subdirectories
@@ -704,7 +1014,67 @@ def detect_recursive_files(in_dir):
 
     return files
 
+####################################################################################################
+def remove_empty_folders(start_path, deleted_folders=None):
+    """
+    Recursively removes empty directories starting from start_path.
+    Returns a list of all directories that were deleted.
+    
+    Parameters:
+    ----------
+        start_path : str
+            The directory path to start searching from
+            
+        deleted_folders : list
+            A list to store the paths of deleted directories. If None, a new list will be created.
+                    
+    Returns:
+    ------- 
+        deleted_folders : list
+            A list of all directories that were deleted.
+    
+    Example Usage:
+    --------------
+        >>> deleted_folders = remove_empty_folders("/path/to/start")
+        >>> print("Deleted folders:", deleted_folders)
+    --------------
+    """
+    if deleted_folders is None:
+        deleted_folders = []
+    
+    # Walk through the directory tree bottom-up (deepest first)
+    for root, dirs, files in os.walk(start_path, topdown=False):
+        # Check each directory in current level
+        for dir_name in dirs:
+            dir_path = os.path.join(root, dir_name)
+            try:
+                # Try to remove the directory (will only succeed if empty)
+                os.rmdir(dir_path)
+                deleted_folders.append(dir_path)
+                #print(f"Removed empty directory: {dir_path}")  # Optional logging
+            except OSError:
+                # Directory not empty or other error - we'll ignore it
+                pass
+    
+    # Finally, try to remove the starting directory itself if it's now empty
+    try:
+        os.rmdir(start_path)
+        deleted_folders.append(start_path)
+        #print(f"Removed empty directory: {start_path}")  # Optional logging
+    except OSError:
+        pass
+    
+    return deleted_folders
 
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############              Methods dedicated to strings and characters                   ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def rem_duplicate_char(strcad: str, dchar: str):
     """
     This function removes duplicate characters from strings.
@@ -736,227 +1106,7 @@ def rem_duplicate_char(strcad: str, dchar: str):
 
     return "".join(chars)
 
-
-def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
-    """
-    Function to invert the colors by finding its complementary color.
-
-    Parameters
-    ----------
-    colors : list or numpy array
-        List of colors
-
-    Returns
-    -------
-    colors: list or numpy array
-        List of inverted colors 
-        
-    Example Usage:
-    ----------------
-        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
-        >>> inverted_colors = invert_colors(colors)
-        >>> print(inverted_colors)  # Output: ['#00aacc', '#cc00a8', [204, 168, 0]]
-    """
-
-    bool_norm = False
-    if isinstance(colors, list):
-
-        if isinstance(colors[0], str):
-            # Convert the hexadecimal colors to rgb
-            colors = multi_hex2rgb(colors)
-            color_type = "hex"
-
-        elif isinstance(colors[0], np.ndarray):
-            colors = np.array(colors)
-            color_type = "arraylist"
-
-            if all(map(lambda x: max(x) < 1, colors)):
-                colors = [color * 255 for color in colors]
-                bool_norm = True
-
-        else:
-            raise ValueError(
-                "If colors is a list, it must be a list of hexadecimal colors or a list of rgb colors"
-            )
-
-    elif isinstance(colors, np.ndarray):
-        color_type = "array"
-        if np.max(colors) <= 1:
-            colors = colors * 255
-            bool_norm = True
-    else:
-        raise ValueError("The colors must be a list of colors or a numpy array")
-
-    ## Inverting the colors
-    colors = 255 - colors
-
-    if color_type == "hex":
-        colors = multi_rgb2hex(colors)
-
-    elif color_type == "arraylist":
-        if bool_norm:
-            colors = colors / 255
-
-        # Create a list of colors where each row is an element in the list
-        colors = [list(color) for color in colors]
-
-    elif color_type == "array":
-        if bool_norm:
-            colors = colors / 255
-
-    return colors
-
-
-def harmonize_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
-    """
-    Function to harmonize the colors in a list. The colors can be in hexadecimal or rgb format.
-    If the list contains colors in multiple formats, the function will convert all the colors to hexadecimal format.
-
-    Parameters
-    ----------
-    colors : list or numpy array
-        List of colors
-
-    Returns
-    -------
-    colors: list
-        List of colors in hexadecimal format
-
-    Example Usage:
-    ----------------
-        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
-        >>> harmonized_colors = harmonize_colors(colors)
-        >>> print(harmonized_colors)  # Output: ['#ff5733', '#33ff57', '#3393ff']
-        
-    """
-
-    bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
-    if bool_tmp:
-        hexcodes = []
-        for indcol, color in enumerate(colors):
-            if isinstance(colors[indcol], str):
-                hexcodes.append(colors[indcol])
-
-            elif isinstance(colors[indcol], np.ndarray):
-                hexcodes.append(rgb2hex(color[0], color[1], color[2]))
-        colors = hexcodes
-
-    return colors
-
-
-def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
-    """
-    Function to readjust the colors to the range 0-255
-
-    Parameters
-    ----------
-    colors : list or numpy array
-        List of colors
-
-    Returns
-    -------
-    colors: Numpy array
-        List of colors normalized
-
-    """
-
-    if isinstance(colors, list):
-
-        # If all the values in the list are between 0 and 1, then the values are multiplied by 255
-        if not isinstance(colors[0], str):
-            if all(map(lambda x: max(x) < 1, colors)):
-                colors = [color * 255 for color in colors]
-
-        bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
-        if bool_tmp:
-            hexcodes = []
-            for indcol, color in enumerate(colors):
-                if isinstance(colors[indcol], str):
-                    hexcodes.append(colors[indcol])
-
-                elif isinstance(colors[indcol], np.ndarray):
-                    hexcodes.append(rgb2hex(color[0], color[1], color[2]))
-            colors = hexcodes
-
-    elif isinstance(colors, np.ndarray):
-        nrows, ncols = colors.shape
-
-        # If all the values in the array are between 0 and 1, then the values are multiplied by 255
-        if np.max(colors) <= 1:
-            colors = colors * 255
-
-    return colors
-
-
-class bcolors:
-    """
-    This class is used to define the colors for the terminal output. 
-    It can be used to print the output in different colors.
-    """
-
-    HEADER = "\033[95m"
-    OKBLUE = "\033[94m"
-    OKCYAN = "\033[96m"
-    OKGREEN = "\033[92m"
-    OKYELLOW = "\033[93m"
-    OKRED = "\033[91m"
-    OKMAGENTA = "\033[95m"
-    PURPLE = "\033[35m"
-    OKCYAN = "\033[96m"
-    DARKCYAN = "\033[36m"
-    ORANGE = "\033[48:5:208m%s\033[m"
-    OKWHITE = "\033[97m"
-    DARKWHITE = "\033[37m"
-    OKBLACK = "\033[30m"
-    OKGRAY = "\033[90m"
-    OKPURPLE = "\033[35m"
-
-    WARNING = "\033[93m"
-    FAIL = "\033[91m"
-    ENDC = "\033[0m"
-    BOLD = "\033[1m"
-    ITALIC = "\033[3m"
-    UNDERLINE = "\033[4m"
-
-
-def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
-    """
-    Function to create a list of n random colors
-
-    Parameters
-    ----------
-    n : int
-        Number of colors
-        
-    fmt : str
-        Format of the colors. It can be 'rgb', 'rgbnorm' or 'hex'. Default is 'rgb'.
-
-    Returns
-    -------
-    colors: list
-        List of random colors
-        
-    Example Usage:
-    ----------------
-        >>> colors = create_random_colors(5)
-        >>> print(colors)  # Output: [[123, 45, 67], [89, 12, 34], ...]
-        
-
-    """
-
-    # Create a numpy array with n random colors in the range 0-255
-    colors = np.random.randint(0, 255, size=(n, 3))
-    
-    if fmt == "hex":
-        # Convert the colors to hexadecimal format
-        colors = multi_rgb2hex(colors)
-    elif fmt == "rgbnorm":
-        # Normalize the colors to the range 0-1
-        colors = colors / 255
-
-    return colors
-
-
+####################################################################################################
 def correct_names(
     regnames: list,
     prefix: str = None,
@@ -1043,41 +1193,15 @@ def correct_names(
 
     return regnames
 
-
-def ismember_from_list(a, b):
-    """
-    Function to check if elements of a are in b
-
-    Parameters
-    ----------
-    a : list
-        List of elements to check
-    b : list
-        List of elements to check against
-
-    Returns
-    -------
-    values: list
-        List of unique elements in a
-    idx: list
-        List of indices of elements in a that are in b
-
-    Example Usage:
-    --------------
-        >>> a = [1, 2, 3, 4, 5]
-        >>> b = [3, 4, 5, 6, 7]
-        >>> values, idx = ismember_from_list(a, b)
-        >>> print(values)  # Output: [3, 4, 5]
-        >>> print(idx)     # Output: [0, 1, 2]
-    """
-
-    values, indices = np.unique(a, return_inverse=True)
-    is_in_list = np.isin(a, b)
-    idx = indices[is_in_list].astype(int)
-
-    return values, idx
-
-
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############        Methods dedicated to work with dictionaries and dataframes          ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def remove_empty_keys_or_values(d: dict) -> dict:
     """
     Remove dictionary entries with empty keys, keys with only spaces, or empty values.
@@ -1114,6 +1238,49 @@ def remove_empty_keys_or_values(d: dict) -> dict:
 
     return d
 
+####################################################################################################
+def expand_and_concatenate(
+    df_add: pd.DataFrame, 
+    df: pd.DataFrame
+    ) -> pd.DataFrame:
+    """
+    Expands df_add to match the number of rows in df and concatenates them along columns.
+
+    Parameters:
+    -----------
+        df_add : pd.DataFrame
+            DataFrame with a single row to be replicated.
+        
+        df : pd.DataFrame   
+            DataFrame to which df_add will be concatenated.
+
+    Returns:
+    --------
+        pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
+        
+        
+    """
+
+    df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
+
+    # Detect if there is a column in df that exists in df_add. If so, assign the values from df to df_add and remove the column from df
+    for col in df.columns:
+        if col in df_add.columns:
+            df_expanded[col] = df[col].values
+            df = df.drop(columns=[col])
+
+    df = df.reset_index(drop=True)  # Ensure clean index
+    return pd.concat([df_expanded, df], axis=1)
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############            Methods dedicated to help with containarization                 ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 
 def generate_container_command(
     bash_args,
@@ -1205,132 +1372,15 @@ def generate_container_command(
 
     return container_cmd
 
-
-def expand_and_concatenate(
-    df_add: pd.DataFrame, 
-    df: pd.DataFrame
-    ) -> pd.DataFrame:
-    """
-    Expands df_add to match the number of rows in df and concatenates them along columns.
-
-    Parameters:
-    -----------
-        df_add : pd.DataFrame
-            DataFrame with a single row to be replicated.
-        
-        df : pd.DataFrame   
-            DataFrame to which df_add will be concatenated.
-
-    Returns:
-    --------
-        pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
-        
-        
-    """
-
-    df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
-
-    # Detect if there is a column in df that exists in df_add. If so, assign the values from df to df_add and remove the column from df
-    for col in df.columns:
-        if col in df_add.columns:
-            df_expanded[col] = df[col].values
-            df = df.drop(columns=[col])
-
-    df = df.reset_index(drop=True)  # Ensure clean index
-    return pd.concat([df_expanded, df], axis=1)
-
-
-def remove_empty_folders(path: str, remove_root: bool = True) -> bool:
-    """
-    Recursively remove empty folders in the given path.
-
-    Parameters:
-    ----------
-    path : str
-        The path to the folder to check.
-    remove_root : bool
-        If True, remove the root folder if it is empty. Default is True.
-        
-    Returns:
-    -------
-    bool
-        True if the folder was removed, False otherwise.
-        
-    Example Usage:
-    --------------
-        >>> path = "/path/to/folder"
-        >>> remove_empty_folders(path)
-        
-    """
-    
-    if not os.path.isdir(path):
-        return False
-    
-    # Recursively remove empty subfolders
-    for entry in os.listdir(path):
-        full_path = os.path.join(path, entry)
-        if os.path.isdir(full_path):
-            deleted_folders = remove_empty_folders(full_path, remove_root=True, deleted_folders=deleted_folders)
-
-    # If the folder is now empty, remove it
-    if not os.listdir(path):
-        if remove_root:
-            os.rmdir(path)
-            deleted_folders = deleted_folders.append(path)
-            return True
-
-    return deleted_folders
-
-def remove_empty_folders(start_path, deleted_folders=None):
-    """
-    Recursively removes empty directories starting from start_path.
-    Returns a list of all directories that were deleted.
-    
-    Parameters:
-    ----------
-        start_path : str
-            The directory path to start searching from
-            
-        deleted_folders : list
-            A list to store the paths of deleted directories. If None, a new list will be created.
-                    
-    Returns:
-    ------- 
-        deleted_folders : list
-            A list of all directories that were deleted.
-    
-    Example Usage:
-    --------------
-        >>> deleted_folders = remove_empty_folders("/path/to/start")
-        >>> print("Deleted folders:", deleted_folders)
-    --------------
-    """
-    if deleted_folders is None:
-        deleted_folders = []
-    
-    # Walk through the directory tree bottom-up (deepest first)
-    for root, dirs, files in os.walk(start_path, topdown=False):
-        # Check each directory in current level
-        for dir_name in dirs:
-            dir_path = os.path.join(root, dir_name)
-            try:
-                # Try to remove the directory (will only succeed if empty)
-                os.rmdir(dir_path)
-                deleted_folders.append(dir_path)
-                #print(f"Removed empty directory: {dir_path}")  # Optional logging
-            except OSError:
-                # Directory not empty or other error - we'll ignore it
-                pass
-    
-    # Finally, try to remove the starting directory itself if it's now empty
-    try:
-        os.rmdir(start_path)
-        deleted_folders.append(start_path)
-        #print(f"Removed empty directory: {start_path}")  # Optional logging
-    except OSError:
-        pass
-    
-    return deleted_folders
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############            Methods to print modules information and signatures             ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 
 def format_signature(sig: inspect.Signature):
     """Formats a function signature with ANSI colors."""
@@ -1356,7 +1406,7 @@ def format_signature(sig: inspect.Signature):
     parts.append(f"{bcolors.OKWHITE}){bcolors.ENDC}")
     return "".join(parts)
 
-
+####################################################################################################
 def show_module_contents(module):
     """
     Displays all classes and functions in a given module with colored formatting.
