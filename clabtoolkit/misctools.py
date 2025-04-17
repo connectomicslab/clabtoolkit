@@ -575,13 +575,14 @@ def detect_leaf_directories(root_dir: str) -> list:
 
     Returns:
     -------
-    list: A list of absolute paths to folders that do not contain any subfolders.
+    leaf_folders: list
+        A list of absolute paths to folders that do not contain any subfolders.
 
     Example Usage:
     --------------
-    root_directory = "/path/to/your/folder"
-    leaf_folders = find_leaf_folders(root_directory)
-    print("Leaf folders:", leaf_folders)
+        root_directory = "/path/to/your/folder"
+        leaf_folders = detect_leaf_directories(root_directory)
+        print("Leaf folders:", leaf_folders)
     """
 
     if not os.path.isdir(root_dir):
@@ -620,15 +621,15 @@ def detect_recursive_files(in_dir):
     return files
 
 
-def rem_dupplicate_char(strcad: str, dchar: str):
+def rem_duplicate_char(strcad: str, dchar: str):
     """
     This function removes duplicate characters from strings.
 
     Parameters
     ----------
-    s : list or str
+    strcad : list or str
         Input string
-        dchar : str
+    dchar : str
 
     Returns
     ---------
@@ -652,7 +653,7 @@ def rem_dupplicate_char(strcad: str, dchar: str):
     return "".join(chars)
 
 
-def invert_colors(colors: Union[list, np.ndarray]):
+def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
     """
     Function to invert the colors by finding its complementary color.
 
@@ -663,8 +664,8 @@ def invert_colors(colors: Union[list, np.ndarray]):
 
     Returns
     -------
-    colors: Numpy array
-        List of colors
+    colors: list or numpy array
+        List of inverted colors 
 
     """
 
@@ -717,7 +718,7 @@ def invert_colors(colors: Union[list, np.ndarray]):
     return colors
 
 
-def harmonize_colors(colors: Union[list, np.ndarray]):
+def harmonize_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
     """
     Function to harmonize the colors in a list. The colors can be in hexadecimal or rgb format.
     If the list contains colors in multiple formats, the function will convert all the colors to hexadecimal format.
@@ -748,7 +749,7 @@ def harmonize_colors(colors: Union[list, np.ndarray]):
     return colors
 
 
-def readjust_colors(colors: Union[list, np.ndarray]):
+def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
     """
     Function to readjust the colors to the range 0-255
 
@@ -824,7 +825,7 @@ class bcolors:
     UNDERLINE = "\033[4m"
 
 
-def create_random_colors(n: int):
+def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
     """
     Function to create a list of n random colors
 
@@ -832,12 +833,15 @@ def create_random_colors(n: int):
     ----------
     n : int
         Number of colors
+        
+    fmt : str
+        Format of the colors. It can be 'rgb', 'rgbnorm' or 'hex'. Default is 'rgb'.
 
     Returns
     -------
     colors: list
         List of random colors
-
+        
     Example Usage:
     ----------------
         >>> colors = create_random_colors(5)
@@ -849,9 +853,12 @@ def create_random_colors(n: int):
     # Create a numpy array with n random colors in the range 0-255
     colors = np.random.randint(0, 255, size=(n, 3))
     
-    if format == "hex":
+    if fmt == "hex":
         # Convert the colors to hexadecimal format
         colors = multi_rgb2hex(colors)
+    elif fmt == "rgbnorm":
+        # Normalize the colors to the range 0-1
+        colors = colors / 255
 
     return colors
 
@@ -865,14 +872,40 @@ def correct_names(
     replace: list = None,
 ):
     """
-    Correcting region names
-    @params:
-        regnames   - Required  : List of region names:
-        prefix     - Optional  : Add prefix to the region names:
-        sufix      - Optional  : Add sufix to the region names:
-        lower      - Optional  : Lower the region names. Default is False:
-        remove     - Optional  : Remove the substring item from the region names:
-        replace    - Optional  : Replace the substring item from the region names:
+    Correcting region names. It can be used to add a prefix or sufix to the region names, lower the region names, remove or replace substrings in the region names.
+    
+    Parameters
+    ----------
+    regnames : list
+        List of region names
+    prefix : str
+        Prefix to add to the region names. Default is None
+    sufix : str
+        Sufix to add to the region names. Default is None
+    lower : bool
+        Boolean to indicate if the region names should be lower case. Default is False
+    remove : list
+        List of substrings to remove from the region names. Default is None
+    replace : list
+        List of substrings to replace in the region names. Default is None. 
+        It can be a list of tuples or a list of lists. The first element is the substring to replace and the second element is the substring to replace with.
+        For example: replace = [["old", "new"], ["old2", "new2"]]
+        
+    Returns
+    -------
+    regnames: list
+        List of corrected region names
+    Example Usage:
+    --------------
+        >>> regnames = ["ctx-lh-1", "ctx-rh-2", "ctx-lh-3"]
+        >>> prefix = "ctx-"
+        >>> sufix = "-lh"
+        >>> lower = True
+        >>> remove = ["ctx-"]
+        >>> replace = [["lh", "left"], ["rh", "right"]]
+        >>> corrected_names = correct_names(regnames, prefix, sufix, lower, remove, replace)
+        >>> print(corrected_names)  # Output: ['left-1-lh', 'right-2-lh', 'left-3-lh']
+    
     """
 
     # Add prefix to the region names
@@ -935,6 +968,13 @@ def ismember_from_list(a, b):
     idx: list
         List of indices of elements in a that are in b
 
+    Example Usage:
+    --------------
+        >>> a = [1, 2, 3, 4, 5]
+        >>> b = [3, 4, 5, 6, 7]
+        >>> values, idx = ismember_from_list(a, b)
+        >>> print(values)  # Output: [3, 4, 5]
+        >>> print(idx)     # Output: [0, 1, 2]
     """
 
     values, indices = np.unique(a, return_inverse=True)
@@ -959,7 +999,12 @@ def remove_empty_keys_or_values(d: dict) -> dict:
 
     d : dict
         The dictionary with the empty entries removed.
-
+        
+    Example Usage:
+    --------------
+        >>> my_dict = {'key1': 'value1', 'key2': '', '': 'value3', 'key4': None}
+        >>> cleaned_dict = remove_empty_keys_or_values(my_dict)
+        >>> print(cleaned_dict)  # Output: {'key1': 'value1', 'key4': None}
     """
     keys_to_remove = [
         key
@@ -981,7 +1026,7 @@ def generate_container_command(
     technology: str = "local",
     image_path: str = None,
     license_path: str = None,
-):
+) -> list:
     """
     This function generates the command to run a bash command inside a container
 
@@ -1000,6 +1045,12 @@ def generate_container_command(
     -------
     container_cmd: list
         List with the command to run the bash command locally or inside the container
+        
+    Example Usage:
+    --------------
+        >>> bash_args = ["bash", "-c", "echo Hello World"]
+        >>> container_cmd = generate_container_command(bash_args, technology="docker", image_path="/path/to/image")
+        >>> print(container_cmd)
 
     """
 
@@ -1061,16 +1112,26 @@ def generate_container_command(
     return container_cmd
 
 
-def expand_and_concatenate(df_add, df):
+def expand_and_concatenate(
+    df_add: pd.DataFrame, 
+    df: pd.DataFrame
+    ) -> pd.DataFrame:
     """
     Expands df_add to match the number of rows in df and concatenates them along columns.
 
     Parameters:
-        df_add (pd.DataFrame): DataFrame with a single row to be replicated.
-        df (pd.DataFrame): Target DataFrame with multiple rows.
+    -----------
+        df_add : pd.DataFrame
+            DataFrame with a single row to be replicated.
+        
+        df : pd.DataFrame   
+            DataFrame to which df_add will be concatenated.
 
     Returns:
+    --------
         pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
+        
+        
     """
 
     df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
@@ -1103,28 +1164,79 @@ def remove_empty_folders(path: str, remove_root: bool = True) -> bool:
         
     Example Usage:
     --------------
-        path = "/path/to/folder"
-        removed = remove_empty_folders(path)
-        print(f"Removed empty folders: {removed}")
+        >>> path = "/path/to/folder"
+        >>> remove_empty_folders(path)
+        
     """
     
     if not os.path.isdir(path):
         return False
-
+    
     # Recursively remove empty subfolders
     for entry in os.listdir(path):
         full_path = os.path.join(path, entry)
         if os.path.isdir(full_path):
-            remove_empty_folders(full_path, remove_root=True)
+            deleted_folders = remove_empty_folders(full_path, remove_root=True, deleted_folders=deleted_folders)
 
     # If the folder is now empty, remove it
     if not os.listdir(path):
         if remove_root:
             os.rmdir(path)
+            deleted_folders = deleted_folders.append(path)
             return True
 
-    return False
+    return deleted_folders
 
+def remove_empty_folders(start_path, deleted_folders=None):
+    """
+    Recursively removes empty directories starting from start_path.
+    Returns a list of all directories that were deleted.
+    
+    Parameters:
+    ----------
+        start_path : str
+            The directory path to start searching from
+            
+        deleted_folders : list
+            A list to store the paths of deleted directories. If None, a new list will be created.
+                    
+    Returns:
+    ------- 
+        deleted_folders : list
+            A list of all directories that were deleted.
+    
+    Example Usage:
+    --------------
+        >>> deleted_folders = remove_empty_folders("/path/to/start")
+        >>> print("Deleted folders:", deleted_folders)
+    --------------
+    """
+    if deleted_folders is None:
+        deleted_folders = []
+    
+    # Walk through the directory tree bottom-up (deepest first)
+    for root, dirs, files in os.walk(start_path, topdown=False):
+        # Check each directory in current level
+        for dir_name in dirs:
+            dir_path = os.path.join(root, dir_name)
+            try:
+                # Try to remove the directory (will only succeed if empty)
+                os.rmdir(dir_path)
+                deleted_folders.append(dir_path)
+                #print(f"Removed empty directory: {dir_path}")  # Optional logging
+            except OSError:
+                # Directory not empty or other error - we'll ignore it
+                pass
+    
+    # Finally, try to remove the starting directory itself if it's now empty
+    try:
+        os.rmdir(start_path)
+        deleted_folders.append(start_path)
+        #print(f"Removed empty directory: {start_path}")  # Optional logging
+    except OSError:
+        pass
+    
+    return deleted_folders
 
 def format_signature(sig: inspect.Signature):
     """Formats a function signature with ANSI colors."""
