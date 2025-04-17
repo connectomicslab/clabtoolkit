@@ -456,7 +456,7 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
     return out_ids
 
 
-def filter_by_substring(input_list: list, substr: Union[str, list], boolcase: bool = False):
+def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: bool = False):
     """
     Function to filter a list of elements by a substrings.
 
@@ -468,20 +468,20 @@ def filter_by_substring(input_list: list, substr: Union[str, list], boolcase: bo
     substr : str or list
         Substring to filter. It can be a string or a list of strings
 
-    boolcase : bool
+    bool_case : bool
         Boolean to indicate if the search is case sensitive. Default is False
 
     Returns
     -------
-    filt_list: list
+    filtered_list: list
         List of elements that contain the substring
         
     Example Usage:
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["app", "ch"]
-        >>> filt_list = filter_by_substring(input_list, substr)
-        >>> print(filt_list)  # Output: ['apple', 'cherry']
+        >>> filtered_list = filter_by_substring(input_list, substr)
+        >>> print(filtered_list)  # Output: ['apple', 'cherry']
 
     """
 
@@ -494,7 +494,7 @@ def filter_by_substring(input_list: list, substr: Union[str, list], boolcase: bo
         substr = [substr]
 
     # Convert the substr and input_list to lower case
-    if not boolcase:
+    if not bool_case:
         tmp_substr = [e.lower() for e in substr]
         tmp_input_list = [e.lower() for e in input_list]
 
@@ -509,23 +509,24 @@ def filter_by_substring(input_list: list, substr: Union[str, list], boolcase: bo
     indexes = np.array(indexes)
 
     # Select the atlas_files with the indexes
-    filt_list = [input_list[i] for i in indexes]
+    filtered_list = [input_list[i] for i in indexes]
 
-    filt_list = remove_duplicates(filt_list)
+    # Remove the duplicates from the filtered list
+    filtered_list = remove_duplicates(filtered_list)
 
-    return filt_list
+    return filtered_list
 
 
 def get_indexes_by_substring(
     input_list: list,
     substr: Union[str, list],
     invert: bool = False,
-    boolcase: bool = False,
-    matchww: bool = False,
+    bool_case: bool = False,
+    match_entire_world: bool = False,
 ):
     """
     Function extracts the indexes of the elements of a list of elements that contain
-    any of the substrings of anothre list.
+    any of the substrings of another list.
 
     Parameters
     ----------
@@ -539,10 +540,10 @@ def get_indexes_by_substring(
         Boolean to indicate if the indexes are inverted. Default is False
         If True, the indexes of the elements that do not contain any of the substrings are returned.
 
-    boolcase : bool
+    bool_case : bool
         Boolean to indicate if the search is case sensitive. Default is False
 
-    matchww : bool
+    match_entire_world : bool
         Boolean to indicate if the search is a whole word match. Default is False
 
     Returns
@@ -564,7 +565,7 @@ def get_indexes_by_substring(
         
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["apple", "cherry"]
-        >>> indexes = cltmisc.get_indexes_by_substring(input_list, substr, matchww=True)
+        >>> indexes = get_indexes_by_substring(input_list, substr, match_entire_world=True)
         >>> print(indexes) # Output: [0, 2] 
     """
 
@@ -577,7 +578,7 @@ def get_indexes_by_substring(
         substr = [substr]
 
     # Convert the substr and input_list to lower case
-    if not boolcase:
+    if not bool_case:
         tmp_substr = [e.lower() for e in substr]
         tmp_input_list = [e.lower() for e in input_list]
 
@@ -586,7 +587,7 @@ def get_indexes_by_substring(
         tmp_input_list = input_list
 
     # Get the indexes of the list elements that contain any of the strings in the list aa
-    if matchww:
+    if match_entire_world:
         indexes = [
             i for i, x in enumerate(tmp_input_list) if any(a == x for a in tmp_substr)
         ]
