@@ -192,24 +192,31 @@ def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
 
     return out_tract
 
-def concatenate_tractograms(trks: Union[list, str], concat_trk: str = None, show_progress: bool = False):
+def concatenate_tractograms(trks: list, concat_trk: str = None, show_progress: bool = False):
     """
     Concatenate multiple tractograms into a single tractogram.
     
     Parameters
     ----------
     trks : list of str
-        List of file paths to the tractograms to concatenate.
+        List of file paths to the tractograms to concatenate. It can be trk files or tck files.
     concat_trk : str
         File path for the output concatenated tractogram.
     
     Returns
     -------
-    None
+    trkall : nibabel.streamlines.Tractogram or str
+        The concatenated tractogram will be returned as a nibabel streamlines object if this variable is None.
+        If concat_trk is provided, the concatenated tractogram will be saved to this file path.
+        If the output directory does not exist, the concatenated tractogram will be returned as a nibabel streamlines object.
+        
     """
     
-    if isinstance(trks, str):
-        trks = [trks]
+    if not isinstance(trks, list):
+        raise ValueError("trks must be a list of file paths to the tractograms to concatenate.")
+    
+    if len(trks) < 2:
+        raise ValueError("At least two tractograms are required to concatenate.")
     
     save_bool = False
     cont = 0
