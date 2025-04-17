@@ -5,7 +5,15 @@ import clabtoolkit.misctools as cltmisc
 from typing import Union, Dict, List
 import re
 import json
+from glob import glob
 
+from rich.progress import (
+    Progress,
+    BarColumn,
+    TimeRemainingColumn,
+    TextColumn,
+    MofNCompleteColumn
+)
 
 ####################################################################################################
 ####################################################################################################
@@ -441,8 +449,8 @@ def recursively_replace_entity_value(
                 new_name = dir_name.replace(subst_x, subst_y)
                 new_path = os.path.join(root, new_name)
                 os.rename(old_path, new_path)
-
-
+                
+                
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -453,40 +461,116 @@ def recursively_replace_entity_value(
 ####################################################################################################
 ####################################################################################################
 
+def get_subjects(bids_dir: str) -> list:
+    """
+    Get a list of all subjects in the BIDs directory.
+    
+    Parameters
+    ----------
+    bids_dir : str
+        Path to the BIDs directory.
+        
+    Returns
+    -------
+    list
+        List of subject IDs.
+        
+    Usage example:
+    >>> bids_dir = "/path/to/bids"
+    >>> print(get_subjects(bids_dir))
+    ["sub-01", "sub-02", ...]
+    
+    """
+    subjects = []
+    
+    for root, dirs, files in os.walk(bids_dir):
+        for dir_name in dirs:
+            if dir_name.startswith("sub-"):
+                subjects.append(dir_name)
+    
+    return subjects
 
-# This function copies the BIDs folder and its derivatives for e given subjects to a new location
+####################################################################################################
 def copy_bids_folder(
     bids_dir: str,
     out_dir: str,
-    fold2copy: list = ["anat"],
-    subjs2copy: str = None,
+    subjects_to_copy: Union[list, str] = None,
+    folders_to_copy: Union[list, str] = "all",
     deriv_dir: str = None,
-    include_derivatives: bool = False,
+    include_derivatives: Union[str, list] = None,
 ):
     """
-    Copy full bids folders
-    @params:
-        bids_dir     - Required  : BIDs dataset directory:
-        out_dir      - Required  : Output directory:
-        fold2copy    - Optional  : List of folders to copy: default = ['anat']
-        subjs2copy   - Optional  : List of subjects to copy:
-        deriv_dir    - Optional  : Derivatives directory: default = None
-        include_derivatives - Optional  : Include derivatives folder: default = False
+    This function copies the BIDs folder and its derivatives for given subjects to a new location.
+    
+    Parameters
+    ----------
+    bids_dir : str
+        Path to the BIDs directory.
+    out_dir : str
+        Path to the output directory where the copied BIDs folder will be saved.
+    subjects_to_copy : list or str, optional
+        List of subject IDs to copy. If None, all subjects will be copied.
+    folders_to_copy : list or str, optional
+        List of BIDs folders to copy. If "all", all folders will be copied. Default is "all".
+    deriv_dir : str, optional
+        Path to the derivatives directory. If None, it will be set to "derivatives" in the BIDs directory.
+    include_derivatives : str or list, optional
+        List of derivatives to include. If "all", all derivatives will be included. Default is None.
+        If None, no derivatives will be copied.
+        If "chimera", only the chimera derivatives will be copied.
+        If "all", all derivatives will be copied.
+        If a list, only the derivatives in the list will be copied.
+        If a string, only the derivatives with the name in the string will be copied.
+        
+    Returns
+    -------
+    None
+        Copies the specified folders and subjects to the output directory.
+        
+    Usage example:
+    >>> bids_dir = "/path/to/bids"
+    >>> out_dir = "/path/to/output"
+    >>> copy_bids_folder(bids_dir, out_dir, subjects_to_copy=["sub-01"], folders_to_copy=["anat"])
+    >>> copy_bids_folder(bids_dir, out_dir, subjects_to_copy=["sub-01"], include_derivatives=["fmriprep"])
+    >>> copy_bids_folder(bids_dir, out_dir, subjects_to_copy=["sub-01"], deriv_dir="/path/to/derivatives")
+        
     """
 
-    # Listing the subject ids inside the dicom folder
-    if subjs2copy is None:
-        my_list = os.listdir(bids_dir)
-        subj_ids = []
-        for it in my_list:
-            if "sub-" in it:
-                subj_ids.append(it)
-        subj_ids.sort()
-    else:
-        subj_ids = subjs2copy
-
+    bids_dir = cltmisc.remove_trailing_separators(bids_dir)
+    out_dir = cltmisc.remove_trailing_separators(out_dir)
+    
+    if not os.path.isdir(bids_dir):
+        raise FileNotFoundError(f"The BIDs directory {bids_dir} does not exist.")
+    
+    if not os.path.isdir(out_dir):
+        raise FileNotFoundError(f"The output directory {out_dir} does not exist.")
+    
+    if deriv_dir is not None:
+        deriv_dir = cltmisc.remove_trailing_separators(deriv_dir)
+        if not os.path.isdir(deriv_dir):
+            raise FileNotFoundError(f"The derivatives directory {deriv_dir} does not exist.")
+    
+    # Selecting the subjects that will be copied
+    if isinstance(subjects_to_copy, str):
+        subjects_to_copy = [subjects_to_copy]
+        
+    if subjects_to_copy is None:
+        subjects_to_copy = get_subjects(bids_dir)
+    
+    # Selecting the BIDs folders that will be copied
+    if isinstance(folders_to_copy, str):
+        folders_to_copy = [folders_to_copy]
+        
+    if "all" in folders_to_copy:
+        folders_to_copy = ["all"]
+    
+    # Number of subjects to copy
+    n_subj = len(subjects_to_copy)
+    
     # Selecting the derivatives folder
-    if include_derivatives:
+    if include_derivatives is not None:
+        copy_derivatives = True
+        
         if deriv_dir is None:
             deriv_dir = os.path.join(bids_dir, "derivatives")
 
@@ -494,117 +578,181 @@ def copy_bids_folder(
             # Lunch a warning message if the derivatives folder does not exist
             print("WARNING: The derivatives folder does not exist.")
             print("WARNING: The derivatives folder will not be copied.")
-            include_derivatives = False
+            copy_derivatives = False
+        else:
+            # Check if the derivatives folder is empty
+            if len(os.listdir(deriv_dir)) == 0:
+                print("WARNING: The derivatives folder is empty.")
+                print("WARNING: The derivatives folder will not be copied.")
+                copy_derivatives = False
 
         # Selecting all the derivatives folders
-        der_pipe_folders = []
         directories = os.listdir(deriv_dir)
         der_pipe_folders = []
         for directory in directories:
             pipe_dir = os.path.join(deriv_dir, directory)
             if not directory.startswith(".") and os.path.isdir(pipe_dir):
                 der_pipe_folders.append(pipe_dir)
-
-    # Failed sessions and derivatives
-    fail_sess = []
-    fail_deriv = []
-
-    # Loop around all the subjects
-    nsubj = len(subj_ids)
-    for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
-        subj_dir = os.path.join(bids_dir, subj_id)
-        out_subj_dir = os.path.join(out_dir, subj_id)
-
-        cltmisc.printprogressbar(
-            i + 1,
-            nsubj,
-            "Processing subject "
-            + subj_id
-            + ": "
-            + "("
-            + str(i + 1)
-            + "/"
-            + str(nsubj)
-            + ")",
+        
+        if isinstance(include_derivatives, str):
+            include_derivatives = [include_derivatives]
+        
+        if "all" not in include_derivatives:
+            include_derivatives = [os.path.join(deriv_dir, i) for i in include_derivatives]
+            der_pipe_folders = cltmisc.list_intercept(der_pipe_folders, include_derivatives)
+            
+        if len(der_pipe_folders) == 0:
+            print("WARNING: No derivatives folders were found with the specified names.")
+            copy_derivatives = False
+            
+    progress = Progress(
+        TextColumn("[bold blue]{task.description}", justify="right"),
+        BarColumn(bar_width=None),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+        TimeRemainingColumn(),
+        MofNCompleteColumn(),
+    )
+    with progress:
+        task = progress.add_task(
+            "[cyan]Copying BIDs folder and derivatives...", total=None
         )
+        progress.update(task, total=n_subj)
+        progress.start_task(task)
+        progress.update(task, completed=0)
+            
+        # Loop around all the subjects
+        for i, full_id in enumerate(subjects_to_copy):  # Loop along the IDs
 
-        # Loop along all the sessions inside the subject directory
-        for ses_id in os.listdir(subj_dir):  # Loop along the session
-            ses_dir = os.path.join(subj_dir, ses_id)
-            out_ses_dir = os.path.join(out_subj_dir, ses_id)
+            # Extract the subject id
+            subj_entity = str2entity(full_id)
+            
+            # Remove the extension from the subj_entity
+            if "extension" in subj_entity.keys():
+                del subj_entity["extension"]
+            
+            if "suffix" in subj_entity.keys():
+                suffix = subj_entity["suffix"]
+                del subj_entity["suffix"]
+                
+            else:
+                suffix = None
+                
+            # Generate a list with the format [key_value]
+            file_filter = [f"{k}-{v}" for k, v in subj_entity.items()]
+            fold_filter = [f"{k}-{v}" for k, v in subj_entity.items()]
+            
+            if suffix is not None:
+                file_filter.append(f"_{suffix}")
+            
+            if subj_entity is None:
+                print(f"WARNING: The subject ID {full_id} is not valid.")
+                continue
+            
+            subj_id = subj_entity["sub"]
+            
+            subj_dir = os.path.join(bids_dir, f'sub-{subj_id}')
+            all_subj_subfold = cltmisc.detect_leaf_directories(subj_dir)
+            
+            # Upgrade the progress bar and include the subject id on the text 
+            progress.update(task, description=f"[red]Copying subject: {full_id}", completed=i+1)
+            
+            # Detect the session id if it exists
+            ses_id = None
+            if "ses" in subj_entity.keys():
+                ses_id = subj_entity["ses"]
+                full_ses_id = f'ses-{ses_id}'
+                
+                all_subj_subfold = cltmisc.filter_by_substring(input_list=all_subj_subfold, or_filter=full_ses_id)
+            
+            #######  Copying the BIDs folder
+            if "all" not in folders_to_copy:
+                tmp_list = [ os.path.basename(i) for i in all_subj_subfold]
+                indexes = cltmisc.get_indexes_by_substring(tmp_list, folders_to_copy)
+                all_subj_subfold = [all_subj_subfold[i] for i in indexes]
+                
+            raw_files_to_copy = []
+            # Loop along all the folders to copy
+            for fc in all_subj_subfold:
+                all_subj_raw_files = cltmisc.detect_recursive_files(fc)
+                
+                raw_files_to_copy = raw_files_to_copy + all_subj_raw_files
+            
+            # Filtering the files to copy according to the full
+            raw_files_to_copy =  cltmisc.filter_by_substring(input_list=raw_files_to_copy, or_filter = f'sub-{subj_id}', and_filter=file_filter)
 
-            # print('Copying SubjectId: ' + subjId + ' ======>  Session: ' +  sesId)
-
-            if fold2copy[0] == "all":
-                directories = os.listdir(ses_dir)
-                fold2copy = []
-                for directory in directories:
-                    if not directory.startswith(".") and os.path.isdir(
-                        os.path.join(ses_dir, directory)
-                    ):
-                        print(directory)
-                        fold2copy.append(directory)
-
-            for fc in fold2copy:
-                # Copying the anat folder
-                if os.path.isdir(ses_dir):
-                    fold_to_copy = os.path.join(ses_dir, fc)
-
+            for file in raw_files_to_copy:
+                if os.path.isfile(file):
+                    # Copying the file
                     try:
-                        # Creating destination directory using make directory
-                        dest_dir = os.path.join(out_ses_dir, fc)
-                        os.makedirs(dest_dir, exist_ok=True)
-
-                        shutil.copytree(fold_to_copy, dest_dir, dirs_exist_ok=True)
-
+                        dest_dir = file.replace(bids_dir, out_dir)
+                        os.makedirs(os.path.dirname(dest_dir), exist_ok=True)
+                        shutil.copy2(file, dest_dir)
                     except:
-                        fail_sess.append(fold_to_copy)
-
-            if include_derivatives:
-                # Copying the derivatives folder
-
+                        print(f"WARNING: The file {file} could not be copied.")
+                        continue
+            
+            # Copying the Derivatives folder
+            if copy_derivatives:
+                # Loop along all the derivatives folders
                 for pipe_dir in der_pipe_folders:
+                    # Check if the derivatives folder exists
                     if os.path.isdir(pipe_dir):
+                        # Copying the derivatives folder
+                        subj_deriv = glob(os.path.join(pipe_dir, f'sub-{subj_id}*'))
+                        
+                        if len(subj_deriv) > 0:
+                            
+                            # Detecting the files and folders to copy.
+                            # We are doing this separation because there are derivatives that contain
+                            # only the folders with the name of the subject and not the files (i.e. freesurfer)
+                            
+                            # Loop along all the folders to copy
+                            deriv_files_to_copy = []
+                            deriv_folds_to_copy = []
+                            for deriv in subj_deriv:
+                                
+                                # Detect the files and folders to copy
+                                tmp_fold_to_copy =  cltmisc.filter_by_substring(input_list=deriv, or_filter = f'sub-{subj_id}', and_filter=fold_filter)
 
-                        out_pipe_dir = os.path.join(
-                            out_dir, "derivatives", os.path.basename(pipe_dir)
-                        )
+                                if len(tmp_fold_to_copy) > 0:
+                                    # Detect the files and folders to copy
+                                    for tmp in tmp_fold_to_copy:
+                                        if os.path.isdir(tmp):
+                                            deriv_folds_to_copy.append(tmp)
+                                        else:
+                                            deriv_files_to_copy.append(tmp)
+                                else:
+                                    all_subj_deriv_files = cltmisc.detect_recursive_files(deriv)
+                                    
+                                    # Filtering the files to copy according to the full
+                                    all_subj_deriv_files =  cltmisc.filter_by_substring(input_list=all_subj_deriv_files, or_filter = f'sub-{subj_id}', and_filter=fold_filter)
 
-                        pipe_indiv_subj_in = os.path.join(pipe_dir, subj_id, ses_id)
-                        pipe_indiv_subj_out = os.path.join(
-                            out_pipe_dir, subj_id, ses_id
-                        )
+                                    deriv_files_to_copy = deriv_files_to_copy + all_subj_deriv_files
 
-                        if os.path.isdir(pipe_indiv_subj_in):
-                            try:
-                                # Creating destination directory using make directory
-                                os.makedirs(pipe_indiv_subj_out, exist_ok=True)
+                            # Copying the folders
+                            if len(deriv_folds_to_copy) > 0:
+                                for fold in deriv_folds_to_copy:
+                                    try:
+                                        dest_dir = fold.replace(deriv_dir, os.path.join(out_dir, "derivatives"))
+                                        os.makedirs(dest_dir, exist_ok=True)
+                                        shutil.copytree(fold, dest_dir, dirs_exist_ok=True)
+                                    except:
+                                        print(f"WARNING: The folder or file {fold} could not be copied.")
+                                        continue
+                            
+                            # Copying the files
+                            if len(deriv_files_to_copy) > 0:
+                                for file in deriv_files_to_copy:
+                                    try:
+                                        dest_dir = file.replace(deriv_dir, os.path.join(out_dir, "derivatives"))
+                                        os.makedirs(os.path.dirname(dest_dir), exist_ok=True)
+                                        shutil.copy2(file, dest_dir)
+                                    except:
+                                        print(f"WARNING: The file {file} could not be copied.")
+                                        continue
 
-                                # Copying the folder
-                                shutil.copytree(
-                                    pipe_indiv_subj_in,
-                                    pipe_indiv_subj_out,
-                                    dirs_exist_ok=True,
-                                )
-
-                            except:
-                                fail_deriv.append(pipe_indiv_subj_in)
-
-    # Print the failed sessions and derivatives
-    print(" ")
-    if fail_sess:
-        print("THE PROCESS FAILED COPYING THE FOLLOWING SESSIONS:")
-        for i in fail_sess:
-            print(i)
-    print(" ")
-
-    if fail_deriv:
-        print("THE PROCESS FAILED COPYING THE FOLLOWING DERIVATIVES:")
-        for i in fail_deriv:
-            print(i)
-    print(" ")
-
-    print("End of copying the files.")
+        # Update the progress bar to 100%
+        progress.update(task, completed=n_subj)
 
 
 ####################################################################################################
