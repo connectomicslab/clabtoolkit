@@ -838,10 +838,20 @@ def create_random_colors(n: int):
     colors: list
         List of random colors
 
+    Example Usage:
+    ----------------
+        >>> colors = create_random_colors(5)
+        >>> print(colors)  # Output: [[123, 45, 67], [89, 12, 34], ...]
+        
+
     """
 
     # Create a numpy array with n random colors in the range 0-255
     colors = np.random.randint(0, 255, size=(n, 3))
+    
+    if format == "hex":
+        # Convert the colors to hexadecimal format
+        colors = multi_rgb2hex(colors)
 
     return colors
 
