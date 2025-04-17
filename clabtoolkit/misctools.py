@@ -723,7 +723,12 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
     return out_ids
 
 ####################################################################################################
-def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: bool = False):
+def filter_by_substring(
+    input_list: list, 
+    or_filter: Union[str, list], 
+    and_filter: Union[str, list] = None, 
+    bool_case: bool = False) -> list:
+    
     """
     Function to filter a list of elements by a substrings.
 
@@ -732,8 +737,14 @@ def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: b
     input_list : list
         List of elements
 
-    substr : str or list
-        Substring to filter. It can be a string or a list of strings
+    or_filter : str or list
+        Substring to filter. It can be a string or a list of strings. 
+        It functions as an OR filter, meaning that if any of the substrings are found in the element, 
+        it will be included in the filtered list.
+    
+    and_filter : str or list, optional
+        Substring to filter. It can be a string or a list of strings.
+        It functions as an AND filter, meaning that all of the substrings must be found in the element
 
     bool_case : bool
         Boolean to indicate if the search is case sensitive. Default is False
@@ -746,8 +757,8 @@ def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: b
     Example Usage:
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
-        >>> substr = ["app", "ch"]
-        >>> filtered_list = filter_by_substring(input_list, substr)
+        >>> or_filter = ["app", "ch"]
+        >>> filtered_list = filter_by_substring(input_list, or_filter)
         >>> print(filtered_list)  # Output: ['apple', 'cherry']
 
     """
@@ -756,17 +767,17 @@ def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: b
     if not isinstance(input_list, list):
         raise ValueError("The input input_list must be a list.")
 
-    # Convert the substr to a list
-    if isinstance(substr, str):
-        substr = [substr]
+    # Convert the or_filter to a list
+    if isinstance(or_filter, str):
+        or_filter = [or_filter]
 
-    # Convert the substr and input_list to lower case
+    # Convert the or_filter and input_list to lower case
     if not bool_case:
-        tmp_substr = [e.lower() for e in substr]
+        tmp_substr = [e.lower() for e in or_filter]
         tmp_input_list = [e.lower() for e in input_list]
 
     else:
-        tmp_substr = substr
+        tmp_substr = or_filter
         tmp_input_list = input_list
 
     # Get the indexes of the list elements that contain any of the strings in the list aa
@@ -780,6 +791,28 @@ def filter_by_substring(input_list: list, substr: Union[str, list], bool_case: b
 
     # Remove the duplicates from the filtered list
     filtered_list = remove_duplicates(filtered_list)
+
+    if and_filter is not None:
+        # Convert the and_filter to a list
+        if isinstance(and_filter, str):
+            and_filter = [and_filter]
+
+        # Convert the and_filter to lower case
+        if not bool_case:
+            tmp_and_filter = [e.lower() for e in and_filter]
+            tmp_filtered_list = [e.lower() for e in filtered_list]
+        else:
+            tmp_and_filter = and_filter
+            tmp_filtered_list = filtered_list
+        
+        # Get the indexes of the list elements that contain all of the strings in the list tmp_and_filter
+        indexes = [i for i, x in enumerate(tmp_filtered_list) if all(a in x for a in tmp_and_filter)]
+        
+        # Convert indexes to a numpy array
+        indexes = np.array(indexes)
+        
+        # Select the filtered_list with the indexes
+        filtered_list = [filtered_list[i] for i in indexes]
 
     return filtered_list
 
@@ -983,6 +1016,30 @@ def detect_leaf_directories(root_dir: str) -> list:
             leaf_folders.append(foldername)
 
     return leaf_folders
+
+####################################################################################################
+def remove_trailing_separators(path: str) -> str:
+    """
+    Remove all trailing path separators (unless at root).
+    
+    Parameters
+    ----------
+    path : str
+        The path from which to remove trailing separators.
+        
+    Returns
+    -------
+    str
+        The path with trailing separators removed.
+        
+    Usage example:
+    >>> path = "/path/to/directory///"
+    >>> print(remove_trailing_separators(path))
+    "/path/to/directory/"
+    
+    """
+    stripped = path.rstrip(os.sep)
+    return stripped if stripped else os.sep
 
 ####################################################################################################
 def detect_recursive_files(in_dir):
