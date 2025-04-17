@@ -4,6 +4,11 @@ import nibabel as nib
 from nibabel.streamlines import Field
 from nibabel.orientations import aff2axcodes
 from skimage import measure
+from typing import Union, Dict, List
+
+# add progress bar using rich progress bar
+from rich.progress import Progress
+from rich.progress import BarColumn, TextColumn, SpinnerColumn
 
 
 # This function removes the B0s volumes located at the end of the diffusion 4D volume.
@@ -186,3 +191,81 @@ def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
     nib.streamlines.save(trk.tractogram, out_tract)
 
     return out_tract
+
+def concatenate_tractograms(trks: Union[list, str], concat_trk: str = None, show_progress: bool = False):
+    """
+    Concatenate multiple tractograms into a single tractogram.
+    
+    Parameters
+    ----------
+    trks : list of str
+        List of file paths to the tractograms to concatenate.
+    concat_trk : str
+        File path for the output concatenated tractogram.
+    
+    Returns
+    -------
+    None
+    """
+    
+    if isinstance(trks, str):
+        trks = [trks]
+    
+    save_bool = False
+    cont = 0
+    for trk_file in trks:
+        if show_progress:
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                SpinnerColumn(),
+                transient=True,
+            ) as progress:
+                task = progress.add_task("Processing...", total=len(trks))
+                progress.update(task, description=f"Processing {trk_file}")
+                progress.update(task, advance=1)
+                
+                if os.path.exists(trk_file):
+                    save_bool = True
+                    trk = nib.streamlines.load(trk_file, False)
+                
+                    if cont == 0:
+                        trkall = trk
+                    else:
+                        trkall.tractogram.streamlines.extend(trk.tractogram.streamlines)
+                    cont += 1
+                else:
+                    print(f"File {trk_file} does not exist. Skipping.")
+            
+        else:
+            if os.path.exists(trk_file):
+                
+                save_bool = True
+                trk = nib.streamlines.load(trk_file, False)
+            
+                if cont == 0:
+                    trkall = trk
+                else:
+                    trkall.tractogram.streamlines.extend(trk.tractogram.streamlines)
+                cont += 1
+            else:
+                print(f"File {trk_file} does not exist. Skipping.")
+            
+    # # Save the final trk file
+    if save_bool:
+        if concat_trk is not None:
+            output_track = concat_trk
+            
+            # Verify the output directory exists
+            output_dir = os.path.dirname(concat_trk)
+            if not os.path.exists(output_dir):
+                # Print an error message
+                error_message = f"Output directory does not exist: {output_dir}"
+                print(error_message)
+                output_track = trkall
+            
+            nib.streamlines.save(trkall, concat_trk)
+        else:
+            output_track = trkall
+            
+    return output_track
