@@ -5,6 +5,9 @@ import os
 import argparse
 from datetime import datetime
 import pandas as pd
+import inspect
+import sys
+import types
 
 
 class SmartFormatter(argparse.HelpFormatter):
@@ -33,6 +36,28 @@ class SmartFormatter(argparse.HelpFormatter):
     """
 
     def split_lines(self, text, width):
+        """
+        This function is used to split the lines of the help message.
+        It allows to use the "R|" prefix to print the help message as raw text.
+        For example:
+        parser = argparse.ArgumentParser(description='''R|This is a raw text help message.
+        It can contain multiple lines.
+        It will be printed as raw text.''', formatter_class=SmartFormatter)
+        parser.print_help()
+        
+        Parameters
+        ----------
+        text : str
+            Text to be split
+        width : int
+            Width of the text
+            
+        Returns
+        -------
+        text : str
+            Text split in lines
+            
+        """
         if text.startswith("R|"):
             return text[2:].splitlines()
         # this is the RawTextHelpFormatter.split_lines
@@ -1048,3 +1073,130 @@ def expand_and_concatenate(df_add, df):
 
     df = df.reset_index(drop=True)  # Ensure clean index
     return pd.concat([df_expanded, df], axis=1)
+
+
+def remove_empty_folders(path: str, remove_root: bool = True) -> bool:
+    """
+    Recursively remove empty folders in the given path.
+
+    Parameters:
+    ----------
+    path : str
+        The path to the folder to check.
+    remove_root : bool
+        If True, remove the root folder if it is empty. Default is True.
+        
+    Returns:
+    -------
+    bool
+        True if the folder was removed, False otherwise.
+        
+    Example Usage:
+    --------------
+        path = "/path/to/folder"
+        removed = remove_empty_folders(path)
+        print(f"Removed empty folders: {removed}")
+    """
+    
+    if not os.path.isdir(path):
+        return False
+
+    # Recursively remove empty subfolders
+    for entry in os.listdir(path):
+        full_path = os.path.join(path, entry)
+        if os.path.isdir(full_path):
+            remove_empty_folders(full_path, remove_root=True)
+
+    # If the folder is now empty, remove it
+    if not os.listdir(path):
+        if remove_root:
+            os.rmdir(path)
+            return True
+
+    return False
+
+
+def format_signature(sig: inspect.Signature):
+    """Formats a function signature with ANSI colors."""
+    parts = [f"{bcolors.OKWHITE}({bcolors.ENDC}"]
+    params = list(sig.parameters.values())
+    for i, p in enumerate(params):
+        param_str = f"{bcolors.DARKCYAN}{p.name}{bcolors.ENDC}"
+
+        if p.annotation != inspect.Parameter.empty:
+            annotation = (
+                p.annotation.__name__
+                if hasattr(p.annotation, "__name__")
+                else str(p.annotation)
+            )
+            param_str += f": {bcolors.OKPURPLE}{annotation}{bcolors.ENDC}"
+
+        if p.default != inspect.Parameter.empty:
+            param_str += f"{bcolors.OKGRAY} = {repr(p.default)}{bcolors.ENDC}"
+
+        parts.append(param_str)
+        if i < len(params) - 1:
+            parts.append(f"{bcolors.OKWHITE}, {bcolors.ENDC}")
+    parts.append(f"{bcolors.OKWHITE}){bcolors.ENDC}")
+    return "".join(parts)
+
+
+def show_module_contents(module):
+    """
+    Displays all classes and functions in a given module with colored formatting.
+    Accepts a module object or module name (str).
+    """
+    if isinstance(module, str):
+        try:
+            module = sys.modules.get(module) or __import__(module)
+        except ImportError:
+            print(f"{bcolors.FAIL}Module '{module}' could not be imported.{bcolors.ENDC}")
+            return
+    elif not isinstance(module, types.ModuleType):
+        print(f"{bcolors.FAIL}Invalid input: must be a module object or module name string.{bcolors.ENDC}")
+        return
+
+    print(f"{bcolors.HEADER}{bcolors.BOLD}📦 Contents of module '{module.__name__}':{bcolors.ENDC}\n")
+
+    # Classes
+    print(f"{bcolors.OKBLUE}{bcolors.BOLD}📘 Classes:{bcolors.ENDC}")
+    for name in sorted(dir(module)):
+        try:
+            obj = getattr(module, name)
+            if inspect.isclass(obj) and obj.__module__ == module.__name__:
+                print(f"  {bcolors.OKBLUE}- {name}{bcolors.ENDC}")
+
+                doc = inspect.getdoc(obj)
+                if doc:
+                    first_line = doc.split("\n")[0]
+                    print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+
+                for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
+                    if method.__module__ == module.__name__ and method.__qualname__.startswith(obj.__name__ + "."):
+                        sig = inspect.signature(method)
+                        formatted_sig = format_signature(sig)
+                        print(f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}")
+                        method_doc = inspect.getdoc(method)
+                        
+                        if method_doc:
+                            first_line = method_doc.split("\n")[0]
+                            print(f"      {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+                            
+                print(f"    {bcolors.OKWHITE}{'─'*60}{bcolors.ENDC}\n")
+        except Exception:
+            continue
+
+    # Functions
+    print(f"\n{bcolors.OKGREEN}{bcolors.BOLD}🔧 Functions:{bcolors.ENDC}")
+    for name in sorted(dir(module)):
+        try:
+            obj = getattr(module, name)
+            if inspect.isfunction(obj) and obj.__module__ == module.__name__:
+                sig = inspect.signature(obj)
+                formatted_sig = format_signature(sig)
+                print(f"  {bcolors.OKYELLOW}- {name}{bcolors.ENDC}{formatted_sig}")
+                doc = inspect.getdoc(obj)
+                if doc:
+                    print(f"    {bcolors.OKGRAY}# {doc.splitlines()[0]}{bcolors.ENDC}")
+        except Exception:
+            continue
