@@ -77,7 +77,10 @@ def printprogressbar(
 ):
     """
     Call in a loop to create terminal progress bar
-    @params:
+    
+    Parameters
+    ----------
+    
         iteration   - Required  : current iteration (Int)
         total       - Required  : total iterations (Int)
         prefix      - Optional  : prefix string (Str)
@@ -86,6 +89,7 @@ def printprogressbar(
         length      - Optional  : character length of bar (Int)
         fill        - Optional  : bar fill character (Str)
         printend    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+        
     """
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filledlength = int(length * iteration // total)
@@ -96,7 +100,7 @@ def printprogressbar(
         print()
 
 
-def rgb2hex(r: int, g: int, b: int):
+def rgb2hex(r: int, g: int, b: int) -> str:
     """
     Function to convert rgb to hex
 
@@ -114,12 +118,20 @@ def rgb2hex(r: int, g: int, b: int):
     hexcode: str
         Hexadecimal code for the color
 
+    Example Usage:
+    --------------
+        >>> r = 255
+        >>> g = 0
+        >>> b = 0
+        >>> hexcode = rgb2hex(r, g, b)
+        >>> print(hexcode)  # Output: "#ff0000" 
+    
     """
 
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
 
-def multi_rgb2hex(colors: Union[list, np.ndarray]):
+def multi_rgb2hex(colors: Union[list, np.ndarray]) -> list:
     """
     Function to convert rgb to hex for an array of colors
 
@@ -133,6 +145,12 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]):
     hexcodes: list
         List of hexadecimal codes for the colors
 
+    Example Usage:
+    --------------
+        >>> colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
+        >>> hexcodes = multi_rgb2hex(colors)
+        >>> print(hexcodes)  # Output: ['#ff0000', '#00ff00', '#0000ff']
+        
     """
     if len(colors) > 0:
         # If all the values in the list are between 0 and 1, then the values are multiplied by 255
@@ -157,7 +175,7 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]):
     return hexcodes
 
 
-def hex2rgb(hexcode: str):
+def hex2rgb(hexcode: str) -> tuple:
     """
     Function to convert hex to rgb
 
@@ -171,34 +189,16 @@ def hex2rgb(hexcode: str):
     tuple
         Tuple with the rgb values
 
+    Example Usage:
+    --------------
+        >>> hexcode = "#FF5733"
+        >>> rgb = hex2rgb(hexcode)
+        >>> print(rgb)  # Output: (255, 87, 51)
+        
     """
     # Convert hexadecimal color code to RGB values
     hexcode = hexcode.lstrip("#")
     return tuple(int(hexcode[i : i + 2], 16) for i in (0, 2, 4))
-
-
-def search_in_list(ref_list, list2look):
-    """
-    Search for the index of the elements in list2look in ref_list
-
-    Parameters
-    ----------
-    ref_list : list
-        Reference list
-    list2look : list
-        List to look for
-
-    Returns
-    -------
-    list
-        List of indices of the elements in list2look in ref_list
-
-    """
-    ret = []
-    for v in list2look:
-        index = ref_list.index(v)
-        ret.append(index)
-    return ret
 
 
 def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%d"):
@@ -225,7 +225,27 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
     closest_index: int
         Index of the closest date in the list
 
-
+    time_diff: int
+        Time difference in days between the target date and the closest date in the list.
+        If the target date is not in the list, it will return the time difference in days.
+        
+    Example Usage:
+    --------------
+        >>> dates_list = ["20230101", "20230201", "20230301"]
+        >>> target_date = "20230215"
+        >>> closest_date, closest_index, time_diff = find_closest_date(dates_list, target_date)
+        >>> print(closest_date)  # Output: "20230201"
+        >>> print(closest_index)  # Output: 1
+        >>> print(time_diff)      # Output: 14
+        
+    Raises
+    ------
+    ValueError
+        If the target_date is not in the correct format or if the dates_list is empty.
+        
+    TypeError
+        If the target_date is not a string or if the dates_list is not a list of strings.
+        
     """
 
     # Convert target_date to a datetime object
@@ -249,9 +269,9 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
     return closest_date.strftime(date_fmt), closest_index, time_diff
 
 
-def multi_hex2rgb(hexcodes: list):
+def multi_hex2rgb(hexcodes: list) -> np.ndarray:
     """
-    Function to convert hex to rgb for an array of colors
+    Function to convert a list of colores in hexadecimal format to rgb format.
 
     Parameters
     ----------
@@ -263,6 +283,12 @@ def multi_hex2rgb(hexcodes: list):
     rgb_list: np.array
         Array of rgb values
 
+    Example Usage:
+    --------------
+        >>> hexcodes = ["#FF5733", "#33FF57", "#3357FF"]
+        >>> rgb_list = multi_hex2rgb(hexcodes)
+        >>> print(rgb_list)  # Output: [[255, 87, 51], [51, 255, 87], [51, 87, 255]]
+        
     """
 
     rgb_list = [hex2rgb(hex_color) for hex_color in hexcodes]
@@ -271,7 +297,7 @@ def multi_hex2rgb(hexcodes: list):
 
 def build_indexes(range_vector: list, nonzeros: bool = True):
     """
-    Function to build the indexes from a range vector. The range vector can contain integers, tuples, lists or strings.
+    Function to build the indexes from a range vector that can contain integers, tuples, lists or strings.
 
     For example:
     range_vector = [1, (2, 5), [6, 7], "8-10", "11:13", "14:2:22"]
@@ -298,6 +324,12 @@ def build_indexes(range_vector: list, nonzeros: bool = True):
     indexes: list
         List of indexes
 
+    Example Usage:
+    --------------
+        >>> range_vector = [1, (2, 5), [6, 7], "8-10", "11:13", "14:2:22"]
+        >>> indexes = build_indexes(range_vector)
+        >>> print(indexes)  # Output: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22]
+        
     """
 
     indexes = []
@@ -366,6 +398,12 @@ def remove_duplicates(input_list: list):
     unique_list: list
         List of unique elements
 
+    Example Usage:
+    --------------
+        >>> input_list = [1, 2, 2, 3, 4, 4, 5]
+        >>> unique_list = remove_duplicates(input_list)
+        >>> print(unique_list)  # Output: [1, 2, 3, 4, 5]
+        
     """
 
     unique_list = []
@@ -379,16 +417,16 @@ def remove_duplicates(input_list: list):
     return unique_list
 
 
-def select_ids_from_file(subids: list, idfile: Union[list, str]):
+def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
     """
     Function to select the ids from a list of ids that are in a file.
     It can be used to select the ids from a list of subjects that are in a file.
 
     Parameters
     ----------
-    subids : list
+    subj_ids : list
         List of subject ids.
-    idfile : str or list
+    ids_file : str or list
         File with the ids to select.
 
     Returns
@@ -396,29 +434,35 @@ def select_ids_from_file(subids: list, idfile: Union[list, str]):
     out_ids: list
         List of ids that are in the file.
 
+    Example Usage:
+    --------------
+        >>> subj_ids = ["sub-01", "sub-02", "sub-03"]
+        >>> ids_file = "ids.txt" # Column-wise text file with the ids to select (i.e. "sub-01", "sub-03")
+        >>> out_ids = select_ids_from_file(subj_ids, ids_file)
+        >>> print(out_ids)  # Output: ["sub-01", "sub-03"]
     """
 
     # Read the ids from the file
-    if isinstance(idfile, str):
-        if os.path.exists(idfile):
-            with open(idfile) as file:
+    if isinstance(ids_file, str):
+        if os.path.exists(ids_file):
+            with open(ids_file) as file:
                 t1s2run = [line.rstrip() for line in file]
 
-            out_ids = [s for s in subids if any(xs in s for xs in t1s2run)]
+            out_ids = [s for s in subj_ids if any(xs in s for xs in t1s2run)]
 
-    if isinstance(idfile, list):
-        out_ids = list_intercept(subids, idfile)
+    if isinstance(ids_file, list):
+        out_ids = list_intercept(subj_ids, ids_file)
 
     return out_ids
 
 
-def filter_by_substring(list1: list, substr: Union[str, list], boolcase: bool = False):
+def filter_by_substring(input_list: list, substr: Union[str, list], boolcase: bool = False):
     """
     Function to filter a list of elements by a substrings.
 
     Parameters
     ----------
-    list1 : list
+    input_list : list
         List of elements
 
     substr : str or list
@@ -429,36 +473,43 @@ def filter_by_substring(list1: list, substr: Union[str, list], boolcase: bool = 
 
     Returns
     -------
-    out_ids: list
-        List of ids that contain any of the substring
+    filt_list: list
+        List of elements that contain the substring
+        
+    Example Usage:
+    --------------
+        >>> input_list = ["apple", "banana", "cherry", "date"]
+        >>> substr = ["app", "ch"]
+        >>> filt_list = filter_by_substring(input_list, substr)
+        >>> print(filt_list)  # Output: ['apple', 'cherry']
 
     """
 
-    # Rise an error if list1 is not a list
-    if not isinstance(list1, list):
-        raise ValueError("The input list1 must be a list.")
+    # Rise an error if input_list is not a list
+    if not isinstance(input_list, list):
+        raise ValueError("The input input_list must be a list.")
 
     # Convert the substr to a list
     if isinstance(substr, str):
         substr = [substr]
 
-    # Convert the substr and list1 to lower case
+    # Convert the substr and input_list to lower case
     if not boolcase:
         tmp_substr = [e.lower() for e in substr]
-        tmp_list1 = [e.lower() for e in list1]
+        tmp_input_list = [e.lower() for e in input_list]
 
     else:
         tmp_substr = substr
-        tmp_list1 = list1
+        tmp_input_list = input_list
 
     # Get the indexes of the list elements that contain any of the strings in the list aa
-    indexes = [i for i, x in enumerate(tmp_list1) if any(a in x for a in tmp_substr)]
+    indexes = [i for i, x in enumerate(tmp_input_list) if any(a in x for a in tmp_substr)]
 
     # Convert indexes to a numpy array
     indexes = np.array(indexes)
 
     # Select the atlas_files with the indexes
-    filt_list = [list1[i] for i in indexes]
+    filt_list = [input_list[i] for i in indexes]
 
     filt_list = remove_duplicates(filt_list)
 
@@ -466,7 +517,7 @@ def filter_by_substring(list1: list, substr: Union[str, list], boolcase: bool = 
 
 
 def get_indexes_by_substring(
-    list1: list,
+    input_list: list,
     substr: Union[str, list],
     invert: bool = False,
     boolcase: bool = False,
@@ -478,11 +529,15 @@ def get_indexes_by_substring(
 
     Parameters
     ----------
-    list1 : list
+    input_list : list
         List of elements
 
     substr : str or list
         Substring to filter. It can be a string or a list of strings
+    
+    invert : bool
+        Boolean to indicate if the indexes are inverted. Default is False
+        If True, the indexes of the elements that do not contain any of the substrings are returned.
 
     boolcase : bool
         Boolean to indicate if the search is case sensitive. Default is False
@@ -495,40 +550,56 @@ def get_indexes_by_substring(
     indexes: list
         List of indexes that contain any of the substring
 
+    Example Usage:
+    --------------
+        >>> input_list = ["apple", "banana", "cherry", "date"]
+        >>> substr = ["ap", "ch"]
+        >>> indexes = get_indexes_by_substring(input_list, substr)
+        >>> print(indexes)  # Output: [0, 2]
+        
+        >>> input_list = ["apple", "banana", "cherry", "date"]
+        >>> substr = ["apple", "banana"]
+        >>> indexes = get_indexes_by_substring(input_list, substr, invert=True)
+        >>> print(indexes)  # Output: [2, 3]
+        
+        >>> input_list = ["apple", "banana", "cherry", "date"]
+        >>> substr = ["apple", "cherry"]
+        >>> indexes = cltmisc.get_indexes_by_substring(input_list, substr, matchww=True)
+        >>> print(indexes) # Output: [0, 2] 
     """
 
-    # Rise an error if list1 is not a list
-    if not isinstance(list1, list):
-        raise ValueError("The input list1 must be a list.")
+    # Rise an error if input_list is not a list
+    if not isinstance(input_list, list):
+        raise ValueError("The input input_list must be a list.")
 
     # Convert the substr to a list
     if isinstance(substr, str):
         substr = [substr]
 
-    # Convert the substr and list1 to lower case
+    # Convert the substr and input_list to lower case
     if not boolcase:
         tmp_substr = [e.lower() for e in substr]
-        tmp_list1 = [e.lower() for e in list1]
+        tmp_input_list = [e.lower() for e in input_list]
 
     else:
         tmp_substr = substr
-        tmp_list1 = list1
+        tmp_input_list = input_list
 
     # Get the indexes of the list elements that contain any of the strings in the list aa
     if matchww:
         indexes = [
-            i for i, x in enumerate(tmp_list1) if any(a == x for a in tmp_substr)
+            i for i, x in enumerate(tmp_input_list) if any(a == x for a in tmp_substr)
         ]
     else:
         indexes = [
-            i for i, x in enumerate(tmp_list1) if any(a in x for a in tmp_substr)
+            i for i, x in enumerate(tmp_input_list) if any(a in x for a in tmp_substr)
         ]
 
     # Convert indexes to a numpy array
     indexes = np.array(indexes)
 
     if invert:
-        indexes = np.setdiff1d(np.arange(0, len(list1)), indexes)
+        indexes = np.setdiff1d(np.arange(0, len(input_list)), indexes)
 
     return indexes
 
@@ -548,6 +619,13 @@ def list_intercept(list1: list, list2: list):
     -------
     int_list: list
         List of elements that are in both lists
+    
+    Example Usage:
+    --------------
+        >>> list1 = [1, 2, 3, 4, 5]
+        >>> list2 = [3, 4, 5, 6, 7]
+        >>> int_list = list_intercept(list1, list2)
+        >>> print(int_list)  # Output: [3, 4, 5]
 
     """
 
@@ -580,9 +658,9 @@ def detect_leaf_directories(root_dir: str) -> list:
 
     Example Usage:
     --------------
-        root_directory = "/path/to/your/folder"
-        leaf_folders = detect_leaf_directories(root_directory)
-        print("Leaf folders:", leaf_folders)
+        >>> root_directory = "/path/to/your/folder"
+        >>> leaf_folders = detect_leaf_directories(root_directory)
+        >>> print("Leaf folders:", leaf_folders)
     """
 
     if not os.path.isdir(root_dir):
@@ -610,6 +688,11 @@ def detect_recursive_files(in_dir):
     files: list
         List of files in the directory and its subdirectories
 
+    Example Usage:
+    ----------------
+        >>> in_dir = "/path/to/directory"
+        >>> files = detect_recursive_files(in_dir)
+        >>> print(files)  # Output: List of files in the directory and its subdirectories
     """
 
     files = []
@@ -627,7 +710,7 @@ def rem_duplicate_char(strcad: str, dchar: str):
 
     Parameters
     ----------
-    strcad : list or str
+    strcad : str
         Input string
     dchar : str
 
@@ -666,7 +749,12 @@ def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
     -------
     colors: list or numpy array
         List of inverted colors 
-
+        
+    Example Usage:
+    ----------------
+        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
+        >>> inverted_colors = invert_colors(colors)
+        >>> print(inverted_colors)  # Output: ['#00aacc', '#cc00a8', [204, 168, 0]]
     """
 
     bool_norm = False
@@ -733,6 +821,12 @@ def harmonize_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]
     colors: list
         List of colors in hexadecimal format
 
+    Example Usage:
+    ----------------
+        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
+        >>> harmonized_colors = harmonize_colors(colors)
+        >>> print(harmonized_colors)  # Output: ['#ff5733', '#33ff57', '#3393ff']
+        
     """
 
     bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
@@ -795,9 +889,8 @@ def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
 
 class bcolors:
     """
-    Class to define the colors for the terminal output.
-
-
+    This class is used to define the colors for the terminal output. 
+    It can be used to print the output in different colors.
     """
 
     HEADER = "\033[95m"
