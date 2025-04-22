@@ -549,19 +549,68 @@ def visualize_colors(
     edge_color: Optional[str] = None,
 ) -> None:
     """
-    Visualize a list of color codes in a clean, professional layout.
-
-    Args:
-        hex_colors: List of hexadecimal color codes
-        figsize: Size of the figure (width, height)
-        label_position: Position of labels ("above" or "below")
-        label_rotation: Rotation angle for labels in degrees
-        label_size: Font size for labels (automatic if None)
-        spacing: Additional vertical space for labels
-        aspect_ratio: Height/width ratio of color rectangles
-        background_color: Background color of the figure
-        edge_color: Color for rectangle borders (None for no border)
+    Visualize a list of color codes in a clean, professional layout with configurable display options.
+        
+        Parameters
+        ----------
+        hex_colors : List[str]
+            List of hexadecimal color codes to visualize (e.g., ['#FF5733', '#33FF57'])
+        figsize : tuple, optional
+            Size of the figure in inches (width, height), by default (10, 2)
+        label_position : str, optional
+            Position of color labels relative to color bars ('above' or 'below'), 
+            by default "below"
+        label_rotation : int, optional
+            Rotation angle for labels in degrees (0-90), by default 45
+        label_size : Optional[float], optional
+            Font size for labels. If None, size is automatically determined based on 
+            number of colors, by default None
+        spacing : float, optional
+            Additional vertical space for labels (relative to bar height), by default 0.1
+        aspect_ratio : float, optional
+            Height/width ratio of color rectangles (0.1-1.0 recommended), by default 0.2
+        background_color : str, optional
+            Background color of the figure, by default "white"
+        edge_color : Optional[str], optional
+            Color for rectangle borders. None means no borders, by default None
+        
+        Returns
+        -------
+        None
+            Displays a matplotlib figure with the color visualization
+        
+        Raises
+        ------
+        ValueError
+            If any color code is invalid
+            If label_position is not 'above' or 'below'
+        
+        Examples
+        --------
+        Basic usage:
+        >>> colors = ['#FF5733', '#33FF57', '#3357FF']
+        >>> visualize_colors(colors)
+        
+        Customized visualization:
+        >>> visualize_colors(
+        ...     colors,
+        ...     figsize=(12, 3),
+        ...     label_position='above',
+        ...     label_rotation=30,
+        ...     background_color='#f0f0f0',
+        ...     edge_color='black'
+        ... )
+        
+        Notes
+        -----
+        - All hex colors will be converted to lowercase for consistency
+        - For large numbers of colors, consider increasing figsize or decreasing label_size
+        - Edge colors can be used to improve visibility against similar backgrounds
     """
+    
+    # Convert RGB colors to hex if needed
+    colors = harmonize_colors(colors)
+    
     # Validate colors
     for color in hex_colors:
         if not is_color_like(color):
