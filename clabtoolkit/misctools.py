@@ -384,17 +384,20 @@ def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
 ####################################################################################################
 def harmonize_colors(
     colors: Union[List[Union[str, np.ndarray]], np.ndarray], output_format: str = "hex"
-) -> List[str, np.ndarray]:
+) -> Union[List[str], List[np.ndarray]]:
     """
-    Convert all colors in a list to a consistent format (hex by default).
-    Handles both hex strings and RGB numpy arrays.
+    Convert all colors in a list to a consistent format.
+    Handles hex strings, RGB arrays (0-255), and normalized RGB arrays (0-1).
 
     Parameters
     ----------
     colors : list or numpy array
         List containing color strings (hex) and/or RGB numpy arrays
     output_format : str, optional
-        Output format ('hex' or 'rgb'), defaults to 'hex'
+        Output format ('hex', 'rgb', or 'rgbnorm'), defaults to 'hex'
+        - 'hex': returns hexadecimal strings (e.g., '#ff5733')
+        - 'rgb': returns RGB arrays with values 0-255 (uint8)
+        - 'rgbnorm': returns normalized RGB arrays with values 0.0-1.0 (float64)
 
     Returns
     -------
@@ -407,13 +410,20 @@ def harmonize_colors(
     >>> harmonize_colors(colors)
     ['#ff5733', '#33ff57', '#3357ff']
     >>> harmonize_colors(colors, output_format='rgb')
-    [array([255,  87,  51]), array([ 51, 255,  87]), array([ 51,  87, 255])]
+    [array([255,  87,  51], dtype=uint8),
+    array([ 51, 255,  87], dtype=uint8),
+    array([ 51,  87, 255], dtype=uint8)]
+
+    >>> harmonize_colors(colors, output_format='rgbnorm')
+    [array([1.        , 0.34117647, 0.2       ]),
+    array([0.2       , 1.        , 0.34117647]),
+    array([0.2       , 0.34117647, 1.        ])]
     """
     if not isinstance(colors, (list, np.ndarray)):
         raise TypeError("Input must be a list or numpy array")
 
-    if output_format not in ["hex", "rgb"]:
-        raise ValueError("output_format must be 'hex' or 'rgb'")
+    if output_format not in ["hex", "rgb", "rgbnorm"]:
+        raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
     result = []
 
@@ -433,17 +443,34 @@ def harmonize_colors(
                     elif not ((color >= 0).all() and (color <= 1).all()):
                         raise ValueError(f"RGB values out of range: {color}")
                 result.append(to_hex(color).lower())
-        else:  # RGB format
+
+        elif output_format == "rgbnorm":
+            if isinstance(color, str):
+                # Convert hex to normalized RGB
+                hex_color = color.lstrip("#")
+                rgb = np.array(
+                    [int(hex_color[i : i + 2], 16) / 255.0 for i in (0, 2, 4)]
+                )
+                result.append(rgb.astype(np.float64))
+            else:  # Already RGB
+                if isinstance(color, np.ndarray):
+                    if np.issubdtype(color.dtype, np.integer):
+                        result.append((color / 255.0).astype(np.float64))
+                    else:
+                        result.append(color.astype(np.float64))
+                else:
+                    result.append(np.array(color, dtype=np.float64) / 255.0)
+
+        else:  # rgb format (0-255)
             if isinstance(color, str):
                 # Convert hex to RGB array (0-255)
                 hex_color = color.lstrip("#")
                 rgb = np.array([int(hex_color[i : i + 2], 16) for i in (0, 2, 4)])
-                result.append(rgb)
+                result.append(rgb.astype(np.uint8))
             else:  # Already RGB
                 if isinstance(color, np.ndarray):
                     if np.issubdtype(color.dtype, np.floating):
-                        # Convert 0-1 float to 0-255 int
-                        result.append((color * 255).astype(np.uint8))
+                        result.append((color * 255).ast(np.uint8))
                     else:
                         result.append(color.astype(np.uint8))
                 else:
