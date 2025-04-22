@@ -12,6 +12,8 @@ import types
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
 from matplotlib.colors import is_color_like as mpl_is_color_like
+from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
+
 from typing import Union, List, Optional
 
 ####################################################################################################
@@ -169,52 +171,130 @@ class bcolors:
 
 ####################################################################################################
 def is_color_like(color) -> bool:
-    """Extended color validation that handles numpy arrays."""
+    """
+    Extended color validation that handles numpy arrays and Python lists.
+
+    Parameters
+    ----------
+    color : Any
+        The color to validate. Can be:
+        - Hex string (e.g., "#FF5733")
+        - Numpy array ([R,G,B] as integers 0-255 or floats 0-1)
+        - Python list ([R,G,B] as integers 0-255 or floats 0-1)
+
+    Returns
+    -------
+    bool
+        True if the color is valid, False otherwise.
+
+    Example Usage:
+    --------------
+        >>> is_color_like("#FF5733")  # Hex string
+        True
+        >>> is_color_like(np.array([255, 87, 51]))  # Numpy array
+        True
+        >>> is_color_like([255, 87, 51])  # Python list (integer)
+        True
+        >>> is_color_like([1.0, 0.34, 0.5])  # Python list (float)
+        True
+        >>> is_color_like("invalid_color")
+        False
+        >>> is_color_like([256, 0, 0])  # Out of range
+        False
+    """
+    # Handle numpy arrays (existing functionality)
     if isinstance(color, np.ndarray):
         if color.shape == (3,) and np.issubdtype(color.dtype, np.integer):
-            return True
+            return (color >= 0).all() and (color <= 255).all()
         if color.shape == (3,) and np.issubdtype(color.dtype, np.floating):
             return (color >= 0).all() and (color <= 1).all()
         return False
+
+    # Handle Python lists
+    if isinstance(color, list):
+        if len(color) == 3:
+            # Check if all elements are integers (0-255)
+            if all(isinstance(x, int) for x in color):
+                return all(0 <= x <= 255 for x in color)
+            # Check if all elements are floats (0-1)
+            if all(isinstance(x, (float, np.floating)) for x in color):
+                return all(0.0 <= x <= 1.0 for x in color)
+        return False
+
+    # Default to matplotlib's validator for strings and other types
     return mpl_is_color_like(color)
 
 
 ####################################################################################################
-def rgb2hex(r: int, g: int, b: int) -> str:
+def rgb2hex(r: Union[int, float], g: Union[int, float], b: Union[int, float]) -> str:
     """
-    Function to convert rgb to hex
+    Convert RGB values to hexadecimal color code.
+    Handles both integer (0-255) and normalized float (0-1) inputs.
 
     Parameters
     ----------
-    r : int
-        Red value
-    g : int
-        Green value
-    b : int
-        Blue value
+    r : int or float
+        Red value (0-255 for integers, 0-1 for floats)
+    g : int or float
+        Green value (0-255 for integers, 0-1 for floats)
+    b : int or float
+        Blue value (0-255 for integers, 0-1 for floats)
 
     Returns
     -------
-    hexcode: str
-        Hexadecimal code for the color
+    str
+        Hexadecimal color code in lowercase (e.g., "#ff0000")
 
-    Example Usage:
-    --------------
-        >>> r = 255
-        >>> g = 0
-        >>> b = 0
-        >>> hexcode = rgb2hex(r, g, b)
-        >>> print(hexcode)  # Output: "#ff0000"
+    Raises
+    ------
+    ValueError
+        If values are outside valid ranges (either 0-255 or 0-1)
+    TypeError
+        If input types are mixed (some ints and some floats)
 
+    Examples
+    --------
+    >>> rgb2hex(255, 0, 0)      # Integer inputs
+    '#ff0000'
+
+    >>> rgb2hex(1.0, 0.0, 0.0)  # Normalized float inputs
+    '#ff0000'
+
+    >>> rgb2hex(0.5, 0.0, 1.0)  # Mixed range
+    '#7f00ff'
     """
+    # Check for mixed input types
+    input_types = {type(r), type(g), type(b)}
+    if len(input_types) > 1:
+        raise TypeError(
+            "All RGB components must be the same type (all int or all float)"
+        )
+
+    # Process based on input type
+    if isinstance(r, float):
+        # Validate normalized range
+        if not (0 <= r <= 1 and 0 <= g <= 1 and 0 <= b <= 1):
+            raise ValueError("Float values must be between 0 and 1")
+        # Convert to 0-255 range
+        r, g, b = (int(round(x * 255)) for x in (r, g, b))
+    else:
+        # Validate 0-255 range
+        if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
+            raise ValueError("Integer values must be between 0 and 255")
+
+    # Ensure values are within byte range after conversion
+    r, g, b = (max(0, min(255, x)) for x in (r, g, b))
 
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
 
 ####################################################################################################
-def multi_rgb2hex(colors: Union[list, np.ndarray]) -> List[str]:
+def multi_rgb2hex(
+    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+) -> List[str]:
     """
-    Function to convert rgb to hex for an array of colors
+    Function to convert rgb to hex for an array of colors.
+    Note: If there are already elements in hexadecimal format the will not be transformed.
 
     Parameters
     ----------
@@ -233,25 +313,9 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]) -> List[str]:
         >>> print(hexcodes)  # Output: ['#ff0000', '#00ff00', '#0000ff']
 
     """
-    if len(colors) > 0:
-        # If all the values in the list are between 0 and 1, then the values are multiplied by 255
-        colors = readjust_colors(colors)
 
-        hexcodes = []
-        if isinstance(colors, list):
-            for indcol, color in enumerate(colors):
-                if isinstance(colors[indcol], str):
-                    hexcodes.append(colors[indcol])
-
-                elif isinstance(colors[indcol], np.ndarray):
-                    hexcodes.append(rgb2hex(color[0], color[1], color[2]))
-
-        elif isinstance(colors, np.ndarray):
-            nrows, ncols = colors.shape
-            for i in np.arange(0, nrows):
-                hexcodes.append(rgb2hex(colors[i, 0], colors[i, 1], colors[i, 2]))
-    else:
-        hexcodes = []
+    # Harmonizing the colors
+    hexcodes = harmonize_colors(colors, output_format="hex")
 
     return hexcodes
 
@@ -284,7 +348,7 @@ def hex2rgb(hexcode: str) -> tuple:
 
 
 ####################################################################################################
-def multi_hex2rgb(hexcodes: list) -> np.ndarray:
+def multi_hex2rgb(hexcodes: Union[str, List[str]]) -> np.ndarray:
     """
     Function to convert a list of colores in hexadecimal format to rgb format.
 
@@ -305,94 +369,124 @@ def multi_hex2rgb(hexcodes: list) -> np.ndarray:
         >>> print(rgb_list)  # Output: [[255, 87, 51], [51, 255, 87], [51, 87, 255]]
 
     """
+    if isinstance(hexcodes, str):
+        hexcodes = [hexcodes]
 
     rgb_list = [hex2rgb(hex_color) for hex_color in hexcodes]
     return np.array(rgb_list)
 
 
 ####################################################################################################
-def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
+def invert_colors(
+    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+) -> Union[List[Union[str, list, np.ndarray]], np.ndarray]:
     """
-    Function to invert the colors by finding its complementary color.
+    Invert colors while maintaining the original input format and value ranges.
 
     Parameters
     ----------
     colors : list or numpy array
-        List of colors
+        Input colors in any of these formats:
+        - Hex strings (e.g., "#FF5733")
+        - Python lists ([R,G,B] as integers 0-255 or floats 0-1)
+        - Numpy arrays (integers 0-255 or floats 0-1)
 
     Returns
     -------
-    colors: list or numpy array
-        List of inverted colors
+    Union[List[Union[str, list, np.ndarray]], np.ndarray]
+        Inverted colors in the same format and range as input
 
-    Example Usage:
-    ----------------
-        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
-        >>> inverted_colors = invert_colors(colors)
-        >>> print(inverted_colors)  # Output: ['#00aacc', '#cc00a8', [204, 168, 0]]
+    Examples
+    --------
+    >>> invert_colors([np.array([0.0, 0.0, 1.0]), np.array([0, 255, 243])])
+    [array([1., 1., 0.]), array([255,   0,  12])]
     """
+    if not isinstance(colors, (list, np.ndarray)):
+        raise TypeError("Input must be a list or numpy array")
 
-    bool_norm = False
-    if isinstance(colors, list):
+    # Store original formats and ranges
+    input_types = []
+    input_ranges = []  # '0-1' or '0-255'
 
-        if isinstance(colors[0], str):
-            # Convert the hexadecimal colors to rgb
-            colors = multi_hex2rgb(colors)
-            color_type = "hex"
+    for color in colors:
+        input_types.append(type(color))
+        if isinstance(color, np.ndarray):
+            if np.issubdtype(color.dtype, np.integer):
+                input_ranges.append("0-255")
+            else:
+                input_ranges.append("0-1")
+        elif isinstance(color, list):
+            if all(isinstance(x, int) for x in color):
+                input_ranges.append("0-255")
+            else:
+                input_ranges.append("0-1")
+        else:  # hex string
+            input_ranges.append("0-255")  # hex implies 0-255
 
-        elif isinstance(colors[0], np.ndarray):
-            colors = np.array(colors)
-            color_type = "arraylist"
-
-            if all(map(lambda x: max(x) < 1, colors)):
-                colors = [color * 255 for color in colors]
-                bool_norm = True
-
+    # Convert all to normalized (0-1) for inversion
+    normalized_colors = []
+    for color, orig_range in zip(colors, input_ranges):
+        if orig_range == "0-255":
+            if isinstance(color, str):
+                hex_color = color.lstrip("#")
+                rgb = (
+                    np.array([int(hex_color[i : i + 2], 16) for i in (0, 2, 4)]) / 255.0
+                )
+            elif isinstance(color, (list, np.ndarray)):
+                rgb = np.array(color) / 255.0
+            normalized_colors.append(rgb)
         else:
-            raise ValueError(
-                "If colors is a list, it must be a list of hexadecimal colors or a list of rgb colors"
+            normalized_colors.append(np.array(color))
+
+    # Perform inversion in HSV space
+    inverted = []
+    for color in normalized_colors:
+        hsv = rgb_to_hsv(color.reshape(1, 1, 3))
+        hsv[..., 0] = (hsv[..., 0] + 0.5) % 1.0  # Hue rotation
+        inverted_rgb = hsv_to_rgb(hsv).flatten()
+        inverted.append(inverted_rgb)
+
+    # Convert back to original formats and ranges
+    result = []
+    for inv_color, orig_type, orig_range in zip(inverted, input_types, input_ranges):
+        if orig_range == "0-255":
+            inv_color = (inv_color * 255).round().astype(np.uint8)
+
+        if orig_type == str:
+            result.append(
+                to_hex(inv_color / 255 if orig_range == "0-255" else inv_color).lower()
             )
+        elif orig_type == list:
+            if orig_range == "0-255":
+                result.append([int(x) for x in inv_color])
+            else:
+                result.append([float(x) for x in inv_color])
+        else:  # numpy.ndarray
+            if orig_range == "0-255":
+                result.append(inv_color.astype(np.uint8))
+            else:
+                result.append(inv_color.astype(np.float64))
 
-    elif isinstance(colors, np.ndarray):
-        color_type = "array"
-        if np.max(colors) <= 1:
-            colors = colors * 255
-            bool_norm = True
-    else:
-        raise ValueError("The colors must be a list of colors or a numpy array")
-
-    ## Inverting the colors
-    colors = 255 - colors
-
-    if color_type == "hex":
-        colors = multi_rgb2hex(colors)
-
-    elif color_type == "arraylist":
-        if bool_norm:
-            colors = colors / 255
-
-        # Create a list of colors where each row is an element in the list
-        colors = [list(color) for color in colors]
-
-    elif color_type == "array":
-        if bool_norm:
-            colors = colors / 255
-
-    return colors
+    # Return same container type as input
+    return np.array(result) if isinstance(colors, np.ndarray) else result
 
 
 ####################################################################################################
 def harmonize_colors(
-    colors: Union[List[Union[str, np.ndarray]], np.ndarray], output_format: str = "hex"
+    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+    output_format: str = "hex",
 ) -> Union[List[str], List[np.ndarray]]:
     """
     Convert all colors in a list to a consistent format.
-    Handles hex strings, RGB arrays (0-255), and normalized RGB arrays (0-1).
+    Handles hex strings, RGB lists, and numpy arrays (both 0-255 and 0-1 ranges).
 
     Parameters
     ----------
     colors : list or numpy array
-        List containing color strings (hex) and/or RGB numpy arrays
+        List containing:
+        - Hex strings (e.g., "#FF5733")
+        - Python lists ([R,G,B] as integers 0-255 or floats 0-1)
+        - Numpy arrays (integers 0-255 or floats 0-1)
     output_format : str, optional
         Output format ('hex', 'rgb', or 'rgbnorm'), defaults to 'hex'
         - 'hex': returns hexadecimal strings (e.g., '#ff5733')
@@ -401,27 +495,29 @@ def harmonize_colors(
 
     Returns
     -------
-    List[str] or List[np.ndarray]
+    Union[List[str], List[np.ndarray]]
         List of colors in the specified format
 
-    Example
-    -------
-    >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
+    Examples
+    --------
+    >>> colors = ["#FF5733", [255, 87, 51], np.array([51, 87, 255])]
     >>> harmonize_colors(colors)
-    ['#ff5733', '#33ff57', '#3357ff']
+    ['#ff5733', '#ff5733', '#3357ff']
+
     >>> harmonize_colors(colors, output_format='rgb')
     [array([255,  87,  51], dtype=uint8),
-    array([ 51, 255,  87], dtype=uint8),
+    array([255,  87,  51], dtype=uint8),
     array([ 51,  87, 255], dtype=uint8)]
 
     >>> harmonize_colors(colors, output_format='rgbnorm')
     [array([1.        , 0.34117647, 0.2       ]),
-    array([0.2       , 1.        , 0.34117647]),
+    array([1.        , 0.34117647, 0.2       ]),
     array([0.2       , 0.34117647, 1.        ])]
     """
     if not isinstance(colors, (list, np.ndarray)):
         raise TypeError("Input must be a list or numpy array")
 
+    output_format = output_format.lower()
     if output_format not in ["hex", "rgb", "rgbnorm"]:
         raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
@@ -431,58 +527,48 @@ def harmonize_colors(
         if not is_color_like(color):
             raise ValueError(f"Invalid color: {color}")
 
+        # Convert all inputs to numpy array first for consistent processing
+        if isinstance(color, str):
+            # Hex string -> convert to RGB array
+            hex_color = color.lstrip("#")
+            rgb_array = np.array([int(hex_color[i : i + 2], 16) for i in (0, 2, 4)])
+        elif isinstance(color, list):
+            # Python list -> convert to numpy array
+            rgb_array = np.array(color)
+        else:
+            # Already numpy array
+            rgb_array = color
+
+        # Process based on output format
         if output_format == "hex":
-            if isinstance(color, str):
-                # Standardize hex format (lowercase, full 6 digits)
-                result.append(to_hex(color).lower())
-            else:  # RGB array
-                # Convert numpy array to 0-1 range first
-                if isinstance(color, np.ndarray):
-                    if np.issubdtype(color.dtype, np.integer):
-                        color = color / 255.0
-                    elif not ((color >= 0).all() and (color <= 1).all()):
-                        raise ValueError(f"RGB values out of range: {color}")
-                result.append(to_hex(color).lower())
+            if np.issubdtype(rgb_array.dtype, np.integer):
+                rgb_array = rgb_array / 255.0
+            result.append(to_hex(rgb_array).lower())
 
         elif output_format == "rgbnorm":
-            if isinstance(color, str):
-                # Convert hex to normalized RGB
-                hex_color = color.lstrip("#")
-                rgb = np.array(
-                    [int(hex_color[i : i + 2], 16) / 255.0 for i in (0, 2, 4)]
-                )
-                result.append(rgb.astype(np.float64))
-            else:  # Already RGB
-                if isinstance(color, np.ndarray):
-                    if np.issubdtype(color.dtype, np.integer):
-                        result.append((color / 255.0).astype(np.float64))
-                    else:
-                        result.append(color.astype(np.float64))
-                else:
-                    result.append(np.array(color, dtype=np.float64) / 255.0)
+            if np.issubdtype(rgb_array.dtype, np.integer):
+                rgb_array = rgb_array / 255.0
+            result.append(rgb_array.astype(np.float64))
 
         else:  # rgb format (0-255)
-            if isinstance(color, str):
-                # Convert hex to RGB array (0-255)
-                hex_color = color.lstrip("#")
-                rgb = np.array([int(hex_color[i : i + 2], 16) for i in (0, 2, 4)])
-                result.append(rgb.astype(np.uint8))
-            else:  # Already RGB
-                if isinstance(color, np.ndarray):
-                    if np.issubdtype(color.dtype, np.floating):
-                        result.append((color * 255).ast(np.uint8))
-                    else:
-                        result.append(color.astype(np.uint8))
-                else:
-                    result.append(np.array(color, dtype=np.uint8))
+            if np.issubdtype(rgb_array.dtype, np.floating):
+                rgb_array = rgb_array * 255
+            result.append(rgb_array.astype(np.uint8))
+
+    # Stacking the results
+    if output_format != "hex":
+        result = np.vstack(result)
 
     return result
 
 
 ####################################################################################################
-def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
+def readjust_colors(
+    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+    output_format: str = "rgb",
+) -> Union[list[str], np.ndarray]:
     """
-    Function to readjust the colors to the range 0-255
+    Function to readjust the colors to a certain format. It is just a wrapper from harmonize_colors function.
 
     Parameters
     ----------
@@ -491,41 +577,33 @@ def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
 
     Returns
     -------
-    colors: Numpy array
-        List of colors normalized
+    out_colors: list or numpy array
+        List of colors in the desired format
 
+    Example Usage:
+    --------------
+        >>> colors = ["#FF5733", [255, 87, 51], np.array([51, 87, 255])]
+        >>> out_colors = readjust_colors(colors, output_format='hex')
+        >>> print(out_colors)  # Output: ['#ff5733', '#ff5733', '#3357ff']
+
+        >>> out_colors = readjust_colors(colors, output_format='rgb')
+        >>> print(out_colors)  # Output: [[255, 87, 51], [255, 87, 51], [51, 87, 255]]
     """
 
-    if isinstance(colors, list):
+    output_format = output_format.lower()
+    if output_format not in ["hex", "rgb", "rgbnorm"]:
+        raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
-        # If all the values in the list are between 0 and 1, then the values are multiplied by 255
-        if not isinstance(colors[0], str):
-            if all(map(lambda x: max(x) < 1, colors)):
-                colors = [color * 255 for color in colors]
+    # harmonizing the colors
+    out_colors = harmonize_colors(colors, output_format=output_format)
 
-        bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
-        if bool_tmp:
-            hexcodes = []
-            for indcol, color in enumerate(colors):
-                if isinstance(colors[indcol], str):
-                    hexcodes.append(colors[indcol])
-
-                elif isinstance(colors[indcol], np.ndarray):
-                    hexcodes.append(rgb2hex(color[0], color[1], color[2]))
-            colors = hexcodes
-
-    elif isinstance(colors, np.ndarray):
-        nrows, ncols = colors.shape
-
-        # If all the values in the array are between 0 and 1, then the values are multiplied by 255
-        if np.max(colors) <= 1:
-            colors = colors * 255
-
-    return colors
+    return out_colors
 
 
 ####################################################################################################
-def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
+def create_random_colors(
+    n: int, output_format: str = "rgb"
+) -> Union[list[str], np.ndarray]:
     """
     Function to create a list of n random colors
 
@@ -547,50 +625,49 @@ def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
         >>> colors = create_random_colors(5)
         >>> print(colors)  # Output: [[123, 45, 67], [89, 12, 34], ...]
 
-
     """
+
+    output_format = output_format.lower()
+    if output_format not in ["hex", "rgb", "rgbnorm"]:
+        raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
     # Create a numpy array with n random colors in the range 0-255
     colors = np.random.randint(0, 255, size=(n, 3))
 
-    if fmt == "hex":
-        # Convert the colors to hexadecimal format
-        colors = multi_rgb2hex(colors)
-    elif fmt == "rgbnorm":
-        # Normalize the colors to the range 0-1
-        colors = colors / 255
+    # Harmonizing the colors
+    colors = harmonize_colors(colors, output_format=output_format)
 
     return colors
 
 
 ###################################################################################################
 def visualize_colors(
-    hex_colors: List[str],
-    figsize: tuple = (10, 2),
+    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+    figsize: tuple = (10, 1),
     label_position: str = "below",  # or "above"
     label_rotation: int = 45,
     label_size: Optional[float] = None,
     spacing: float = 0.1,
-    aspect_ratio: float = 0.2,
+    aspect_ratio: float = 0.1,
     background_color: str = "white",
     edge_color: Optional[str] = None,
 ) -> None:
     """
     Visualize a list of color codes in a clean, professional layout with configurable display options.
-        
+
         Parameters
         ----------
-        hex_colors : List[str]
+        colors : List[str]
             List of hexadecimal color codes to visualize (e.g., ['#FF5733', '#33FF57'])
         figsize : tuple, optional
             Size of the figure in inches (width, height), by default (10, 2)
         label_position : str, optional
-            Position of color labels relative to color bars ('above' or 'below'), 
+            Position of color labels relative to color bars ('above' or 'below'),
             by default "below"
         label_rotation : int, optional
             Rotation angle for labels in degrees (0-90), by default 45
         label_size : Optional[float], optional
-            Font size for labels. If None, size is automatically determined based on 
+            Font size for labels. If None, size is automatically determined based on
             number of colors, by default None
         spacing : float, optional
             Additional vertical space for labels (relative to bar height), by default 0.1
@@ -600,24 +677,24 @@ def visualize_colors(
             Background color of the figure, by default "white"
         edge_color : Optional[str], optional
             Color for rectangle borders. None means no borders, by default None
-        
+
         Returns
         -------
         None
             Displays a matplotlib figure with the color visualization
-        
+
         Raises
         ------
         ValueError
             If any color code is invalid
             If label_position is not 'above' or 'below'
-        
+
         Examples
         --------
         Basic usage:
         >>> colors = ['#FF5733', '#33FF57', '#3357FF']
         >>> visualize_colors(colors)
-        
+
         Customized visualization:
         >>> visualize_colors(
         ...     colors,
@@ -636,7 +713,7 @@ def visualize_colors(
     """
 
     # Convert RGB colors to hex if needed
-    hex_colors = harmonize_colors(hex_colors)
+    hex_colors = harmonize_colors(colors)
 
     # Validate colors
     for color in hex_colors:
