@@ -1,5 +1,3 @@
-
-
 import numpy as np
 from typing import Union
 import shlex
@@ -11,6 +9,11 @@ import inspect
 import sys
 import types
 
+import matplotlib.pyplot as plt
+from matplotlib.colors import to_hex
+from matplotlib.colors import is_color_like as mpl_is_color_like
+from typing import Union, List, Optional
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -20,6 +23,7 @@ import types
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+
 
 class SmartFormatter(argparse.HelpFormatter):
     """
@@ -45,7 +49,7 @@ class SmartFormatter(argparse.HelpFormatter):
         HelpFormatter class from the argparse module
 
     """
-    
+
     ###################################################################################################
     def split_lines(self, text, width):
         """
@@ -56,24 +60,25 @@ class SmartFormatter(argparse.HelpFormatter):
         It can contain multiple lines.
         It will be printed as raw text.''', formatter_class=SmartFormatter)
         parser.print_help()
-        
+
         Parameters
         ----------
         text : str
             Text to be split
         width : int
             Width of the text
-            
+
         Returns
         -------
         text : str
             Text split in lines
-            
+
         """
         if text.startswith("R|"):
             return text[2:].splitlines()
         # this is the RawTextHelpFormatter.split_lines
         return argparse.HelpFormatter.split_lines(self, text, width)
+
 
 ####################################################################################################
 ####################################################################################################
@@ -84,6 +89,7 @@ class SmartFormatter(argparse.HelpFormatter):
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+
 
 # Print iterations progress
 def printprogressbar(
@@ -98,10 +104,10 @@ def printprogressbar(
 ):
     """
     Call in a loop to create terminal progress bar
-    
+
     Parameters
     ----------
-    
+
         iteration   - Required  : current iteration (Int)
         total       - Required  : total iterations (Int)
         prefix      - Optional  : prefix string (Str)
@@ -110,7 +116,7 @@ def printprogressbar(
         length      - Optional  : character length of bar (Int)
         fill        - Optional  : bar fill character (Str)
         printend    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-        
+
     """
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filledlength = int(length * iteration // total)
@@ -119,6 +125,7 @@ def printprogressbar(
     # Print New Line on Complete
     if iteration == total:
         print()
+
 
 ####################################################################################################
 ####################################################################################################
@@ -131,7 +138,7 @@ def printprogressbar(
 ####################################################################################################
 class bcolors:
     """
-    This class is used to define the colors for the terminal output. 
+    This class is used to define the colors for the terminal output.
     It can be used to print the output in different colors.
     """
 
@@ -159,7 +166,20 @@ class bcolors:
     ITALIC = "\033[3m"
     UNDERLINE = "\033[4m"
 
-#################################################################################################### 
+
+####################################################################################################
+def is_color_like(color) -> bool:
+    """Extended color validation that handles numpy arrays."""
+    if isinstance(color, np.ndarray):
+        if color.shape == (3,) and np.issubdtype(color.dtype, np.integer):
+            return True
+        if color.shape == (3,) and np.issubdtype(color.dtype, np.floating):
+            return (color >= 0).all() and (color <= 1).all()
+        return False
+    return mpl_is_color_like(color)
+
+
+####################################################################################################
 def rgb2hex(r: int, g: int, b: int) -> str:
     """
     Function to convert rgb to hex
@@ -184,14 +204,15 @@ def rgb2hex(r: int, g: int, b: int) -> str:
         >>> g = 0
         >>> b = 0
         >>> hexcode = rgb2hex(r, g, b)
-        >>> print(hexcode)  # Output: "#ff0000" 
-    
+        >>> print(hexcode)  # Output: "#ff0000"
+
     """
 
     return "#{:02x}{:02x}{:02x}".format(r, g, b)
 
+
 ####################################################################################################
-def multi_rgb2hex(colors: Union[list, np.ndarray]) -> list:
+def multi_rgb2hex(colors: Union[list, np.ndarray]) -> List[str]:
     """
     Function to convert rgb to hex for an array of colors
 
@@ -210,7 +231,7 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]) -> list:
         >>> colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
         >>> hexcodes = multi_rgb2hex(colors)
         >>> print(hexcodes)  # Output: ['#ff0000', '#00ff00', '#0000ff']
-        
+
     """
     if len(colors) > 0:
         # If all the values in the list are between 0 and 1, then the values are multiplied by 255
@@ -234,6 +255,7 @@ def multi_rgb2hex(colors: Union[list, np.ndarray]) -> list:
 
     return hexcodes
 
+
 ####################################################################################################
 def hex2rgb(hexcode: str) -> tuple:
     """
@@ -254,11 +276,12 @@ def hex2rgb(hexcode: str) -> tuple:
         >>> hexcode = "#FF5733"
         >>> rgb = hex2rgb(hexcode)
         >>> print(rgb)  # Output: (255, 87, 51)
-        
+
     """
     # Convert hexadecimal color code to RGB values
     hexcode = hexcode.lstrip("#")
     return tuple(int(hexcode[i : i + 2], 16) for i in (0, 2, 4))
+
 
 ####################################################################################################
 def multi_hex2rgb(hexcodes: list) -> np.ndarray:
@@ -280,11 +303,12 @@ def multi_hex2rgb(hexcodes: list) -> np.ndarray:
         >>> hexcodes = ["#FF5733", "#33FF57", "#3357FF"]
         >>> rgb_list = multi_hex2rgb(hexcodes)
         >>> print(rgb_list)  # Output: [[255, 87, 51], [51, 255, 87], [51, 87, 255]]
-        
+
     """
 
     rgb_list = [hex2rgb(hex_color) for hex_color in hexcodes]
     return np.array(rgb_list)
+
 
 ####################################################################################################
 def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
@@ -299,8 +323,8 @@ def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
     Returns
     -------
     colors: list or numpy array
-        List of inverted colors 
-        
+        List of inverted colors
+
     Example Usage:
     ----------------
         >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
@@ -356,42 +380,77 @@ def invert_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
 
     return colors
 
+
 ####################################################################################################
-def harmonize_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
+def harmonize_colors(
+    colors: Union[List[Union[str, np.ndarray]], np.ndarray], output_format: str = "hex"
+) -> List[str, np.ndarray]:
     """
-    Function to harmonize the colors in a list. The colors can be in hexadecimal or rgb format.
-    If the list contains colors in multiple formats, the function will convert all the colors to hexadecimal format.
+    Convert all colors in a list to a consistent format (hex by default).
+    Handles both hex strings and RGB numpy arrays.
 
     Parameters
     ----------
     colors : list or numpy array
-        List of colors
+        List containing color strings (hex) and/or RGB numpy arrays
+    output_format : str, optional
+        Output format ('hex' or 'rgb'), defaults to 'hex'
 
     Returns
     -------
-    colors: list
-        List of colors in hexadecimal format
+    List[str] or List[np.ndarray]
+        List of colors in the specified format
 
-    Example Usage:
-    ----------------
-        >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
-        >>> harmonized_colors = harmonize_colors(colors)
-        >>> print(harmonized_colors)  # Output: ['#ff5733', '#33ff57', '#3393ff']
-        
+    Example
+    -------
+    >>> colors = ["#FF5733", "#33FF57", np.array([51, 87, 255])]
+    >>> harmonize_colors(colors)
+    ['#ff5733', '#33ff57', '#3357ff']
+    >>> harmonize_colors(colors, output_format='rgb')
+    [array([255,  87,  51]), array([ 51, 255,  87]), array([ 51,  87, 255])]
     """
+    if not isinstance(colors, (list, np.ndarray)):
+        raise TypeError("Input must be a list or numpy array")
 
-    bool_tmp = all(isinstance(x, np.ndarray) for x in colors)
-    if bool_tmp:
-        hexcodes = []
-        for indcol, color in enumerate(colors):
-            if isinstance(colors[indcol], str):
-                hexcodes.append(colors[indcol])
+    if output_format not in ["hex", "rgb"]:
+        raise ValueError("output_format must be 'hex' or 'rgb'")
 
-            elif isinstance(colors[indcol], np.ndarray):
-                hexcodes.append(rgb2hex(color[0], color[1], color[2]))
-        colors = hexcodes
+    result = []
 
-    return colors
+    for color in colors:
+        if not is_color_like(color):
+            raise ValueError(f"Invalid color: {color}")
+
+        if output_format == "hex":
+            if isinstance(color, str):
+                # Standardize hex format (lowercase, full 6 digits)
+                result.append(to_hex(color).lower())
+            else:  # RGB array
+                # Convert numpy array to 0-1 range first
+                if isinstance(color, np.ndarray):
+                    if np.issubdtype(color.dtype, np.integer):
+                        color = color / 255.0
+                    elif not ((color >= 0).all() and (color <= 1).all()):
+                        raise ValueError(f"RGB values out of range: {color}")
+                result.append(to_hex(color).lower())
+        else:  # RGB format
+            if isinstance(color, str):
+                # Convert hex to RGB array (0-255)
+                hex_color = color.lstrip("#")
+                rgb = np.array([int(hex_color[i : i + 2], 16) for i in (0, 2, 4)])
+                result.append(rgb)
+            else:  # Already RGB
+                if isinstance(color, np.ndarray):
+                    if np.issubdtype(color.dtype, np.floating):
+                        # Convert 0-1 float to 0-255 int
+                        result.append((color * 255).astype(np.uint8))
+                    else:
+                        result.append(color.astype(np.uint8))
+                else:
+                    result.append(np.array(color, dtype=np.uint8))
+
+    return result
+
 
 ####################################################################################################
 def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
@@ -437,6 +496,7 @@ def readjust_colors(colors: Union[list, np.ndarray]) -> Union[list, np.ndarray]:
 
     return colors
 
+
 ####################################################################################################
 def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
     """
@@ -446,7 +506,7 @@ def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
     ----------
     n : int
         Number of colors
-        
+
     fmt : str
         Format of the colors. It can be 'rgb', 'rgbnorm' or 'hex'. Default is 'rgb'.
 
@@ -454,18 +514,18 @@ def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
     -------
     colors: list
         List of random colors
-        
+
     Example Usage:
     ----------------
         >>> colors = create_random_colors(5)
         >>> print(colors)  # Output: [[123, 45, 67], [89, 12, 34], ...]
-        
+
 
     """
 
     # Create a numpy array with n random colors in the range 0-255
     colors = np.random.randint(0, 255, size=(n, 3))
-    
+
     if fmt == "hex":
         # Convert the colors to hexadecimal format
         colors = multi_rgb2hex(colors)
@@ -474,6 +534,110 @@ def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
         colors = colors / 255
 
     return colors
+
+
+###################################################################################################
+def visualize_colors(
+    hex_colors: List[str],
+    figsize: tuple = (10, 2),
+    label_position: str = "below",  # or "above"
+    label_rotation: int = 45,
+    label_size: Optional[float] = None,
+    spacing: float = 0.1,
+    aspect_ratio: float = 0.2,
+    background_color: str = "white",
+    edge_color: Optional[str] = None,
+) -> None:
+    """
+    Visualize a list of color codes in a clean, professional layout.
+
+    Args:
+        hex_colors: List of hexadecimal color codes
+        figsize: Size of the figure (width, height)
+        label_position: Position of labels ("above" or "below")
+        label_rotation: Rotation angle for labels in degrees
+        label_size: Font size for labels (automatic if None)
+        spacing: Additional vertical space for labels
+        aspect_ratio: Height/width ratio of color rectangles
+        background_color: Background color of the figure
+        edge_color: Color for rectangle borders (None for no border)
+    """
+    # Validate colors
+    for color in hex_colors:
+        if not is_color_like(color):
+            raise ValueError(f"Invalid color code: {color}")
+
+    num_colors = len(hex_colors)
+    if num_colors == 0:
+        return
+
+    # Create figure with specified background
+    fig, ax = plt.subplots(figsize=figsize, facecolor=background_color)
+    fig.tight_layout(pad=2)
+
+    # Calculate dimensions
+    rect_width = 1.0
+    total_width = num_colors * rect_width
+    rect_height = total_width * aspect_ratio
+
+    # Automatic label size calculation if not specified
+    if label_size is None:
+        label_size = max(6, min(12, 100 / num_colors))
+
+    # Set axis limits (with extra space for labels)
+    y_offset = rect_height + spacing if label_position == "above" else -spacing
+    ax.set_xlim(0, total_width)
+    ax.set_ylim(
+        -spacing if label_position == "below" else 0,
+        rect_height + (spacing if label_position == "above" else 0),
+    )
+
+    # Remove axes for clean look
+    ax.axis("off")
+
+    # Determine edge color if not specified
+    if edge_color is None:
+        edge_color = "black" if background_color != "black" else "white"
+
+    # Draw each color rectangle and label
+    for i, color in enumerate(hex_colors):
+        x_pos = i * rect_width
+
+        # Draw the color rectangle (fixed property setting)
+        rect = plt.Rectangle(
+            (x_pos, 0),
+            width=rect_width,
+            height=rect_height,
+            facecolor=color,
+            linewidth=0.5 if edge_color else 0,
+            edgecolor=edge_color,
+        )
+        ax.add_patch(rect)
+
+        # Add the label
+        label_y = (
+            -0.02 * rect_height
+            if label_position == "below"
+            else rect_height + 0.02 * rect_height
+        )
+        va = "top" if label_position == "below" else "bottom"
+
+        ax.text(
+            x_pos + rect_width / 2,
+            label_y,
+            color.upper(),
+            ha="center",
+            va=va,
+            rotation=label_rotation,
+            fontsize=label_size,
+            color="black" if background_color != "black" else "white",
+            fontfamily="monospace",
+        )
+
+    # Adjust aspect ratio
+    ax.set_aspect("auto")
+    plt.show()
+
 
 ####################################################################################################
 ####################################################################################################
@@ -484,6 +648,7 @@ def create_random_colors(n: int, fmt: str = "rgb") -> np.ndarray:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+
 
 def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%d"):
     """
@@ -512,7 +677,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
     time_diff: int
         Time difference in days between the target date and the closest date in the list.
         If the target date is not in the list, it will return the time difference in days.
-        
+
     Example Usage:
     --------------
         >>> dates_list = ["20230101", "20230201", "20230301"]
@@ -521,15 +686,15 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
         >>> print(closest_date)  # Output: "20230201"
         >>> print(closest_index)  # Output: 1
         >>> print(time_diff)      # Output: 14
-        
+
     Raises
     ------
     ValueError
         If the target_date is not in the correct format or if the dates_list is empty.
-        
+
     TypeError
         If the target_date is not a string or if the dates_list is not a list of strings.
-        
+
     """
 
     # Convert target_date to a datetime object
@@ -551,6 +716,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 
     # Convert the closest date back to the 'YYYYMMDD' format
     return closest_date.strftime(date_fmt), closest_index, time_diff
+
 
 ####################################################################################################
 ####################################################################################################
@@ -596,7 +762,7 @@ def build_indexes(range_vector: list, nonzeros: bool = True):
         >>> range_vector = [1, (2, 5), [6, 7], "8-10", "11:13", "14:2:22"]
         >>> indexes = build_indexes(range_vector)
         >>> print(indexes)  # Output: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22]
-        
+
     """
 
     indexes = []
@@ -650,6 +816,7 @@ def build_indexes(range_vector: list, nonzeros: bool = True):
 
     return indexes
 
+
 ####################################################################################################
 def remove_duplicates(input_list: list):
     """
@@ -670,7 +837,7 @@ def remove_duplicates(input_list: list):
         >>> input_list = [1, 2, 2, 3, 4, 4, 5]
         >>> unique_list = remove_duplicates(input_list)
         >>> print(unique_list)  # Output: [1, 2, 3, 4, 5]
-        
+
     """
 
     unique_list = []
@@ -682,6 +849,7 @@ def remove_duplicates(input_list: list):
             seen_elements.add(element)
 
     return unique_list
+
 
 ####################################################################################################
 def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
@@ -722,13 +890,14 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
 
     return out_ids
 
+
 ####################################################################################################
 def filter_by_substring(
-    input_list: list, 
-    or_filter: Union[str, list], 
-    and_filter: Union[str, list] = None, 
-    bool_case: bool = False) -> list:
-    
+    input_list: list,
+    or_filter: Union[str, list],
+    and_filter: Union[str, list] = None,
+    bool_case: bool = False,
+) -> list:
     """
     Function to filter a list of elements by a substrings.
 
@@ -738,10 +907,10 @@ def filter_by_substring(
         List of elements
 
     or_filter : str or list
-        Substring to filter. It can be a string or a list of strings. 
-        It functions as an OR filter, meaning that if any of the substrings are found in the element, 
+        Substring to filter. It can be a string or a list of strings.
+        It functions as an OR filter, meaning that if any of the substrings are found in the element,
         it will be included in the filtered list.
-    
+
     and_filter : str or list, optional
         Substring to filter. It can be a string or a list of strings.
         It functions as an AND filter, meaning that all of the substrings must be found in the element
@@ -753,7 +922,7 @@ def filter_by_substring(
     -------
     filtered_list: list
         List of elements that contain the substring
-        
+
     Example Usage:
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
@@ -762,6 +931,9 @@ def filter_by_substring(
         >>> print(filtered_list)  # Output: ['apple', 'cherry']
 
     """
+
+    if isinstance(input_list, str):
+        input_list = [input_list]
 
     # Rise an error if input_list is not a list
     if not isinstance(input_list, list):
@@ -781,7 +953,9 @@ def filter_by_substring(
         tmp_input_list = input_list
 
     # Get the indexes of the list elements that contain any of the strings in the list aa
-    indexes = [i for i, x in enumerate(tmp_input_list) if any(a in x for a in tmp_substr)]
+    indexes = [
+        i for i, x in enumerate(tmp_input_list) if any(a in x for a in tmp_substr)
+    ]
 
     # Convert indexes to a numpy array
     indexes = np.array(indexes)
@@ -804,17 +978,22 @@ def filter_by_substring(
         else:
             tmp_and_filter = and_filter
             tmp_filtered_list = filtered_list
-        
+
         # Get the indexes of the list elements that contain all of the strings in the list tmp_and_filter
-        indexes = [i for i, x in enumerate(tmp_filtered_list) if all(a in x for a in tmp_and_filter)]
-        
+        indexes = [
+            i
+            for i, x in enumerate(tmp_filtered_list)
+            if all(a in x for a in tmp_and_filter)
+        ]
+
         # Convert indexes to a numpy array
         indexes = np.array(indexes)
-        
+
         # Select the filtered_list with the indexes
         filtered_list = [filtered_list[i] for i in indexes]
 
     return filtered_list
+
 
 ####################################################################################################
 def get_indexes_by_substring(
@@ -835,7 +1014,7 @@ def get_indexes_by_substring(
 
     substr : str or list
         Substring to filter. It can be a string or a list of strings
-    
+
     invert : bool
         Boolean to indicate if the indexes are inverted. Default is False
         If True, the indexes of the elements that do not contain any of the substrings are returned.
@@ -857,16 +1036,16 @@ def get_indexes_by_substring(
         >>> substr = ["ap", "ch"]
         >>> indexes = get_indexes_by_substring(input_list, substr)
         >>> print(indexes)  # Output: [0, 2]
-        
+
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["apple", "banana"]
         >>> indexes = get_indexes_by_substring(input_list, substr, invert=True)
         >>> print(indexes)  # Output: [2, 3]
-        
+
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["apple", "cherry"]
         >>> indexes = get_indexes_by_substring(input_list, substr, match_entire_world=True)
-        >>> print(indexes) # Output: [0, 2] 
+        >>> print(indexes) # Output: [0, 2]
     """
 
     # Rise an error if input_list is not a list
@@ -904,6 +1083,7 @@ def get_indexes_by_substring(
 
     return indexes
 
+
 ####################################################################################################
 def list_intercept(list1: list, list2: list):
     """
@@ -920,7 +1100,7 @@ def list_intercept(list1: list, list2: list):
     -------
     int_list: list
         List of elements that are in both lists
-    
+
     Example Usage:
     --------------
         >>> list1 = [1, 2, 3, 4, 5]
@@ -941,6 +1121,7 @@ def list_intercept(list1: list, list2: list):
     int_list = [value for value in list1 if value in list2]
 
     return int_list
+
 
 ####################################################################################################
 def ismember_from_list(a, b):
@@ -975,6 +1156,7 @@ def ismember_from_list(a, b):
     idx = indices[is_in_list].astype(int)
 
     return values, idx
+
 
 ####################################################################################################
 ####################################################################################################
@@ -1017,29 +1199,31 @@ def detect_leaf_directories(root_dir: str) -> list:
 
     return leaf_folders
 
+
 ####################################################################################################
 def remove_trailing_separators(path: str) -> str:
     """
     Remove all trailing path separators (unless at root).
-    
+
     Parameters
     ----------
     path : str
         The path from which to remove trailing separators.
-        
+
     Returns
     -------
     str
         The path with trailing separators removed.
-        
+
     Usage example:
     >>> path = "/path/to/directory///"
     >>> print(remove_trailing_separators(path))
     "/path/to/directory/"
-    
+
     """
     stripped = path.rstrip(os.sep)
     return stripped if stripped else os.sep
+
 
 ####################################################################################################
 def detect_recursive_files(in_dir):
@@ -1071,25 +1255,26 @@ def detect_recursive_files(in_dir):
 
     return files
 
+
 ####################################################################################################
 def remove_empty_folders(start_path, deleted_folders=None):
     """
     Recursively removes empty directories starting from start_path.
     Returns a list of all directories that were deleted.
-    
+
     Parameters:
     ----------
         start_path : str
             The directory path to start searching from
-            
+
         deleted_folders : list
             A list to store the paths of deleted directories. If None, a new list will be created.
-                    
+
     Returns:
-    ------- 
+    -------
         deleted_folders : list
             A list of all directories that were deleted.
-    
+
     Example Usage:
     --------------
         >>> deleted_folders = remove_empty_folders("/path/to/start")
@@ -1098,7 +1283,7 @@ def remove_empty_folders(start_path, deleted_folders=None):
     """
     if deleted_folders is None:
         deleted_folders = []
-    
+
     # Walk through the directory tree bottom-up (deepest first)
     for root, dirs, files in os.walk(start_path, topdown=False):
         # Check each directory in current level
@@ -1108,20 +1293,21 @@ def remove_empty_folders(start_path, deleted_folders=None):
                 # Try to remove the directory (will only succeed if empty)
                 os.rmdir(dir_path)
                 deleted_folders.append(dir_path)
-                #print(f"Removed empty directory: {dir_path}")  # Optional logging
+                # print(f"Removed empty directory: {dir_path}")  # Optional logging
             except OSError:
                 # Directory not empty or other error - we'll ignore it
                 pass
-    
+
     # Finally, try to remove the starting directory itself if it's now empty
     try:
         os.rmdir(start_path)
         deleted_folders.append(start_path)
-        #print(f"Removed empty directory: {start_path}")  # Optional logging
+        # print(f"Removed empty directory: {start_path}")  # Optional logging
     except OSError:
         pass
-    
+
     return deleted_folders
+
 
 ####################################################################################################
 ####################################################################################################
@@ -1163,6 +1349,7 @@ def rem_duplicate_char(strcad: str, dchar: str):
 
     return "".join(chars)
 
+
 ####################################################################################################
 def correct_names(
     regnames: list,
@@ -1174,7 +1361,7 @@ def correct_names(
 ):
     """
     Correcting region names. It can be used to add a prefix or sufix to the region names, lower the region names, remove or replace substrings in the region names.
-    
+
     Parameters
     ----------
     regnames : list
@@ -1188,10 +1375,10 @@ def correct_names(
     remove : list
         List of substrings to remove from the region names. Default is None
     replace : list
-        List of substrings to replace in the region names. Default is None. 
+        List of substrings to replace in the region names. Default is None.
         It can be a list of tuples or a list of lists. The first element is the substring to replace and the second element is the substring to replace with.
         For example: replace = [["old", "new"], ["old2", "new2"]]
-        
+
     Returns
     -------
     regnames: list
@@ -1206,7 +1393,7 @@ def correct_names(
         >>> replace = [["lh", "left"], ["rh", "right"]]
         >>> corrected_names = correct_names(regnames, prefix, sufix, lower, remove, replace)
         >>> print(corrected_names)  # Output: ['left-1-lh', 'right-2-lh', 'left-3-lh']
-    
+
     """
 
     # Add prefix to the region names
@@ -1250,6 +1437,7 @@ def correct_names(
 
     return regnames
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -1274,7 +1462,7 @@ def remove_empty_keys_or_values(d: dict) -> dict:
 
     d : dict
         The dictionary with the empty entries removed.
-        
+
     Example Usage:
     --------------
         >>> my_dict = {'key1': 'value1', 'key2': '', '': 'value3', 'key4': None}
@@ -1295,11 +1483,9 @@ def remove_empty_keys_or_values(d: dict) -> dict:
 
     return d
 
+
 ####################################################################################################
-def expand_and_concatenate(
-    df_add: pd.DataFrame, 
-    df: pd.DataFrame
-    ) -> pd.DataFrame:
+def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
     """
     Expands df_add to match the number of rows in df and concatenates them along columns.
 
@@ -1307,15 +1493,15 @@ def expand_and_concatenate(
     -----------
         df_add : pd.DataFrame
             DataFrame with a single row to be replicated.
-        
-        df : pd.DataFrame   
+
+        df : pd.DataFrame
             DataFrame to which df_add will be concatenated.
 
     Returns:
     --------
         pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
-        
-        
+
+
     """
 
     df_expanded = pd.concat([df_add] * len(df), ignore_index=True)
@@ -1329,6 +1515,7 @@ def expand_and_concatenate(
     df = df.reset_index(drop=True)  # Ensure clean index
     return pd.concat([df_expanded, df], axis=1)
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -1338,6 +1525,7 @@ def expand_and_concatenate(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+
 
 def generate_container_command(
     bash_args,
@@ -1363,7 +1551,7 @@ def generate_container_command(
     -------
     container_cmd: list
         List with the command to run the bash command locally or inside the container
-        
+
     Example Usage:
     --------------
         >>> bash_args = ["bash", "-c", "echo Hello World"]
@@ -1429,6 +1617,7 @@ def generate_container_command(
 
     return container_cmd
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -1438,6 +1627,7 @@ def generate_container_command(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+
 
 def format_signature(sig: inspect.Signature):
     """Formats a function signature with ANSI colors."""
@@ -1463,6 +1653,7 @@ def format_signature(sig: inspect.Signature):
     parts.append(f"{bcolors.OKWHITE}){bcolors.ENDC}")
     return "".join(parts)
 
+
 ####################################################################################################
 def show_module_contents(module):
     """
@@ -1473,13 +1664,19 @@ def show_module_contents(module):
         try:
             module = sys.modules.get(module) or __import__(module)
         except ImportError:
-            print(f"{bcolors.FAIL}Module '{module}' could not be imported.{bcolors.ENDC}")
+            print(
+                f"{bcolors.FAIL}Module '{module}' could not be imported.{bcolors.ENDC}"
+            )
             return
     elif not isinstance(module, types.ModuleType):
-        print(f"{bcolors.FAIL}Invalid input: must be a module object or module name string.{bcolors.ENDC}")
+        print(
+            f"{bcolors.FAIL}Invalid input: must be a module object or module name string.{bcolors.ENDC}"
+        )
         return
 
-    print(f"{bcolors.HEADER}{bcolors.BOLD}📦 Contents of module '{module.__name__}':{bcolors.ENDC}\n")
+    print(
+        f"{bcolors.HEADER}{bcolors.BOLD}📦 Contents of module '{module.__name__}':{bcolors.ENDC}\n"
+    )
 
     # Classes
     print(f"{bcolors.OKBLUE}{bcolors.BOLD}📘 Classes:{bcolors.ENDC}")
@@ -1494,17 +1691,24 @@ def show_module_contents(module):
                     first_line = doc.split("\n")[0]
                     print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
 
-                for method_name, method in inspect.getmembers(obj, predicate=inspect.isfunction):
-                    if method.__module__ == module.__name__ and method.__qualname__.startswith(obj.__name__ + "."):
+                for method_name, method in inspect.getmembers(
+                    obj, predicate=inspect.isfunction
+                ):
+                    if (
+                        method.__module__ == module.__name__
+                        and method.__qualname__.startswith(obj.__name__ + ".")
+                    ):
                         sig = inspect.signature(method)
                         formatted_sig = format_signature(sig)
-                        print(f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}")
+                        print(
+                            f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}"
+                        )
                         method_doc = inspect.getdoc(method)
-                        
+
                         if method_doc:
                             first_line = method_doc.split("\n")[0]
                             print(f"      {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
-                            
+
                 print(f"    {bcolors.OKWHITE}{'─'*60}{bcolors.ENDC}\n")
         except Exception:
             continue
