@@ -852,7 +852,7 @@ def remove_duplicates(input_list: list):
 
 
 ####################################################################################################
-def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
+def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]) -> list:
     """
     Function to select the ids from a list of ids that are in a file.
     It can be used to select the ids from a list of subjects that are in a file.
@@ -878,6 +878,8 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
     """
 
     # Read the ids from the file
+    out_ids = []  # Initialize out_ids to avoid potential use before assignment
+
     if isinstance(ids_file, str):
         if os.path.exists(ids_file):
             with open(ids_file) as file:
@@ -885,7 +887,7 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]):
 
             out_ids = [s for s in subj_ids if any(xs in s for xs in t1s2run)]
 
-    if isinstance(ids_file, list):
+    elif isinstance(ids_file, list):
         out_ids = list_intercept(subj_ids, ids_file)
 
     return out_ids
