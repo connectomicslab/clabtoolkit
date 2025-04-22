@@ -600,17 +600,17 @@ def visualize_colors(
         ...     background_color='#f0f0f0',
         ...     edge_color='black'
         ... )
-        
+
         Notes
         -----
         - All hex colors will be converted to lowercase for consistency
         - For large numbers of colors, consider increasing figsize or decreasing label_size
         - Edge colors can be used to improve visibility against similar backgrounds
     """
-    
+
     # Convert RGB colors to hex if needed
-    colors = harmonize_colors(colors)
-    
+    hex_colors = harmonize_colors(hex_colors)
+
     # Validate colors
     for color in hex_colors:
         if not is_color_like(color):
