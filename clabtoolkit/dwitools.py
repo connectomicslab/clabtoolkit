@@ -10,11 +10,23 @@ from typing import Union, Dict, List
 from rich.progress import Progress
 from rich.progress import BarColumn, TextColumn, SpinnerColumn
 
+import inspect
+import sys
+
+import misctools as cltmisc
+
 
 # This function removes the B0s volumes located at the end of the diffusion 4D volume.
-def remove_empty_dwi_Volume(dwifile: str):
+def remove_dwi_volumes(
+    dwifile: str,
+    bvecfile: str = None,
+    bvalfile: str = None,
+    jsonfile: str = None,
+    out_basename: str = None,
+    vols_to_delete: Union[int, List[int]] = None,
+) -> str:
     """
-    Remove the B0s volumes located at the end of the diffusion 4D volume.
+    Remove specific volumes from DWI image. If no volumes are specified, the function will remove the last B0s of the DWI image.
 
     Parameters
     ----------
@@ -35,63 +47,140 @@ def remove_empty_dwi_Volume(dwifile: str):
     jsonfile : str
         Path to the json file.
 
+    Notes:
+    -----
+    The function assumes that the B0 volumes are the last volumes in the 4D volume.
+    The function will create a new bvec and bval file with the same name as the DWI file, but with the .bvec and .bval extensions.
+
+    Usage:
+    ------
+    >>> remove_dwi_volumes('dwi.nii.gz', 'dwi.bvec', 'dwi.bval', 'dwi.json') # will remove the last B0s
+    >>> remove_dwi_volumes('dwi.nii.gz', 'dwi.bvec', 'dwi.bval', 'dwi.json', 0) # will remove the first volume
+    >>> remove_dwi_volumes('dwi.nii.gz', 'dwi.bvec', 'dwi.bval', 'dwi.json', [0, 1, 2]) # will remove the first 3 volumes
+    >>> remove_dwi_volumes('dwi.nii.gz') # will remove the last B0s and it will assume the bvec and bval files are in the same directory as the DWI file.
 
     """
 
     # Creating the name for the json file
-    pth = os.path.dirname(dwifile)
-    fname = os.path.basename(dwifile)
+
+    if os.path.isfile(dwifile):
+        pth = os.path.dirname(dwifile)
+        fname = os.path.basename(dwifile)
+    else:
+        raise FileNotFoundError(f"File {dwifile} not found.")
+
     if fname.endswith(".nii.gz"):
         flname = fname[0:-7]
     elif fname.endswith(".nii"):
         flname = fname[0:-4]
 
-    # Creating filenames
-    bvecfile = os.path.join(pth, flname + ".bvec")
-    bvalfile = os.path.join(pth, flname + ".bval")
-    jsonfile = os.path.join(pth, flname + ".json")
+    # Checking if the file exists. If it is None assume it is in the same directory with the same name as the DWI file but with the .bvec extensions.
+    if bvecfile is None:
+        bvecfile = os.path.join(pth, flname + ".bvec")
+    else:
+        if not os.path.isfile(bvecfile):
+            raise FileNotFoundError(f"File {bvecfile} not found.")
 
-    # Loading bvalues
-    if os.path.exists(bvalfile):
-        bvals = np.loadtxt(bvalfile, dtype=float, max_rows=5).astype(int)
+    # Checking if the file exists. If it is None assume it is in the same directory with the same name as the DWI file but with the .bval extensions.
+    if bvalfile is None:
+        bvalfile = os.path.join(pth, flname + ".bval")
+    else:
+        if not os.path.isfile(bvalfile):
+            raise FileNotFoundError(f"File {bvalfile} not found.")
 
-        tempBools = list(bvals < 10)
-        if tempBools[-1]:
-            if os.path.exists(bvecfile):
-                bvecs = np.loadtxt(bvecfile, dtype=float)
+    # Checking the ouput basename
+    if out_basename is not None:
+        fl_out_name = os.path.basename(out_basename)
+        fl_out_path = os.path.dirname(out_basename)
 
-            # Reading the image
-            mapI = nib.load(dwifile)
-            diffData = mapI.get_fdata()
-            affine = mapI.affine
+        if not os.path.isdir(fl_out_path):
+            raise FileNotFoundError(f"Output path {fl_out_path} does not exist.")
+    else:
+        fl_out_name = fname
+        fl_out_path = pth
 
-            # Detecting the clusters of B0s
-            lb_bvals = measure.label(bvals, 2)
+    # Loading the DWI image
+    mapI = nib.load(dwifile)
 
-            lab2rem = lb_bvals[-1]
-            vols2rem = np.where(lb_bvals == lab2rem)[0]
-            vols2keep = np.where(lb_bvals != lab2rem)[0]
+    # getting the dimensions of the image
+    dim = mapI.shape
 
-            # Removing the volumes
-            array_data = np.delete(diffData, vols2rem, 3)
+    # Only remove the volumes is the image is 4D
+    if len(dim) == 4:
+        # Getting the number of volumes
+        nvols = dim[3]
 
-            # Temporal image and diffusion scheme
-            tmp_dwi_file = os.path.join(pth, flname + ".nii.gz")
-            array_img = nib.Nifti1Image(array_data, affine)
-            nib.save(array_img, tmp_dwi_file)
+        if vols_to_delete is not None:
+            if isinstance(vols_to_delete, int):
+                vols_to_delete = [vols_to_delete]
 
-            select_bvecs = bvecs[:, vols2keep]
+            vols_to_delete = cltmisc.build_indexes(vols_to_delete)
+
+            vols2rem = np.where(np.isin(np.arange(nvols), vols_to_delete))[0]
+            vols2keep = np.where(
+                np.isin(np.arange(nvols), vols_to_delete, invert=True)
+            )[0]
+        else:
+
+            # Loading bvalues
+            if os.path.exists(bvalfile):
+                bvals = np.loadtxt(bvalfile, dtype=float, max_rows=5).astype(int)
+
+                mask = bvals < 10
+                lb_bvals = measure.label(mask, 2)
+
+                if np.max(lb_bvals) > 1 and lb_bvals[-1] != 0:
+
+                    # Removing the last cluster of B0s
+                    lab2rem = lb_bvals[-1]
+                    vols2rem = np.where(lb_bvals == lab2rem)[0]
+                    vols2keep = np.where(lb_bvals != lab2rem)[0]
+
+                else:
+                    # Exit the function if there are no B0s to remove at the end of the volume. Leave a message.
+                    print("No B0s to remove at the end of the volume.")
+
+                    return dwifile
+            else:
+                raise FileNotFoundError(
+                    f"File {bvalfile} not found. It is mandatory if the volumes to remove are not specified (vols_to_delete)."
+                )
+
+        diffData = mapI.get_fdata()
+        affine = mapI.affine
+
+        # Removing the volumes
+        array_data = np.delete(diffData, vols2rem, 3)
+
+        # Temporal image and diffusion scheme
+        out_dwi_file = os.path.join(fl_out_path, fl_out_name + ".nii.gz")
+        array_img = nib.Nifti1Image(array_data, affine)
+        nib.save(array_img, out_dwi_file)
+
+        # Saving new bvecs and new bvals
+        if os.path.isfile(bvecfile):
+            bvecs = np.loadtxt(bvecfile, dtype=float)
+            if bvecs.shape[0] == 3:
+                select_bvecs = bvecs[:, vols2keep]
+            else:
+                select_bvecs = bvecs[vols2keep, :]
+
+            select_bvecs.transpose()
+            out_bvecs_file = os.path.join(fl_out_path, fl_out_name + ".bvec")
+            np.savetxt(out_bvecs_file, select_bvecs, fmt="%f")
+
+        # Saving new bvals
+        if os.path.isfile(bvalfile):
             select_bvals = bvals[vols2keep]
             select_bvals.transpose()
 
-            # Saving new bvecs and new bvals
-            tmp_bvecs_file = os.path.join(pth, flname + ".bvec")
-            np.savetxt(tmp_bvecs_file, select_bvecs, fmt="%f")
-
-            tmp_bvals_file = os.path.join(pth, flname + ".bval")
+            tmp_bvals_file = os.path.join(fl_out_path, fl_out_name + ".bval")
             np.savetxt(tmp_bvals_file, select_bvals, newline=" ", fmt="%d")
 
-    return dwifile, bvecfile, bvalfile, jsonfile
+    else:
+        raise Warning(f"Image {dwifile} is not a 4D image. No volumes to remove.")
+
+    return out_dwi_file, bvecfile, tmp_bvals_file
 
 
 def tck2trk(
@@ -192,32 +281,37 @@ def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
 
     return out_tract
 
-def concatenate_tractograms(trks: list, concat_trk: str = None, show_progress: bool = False):
+
+def concatenate_tractograms(
+    trks: list, concat_trk: str = None, show_progress: bool = False
+):
     """
     Concatenate multiple tractograms into a single tractogram.
-    
+
     Parameters
     ----------
     trks : list of str
         List of file paths to the tractograms to concatenate. It can be trk files or tck files.
     concat_trk : str
         File path for the output concatenated tractogram.
-    
+
     Returns
     -------
     trkall : nibabel.streamlines.Tractogram or str
         The concatenated tractogram will be returned as a nibabel streamlines object if this variable is None.
         If concat_trk is provided, the concatenated tractogram will be saved to this file path.
         If the output directory does not exist, the concatenated tractogram will be returned as a nibabel streamlines object.
-        
+
     """
-    
+
     if not isinstance(trks, list):
-        raise ValueError("trks must be a list of file paths to the tractograms to concatenate.")
-    
+        raise ValueError(
+            "trks must be a list of file paths to the tractograms to concatenate."
+        )
+
     if len(trks) < 2:
         raise ValueError("At least two tractograms are required to concatenate.")
-    
+
     save_bool = False
     cont = 0
     for trk_file in trks:
@@ -231,11 +325,11 @@ def concatenate_tractograms(trks: list, concat_trk: str = None, show_progress: b
                 task = progress.add_task("Processing...", total=len(trks))
                 progress.update(task, description=f"Processing {trk_file}")
                 progress.update(task, advance=1)
-                
+
                 if os.path.exists(trk_file):
                     save_bool = True
                     trk = nib.streamlines.load(trk_file, False)
-                
+
                     if cont == 0:
                         trkall = trk
                     else:
@@ -243,13 +337,13 @@ def concatenate_tractograms(trks: list, concat_trk: str = None, show_progress: b
                     cont += 1
                 else:
                     print(f"File {trk_file} does not exist. Skipping.")
-            
+
         else:
             if os.path.exists(trk_file):
-                
+
                 save_bool = True
                 trk = nib.streamlines.load(trk_file, False)
-            
+
                 if cont == 0:
                     trkall = trk
                 else:
@@ -257,12 +351,12 @@ def concatenate_tractograms(trks: list, concat_trk: str = None, show_progress: b
                 cont += 1
             else:
                 print(f"File {trk_file} does not exist. Skipping.")
-            
+
     # # Save the final trk file
     if save_bool:
         if concat_trk is not None:
             output_track = concat_trk
-            
+
             # Verify the output directory exists
             output_dir = os.path.dirname(concat_trk)
             if not os.path.exists(output_dir):
@@ -270,9 +364,9 @@ def concatenate_tractograms(trks: list, concat_trk: str = None, show_progress: b
                 error_message = f"Output directory does not exist: {output_dir}"
                 print(error_message)
                 output_track = trkall
-            
+
             nib.streamlines.save(trkall, concat_trk)
         else:
             output_track = trkall
-            
+
     return output_track
