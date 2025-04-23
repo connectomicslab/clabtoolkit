@@ -8,7 +8,7 @@ from typing import Union
 
 # Importing local modules
 from . import misctools as cltmisc
-from .  bidstools as cltbids
+from . import bidstools as cltbids
 
 
 def crop_image_from_mask(
