@@ -10,6 +10,9 @@ import clabtoolkit.surfacetools as cltsurf
 
 from typing import Union, List
 
+# Importing local modules
+from . import freesurfertools as cltfree
+from . import surfacetools as cltsurf
 
 class DefineLayout:
 
