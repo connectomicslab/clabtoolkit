@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 from typing import Union, List
-import clabtoolkit.misctools as cltmisc
-import clabtoolkit.segmentationtools as cltseg
+
+# Importing local modules
+from . import misctools as cltmisc
+from . import segmentationtools as cltseg
 
 
 class Parcellation:
