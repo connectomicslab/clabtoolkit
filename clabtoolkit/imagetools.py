@@ -69,7 +69,7 @@ def crop_image_from_mask(
         st_codes = np.unique(mask_data)
         st_codes = st_codes[st_codes != 0]
 
-    st_codes = cltmisc.build_indexes(st_codes)
+    st_codes = cltmisc.build_indices(st_codes)
     st_codes = np.array(st_codes)
 
     # Create the output directory if it does not exist

@@ -152,7 +152,7 @@ class Parcellation:
 
         # Convert the codes2look to a numpy array
         if isinstance(codes2look, list):
-            codes2look = cltmisc.build_indexes(codes2look)
+            codes2look = cltmisc.build_indices(codes2look)
             codes2look = np.array(codes2look)
 
         # Create
@@ -224,7 +224,7 @@ class Parcellation:
         """
 
         if isinstance(codes2remove, list):
-            codes2remove = cltmisc.build_indexes(codes2remove)
+            codes2remove = cltmisc.build_indices(codes2remove)
             codes2remove = np.array(codes2remove)
 
         for i, v in enumerate(codes2remove):
@@ -354,7 +354,7 @@ class Parcellation:
             codes2mask = codes2mask[codes2mask != 0]
 
         if isinstance(codes2mask, list):
-            codes2mask = cltmisc.build_indexes(codes2mask)
+            codes2mask = cltmisc.build_indices(codes2mask)
             codes2mask = np.array(codes2mask)
 
         if mask_type == "inverted":
@@ -449,7 +449,7 @@ class Parcellation:
             codes2mask = codes2mask[codes2mask != 0]
 
         if isinstance(codes2mask, list):
-            codes2mask = cltmisc.build_indexes(codes2mask)
+            codes2mask = cltmisc.build_indices(codes2mask)
             codes2mask = np.array(codes2mask)
 
         if mask_type == "inverted":
@@ -548,12 +548,12 @@ class Parcellation:
 
         for i, v in enumerate(codes2group):
             if isinstance(v, list):
-                codes2group[i] = cltmisc.build_indexes(v)
+                codes2group[i] = cltmisc.build_indices(v)
 
         # Convert the new_codes to a numpy array
         if new_codes is not None:
             if isinstance(new_codes, list):
-                new_codes = cltmisc.build_indexes(new_codes)
+                new_codes = cltmisc.build_indices(new_codes)
                 new_codes = np.array(new_codes)
             elif isinstance(new_codes, (str, np.integer, int)):
                 new_codes = np.array([new_codes])
@@ -665,12 +665,12 @@ class Parcellation:
 
         for i, v in enumerate(codes2group):
             if isinstance(v, list):
-                codes2group[i] = cltmisc.build_indexes(v)
+                codes2group[i] = cltmisc.build_indices(v)
 
         # Convert the new_codes to a numpy array
         if new_codes is not None:
             if isinstance(new_codes, list):
-                new_codes = cltmisc.build_indexes(new_codes)
+                new_codes = cltmisc.build_indices(new_codes)
                 new_codes = np.array(new_codes)
             elif isinstance(new_codes, (str, np.integer, int)):
                 new_codes = np.array([new_codes])
@@ -1181,11 +1181,11 @@ class Parcellation:
 
         for i, v in enumerate(codes2rep):
             if isinstance(v, list):
-                codes2rep[i] = cltmisc.build_indexes(v, nonzeros=False)
+                codes2rep[i] = cltmisc.build_indices(v, nonzeros=False)
 
         # Convert the new_codes to a numpy array
         if isinstance(new_codes, list):
-            new_codes = cltmisc.build_indexes(new_codes, nonzeros=False)
+            new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
             new_codes = np.array(new_codes)
         elif isinstance(new_codes, np.integer):
             new_codes = np.array([new_codes])
