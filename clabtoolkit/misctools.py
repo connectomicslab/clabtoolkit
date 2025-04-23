@@ -1128,7 +1128,9 @@ def get_values_by_condition(condition: str, **kwargs):
     # Extract the array variable from kwargs
     array_var = next(k for k, v in kwargs.items() if isinstance(v, (list, np.ndarray)))
 
-    return kwargs[array_var][indices]
+    tmp = np.array(remove_duplicates(kwargs[array_var][indices]))
+
+    return tmp.tolist()
 
 
 ####################################################################################################
