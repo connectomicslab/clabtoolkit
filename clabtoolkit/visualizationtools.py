@@ -1,14 +1,11 @@
-import pyvista as pv
 import os
 import numpy as np
 import nibabel as nib
 from typing import Union
 from nilearn import plotting
-import clabtoolkit.freesurfertools as cltfree
-import clabtoolkit.surfacetools as cltsurf
-
 
 from typing import Union, List
+import pyvista as pv
 
 # Importing local modules
 from . import freesurfertools as cltfree
