@@ -15,6 +15,9 @@ from rich.progress import Progress
 from threading import Lock
 import time
 
+# Importing the clabtoolkit modules
+from . import misctools as cltmisc
+
 
 # simple progress indicator callback function
 def progress_indicator(future):
