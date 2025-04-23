@@ -15,37 +15,74 @@ import sys
 
 import misctools as cltmisc
 
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                 Methods to work with DWI images                            ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 
-# This function removes the B0s volumes located at the end of the diffusion 4D volume.
-def remove_dwi_volumes(
-    dwifile: str,
-    bvecfile: str = None,
-    bvalfile: str = None,
-    jsonfile: str = None,
-    out_basename: str = None,
-    vols_to_delete: Union[int, List[int]] = None,
+####################################################################################################
+def delete_volumes(
+    in_image: str,
+    bvec_file: str = None,
+    bval_file: str = None,
+    out_image: str = None,
+    bvals_to_delete: Union[int, List[Union[int, tuple, list, str, np.ndarray]]] = None,
+    vols_to_delete:  Union[int, List[Union[int, tuple, list, str, np.ndarray]]] = None,
 ) -> str:
+    
+
     """
     Remove specific volumes from DWI image. If no volumes are specified, the function will remove the last B0s of the DWI image.
 
     Parameters
     ----------
-    dwifile : str
+    in_image : str
         Path to the diffusion weighted image file.
+        
+    bvec_file : str, optional
+        Path to the bvec file. If None, it will assume the bvec file is in the same directory as the DWI file with the same name but with the .bvec extension.
+    
+    bval_file : str, optional
+        Path to the bval file. If None, it will assume the bval file is in the same directory as the DWI file with the same name but with the .bval extension.
+        
+    out_image : str, optional
+        Path to the output file. If None, it will assume the output file is in the same directory as the DWI file with the same name but with the .nii.gz extension.
+        The original file will be overwritten if the output file is not specified.
+        
+    bvals_to_delete : int, list, optional
+        List of bvals to delete. If None, it will assume the bvals to delete are the last B0s of the DWI image.
+        Some conditions could be used to delete the volumes. 
+            For example: 
+                1. If you want to delete all the volumes with bval = 0, you can use:
+                bvals_to_delete = [0]
+                
+                2. If you want to delete all the volumes with b-values higher than 1000, you can use:
+                bvals_to_delete = [bvals > 1000]  or  bvals_to_delete = [bvals >= 1000] if you want to include the 1000 bvals.
+                
+                3. If you want to delete all the volumes with b-values between 1000 and 3000 you can use:
+                bvals_to_delete = [1000 < bvals < 3000] or bvals_to_delete = [1000 <= bvals < 3000] if you want to include the 1000 but not the 3000 bvals.
+                
+            For more complex conditions, you can see the function get_indices_by_condition. Included in the clabtoolkit.misctools module.
+            
 
     Returns
     -------
-    dwifile : str
+    out_image : str
         Path to the diffusion weighted image file.
 
-    bvecfile : str
-        Path to the bvec file.
-
-    bvalfile : str
-        Path to the bval file.
-
-    jsonfile : str
-        Path to the json file.
+    out_bvecs_file : str
+        Path to the bvec file. If None, it will assume the bvec file is in the same directory as the DWI file with the same name but with the .bvec extension.
+        
+    out_bvals_file : str
+        Path to the bval file. If None, it will assume the bval file is in the same directory as the DWI file with the same name but with the .bval extension.
+        
+    vols2rem : list 
+        List of volumes removed. 
 
     Notes:
     -----
@@ -54,20 +91,27 @@ def remove_dwi_volumes(
 
     Usage:
     ------
-    >>> remove_dwi_volumes('dwi.nii.gz', 'dwi.bvec', 'dwi.bval', 'dwi.json') # will remove the last B0s
-    >>> remove_dwi_volumes('dwi.nii.gz', 'dwi.bvec', 'dwi.bval', 'dwi.json', 0) # will remove the first volume
-    >>> remove_dwi_volumes('dwi.nii.gz', 'dwi.bvec', 'dwi.bval', 'dwi.json', [0, 1, 2]) # will remove the first 3 volumes
-    >>> remove_dwi_volumes('dwi.nii.gz') # will remove the last B0s and it will assume the bvec and bval files are in the same directory as the DWI file.
+    >>> delete_volumes('dwi.nii.gz') # will remove the last B0s. The original file will be overwritten.
+    
+    >>> delete_volumes('dwi.nii.gz', out_image='dwi_clean.nii.gz') # will remove the last B0s and save the output in dwi_clean.nii.gz
+    
+    >>> delete_volumes('dwi.nii.gz', vols_to_delete=[0, 1, 2]) # will remove the first 3 volumes
+    
+    >>> delete_volumes('dwi.nii.gz', bvec_file='dwi.bvec', bval_file='dwi.bval') # will remove the last B0s and it will assume the bvec and bval files are in the same directory as the DWI file.
+    
+    >>> delete_volumes('dwi.nii.gz', bvals_to_delete= [3000, "bvals >=5000"], out_image='dwi_clean.nii.gz') # will remove the volumes with bvals equal to 3000 and equal or higher than 5000. 
+        The output will be saved in in dwi_clean.nii.gz
+        IMPORTANT: the b-values file dwi.bval should be in the same directory as the DWI file.
+        
 
     """
 
     # Creating the name for the json file
-
-    if os.path.isfile(dwifile):
-        pth = os.path.dirname(dwifile)
-        fname = os.path.basename(dwifile)
+    if os.path.isfile(in_image):
+        pth = os.path.dirname(in_image)
+        fname = os.path.basename(in_image)
     else:
-        raise FileNotFoundError(f"File {dwifile} not found.")
+        raise FileNotFoundError(f"File {in_image} not found.")
 
     if fname.endswith(".nii.gz"):
         flname = fname[0:-7]
@@ -75,23 +119,24 @@ def remove_dwi_volumes(
         flname = fname[0:-4]
 
     # Checking if the file exists. If it is None assume it is in the same directory with the same name as the DWI file but with the .bvec extensions.
-    if bvecfile is None:
-        bvecfile = os.path.join(pth, flname + ".bvec")
-    else:
-        if not os.path.isfile(bvecfile):
-            raise FileNotFoundError(f"File {bvecfile} not found.")
+    if bvec_file is None:
+        bvec_file = os.path.join(pth, flname + ".bvec")
 
     # Checking if the file exists. If it is None assume it is in the same directory with the same name as the DWI file but with the .bval extensions.
-    if bvalfile is None:
-        bvalfile = os.path.join(pth, flname + ".bval")
-    else:
-        if not os.path.isfile(bvalfile):
-            raise FileNotFoundError(f"File {bvalfile} not found.")
+    if bval_file is None:
+        bval_file = os.path.join(pth, flname + ".bval")
+
 
     # Checking the ouput basename
-    if out_basename is not None:
-        fl_out_name = os.path.basename(out_basename)
-        fl_out_path = os.path.dirname(out_basename)
+    if out_image is not None:
+        fl_out_name = os.path.basename(out_image)
+        
+        if fl_out_name.endswith(".nii.gz"):
+            fl_out_name = fl_out_name[0:-7]
+        elif fl_out_name.endswith(".nii"):
+            fl_out_name = fl_out_name[0:-4]
+        
+        fl_out_path = os.path.dirname(out_image)
 
         if not os.path.isdir(fl_out_path):
             raise FileNotFoundError(f"Output path {fl_out_path} does not exist.")
@@ -99,22 +144,72 @@ def remove_dwi_volumes(
         fl_out_name = fname
         fl_out_path = pth
 
+    # Checking the volumes to delete
+    if vols_to_delete is not None:
+        if not isinstance(vols_to_delete, list):
+            vols_to_delete = [vols_to_delete]
+            
+        vols_to_delete = cltmisc.build_indices(vols_to_delete, nonzeros=False)
+    
+    # Checking the bvals to delete. This variable will overwrite the vols_to_delete variable if it is not None.
+    if bvals_to_delete is not None:
+        if not isinstance(bvals_to_delete, list):
+            bvals_to_delete = [bvals_to_delete]
+        
+        # Loading bvalues
+        if os.path.exists(bval_file):
+            bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
+        
+        tmp_bvals = cltmisc.build_values_with_conditions(bvals_to_delete, bvals = bvals, nonzeros=False)
+        vols_to_delete = np.where(np.isin(bvals, tmp_bvals))[0]
+        
+    if vols_to_delete is not None:
+        # check if vols_to_delete is not empty
+        if len(vols_to_delete) == 0:
+            print(f'No volumes to delete. The volumes to delete are empty.')
+            return in_image
+
     # Loading the DWI image
-    mapI = nib.load(dwifile)
+    mapI = nib.load(in_image)
 
     # getting the dimensions of the image
     dim = mapI.shape
-
-    # Only remove the volumes is the image is 4D
+        # Only remove the volumes is the image is 4D
+        
+    
     if len(dim) == 4:
         # Getting the number of volumes
         nvols = dim[3]
 
         if vols_to_delete is not None:
-            if isinstance(vols_to_delete, int):
-                vols_to_delete = [vols_to_delete]
 
-            vols_to_delete = cltmisc.build_indexes(vols_to_delete)
+            if len(vols_to_delete) == nvols:
+                # If the number of volumes to delete is equal to the number of volumes, send a warning and return the original file
+                print(
+                    f"Number of volumes to delete is equal to the number of volumes. No volumes will be deleted."
+                )
+                
+                return in_image
+            
+            # Check if the volumes to delete are in the range of the number of volumes
+            if np.max(vols_to_delete) >= nvols:
+                # Detect which values of the list vols_to_delete are out of range
+                
+                # Convert the list to a numpy array
+                vols_to_delete = np.array(vols_to_delete)
+                
+                # Check if the values are out of range
+                out_of_range = np.where(vols_to_delete >= nvols)[0]
+                # Raise an error with the out of range values
+                raise ValueError(
+                    f"Volumes out of the range:  {vols_to_delete[out_of_range]} . The values should be between 0 and {nvols-1}."
+                )
+                
+            # Check if the volumes to delete are in the range of the number of volumes
+            if np.min(vols_to_delete) < 0:
+                raise ValueError(
+                    f"Volumes to delete {vols_to_delete} are out of range. The values shoudl be between 0 and {nvols-1}."
+                )
 
             vols2rem = np.where(np.isin(np.arange(nvols), vols_to_delete))[0]
             vols2keep = np.where(
@@ -123,8 +218,8 @@ def remove_dwi_volumes(
         else:
 
             # Loading bvalues
-            if os.path.exists(bvalfile):
-                bvals = np.loadtxt(bvalfile, dtype=float, max_rows=5).astype(int)
+            if os.path.exists(bval_file):
+                bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
 
                 mask = bvals < 10
                 lb_bvals = measure.label(mask, 2)
@@ -140,10 +235,10 @@ def remove_dwi_volumes(
                     # Exit the function if there are no B0s to remove at the end of the volume. Leave a message.
                     print("No B0s to remove at the end of the volume.")
 
-                    return dwifile
+                    return in_image
             else:
                 raise FileNotFoundError(
-                    f"File {bvalfile} not found. It is mandatory if the volumes to remove are not specified (vols_to_delete)."
+                    f"File {bval_file} not found. It is mandatory if the volumes to remove are not specified (vols_to_delete)."
                 )
 
         diffData = mapI.get_fdata()
@@ -153,36 +248,48 @@ def remove_dwi_volumes(
         array_data = np.delete(diffData, vols2rem, 3)
 
         # Temporal image and diffusion scheme
-        out_dwi_file = os.path.join(fl_out_path, fl_out_name + ".nii.gz")
         array_img = nib.Nifti1Image(array_data, affine)
-        nib.save(array_img, out_dwi_file)
+        nib.save(array_img, out_image)
 
         # Saving new bvecs and new bvals
-        if os.path.isfile(bvecfile):
-            bvecs = np.loadtxt(bvecfile, dtype=float)
+        if os.path.isfile(bvec_file):
+            bvecs = np.loadtxt(bvec_file, dtype=float)
             if bvecs.shape[0] == 3:
                 select_bvecs = bvecs[:, vols2keep]
             else:
                 select_bvecs = bvecs[vols2keep, :]
 
             select_bvecs.transpose()
-            out_bvecs_file = os.path.join(fl_out_path, fl_out_name + ".bvec")
+            if out_image.endswith("nii.gz"):
+                out_bvecs_file = out_image.replace(".nii.gz", ".bvec")
+            elif out_image.endswith("nii"):
+                out_bvecs_file = out_image.replace(".nii", ".bvec")
+                
             np.savetxt(out_bvecs_file, select_bvecs, fmt="%f")
-
+        else:
+            out_bvecs_file = None
+            
         # Saving new bvals
-        if os.path.isfile(bvalfile):
+        if os.path.isfile(bval_file):
+            bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
             select_bvals = bvals[vols2keep]
             select_bvals.transpose()
 
-            tmp_bvals_file = os.path.join(fl_out_path, fl_out_name + ".bval")
-            np.savetxt(tmp_bvals_file, select_bvals, newline=" ", fmt="%d")
+            if out_image.endswith("nii.gz"):
+                out_bvals_file = out_image.replace(".nii.gz", ".bval")
+            elif out_image.endswith("nii"):
+                out_bvals_file = out_image.replace(".nii", ".bval")
+            np.savetxt(out_bvals_file, select_bvals, newline=" ", fmt="%d")
+        else:
+            out_bvals_file = None
 
     else:
-        raise Warning(f"Image {dwifile} is not a 4D image. No volumes to remove.")
+        vols2rem = None
+        raise Warning(f"Image {in_image} is not a 4D image. No volumes to remove.")
 
-    return out_dwi_file, bvecfile, tmp_bvals_file
+    return out_image, out_bvecs_file, out_bvals_file, vols2rem
 
-
+####################################################################################################
 def tck2trk(
     in_tract: str, ref_img: str, out_tract: str = None, force: bool = False
 ) -> str:
