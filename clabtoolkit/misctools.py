@@ -882,93 +882,110 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def build_indexes(range_vector: list, nonzeros: bool = True):
+
+
+def build_indexes(
+    range_vector: List[Union[int, tuple, list, str, np.ndarray]], nonzeros: bool = True
+) -> List[int]:
     """
-    Function to build the indexes from a range vector that can contain integers, tuples, lists or strings.
+    Build a list of unique, sorted indices from a vector containing integers, tuples, lists,
+    NumPy arrays, or strings representing values, ranges, or comma-separated expressions.
 
-    For example:
-    range_vector = [1, (2, 5), [6, 7], "8-10", "11:13", "14:2:22"]
-
-    In this example the tuple (2, 5) will be converted to [2, 3, 4, 5]
-    The list [6, 7] will be kept as it is
-    The string "8-10" will be converted to [8, 9, 10]
-    The string "11:13" will be converted to [11, 12, 13]
-    The string "14:2:22" will be converted to [14, 16, 18, 20, 22]
-
-    All this values will be flattened and unique values will be returned.
-    In this case the output will be [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22]
+    Supports:
+        - Integers: added as-is.
+        - Tuples of 2 integers: expanded into range(start, end+1).
+        - Lists or np.ndarray: flattened and added as integers.
+        - Strings:
+            - "8-10"       → [8, 9, 10]
+            - "11:13"      → [11, 12, 13]
+            - "14:2:22"    → [14, 16, 18, 20, 22]
+            - "5"          → [5]
+            - "1, 2, 3"    → [1, 2, 3]
+            - "1, 2, 4:10, 16-20, 25, 0" → parsed into all segments
 
     Parameters
     ----------
-    range_vector : list
-        List of ranges
+    range_vector : list of int, tuple, list, np.ndarray, or str
+        The input elements to parse into a list of integers.
 
-    nonzeros : bool
-        Boolean to indicate if the zeros are removed. Default is True
+    nonzeros : bool, optional
+        If True, zero values will be removed. Default is True.
 
     Returns
     -------
-    indexes: list
-        List of indexes
+    List[int]
+        A sorted list of unique indices.
 
-    Example Usage:
-    --------------
-        >>> range_vector = [1, (2, 5), [6, 7], "8-10", "11:13", "14:2:22"]
-        >>> indexes = build_indexes(range_vector)
-        >>> print(indexes)  # Output: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22]
+    Raises
+    ------
+    ValueError
+        If any item cannot be interpreted correctly.
+
+    Example
+    -------
+    >>> range_vector = [1, (2, 5), [6, 7], np.array([0, 0, 0]), "8-10", "11:13", "14:2:22", "1, 2, 4:10, 16-20, 25, 0"]
+    >>> build_indexes(range_vector)
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 25]
+
+    >>> build_indexes(range_vector, nonzeros=False)
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 25]
 
     """
 
     indexes = []
-    for i in range_vector:
-        if isinstance(i, tuple):
 
-            # Apend list from the minimum to the maximum value
-            indexes.append(list(range(i[0], i[1] + 1)))
+    def parse_string(expr: str) -> List[int]:
+        result = []
+        parts = [p.strip() for p in expr.split(",") if p.strip()]
+        for part in parts:
+            if "-" in part:
+                start, end = map(int, part.split("-"))
+                result.extend(range(start, end + 1))
+            elif ":" in part:
+                nums = list(map(int, part.split(":")))
+                if len(nums) == 2:
+                    result.extend(range(nums[0], nums[1] + 1))
+                elif len(nums) == 3:
+                    result.extend(range(nums[0], nums[2] + 1, nums[1]))
+                else:
+                    raise ValueError(f"Invalid colon-range format: '{part}'")
+            else:
+                result.append(int(part))
+        return result
 
-        elif isinstance(i, (int, np.integer)):
-            # Append the value as an integer
-            indexes.append([i])
+    for item in range_vector:
+        try:
+            if isinstance(item, (int, np.integer)):
+                indexes.append([int(item)])
 
-        elif isinstance(i, list):
-            # Append the values in the values in the list
-            indexes.append(i)
+            elif isinstance(item, tuple) and len(item) == 2:
+                start, end = item
+                indexes.append(list(range(int(start), int(end) + 1)))
 
-        elif isinstance(i, str):
+            elif isinstance(item, list):
+                indexes.append([int(x) for x in item])
 
-            # Find if the strin contains "-" or ":"
-            if "-" in i:
-                # Split the string by the "-"
-                i = i.split("-")
-                indexes.append(list(range(int(i[0]), int(i[1]) + 1)))
-            elif ":" in i:
-                # Split the string by the ":"
-                i = i.split(":")
-                if len(i) == 2:
-                    indexes.append(list(range(int(i[0]), int(i[1]) + 1)))
-                elif len(i) == 3:
+            elif isinstance(item, np.ndarray):
+                if item.ndim == 0:
+                    indexes.append([int(item)])
+                else:
+                    indexes.append([int(x) for x in item.tolist()])
 
-                    # Append the values in the range between the minimum to the maximum value of the elements of the list with a step
-                    indexes.append(list(range(int(i[0]), int(i[2]) + 1, int(i[1]))))
+            elif isinstance(item, str):
+                indexes.append(parse_string(item))
 
             else:
+                raise ValueError(f"Unsupported input type: {item}")
 
-                try:
-                    # Append the value as an integer
-                    indexes.append([int(i)])
-                except:
-                    pass
+        except Exception as e:
+            raise ValueError(f"Error processing item '{item}': {e}")
 
-    indexes = [item for sublist in indexes for item in sublist]
+    flat = [x for sublist in indexes for x in sublist]
 
     if nonzeros:
-        # Remove the elements with 0
-        indexes = [x for x in indexes if x != 0]
+        flat = [x for x in flat if x != 0]
 
-    # Flatten the list and unique the values
-    indexes = remove_duplicates(indexes)
-
-    return indexes
+    return sorted(set(flat))
 
 
 ####################################################################################################
