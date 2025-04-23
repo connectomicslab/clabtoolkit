@@ -8,6 +8,7 @@ import pandas as pd
 import inspect
 import sys
 import types
+import re
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
@@ -805,7 +806,7 @@ def visualize_colors(
 
 def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%d"):
     """
-    Function to find the closest date in a list of dates to a target date.
+    Function to find the closest date in a list of dates with respect to a target date.
     It also returns the index of the closest date in the list.
 
     Parameters
@@ -968,6 +969,110 @@ def build_indexes(range_vector: list, nonzeros: bool = True):
     indexes = remove_duplicates(indexes)
 
     return indexes
+
+
+####################################################################################################
+def get_indices_by_condition(condition: str, **kwargs):
+    """
+    Evaluate a condition involving a NumPy array and scalar variables to return indices
+    of array elements that satisfy the condition. Supports chained comparisons and dynamic variable names.
+
+    Parameters
+    ----------
+    condition : str
+        A string expression representing the logical condition to evaluate.
+        It must include exactly one variable that is a list or NumPy array (e.g., b-values),
+        and may include any number of scalar comparison variables. The expression can include:
+            - Comparison operators: <, <=, >, >=, ==, !=
+            - Chained comparisons (e.g., bmin <= bvals <= bmax)
+        Example formats:
+            "bmin <= bvals <= bmax"
+            "bvals >= bmin"
+            "bvals < bmax"
+            "bvals == bval"
+            "bvals != bval"
+
+    **kwargs : dict
+        Variable names and values used in the expression. One of the values must be
+        a list or NumPy array (representing the main vector of interest), and all other
+        variables referenced in the condition must be provided.
+
+    Returns
+    -------
+    np.ndarray
+        An array of indices where the condition is `True` in the main array variable.
+
+    Raises
+    ------
+    ValueError
+        If:
+            - The condition uses undefined variables
+            - No array variable is found
+            - More than one array is provided
+            - The condition does not produce a boolean mask
+            - The condition has an invalid or unsupported syntax
+
+    Usage Examples
+    -------
+    >>> bvals = np.array([0, 500, 1000, 2000, 3000])
+    >>> get_matching_indices("bmin <= bvals <= bmax", bvals=bvals, bmin=800, bmax=2500)
+    array([2, 3])
+
+    >>> get_matching_indices("bvals > bmin", bvals=bvals, bmin=1000)
+    array([3, 4])
+
+    >>> get_matching_indices("bvals == bval", bvals=bvals, bval=1000)
+    array([2])
+    """
+    condition = condition.replace(" ", "")  # Strip whitespace
+
+    # Extract all variable names
+    var_names = set(re.findall(r"\b[a-zA-Z_]\w*\b", condition))
+
+    # Ensure all required variables are provided
+    missing_vars = var_names - kwargs.keys()
+    if missing_vars:
+        raise ValueError(f"Missing variables in input: {', '.join(missing_vars)}")
+
+    # Find the array variable (only one allowed)
+    b_array_candidates = [
+        k for k, v in kwargs.items() if isinstance(v, (list, np.ndarray))
+    ]
+    if len(b_array_candidates) != 1:
+        raise ValueError(
+            "Exactly one variable must be a list or numpy array of b-values."
+        )
+
+    b_array_name = b_array_candidates[0]
+    b_values = np.array(kwargs[b_array_name])
+
+    # Transform chained comparisons (e.g., a <= b <= c) into (a <= b) & (b <= c)
+    def rewrite_chained_comparisons(expr):
+        # Pattern: var1 OP1 var2 OP2 var3
+        pattern = r"(\b\w+\b)(<=|<|>=|>)(\b\w+\b)(<=|<|>=|>)(\b\w+\b)"
+        match = re.search(pattern, expr)
+        if match:
+            var1, op1, var2, op2, var3 = match.groups()
+            return f"({var1}{op1}{var2})&({var2}{op2}{var3})"
+        return expr
+
+    safe_expr = rewrite_chained_comparisons(condition)
+
+    # Prepare local namespace
+    local_vars = {
+        k: np.array(v) if isinstance(v, (list, np.ndarray)) else v
+        for k, v in kwargs.items()
+    }
+
+    try:
+        mask = eval(safe_expr, {}, local_vars)
+    except Exception as e:
+        raise ValueError(f"Error evaluating condition: {e}")
+
+    if not isinstance(mask, np.ndarray) or mask.dtype != bool:
+        raise ValueError("Condition did not produce a valid boolean mask.")
+
+    return np.where(mask)[0]
 
 
 ####################################################################################################
@@ -1675,7 +1780,7 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############            Methods dedicated to help with containarization                 ############
+############           Methods dedicated to containerization assistance                 ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
