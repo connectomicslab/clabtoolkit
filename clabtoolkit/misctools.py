@@ -1079,6 +1079,59 @@ def get_indices_by_condition(condition: str, **kwargs):
 
 
 ####################################################################################################
+def get_values_by_condition(condition: str, **kwargs):
+    """
+    Evaluate a logical condition involving an array and optional scalar variables,
+    and return the values where the condition holds true.
+
+    Parameters
+    ----------
+    condition : str
+        A condition string to evaluate, e.g.:
+            - "bvals > 1000"
+            - "bmin <= bvals <= bmax"
+            - "bvals != bval"
+        Supports chained comparisons and scalar literals directly in the expression.
+
+    **kwargs : dict
+        Variable bindings for any names used in the condition string. Must include exactly
+        one array (list or np.ndarray) that represents the main vector to filter.
+
+    Returns
+    -------
+    np.ndarray
+        Values where the condition evaluates to True.
+
+    Raises
+    ------
+    ValueError
+        If:
+            - The condition references variables not in kwargs (excluding literals)
+            - No array variable is found
+            - More than one array-like variable is provided
+            - The condition does not yield a boolean array
+
+    Examples
+    --------
+    >>> bvals = np.array([0, 500, 1000, 2000, 3000])
+    >>> get_values_by_condition("bvals > 1000", bvals=bvals)
+    array([2000, 3000])
+
+    >>> get_values_by_condition("bmin <= bvals <= bmax", bvals=bvals, bmin=800, bmax=2500)
+    array([1000, 2000])
+    """
+
+    condition = condition.replace(" ", "")
+    # Reuse the logic from get_indices_by_condition but return values instead of indices
+    indices = get_indices_by_condition(condition, **kwargs)
+
+    # Extract the array variable from kwargs
+    array_var = next(k for k, v in kwargs.items() if isinstance(v, (list, np.ndarray)))
+
+    return kwargs[array_var][indices]
+
+
+####################################################################################################
 def remove_duplicates(input_list: list):
     """
     Function to remove duplicates from a list while preserving the order
