@@ -188,7 +188,7 @@ def is_color_like(color) -> bool:
     bool
         True if the color is valid, False otherwise.
 
-    Example Usage:
+    How to Use:
     --------------
         >>> is_color_like("#FF5733")  # Hex string
         True
@@ -307,7 +307,7 @@ def multi_rgb2hex(
     hexcodes: list
         List of hexadecimal codes for the colors
 
-    Example Usage:
+    How to Use:
     --------------
         >>> colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
         >>> hexcodes = multi_rgb2hex(colors)
@@ -336,7 +336,7 @@ def hex2rgb(hexcode: str) -> tuple:
     tuple
         Tuple with the rgb values
 
-    Example Usage:
+    How to Use:
     --------------
         >>> hexcode = "#FF5733"
         >>> rgb = hex2rgb(hexcode)
@@ -363,7 +363,7 @@ def multi_hex2rgb(hexcodes: Union[str, List[str]]) -> np.ndarray:
     rgb_list: np.array
         Array of rgb values
 
-    Example Usage:
+    How to Use:
     --------------
         >>> hexcodes = ["#FF5733", "#33FF57", "#3357FF"]
         >>> rgb_list = multi_hex2rgb(hexcodes)
@@ -581,7 +581,7 @@ def readjust_colors(
     out_colors: list or numpy array
         List of colors in the desired format
 
-    Example Usage:
+    How to Use:
     --------------
         >>> colors = ["#FF5733", [255, 87, 51], np.array([51, 87, 255])]
         >>> out_colors = readjust_colors(colors, output_format='hex')
@@ -621,7 +621,7 @@ def create_random_colors(
     colors: list
         List of random colors
 
-    Example Usage:
+    How to Use:
     ----------------
         >>> colors = create_random_colors(5)
         >>> print(colors)  # Output: [[123, 45, 67], [89, 12, 34], ...]
@@ -832,7 +832,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
         Time difference in days between the target date and the closest date in the list.
         If the target date is not in the list, it will return the time difference in days.
 
-    Example Usage:
+    How to Use:
     --------------
         >>> dates_list = ["20230101", "20230201", "20230301"]
         >>> target_date = "20230215"
@@ -1319,7 +1319,7 @@ def remove_duplicates(input_list: list):
     unique_list: list
         List of unique elements
 
-    Example Usage:
+    How to Use:
     --------------
         >>> input_list = [1, 2, 2, 3, 4, 4, 5]
         >>> unique_list = remove_duplicates(input_list)
@@ -1356,7 +1356,7 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]) -> list:
     out_ids: list
         List of ids that are in the file.
 
-    Example Usage:
+    How to Use:
     --------------
         >>> subj_ids = ["sub-01", "sub-02", "sub-03"]
         >>> ids_file = "ids.txt" # Column-wise text file with the ids to select (i.e. "sub-01", "sub-03")
@@ -1412,7 +1412,7 @@ def filter_by_substring(
     filtered_list: list
         List of elements that contain the substring
 
-    Example Usage:
+    How to Use:
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> or_filter = ["app", "ch"]
@@ -1519,7 +1519,7 @@ def get_indexes_by_substring(
     indexes: list
         List of indexes that contain any of the substring
 
-    Example Usage:
+    How to Use:
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["ap", "ch"]
@@ -1590,7 +1590,7 @@ def list_intercept(list1: list, list2: list):
     int_list: list
         List of elements that are in both lists
 
-    Example Usage:
+    How to Use:
     --------------
         >>> list1 = [1, 2, 3, 4, 5]
         >>> list2 = [3, 4, 5, 6, 7]
@@ -1631,7 +1631,7 @@ def ismember_from_list(a, b):
     idx: list
         List of indices of elements in a that are in b
 
-    Example Usage:
+    How to Use:
     --------------
         >>> a = [1, 2, 3, 4, 5]
         >>> b = [3, 4, 5, 6, 7]
@@ -1671,7 +1671,7 @@ def detect_leaf_directories(root_dir: str) -> list:
     leaf_folders: list
         A list of absolute paths to folders that do not contain any subfolders.
 
-    Example Usage:
+    How to Use:
     --------------
         >>> root_directory = "/path/to/your/folder"
         >>> leaf_folders = detect_leaf_directories(root_directory)
@@ -1729,7 +1729,7 @@ def detect_recursive_files(in_dir):
     files: list
         List of files in the directory and its subdirectories
 
-    Example Usage:
+    How to Use:
     ----------------
         >>> in_dir = "/path/to/directory"
         >>> files = detect_recursive_files(in_dir)
@@ -1764,7 +1764,7 @@ def remove_empty_folders(start_path, deleted_folders=None):
         deleted_folders : list
             A list of all directories that were deleted.
 
-    Example Usage:
+    How to Use:
     --------------
         >>> deleted_folders = remove_empty_folders("/path/to/start")
         >>> print("Deleted folders:", deleted_folders)
@@ -1872,7 +1872,8 @@ def correct_names(
     -------
     regnames: list
         List of corrected region names
-    Example Usage:
+        
+    How to Use:
     --------------
         >>> regnames = ["ctx-lh-1", "ctx-rh-2", "ctx-lh-3"]
         >>> prefix = "ctx-"
@@ -1952,7 +1953,7 @@ def remove_empty_keys_or_values(d: dict) -> dict:
     d : dict
         The dictionary with the empty entries removed.
 
-    Example Usage:
+    How to Use:
     --------------
         >>> my_dict = {'key1': 'value1', 'key2': '', '': 'value3', 'key4': None}
         >>> cleaned_dict = remove_empty_keys_or_values(my_dict)
@@ -2041,7 +2042,7 @@ def generate_container_command(
     container_cmd: list
         List with the command to run the bash command locally or inside the container
 
-    Example Usage:
+    How to Use:
     --------------
         >>> bash_args = ["bash", "-c", "echo Hello World"]
         >>> container_cmd = generate_container_command(bash_args, technology="docker", image_path="/path/to/image")

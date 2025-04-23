@@ -55,6 +55,21 @@ def delete_volumes(
         Path to the output file. If None, it will assume the output file is in the same directory as the DWI file with the same name but with the .nii.gz extension.
         The original file will be overwritten if the output file is not specified.
     
+    bvals_to_delete : int, list, optional
+        List of bvals to delete. If None, it will assume the bvals to delete are the last B0s of the DWI image.
+        Some conditions could be used to delete the volumes. 
+            For example: 
+                1. If you want to delete all the volumes with bval = 0, you can use:
+                bvals_to_delete = [0]
+                
+                2. If you want to delete all the volumes with b-values higher than 1000, you can use:
+                bvals_to_delete = [bvals > 1000]  or  bvals_to_delete = [bvals >= 1000] if you want to include the 1000 bvals.
+                
+                3. If you want to delete all the volumes with b-values between 1000 and 3000 you can use:
+                bvals_to_delete = [1000 < bvals < 3000] or bvals_to_delete = [1000 <= bvals < 3000] if you want to include the 1000 but not the 3000 bvals.
+                
+            For more complex conditions, you can see the function get_indices_by_condition. Included in the clabtoolkit.misctools module.
+    
     vols_to_delete : int, list, optional
         Indices of the volumes to delete. If None, it will assume the volumes to delete are the last B0s of the DWI image.
         Some conditions could be used to delete the volumes.
@@ -72,23 +87,11 @@ def delete_volumes(
                     vols_to_delete = [0:10, 40, 60] or vols_to_delete = [0-10, 40, 60] or vols_to_delete = ['0-10, 40, 60'], etc
                 
                 For more complex conditions, you can see the function build_indices. Included in the clabtoolkit.misctools module.
-                    
-    bvals_to_delete : int, list, optional
-        List of bvals to delete. If None, it will assume the bvals to delete are the last B0s of the DWI image.
-        Some conditions could be used to delete the volumes. 
-            For example: 
-                1. If you want to delete all the volumes with bval = 0, you can use:
-                bvals_to_delete = [0]
+        
+        If both bvals_to_delete and vols_to_delete are specified, the function will remove the volumes with the bvals specified
+        and the volumes specified in the vols_to_delete list. 
+        The function will unify all the indices in a single list and remove the volumes from the DWI image.
                 
-                2. If you want to delete all the volumes with b-values higher than 1000, you can use:
-                bvals_to_delete = [bvals > 1000]  or  bvals_to_delete = [bvals >= 1000] if you want to include the 1000 bvals.
-                
-                3. If you want to delete all the volumes with b-values between 1000 and 3000 you can use:
-                bvals_to_delete = [1000 < bvals < 3000] or bvals_to_delete = [1000 <= bvals < 3000] if you want to include the 1000 but not the 3000 bvals.
-                
-            For more complex conditions, you can see the function get_indices_by_condition. Included in the clabtoolkit.misctools module.
-            
-
     Returns
     -------
     out_image : str
@@ -105,6 +108,10 @@ def delete_volumes(
 
     Notes:
     -----
+    IMPORTANT: The function will overwrite the original DWI file if the output file is not specified.
+    IMPORTANT: The function will overwrite the original bvec and bval files if the output file is not specified.
+    IMPORTANT: The function will remove the last B0s of the DWI image if no volumes are specified.
+    
     The function assumes that the B0 volumes are the last volumes in the 4D volume.
     The function will create a new bvec and bval file with the same name as the DWI file, but with the .bvec and .bval extensions.
 
@@ -180,10 +187,14 @@ def delete_volumes(
             bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
         
         tmp_bvals = cltmisc.build_values_with_conditions(bvals_to_delete, bvals = bvals, nonzeros=False)
-        tmp_vols_to_delete = np.where(np.isin(bvals, tmp_bvals))[0]
+        tmp_bvals_to_delete = np.where(np.isin(bvals, tmp_bvals))[0]
         
         if vols_to_delete is not None:
-            vols_to_delete += tmp_vols_to_delete
+            vols_to_delete += tmp_bvals_to_delete.tolist()
+            
+            # Remove duplicates
+            vols_to_delete = list(set(vols_to_delete))
+            
         else:
             vols_to_delete = tmp_vols_to_delete
         
