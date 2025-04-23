@@ -6,8 +6,9 @@ import subprocess
 from pathlib import Path
 from typing import Union
 
-import clabtoolkit.misctools as cltmisc
-import clabtoolkit.bidstools as cltbids
+# Importing local modules
+from . import misctools as cltmisc
+from .  bidstools as cltbids
 
 
 def crop_image_from_mask(
