@@ -14,9 +14,10 @@ import numpy as np
 import nibabel as nib
 import pandas as pd
 
-import clabtoolkit.misctools as cltmisc
-import clabtoolkit.parcellationtools as cltparc
-import clabtoolkit.bidstools as cltbids
+# Importing local modules
+from . import misctools as cltmisc
+from . import parcellationtools as cltparc
+from . import bidstools as cltbids
 
 
 class AnnotParcellation:
