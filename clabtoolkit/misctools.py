@@ -991,105 +991,91 @@ def build_indexes(
 ####################################################################################################
 def get_indices_by_condition(condition: str, **kwargs):
     """
-    Evaluate a condition involving a NumPy array and scalar variables to return indices
-    of array elements that satisfy the condition. Supports chained comparisons and dynamic variable names.
+    Evaluate a logical condition involving an array and optional scalar variables,
+    and return the indices where the condition holds true.
 
     Parameters
     ----------
     condition : str
-        A string expression representing the logical condition to evaluate.
-        It must include exactly one variable that is a list or NumPy array (e.g., b-values),
-        and may include any number of scalar comparison variables. The expression can include:
-            - Comparison operators: <, <=, >, >=, ==, !=
-            - Chained comparisons (e.g., bmin <= bvals <= bmax)
-        Example formats:
-            "bmin <= bvals <= bmax"
-            "bvals >= bmin"
-            "bvals < bmax"
-            "bvals == bval"
-            "bvals != bval"
+        A condition string to evaluate, e.g.:
+            - "bvals > 1000"
+            - "bmin <= bvals <= bmax"
+            - "bvals != bval"
+        Supports chained comparisons and scalar literals directly in the expression.
 
     **kwargs : dict
-        Variable names and values used in the expression. One of the values must be
-        a list or NumPy array (representing the main vector of interest), and all other
-        variables referenced in the condition must be provided.
+        Variable bindings for any names used in the condition string. Must include exactly
+        one array (list or np.ndarray) that represents the main vector to filter.
 
     Returns
     -------
     np.ndarray
-        An array of indices where the condition is `True` in the main array variable.
+        Indices where the condition evaluates to True.
 
     Raises
     ------
     ValueError
         If:
-            - The condition uses undefined variables
+            - The condition references variables not in kwargs (excluding literals)
             - No array variable is found
-            - More than one array is provided
-            - The condition does not produce a boolean mask
-            - The condition has an invalid or unsupported syntax
+            - More than one array-like variable is provided
+            - The condition does not yield a boolean array
 
-    Usage Examples
-    -------
+    Examples
+    --------
     >>> bvals = np.array([0, 500, 1000, 2000, 3000])
-    >>> get_matching_indices("bmin <= bvals <= bmax", bvals=bvals, bmin=800, bmax=2500)
-    array([2, 3])
-
-    >>> get_matching_indices("bvals > bmin", bvals=bvals, bmin=1000)
+    >>> get_indices_by_condition("bvals > 1000", bvals=bvals)
     array([3, 4])
 
-    >>> get_matching_indices("bvals == bval", bvals=bvals, bval=1000)
-    array([2])
+    >>> get_indices_by_condition("bmin <= bvals <= bmax", bvals=bvals, bmin=800, bmax=2500)
+    array([2, 3])
     """
-    condition = condition.replace(" ", "")  # Strip whitespace
+    condition = condition.replace(" ", "")
 
-    # Extract all variable names
+    # Extract all words used in the condition
     var_names = set(re.findall(r"\b[a-zA-Z_]\w*\b", condition))
 
-    # Ensure all required variables are provided
-    missing_vars = var_names - kwargs.keys()
+    # Identify array-like variables
+    array_vars = [k for k, v in kwargs.items() if isinstance(v, (list, np.ndarray))]
+
+    if len(array_vars) != 1:
+        raise ValueError("Exactly one variable must be a list or numpy array.")
+
+    array_var = array_vars[0]
+
+    # Check if any required variables (excluding literals) are missing
+    missing_vars = var_names - set(kwargs.keys())
     if missing_vars:
-        raise ValueError(f"Missing variables in input: {', '.join(missing_vars)}")
+        raise ValueError(f"Missing variable(s): {', '.join(missing_vars)}")
 
-    # Find the array variable (only one allowed)
-    b_array_candidates = [
-        k for k, v in kwargs.items() if isinstance(v, (list, np.ndarray))
-    ]
-    if len(b_array_candidates) != 1:
-        raise ValueError(
-            "Exactly one variable must be a list or numpy array of b-values."
-        )
-
-    b_array_name = b_array_candidates[0]
-    b_values = np.array(kwargs[b_array_name])
-
-    # Transform chained comparisons (e.g., a <= b <= c) into (a <= b) & (b <= c)
-    def rewrite_chained_comparisons(expr):
-        # Pattern: var1 OP1 var2 OP2 var3
-        pattern = r"(\b\w+\b)(<=|<|>=|>)(\b\w+\b)(<=|<|>=|>)(\b\w+\b)"
-        match = re.search(pattern, expr)
-        if match:
-            var1, op1, var2, op2, var3 = match.groups()
-            return f"({var1}{op1}{var2})&({var2}{op2}{var3})"
-        return expr
-
-    safe_expr = rewrite_chained_comparisons(condition)
-
-    # Prepare local namespace
+    # Convert all inputs to appropriate types for evaluation
     local_vars = {
         k: np.array(v) if isinstance(v, (list, np.ndarray)) else v
         for k, v in kwargs.items()
     }
 
+    def rewrite_chained_comparisons(expr: str) -> str:
+        # Replace "a <= b <= c" with "(a <= b) & (b <= c)"
+        pattern = r"(\b\w+\b)(<=|<|>=|>)(\b\w+\b)(<=|<|>=|>)(\b\w+\b)"
+        while True:
+            match = re.search(pattern, expr)
+            if not match:
+                break
+            a, op1, b, op2, c = match.groups()
+            expr = expr.replace(f"{a}{op1}{b}{op2}{c}", f"({a}{op1}{b})&({b}{op2}{c})")
+        return expr
+
+    safe_expr = rewrite_chained_comparisons(condition)
+
     try:
-        mask = eval(safe_expr, {}, local_vars)
+        result = eval(safe_expr, {}, local_vars)
     except Exception as e:
         raise ValueError(f"Error evaluating condition: {e}")
 
-    if not isinstance(mask, np.ndarray) or mask.dtype != bool:
-        raise ValueError("Condition did not produce a valid boolean mask.")
+    if not isinstance(result, np.ndarray) or result.dtype != bool:
+        raise ValueError("The condition did not produce a valid boolean mask.")
 
-    return np.where(mask)[0]
+    return np.where(result)[0]
 
 
 ####################################################################################################
