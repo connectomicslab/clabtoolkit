@@ -1,4 +1,3 @@
-import clabtoolkit.misctools as cltmisc
 import os
 from glob import glob
 import subprocess
@@ -39,14 +38,6 @@ def progress_indicator(future):
             description=f"[red]{subj_id}: Finished ({n_comp}/{n_dics})",
             completed=n_comp,
         )
-
-
-def test(name):
-
-    # Create folders with the name of the task
-    os.system("mkdir -p /media/COSAS/test/outtestfold/" + str(name))
-    time.sleep(1)
-
 
 def org_conv_dicoms(
     in_dic_dir: str,
