@@ -7,10 +7,7 @@ from glob import glob
 from typing import Union
 import numpy as np
 import nibabel as nib
-import clabtoolkit.misctools as cltmisc
-import clabtoolkit.bidstools as cltbids
-import clabtoolkit.imagetools as cltimg
-import clabtoolkit.parcellationtools as cltparc
+
 from scipy.ndimage import convolve
 from scipy.spatial import distance
 
