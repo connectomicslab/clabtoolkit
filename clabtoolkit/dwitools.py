@@ -13,7 +13,7 @@ from rich.progress import BarColumn, TextColumn, SpinnerColumn
 import inspect
 import sys
 
-# Importing the clabtoolkit modules
+# Importing the internal modules
 from . import misctools as cltmisc
 
 ####################################################################################################
@@ -26,7 +26,6 @@ from . import misctools as cltmisc
 ####################################################################################################
 ####################################################################################################
 
-####################################################################################################
 def delete_volumes(
     in_image: str,
     bvec_file: str = None,
@@ -112,11 +111,10 @@ def delete_volumes(
     IMPORTANT: The function will overwrite the original bvec and bval files if the output file is not specified.
     IMPORTANT: The function will remove the last B0s of the DWI image if no volumes are specified.
     
-    The function assumes that the B0 volumes are the last volumes in the 4D volume.
-    The function will create a new bvec and bval file with the same name as the DWI file, but with the .bvec and .bval extensions.
 
-    Usage:
-    ------
+    How to use:
+    -----------
+    
     >>> delete_volumes('dwi.nii.gz') # will remove the last B0s. The original file will be overwritten.
     
     >>> delete_volumes('dwi.nii.gz', out_image='dwi_clean.nii.gz') # will remove the last B0s and save the output in dwi_clean.nii.gz
@@ -129,7 +127,6 @@ def delete_volumes(
         The output will be saved in in dwi_clean.nii.gz
         IMPORTANT: the b-values file dwi.bval should be in the same directory as the DWI file.
         
-
     """
 
     # Creating the name for the json file
@@ -364,8 +361,9 @@ def get_b0s(
     ValueError
         If the output path for the B0 image file does not exist.
     
-    Usage Example:
-    -------------
+    How to use:
+    -----------
+
     >>> dwi_img = 'path/to/dwi_image.nii.gz'
     >>> b0s_img = 'path/to/b0_image.nii.gz'
     >>> bval_file = 'path/to/bvals.bval'
