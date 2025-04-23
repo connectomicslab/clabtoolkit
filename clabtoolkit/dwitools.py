@@ -54,7 +54,25 @@ def delete_volumes(
     out_image : str, optional
         Path to the output file. If None, it will assume the output file is in the same directory as the DWI file with the same name but with the .nii.gz extension.
         The original file will be overwritten if the output file is not specified.
-        
+    
+    vols_to_delete : int, list, optional
+        Indices of the volumes to delete. If None, it will assume the volumes to delete are the last B0s of the DWI image.
+        Some conditions could be used to delete the volumes.
+            For example:
+                1. If you want to delete the first 3 volumes, you can use:
+                    vols_to_delete = [0, 1, 2]
+                
+                2. If you want to delete the volumes from 0 to 10, you can use:
+                    vols_to_delete = [0:10] or vols_to_delete = [0-10] 
+                    
+                3. If you want to delete the volumes from 0 to 10 and 20 to 30, you can use:
+                    vols_to_delete = [0:10, 20:30] or vols_to_delete = [0-10, 20-30]
+                
+                4. If you want to delete the volumes from 0 to 10 and the volumes 40 and 60, you can use:
+                    vols_to_delete = [0:10, 40, 60] or vols_to_delete = [0-10, 40, 60] or vols_to_delete = ['0-10, 40, 60'], etc
+                
+                For more complex conditions, you can see the function build_indices. Included in the clabtoolkit.misctools module.
+                    
     bvals_to_delete : int, list, optional
         List of bvals to delete. If None, it will assume the bvals to delete are the last B0s of the DWI image.
         Some conditions could be used to delete the volumes. 
@@ -162,7 +180,12 @@ def delete_volumes(
             bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
         
         tmp_bvals = cltmisc.build_values_with_conditions(bvals_to_delete, bvals = bvals, nonzeros=False)
-        vols_to_delete = np.where(np.isin(bvals, tmp_bvals))[0]
+        tmp_vols_to_delete = np.where(np.isin(bvals, tmp_bvals))[0]
+        
+        if vols_to_delete is not None:
+            vols_to_delete += tmp_vols_to_delete
+        else:
+            vols_to_delete = tmp_vols_to_delete
         
     if vols_to_delete is not None:
         # check if vols_to_delete is not empty
