@@ -1,7 +1,7 @@
 import os
 import shutil
 import pandas as pd
-import clabtoolkit.misctools as cltmisc
+
 from typing import Union, Dict, List
 import re
 import json
@@ -14,6 +14,9 @@ from rich.progress import (
     TextColumn,
     MofNCompleteColumn
 )
+
+# Importing the clabtoolkit modules
+from . import misctools as cltmisc
 
 ####################################################################################################
 ####################################################################################################
