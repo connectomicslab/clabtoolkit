@@ -884,7 +884,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 ####################################################################################################
 
 
-def build_indexes(
+def build_indices(
     range_vector: List[Union[int, tuple, list, str, np.ndarray]], nonzeros: bool = True
 ) -> List[int]:
     """
@@ -924,10 +924,10 @@ def build_indexes(
     Example
     -------
     >>> range_vector = [1, (2, 5), [6, 7], np.array([0, 0, 0]), "8-10", "11:13", "14:2:22", "1, 2, 4:10, 16-20, 25, 0"]
-    >>> build_indexes(range_vector)
+    >>> build_indices(range_vector)
     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 25]
 
-    >>> build_indexes(range_vector, nonzeros=False)
+    >>> build_indices(range_vector, nonzeros=False)
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 25]
 
     """
@@ -1131,6 +1131,124 @@ def get_values_by_condition(condition: str, **kwargs):
     tmp = np.array(remove_duplicates(kwargs[array_var][indices]))
 
     return tmp.tolist()
+
+
+####################################################################################################
+def build_indices_with_conditions(
+    inputs: List[Union[int, tuple, list, str, np.ndarray]],
+    nonzeros: bool = True,
+    **kwargs,
+) -> List[int]:
+    """
+    Combine numeric, range, and condition-based inputs into a unified list of values.
+
+    Parameters
+    ----------
+    inputs : list
+        Mixed list containing integers, lists, arrays, or strings with comma-separated numeric ranges or conditions.
+
+    nonzeros : bool
+        If True, removes zeros from the output.
+
+    **kwargs : dict
+        Variables used for evaluating conditions (must include exactly one array-like for conditions).
+
+    Returns
+    -------
+    List[int]
+        Sorted, unique list of resulting values.
+    """
+    all_values = []
+
+    for item in inputs:
+        if isinstance(item, str):
+            # Split comma-separated sections in the string
+            parts = [p.strip() for p in item.split(",")]
+            for part in parts:
+                if any(op in part for op in ["<", ">", "=", "!"]):
+                    try:
+                        condition_values = get_indices_by_condition(part, **kwargs)
+                        all_values += condition_values
+                    except Exception as e:
+                        raise ValueError(f"Invalid condition '{part}': {e}")
+                else:
+                    try:
+                        range_values = build_indices([part], nonzeros=nonzeros)
+                        all_values += range_values
+                    except Exception as e:
+                        raise ValueError(f"Invalid range expression '{part}': {e}")
+        else:
+            # Delegate everything else to build_indices
+            try:
+                range_values = build_indices([item], nonzeros=nonzeros)
+                all_values += range_values
+            except Exception as e:
+                raise ValueError(f"Invalid input item '{item}': {e}")
+
+    final_result = sorted(set(all_values))
+    if nonzeros:
+        final_result = [v for v in final_result if v != 0]
+
+    return final_result
+
+
+####################################################################################################
+def build_values_with_conditions(
+    inputs: List[Union[int, tuple, list, str, np.ndarray]],
+    nonzeros: bool = True,
+    **kwargs,
+) -> List[int]:
+    """
+    Combine numeric, range, and condition-based inputs into a unified list of values.
+
+    Parameters
+    ----------
+    inputs : list
+        Mixed list containing integers, lists, arrays, or strings with comma-separated numeric ranges or conditions.
+
+    nonzeros : bool
+        If True, removes zeros from the output.
+
+    **kwargs : dict
+        Variables used for evaluating conditions (must include exactly one array-like for conditions).
+
+    Returns
+    -------
+    List[int]
+        Sorted, unique list of resulting values.
+    """
+    all_values = []
+
+    for item in inputs:
+        if isinstance(item, str):
+            # Split comma-separated sections in the string
+            parts = [p.strip() for p in item.split(",")]
+            for part in parts:
+                if any(op in part for op in ["<", ">", "=", "!"]):
+                    try:
+                        condition_values = get_values_by_condition(part, **kwargs)
+                        all_values += condition_values
+                    except Exception as e:
+                        raise ValueError(f"Invalid condition '{part}': {e}")
+                else:
+                    try:
+                        range_values = build_indices([part], nonzeros=nonzeros)
+                        all_values += range_values
+                    except Exception as e:
+                        raise ValueError(f"Invalid range expression '{part}': {e}")
+        else:
+            # Delegate everything else to build_indices
+            try:
+                range_values = build_indices([item], nonzeros=nonzeros)
+                all_values += range_values
+            except Exception as e:
+                raise ValueError(f"Invalid input item '{item}': {e}")
+
+    final_result = sorted(set(all_values))
+    if nonzeros:
+        final_result = [v for v in final_result if v != 0]
+
+    return final_result
 
 
 ####################################################################################################
