@@ -10,11 +10,12 @@ import pandas as pd
 import nibabel as nib
 import numpy as np
 
-import clabtoolkit.misctools as cltmisc
-import clabtoolkit.freesurfertools as cltfree
-import clabtoolkit.surfacetools as cltsurf
-import clabtoolkit.parcellationtools as cltparc
-import clabtoolkit.bidstools as cltbids
+# Importing local modules
+from . import misctools as cltmisc
+from . import surfacetools as cltsurf
+from . import parcellationtools as cltparc
+from . import bidstools as cltbids
+from . import freesurfertools as cltfree
 
 ####################################################################################################
 ####################################################################################################
