@@ -447,6 +447,14 @@ def get_b0s(
     return b0s_img, b0_vols
 
 ####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                 Methods to work with streamlines                           ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def tck2trk(
     in_tract: str, ref_img: str, out_tract: str = None, force: bool = False
 ) -> str:
@@ -468,6 +476,23 @@ def tck2trk(
     -------
     str
         Path to the output TRK file.
+        
+    Raises
+    ------
+    ValueError
+        If the input file format is not TCK.
+    FileExistsError
+        If the output file exists and force is False.
+    FileNotFoundError
+        If the reference image does not exist.
+        
+    How to use:
+    -----------
+    >>> tck2trk('input.tck', 'reference.nii.gz')  # Saves as 'input.trk'
+    >>> tck2trk('input.tck', 'reference.nii.gz', 'output.trk')  # Saves as 'output.trk'
+    >>> tck2trk('input.tck', 'reference.nii.gz', force=True)  # Overwrites 'input.trk' if it exists
+    >>> tck2trk('input.tck', 'reference.nii.gz', out_tract='output.trk', force=True)  # Overwrites 'output.trk' if it exists
+    
     """
     # Validate input file format
     if nib.streamlines.detect_format(in_tract) is not nib.streamlines.TckFile:
@@ -517,10 +542,13 @@ def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
     out_tract : str
         Output TCK file.
 
-    Examples
-    --------
-    >>> trk2tck('input.trk', 'output.tck')  # Saves as 'output.tck'
+    How to use:
+    ---------
     >>> trk2tck('input.trk')  # Saves as 'input.tck'
+    >>> trk2tck('input.trk', 'output.tck')  # Saves as 'output.tck'
+    >>> trk2tck('input.trk', force=True)  # Overwrites 'input.tck' if it exists
+    >>> trk2tck('input.trk', 'output.tck', force=True)  # Overwrites 'output.tck' if it exists
+        
     """
 
     # Ensure the input is a TRK file
@@ -556,6 +584,7 @@ def concatenate_tractograms(
     ----------
     trks : list of str
         List of file paths to the tractograms to concatenate. It can be trk files or tck files.
+        
     concat_trk : str
         File path for the output concatenated tractogram.
 
@@ -565,6 +594,23 @@ def concatenate_tractograms(
         The concatenated tractogram will be returned as a nibabel streamlines object if this variable is None.
         If concat_trk is provided, the concatenated tractogram will be saved to this file path.
         If the output directory does not exist, the concatenated tractogram will be returned as a nibabel streamlines object.
+    
+    Raises
+    ------
+    ValueError
+        If trks is not a list or if it contains less than two tractograms.
+    FileNotFoundError
+        If any of the tractogram files do not exist.
+    Warning
+        If the output directory does not exist.
+        
+    How to use:
+    ----------
+    >>> trk_files = ['tractogram1.trk', 'tractogram2.tck']
+    >>> concatenated_tractogram = concatenate_tractograms(trk_files) # Concatenates and returns the tractogram
+    >>> concatenated_tractogram = concatenate_tractograms(trk_files, 'output.trk') # Concatenates and saves to 'output.trk'
+    >>> concatenated_tractogram = concatenate_tractograms(trk_files, 'output.trk', show_progress=True) # Concatenates and saves to 'output.trk' with progress bar
+    >>> concatenated_tractogram = concatenate_tractograms(trk_files, show_progress=True) # Concatenates and returns the tractogram with progress bar
 
     """
 
