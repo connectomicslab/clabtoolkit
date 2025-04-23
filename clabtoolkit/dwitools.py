@@ -13,7 +13,8 @@ from rich.progress import BarColumn, TextColumn, SpinnerColumn
 import inspect
 import sys
 
-import misctools as cltmisc
+# Importing the clabtoolkit modules
+from . import misctools as cltmisc
 
 ####################################################################################################
 ####################################################################################################
