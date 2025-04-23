@@ -1,8 +1,7 @@
 import os
 import numpy as np
 import nibabel as nib
-import clabtoolkit.freesurfertools as cltfree
-import clabtoolkit.visualizationtools as cltvis
+
 from typing import Union, List
 import pyvista as pv
 
