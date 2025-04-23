@@ -876,7 +876,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############           Methods dedicated to create and work with indexes,               ############
+############           Methods dedicated to create and work with indices,               ############
 ############           to search for elements in a list, etc                            ############
 ############                                                                            ############
 ############                                                                            ############
@@ -1139,36 +1139,90 @@ def build_indices_with_conditions(
     nonzeros: bool = True,
     **kwargs,
 ) -> List[int]:
+    
     """
-    Combine numeric, range, and condition-based inputs into a unified list of values.
-
+    Combine numeric, range, and condition-based inputs into a unified list of indices.
     Parameters
     ----------
     inputs : list
         Mixed list containing integers, lists, arrays, or strings with comma-separated numeric ranges or conditions.
-
+        
     nonzeros : bool
         If True, removes zeros from the output.
-
+        
     **kwargs : dict
         Variables used for evaluating conditions (must include exactly one array-like for conditions).
-
+        
     Returns
     -------
     List[int]
-        Sorted, unique list of resulting values.
+        Sorted, unique list of resulting indices.
+        
+    Raises
+    ------
+    ValueError
+        If any item cannot be interpreted correctly.
+        If the condition references variables not in kwargs (excluding literals).   
+        If no array variable is found.  
+        If more than one array-like variable is provided.
+        If the condition does not yield a boolean array.
+        If the condition is invalid.
+        
+        Usage:
+        -------
+        # Test 2: Pure range strings
+        >>> input2 = ["1:4", "5-7", "8:2:10"]
+        >>> print(f"Input: {input2}")
+        >>> result = cltmisc.build_indices_with_conditions(input2, nonzeros=False)
+        >>> print(f"Result: {result}")
+        >>> print("Expected: [1,2,3,4,5,6,7,8,10]")
+
+        # Test 3: Mixed numeric and range strings
+        >>> input3 = [0, 9, "2:4", "6-8"]
+        >>> print(f"Input: {input3}")
+        >>> result = cltmisc.build_indices_with_conditions(input3, nonzeros=False)
+        >>> print(f"Result: {result}")
+        >>> print("Expected: [0,2,3,4,6,7,8,9]")
+
+        # Test 4: Value-based conditions (returns INDICES where condition is true)
+        >>> input4 = ["5<=data<=20"]
+        >>> print(f"Input: {input4}")
+        >>> result = cltmisc.build_indices_with_conditions(input4, data=data)
+        >>> print(f"Result: {result}")
+        >>> print("Expected: [1,2,3,4] (indices where data is between 5 and 20)")
+
+        # Test 5: Mixed indices and conditions
+        >>> input5 = [0, "2:4", "data == 0", 9]
+        >>> print(f"Input: {input5}")
+        >>> result = cltmisc.build_indices_with_conditions(input5, data=data)
+        >>> print(f"Result: {result}")
+        >>> print("Expected: [2,3,4,9] (indices including where data==0)")
+        
+        # Test 6: Non-zero filtering
+        >>> input6 = [0, "0:3", "data != 0", 9]
+        >>> print(f"Input: {input6}")
+        >>> result = cltmisc.build_indices_with_conditions(input6, data=data, nonzeros=True)
+        >>> print(f"Result: {result}")
+
+        # Test 7: Complex mixed case
+        >>> input7 = [0, "data > threshold", "1:3, 5-7", np.array([8,9])]
+        >>> print(f"Input: {input7}")
+        >>> result = cltmisc.build_indices_with_conditions(input7, data=data, threshold=threshold)
+        >>> print(f"Result: {result}")
+        >>> print("Expected: [0,1,2,3,5,6,7,8,9] (all valid indices)")
+                
     """
+    
     all_values = []
 
     for item in inputs:
         if isinstance(item, str):
-            # Split comma-separated sections in the string
-            parts = [p.strip() for p in item.split(",")]
+            parts = [p.strip() for p in item.split(",") if p.strip()]
             for part in parts:
                 if any(op in part for op in ["<", ">", "=", "!"]):
                     try:
-                        condition_values = get_indices_by_condition(part, **kwargs)
-                        all_values += condition_values
+                        condition_indices = get_indices_by_condition(part, **kwargs)
+                        all_values += condition_indices.tolist()
                     except Exception as e:
                         raise ValueError(f"Invalid condition '{part}': {e}")
                 else:
@@ -1178,7 +1232,6 @@ def build_indices_with_conditions(
                     except Exception as e:
                         raise ValueError(f"Invalid range expression '{part}': {e}")
         else:
-            # Delegate everything else to build_indices
             try:
                 range_values = build_indices([item], nonzeros=nonzeros)
                 all_values += range_values
