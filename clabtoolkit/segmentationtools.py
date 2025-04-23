@@ -14,6 +14,11 @@ import clabtoolkit.parcellationtools as cltparc
 from scipy.ndimage import convolve
 from scipy.spatial import distance
 
+# Importing local modules
+from . import misctools as cltmisc
+from . import bidstools as cltbids
+from . import imagetools as cltimg
+from . import parcellationtools as cltparc
 
 # pylint: disable=too-many-arguments
 def abased_parcellation(
