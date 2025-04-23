@@ -1711,8 +1711,7 @@ class FreeSurferSubject:
             df = vol_parc.volumetable
 
             # Add identifying columns
-            df.insert(0, "MetricFile", parc_file)
-            df.insert(1, "Atlas", volparc)
+            df.insert(4, "Atlas", volparc)
 
             # Concatenate results
             df_vol = pd.concat([df_vol, df], axis=0)
@@ -1803,8 +1802,7 @@ class FreeSurferSubject:
                 df_region, _ = morpho.compute_reg_val_fromannot(
                     metric_file, parc_file, hemi, metric_name, include_global=False
                 )
-                df_region.insert(0, "MetricFile", metric_file)
-                df_region.insert(1, "Atlas", parc_base_name)
+                df_region.insert(4, "Atlas", parc_base_name)
 
                 # Concatenate results
                 df_metric = pd.concat([df_metric, df_lobes, df_region], axis=0)
@@ -1823,21 +1821,18 @@ class FreeSurferSubject:
                     surf_type=source_label,
                 )
 
-                df_area_region.insert(0, "MetricFile", surface)
-                df_area_region.insert(1, "Atlas", parc_base_name)
+                df_area_region.insert(4, "Atlas", parc_base_name)
 
                 df_area_lobes = morpho.compute_reg_area_fromsurf(
                     surface, lobar_obj, hemi, surf_type=source_label
                 )
-                df_area_lobes.insert(0, "MetricFile", surface)
-                df_area_lobes.insert(1, "Atlas", f"lobes_{lobes_grouping}")
+                df_area_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
 
                 # Compute Euler characteristic
                 df_euler = morpho.compute_euler_fromsurf(
                     surface, hemi, surf_type=source_label
                 )
-                df_euler.insert(0, "MetricFile", surface)
-                df_euler.insert(1, "Atlas", "")
+                df_euler.insert(4, "Atlas", "")
 
                 # Concatenate all the results
                 df_parc = pd.concat(
