@@ -1220,6 +1220,12 @@ class Parcellation:
             self.minlab = 0
             self.maxlab = 0
 
+    def compute_volume_table(self):
+        from morphometrytools import compute_reg_volume_fromparcellation
+
+        volume_table = compute_reg_volume_fromparcellation(self)
+        self.volumetable = volume_table
+
     @staticmethod
     def write_fslcolortable(lut_file_fs: str, lut_file_fsl: str):
         """
