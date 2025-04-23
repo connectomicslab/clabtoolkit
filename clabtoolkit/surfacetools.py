@@ -6,6 +6,9 @@ import clabtoolkit.visualizationtools as cltvis
 from typing import Union, List
 import pyvista as pv
 
+# Importing local modules
+from . import freesurfertools as cltfree
+from . import visualizationtools as cltvis
 
 class Surface:
 
