@@ -291,6 +291,130 @@ def delete_volumes(
     return out_image, out_bvecs_file, out_bvals_file, vols2rem
 
 ####################################################################################################
+def get_b0s(
+    dwi_img: str, 
+    b0s_img: str, 
+    bval_file: str = None, 
+    bval_thresh: int = 0
+) -> str:
+    """
+    Extract B0 volumes from a DWI image and save them as a separate NIfTI file.
+    
+    Parameters
+    ----------
+    dwi_img : str
+        Path to the input DWI image file.
+        
+    b0s_img : str
+        Path to the output B0 image file.
+        
+    bval_file : str, optional
+        Path to the bval file. If None, it will assume the bval file is in the same directory as the DWI file with the same name but with the .bval extension.
+        The bval file is used to identify the B0 volumes in the DWI image.
+        
+    bval_thresh : int, optional
+        Threshold for identifying B0 volumes. Default is 0. Volumes with b-values below this threshold will be considered B0 volumes.
+        
+    Returns
+    -------
+    b0s_img : str
+        Path to the output B0 image file.
+        
+    b0_vols : List[int]
+        List of indices of the B0 volumes extracted from the DWI image.
+        
+    Raises
+    ------
+    FileNotFoundError
+        If the input DWI image file or the bval file does not exist.
+    ValueError
+        If the output path for the B0 image file does not exist.
+    
+    Usage Example:
+    -------------
+    >>> dwi_img = 'path/to/dwi_image.nii.gz'
+    >>> b0s_img = 'path/to/b0_image.nii.gz'
+    >>> bval_file = 'path/to/bvals.bval'
+    >>> b0s_img, b0_vols = get_b0s(dwi_img, b0s_img, bval_file)
+    >>> print(f"B0 image saved at: {b0s_img}")
+    >>> print(f"B0 volumes indices: {b0_vols}")
+    
+    >>> b0s_img, b0_vols = get_b0s(dwi_img, b0s_img, bval_file, bval_thresh=10)
+    >>> print(f"B0 image saved at: {b0s_img}")
+    >>> print(f"B0 volumes indices: {b0_vols}")
+    >>> All the volumes with b-values below 10 will be considered B0 volumes.
+    
+    >>> b0s_img, b0_vols = get_b0s(dwi_img, b0s_img)
+    >>> print(f"B0 image saved at: {b0s_img}")
+    >>> print(f"B0 volumes indices: {b0_vols}")
+    >>> The bval file will be assumed to be in the same directory as the DWI file with the same name but with the .bval extension.
+    
+    """
+    
+    # Creating the name for the json file
+    if os.path.isfile(dwi_img):
+        pth = os.path.dirname(dwi_img)
+        fname = os.path.basename(dwi_img)
+    else:
+        raise FileNotFoundError(f"File {dwi_img} not found.")
+
+    if fname.endswith(".nii.gz"):
+        flname = fname[0:-7]
+    elif fname.endswith(".nii"):
+        flname = fname[0:-4]
+
+    # Checking if the file exists. If it is None assume it is in the same directory with the same name as the DWI file but with the .bval extensions.
+    if bval_file is None:
+        bval_file = os.path.join(pth, flname + ".bval")
+
+    # Checking the ouput basename
+    if b0s_img is not None:
+        fl_out_name = os.path.basename(b0s_img)
+        
+        if fl_out_name.endswith(".nii.gz"):
+            fl_out_name = fl_out_name[0:-7]
+        elif fl_out_name.endswith(".nii"):
+            fl_out_name = fl_out_name[0:-4]
+        
+        fl_out_path = os.path.dirname(b0s_img)
+
+        if not os.path.isdir(fl_out_path):
+            raise FileNotFoundError(f"Output path {fl_out_path} does not exist.")
+    else:
+        fl_out_name = fname
+        fl_out_path = pth
+    
+    # Loading bvalues
+    if os.path.exists(bval_file):
+        bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
+        
+        # Generate search cad 
+        cad = ["bvals > " + str(bval_thresh)]
+        
+        # Get the indices of the volumes that will be removed
+        vols2rem = cltmisc.build_indices_with_conditions(cad, bvals=bvals, nonzeros=False)
+        
+        b0_vols = np.setdiff1d(np.arange(bvals.shape[0]), vols2rem)
+        
+        if len(vols2rem) == 0:
+            print(f'No B0s to remove. The volumes to delete are empty.')
+            return dwi_img
+        else:
+            
+            mapI = nib.load(dwi_img)
+            diffData = mapI.get_fdata()
+            affine = mapI.affine
+
+            # Removing the volumes
+            array_data = np.delete(diffData, vols2rem, 3)
+
+            # Temporal image and diffusion scheme
+            array_img = nib.Nifti1Image(array_data, affine)
+            nib.save(array_img, b0s_img)
+    
+    return b0s_img, b0_vols
+
+####################################################################################################
 def tck2trk(
     in_tract: str, ref_img: str, out_tract: str = None, force: bool = False
 ) -> str:
