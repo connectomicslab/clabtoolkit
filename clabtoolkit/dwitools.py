@@ -193,7 +193,7 @@ def delete_volumes(
             vols_to_delete = list(set(vols_to_delete))
             
         else:
-            vols_to_delete = tmp_vols_to_delete
+            vols_to_delete = tmp_bvals_to_delete
         
     if vols_to_delete is not None:
         # check if vols_to_delete is not empty
