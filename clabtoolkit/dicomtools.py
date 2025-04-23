@@ -15,7 +15,7 @@ from rich.progress import Progress
 from threading import Lock
 import time
 
-# Importing the clabtoolkit modules
+# Importing local modules
 from . import misctools as cltmisc
 
 
