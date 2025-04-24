@@ -31,65 +31,78 @@ from . import freesurfertools as cltfree
 def compute_reg_val_fromannot(
     metric_file: Union[str, np.ndarray],
     parc_file: Union[str, cltfree.AnnotParcellation],
-    hemi: str,  # Hemisphere id. It could be lh or rh
+    hemi: str,
     metric: str = "unknown",
-    stats_list: Union[str, list] = ["mean", "median", "std", "min", "max"],
+    stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
     format: str = "metric",
     include_unknown: bool = False,
-    add_bids_entities: bool = False,
+    include_global: bool = True,
+    add_bids_entities: bool = True,
 ) -> pd.DataFrame:
     """
-    This method computes the regional values from a surface metric file and an annotation file.
-
+    Compute regional statistics from a surface metric file and an annotation file.
+    
+    This function extracts regional values by combining vertex-wise surface metrics with 
+    anatomical parcellation data. It supports various statistical measures and output formats.
+    
     Parameters
     ----------
-    metric_file : str
-        Path to the surface map file. It represents the values of the metric on the vertices of the surface.
-
-    parc_file : str
-        Path to the annotation file. It represents the regions of the surface.
-
+    metric_file : str or np.ndarray
+        Path to the surface map file or array containing metric values for each vertex.
+    parc_file : str or cltfree.AnnotParcellation
+        Path to the annotation file or AnnotParcellation object defining regions.
     hemi : str
-        Hemisphere id. It could be lh or rh.
-
-    metric : str
-        Name of the metric. It is used to create the column names of the output DataFrame.
-
-    stats_list : Union[str, list], optional
-        List of statistics to compute. The default is ["mean", "median", "std", "min", "max"].
-
-
-    format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "metric".
-        With the "region" format, the output is a DataFrame with the regional values where each column
-        represent the value of column metric for each specific region. With the "metric" format, the output
-        is a DataFrame with the regional values where each column represent the value of a specific metric
-        for each region.
-
-    include_unknown : bool, optional
-        If True, the unknown regions are included in the output. The default is False.
-        This includes on the table the regions with the following names: medialwall, unknown, corpuscallosum.
-
-    add_bids_entities: bool, optional
-        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
-
+        Hemisphere identifier ('lh' or 'rh').
+    metric : str, default="unknown"
+        Name of the metric being analyzed. Used for naming columns in the output DataFrame.
+    stats_list : str or list, default=["value", "median", "std", "min", "max"]
+        Statistics to compute for each region. Note: "value" is equivalent to the mean.
+    format : str, default="metric"
+        Output format specification:
+        - "metric": Each column represents a specific statistic for each region
+        - "region": Each column represents a region, with rows for different statistics
+    include_unknown : bool, default=False
+        Whether to include non-anatomical regions (medialwall, unknown, corpuscallosum).
+    include_global : bool, default=True
+        Whether to include hemisphere-wide statistics in the output.
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+    
     Returns
     -------
     df : pd.DataFrame
-        DataFrame with the regional values.
+        DataFrame containing the computed regional statistics.
     metric_vect : np.ndarray
-
-
+        Array of metric values.
+        
     Examples
     --------
-    >>> import clabtoolkit.morphometrytools as clmorphtools
+    Basic usage with default parameters:
+    
     >>> import os
-    >>> import pandas as pd
-    >>> metric_file = os.path.join('..', 'data', 'lh.thickness')
-    >>> parc_file = os.path.join('..', 'data', 'lh.aparc.annot')
-    >>> df = clmorphtools.compute_reg_val_fromannot(metric_file, parc_file, 'lh')
-    >>> print(df.head())
-
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> hemi = 'lh'
+    >>> metric_name = 'thickness'
+    >>> fs_dir = os.environ.get('FREESURFER_HOME')
+    >>> metric_file = os.path.join(fs_dir, 'subjects', 'bert', 'surf', f'{hemi}.{metric_name}')
+    >>> parc_file = os.path.join(fs_dir, 'subjects', 'bert', 'label', f'{hemi}.aparc.annot')
+    >>> df_region, _ = morpho.compute_reg_val_fromannot(
+    ...     metric_file, parc_file, hemi, metric_name, include_global=False
+    ... )
+    
+    Using region format for output:
+    
+    >>> df_metric, _ = morpho.compute_reg_val_fromannot(
+    ...     metric_file, parc_file, hemi, metric_name, 
+    ...     include_global=False, format="region", add_bids_entities=True
+    ... )
+    
+    Including hemisphere-wide statistics:
+    
+    >>> df_global, _ = morpho.compute_reg_val_fromannot(
+    ...     metric_file, parc_file, hemi, metric_name, include_global=True
+    ... )
+    >>> print(df_global)
     """
 
     # Detecting if the stats_list is a string
