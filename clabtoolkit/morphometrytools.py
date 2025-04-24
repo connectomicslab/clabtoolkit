@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import Union, Dict, List
+from typing import Union, Tuple, Optional, Dict, List
 import copy
 from pyvista import _vtk, PolyData
 from numpy import split, ndarray
@@ -21,24 +21,23 @@ from . import freesurfertools as cltfree
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############           Methods dedicated to compute metrics from surfaces               ############
+############      Section 1: Methods dedicated to compute metrics from surfaces         ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def compute_reg_val_fromannot(
     metric_file: Union[str, np.ndarray],
     parc_file: Union[str, cltfree.AnnotParcellation],
     hemi: str,
+    output_table: str = None,
     metric: str = "unknown",
     stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
-    format: str = "metric",
+    table_type: str = "metric",
     include_unknown: bool = False,
     include_global: bool = True,
     add_bids_entities: bool = True,
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
     """
     Compute regional statistics from a surface metric file and an annotation file.
     
@@ -53,11 +52,13 @@ def compute_reg_val_fromannot(
         Path to the annotation file or AnnotParcellation object defining regions.
     hemi : str
         Hemisphere identifier ('lh' or 'rh').
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
     metric : str, default="unknown"
         Name of the metric being analyzed. Used for naming columns in the output DataFrame.
     stats_list : str or list, default=["value", "median", "std", "min", "max"]
         Statistics to compute for each region. Note: "value" is equivalent to the mean.
-    format : str, default="metric"
+    table_type : str, default="metric"
         Output format specification:
         - "metric": Each column represents a specific statistic for each region
         - "region": Each column represents a region, with rows for different statistics
@@ -74,6 +75,8 @@ def compute_reg_val_fromannot(
         DataFrame containing the computed regional statistics.
     metric_vect : np.ndarray
         Array of metric values.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
         
     Examples
     --------
@@ -86,45 +89,40 @@ def compute_reg_val_fromannot(
     >>> fs_dir = os.environ.get('FREESURFER_HOME')
     >>> metric_file = os.path.join(fs_dir, 'subjects', 'bert', 'surf', f'{hemi}.{metric_name}')
     >>> parc_file = os.path.join(fs_dir, 'subjects', 'bert', 'label', f'{hemi}.aparc.annot')
-    >>> df_region, _ = morpho.compute_reg_val_fromannot(
-    ...     metric_file, parc_file, hemi, metric_name, include_global=False
+    >>> df_region, metric_values, _ = morpho.compute_reg_val_fromannot(
+    ...     metric_file, parc_file, hemi, metric=metric_name, include_global=False
     ... )
     
     Using region format for output:
     
-    >>> df_metric, _ = morpho.compute_reg_val_fromannot(
-    ...     metric_file, parc_file, hemi, metric_name, 
-    ...     include_global=False, format="region", add_bids_entities=True
+    >>> df_metric, _, _ = morpho.compute_reg_val_fromannot(
+    ...     metric_file, parc_file, hemi, metric=metric_name, 
+    ...     include_global=False, table_type="region", add_bids_entities=True
     ... )
     
-    Including hemisphere-wide statistics:
+    Including hemisphere-wide statistics and saving to file:
     
-    >>> df_global, _ = morpho.compute_reg_val_fromannot(
-    ...     metric_file, parc_file, hemi, metric_name, include_global=True
+    >>> output_path = '/path/to/output/regional_stats.csv'
+    >>> df_global, _, saved_path = morpho.compute_reg_val_fromannot(
+    ...     metric_file, parc_file, hemi, output_table=output_path,
+    ...     metric=metric_name, include_global=True
     ... )
-    >>> print(df_global)
+    >>> print(df_global.head())
     """
-
-    # Detecting if the stats_list is a string
+    # Input validation
     if isinstance(stats_list, str):
         stats_list = [stats_list]
-
-    # Detect if the format is not region or metric
-    if format not in ["region", "metric"]:
-        raise ValueError("The format should be region or metric.")
-
-    # Detecting if the needed parcellation file as a string or an object
+    
+    stats_list = [stat.lower() for stat in stats_list]
+    
+    if table_type not in ["region", "metric"]:
+        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
+    
+    # Process parcellation file
     if isinstance(parc_file, str):
-        # Checking if the file exists if the file is a string. If exists, read the file and create the object
-        # Otherwise, raise an error
         if not os.path.exists(parc_file):
-            raise FileNotFoundError("The annotation file does not exist.")
-        else:
-            # Reading the annot file
-            sparc_data = cltfree.AnnotParcellation(
-                parc_file=parc_file,
-            )
-
+            raise FileNotFoundError(f"Annotation file not found: {parc_file}")
+        
     elif isinstance(parc_file, cltfree.AnnotParcellation):
         # If the file is an object, copy the object
         sparc_data = copy.deepcopy(parc_file)
@@ -158,107 +156,103 @@ def compute_reg_val_fromannot(
             sparc_data.codes[unk_vert] = 0
             sparc_data.regnames = np.delete(sparc_data.regnames, unk_indexes).tolist()
             sparc_data.regtable = np.delete(sparc_data.regtable, unk_indexes, axis=0)
-
+    
     # Setting the vertex values to 0 if the values are not in the table
     # Set to 0 the values of sparc_data.codes that are not in the regtable
     unique_codes = np.unique(sparc_data.codes)
 
     # Get the indexes of the unique codes that are not in the regtable
     not_in_table = np.setdiff1d(unique_codes, sparc_data.regtable[:, 4])
-
-    # Set to 0 the values of the codes that are not in the regtable
     sparc_data.codes[np.isin(sparc_data.codes, not_in_table)] = 0
 
     sts = np.unique(sparc_data.codes)
-    # Remove the 0
     sts = sts[sts != 0]
     nreg = len(sts)
-
+    
+    # Prepare data structures for results
     dict_of_cols = {}
-
-    # Values for each region in the annot
-    df = pd.DataFrame()
-
-    # Compute the whole hemisphere
-    temp = stats_from_vector(
-        metric_vect[np.isin(sparc_data.codes, sparc_data.regtable[:, 4])], stats_list
-    )
-    dict_of_cols["ctx-" + hemi + "-hemisphere"] = temp
-
+    
+    # Compute global hemisphere statistics if requested
+    if include_global:
+        valid_vertices = np.isin(sparc_data.codes, sparc_data.regtable[:, 4])
+        global_stats = stats_from_vector(metric_vect[valid_vertices], stats_list)
+        dict_of_cols[f"ctx-{hemi}-hemisphere"] = global_stats
+    
+    # Compute statistics for each region
     for regname in sparc_data.regnames:
-
-        # Get the index of the region in the color table
         index = cltmisc.get_indexes_by_substring(
-            sparc_data.regnames, regname, matchww=True
+            sparc_data.regnames, regname, match_entire_world=True
         )
-
+        
         if len(index):
-            temp = stats_from_vector(
-                metric_vect[sparc_data.codes == sparc_data.regtable[index, 4]],
-                stats_list,
-            )
-            dict_of_cols[regname] = temp
-
+            region_mask = sparc_data.codes == sparc_data.regtable[index, 4]
+            region_stats = stats_from_vector(metric_vect[region_mask], stats_list)
+            dict_of_cols[regname] = region_stats
         else:
-            dict_of_cols[regname] = np.zeros_like(stats_list).tolist()
-
+            dict_of_cols[regname] = [0] * len(stats_list)
+    
+    # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-
+    
+    # Add column prefixes
     colnames = df.columns.tolist()
-    colnames = cltmisc.correct_names(colnames, prefix="ctx-" + hemi + "-")
+    colnames = cltmisc.correct_names(colnames, prefix=f"ctx-{hemi}-")
     df.columns = colnames
-
-    if format == "region":
-        df.index = stats_list
-
-        # Converting the row names to a new column called statistics
+    
+    # Format table according to specified type
+    if table_type == "region":
+        # Create region-oriented table
+        df.index = [stat_name.title() for stat_name in stats_list]
         df = df.reset_index()
-        df = df.rename(columns={"index": "statistics"})
-
-        # Convert the index to a column with name "metric"
-
+        df = df.rename(columns={"index": "Statistics"})
     else:
+        # Create metric-oriented table
         df = df.T
-        df.columns = stats_list
-
-        # Converting the row names to a new column called statistics
+        df.columns = [stat_name.title() for stat_name in stats_list]
         df = df.reset_index()
-        df = df.rename(columns={"index": "region"})
-
-        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
-        reg_names = df["region"].str.split("-", expand=True)
-
-        # Insert the new columns before the column "region"
-        df.insert(0, "supraregion", reg_names[0])
-        df.insert(1, "side", reg_names[1])
-
+        df = df.rename(columns={"index": "Region"})
+        
+        # Split region names into components
+        reg_names = df["Region"].str.split("-", expand=True)
+        df.insert(0, "Supraregion", reg_names[0])
+        df.insert(1, "Side", reg_names[1])
+    
+    # Add metadata columns
     nrows = df.shape[0]
-
-    # Inserting the units
-    units = get_units(metric)
-    df.insert(0, "metric", [metric] * nrows)
-    df.insert(1, "units", units * nrows)
-
-    # Insert a column at the begining of the dataframe
-
-    # Adding the entities related to BIDs
-    if add_bids_entities:
+    units = get_units(metric)[0]
+    
+    df.insert(0, "Source", ["vertices"] * nrows)
+    df.insert(1, "Metric", [metric] * nrows)
+    df.insert(2, "Units", [units] * nrows)
+    df.insert(3, "MetricFile", [filename] * nrows)
+    
+    # Add BIDS entities if requested
+    if add_bids_entities and isinstance(metric_file, str):
         ent_list = entities4morphotable()
-        df_add = df2add(in_file=metric_file, ent_list=ent_list)
-
-        # Expand a first dataframe and concatenate with the second dataframe
+        df_add = df2add(in_file=metric_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
+    
+    # Save table if requested
+    if output_table is not None:
+        output_dir = os.path.dirname(output_table)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(
+                f"Directory does not exist: {output_dir}. Please create the directory before saving."
+            )
+        
+        df.to_csv(output_table, sep="\t", index=False)
+    
+    return df, metric_vect, output_table
 
-    return df, metric_vect
-
-
+####################################################################################################
 def compute_reg_area_fromsurf(
     surf_file: Union[str, cltsurf.Surface],
     parc_file: Union[str, cltfree.AnnotParcellation],
     hemi: str,  # Hemisphere id. It could be lh or rh
     format: str = "metric",
     include_unknown: bool = False,
-    add_bids_entities: bool = False,
+    include_global: bool = True,
+    add_bids_entities: bool = True,
 ) -> pd.DataFrame:
     """
     This method computes the surface area for each region in the annotation file.
@@ -284,6 +278,9 @@ def compute_reg_area_fromsurf(
     include_unknown : bool, optional
         If True, the unknown regions are included in the output. The default is False.
         This includes on the table the regions with the following names: medialwall, unknown, corpuscallosum.
+
+    include_global : bool, optional
+        If True the value of the metric for the whole mesh will be computed.
 
     add_bids_entities: bool, optional
         Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
@@ -321,7 +318,7 @@ def compute_reg_area_fromsurf(
             sparc_data = cltfree.AnnotParcellation(
                 parc_file=parc_file,
             )
-    elif isinstance(parc_file, cltfree.AnnotParcellation):
+    elif type(parc_file).__name__ == "AnnotParcellation":
         # If the file is an object, copy the object
         sparc_data = copy.deepcopy(parc_file)
 
