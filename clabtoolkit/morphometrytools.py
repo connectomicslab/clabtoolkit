@@ -123,51 +123,48 @@ def compute_reg_val_fromannot(
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Annotation file not found: {parc_file}")
         
+        sparc_data = cltfree.AnnotParcellation(parc_file=parc_file)
     elif isinstance(parc_file, cltfree.AnnotParcellation):
-        # If the file is an object, copy the object
         sparc_data = copy.deepcopy(parc_file)
-
-    # Detecting if the needed metric file as a string or an object. If the file is a string, check if the file exists
-    # Otherwise, raise an error
+    else:
+        raise TypeError(f"parc_file must be a string or AnnotParcellation object, got {type(parc_file)}")
+    
+    # Process metric file
+    filename = ""
     if isinstance(metric_file, str):
         if not os.path.exists(metric_file):
-            raise FileNotFoundError("The metric file does not exist.")
-        else:
-            # Reading the vertex-wise metric file
-            metric_vect = nib.freesurfer.io.read_morph_data(metric_file)
-
+            raise FileNotFoundError(f"Metric file not found: {metric_file}")
+        
+        metric_vect = nib.freesurfer.io.read_morph_data(metric_file)
+        filename = metric_file
     elif isinstance(metric_file, np.ndarray):
         metric_vect = metric_file
-
-    # Converting to lower case
-    stats_list = list(map(lambda x: x.lower(), stats_list))  # Converting to lower case
-
+    else:
+        raise TypeError(f"metric_file must be a string or numpy array, got {type(metric_file)}")
+    
+    # Filter unknown regions if needed
     if not include_unknown:
         tmp_names = sparc_data.regnames
         unk_indexes = cltmisc.get_indexes_by_substring(
             tmp_names, ["medialwall", "unknown", "corpuscallosum"]
         ).astype(int)
-
+        
         if len(unk_indexes) > 0:
-            # get the values of the unknown regions
             unk_codes = sparc_data.regtable[unk_indexes, 4]
             unk_vert = np.isin(sparc_data.codes, unk_codes)
-
+            
             sparc_data.codes[unk_vert] = 0
             sparc_data.regnames = np.delete(sparc_data.regnames, unk_indexes).tolist()
             sparc_data.regtable = np.delete(sparc_data.regtable, unk_indexes, axis=0)
     
-    # Setting the vertex values to 0 if the values are not in the table
-    # Set to 0 the values of sparc_data.codes that are not in the regtable
+    # Clean up codes that don't exist in the region table
     unique_codes = np.unique(sparc_data.codes)
-
-    # Get the indexes of the unique codes that are not in the regtable
     not_in_table = np.setdiff1d(unique_codes, sparc_data.regtable[:, 4])
     sparc_data.codes[np.isin(sparc_data.codes, not_in_table)] = 0
-
+    
+    # Get unique valid region codes
     sts = np.unique(sparc_data.codes)
     sts = sts[sts != 0]
-    nreg = len(sts)
     
     # Prepare data structures for results
     dict_of_cols = {}
