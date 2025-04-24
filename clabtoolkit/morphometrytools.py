@@ -245,182 +245,198 @@ def compute_reg_val_fromannot(
 def compute_reg_area_fromsurf(
     surf_file: Union[str, cltsurf.Surface],
     parc_file: Union[str, cltfree.AnnotParcellation],
-    hemi: str,  # Hemisphere id. It could be lh or rh
-    format: str = "metric",
+    hemi: str,
+    table_type: str = "metric",
+    surf_type: str = "",
     include_unknown: bool = False,
     include_global: bool = True,
     add_bids_entities: bool = True,
-) -> pd.DataFrame:
+    output_table: str = None,
+) -> Tuple[pd.DataFrame, Optional[str]]:
     """
-    This method computes the surface area for each region in the annotation file.
-
+    Compute surface area for each region defined in an annotation file.
+    
+    This function calculates the area for anatomical regions by combining 
+    surface mesh data with parcellation information. It supports different 
+    output formats and can include global hemisphere measurements.
+    
     Parameters
     ----------
-    surf_file : str
-        Path to the surface file.
-
-    parc_file : str
-        Path to the annotation file. It represents the regions of the surface.
-
+    surf_file : str or cltsurf.Surface
+        Path to the surface file or Surface object containing mesh data.
+    parc_file : str or cltfree.AnnotParcellation
+        Path to the annotation file or AnnotParcellation object defining regions.
     hemi : str
-        Hemisphere id. It could be lh or rh.
-
-    format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "metric".
-        With the "region" format, the output is a DataFrame with the regional values where each column
-        represent the value of column metric for each specific region. With the "metric" format, the output
-        is a DataFrame with the regional values where each column represent the value of a specific metric
-        for each region.
-
-    include_unknown : bool, optional
-        If True, the unknown regions are included in the output. The default is False.
-        This includes on the table the regions with the following names: medialwall, unknown, corpuscallosum.
-
-    include_global : bool, optional
-        If True the value of the metric for the whole mesh will be computed.
-
-    add_bids_entities: bool, optional
-        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
-
+        Hemisphere identifier ('lh' or 'rh').
+    table_type : str, default="metric"
+        Output format specification:
+        - "metric": Each row represents a region with area value in a column
+        - "region": Each column represents a region with area values in rows
+    surf_type : str, default=""
+        Description of the surface type (e.g., "white", "pial"). Used for metadata.
+    include_unknown : bool, default=False
+        Whether to include non-anatomical regions (medialwall, unknown, corpuscallosum).
+    include_global : bool, default=True
+        Whether to include hemisphere-wide area calculations in the output.
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
+    
     Returns
     -------
     df : pd.DataFrame
-        DataFrame with the regional values.
-    metric_vect : np.ndarray
-
-
+        DataFrame containing the computed regional area values.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
+        
     Examples
     --------
-    >>> import clabtoolkit.morphometrytools as clmorphtools
+    Basic usage with default parameters:
+    
     >>> import os
-    >>> import pandas as pd
-    >>> surf_file = '/opt/freesurfer/subjects/fsaverage/surf/lh.white'
-    >>> annot_file = '/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot'
-    >>> df = clmorphtools.compute_reg_area_fromsurf(surf_file, annot_file, 'lh')
-    >>> print(df.head())
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> fs_dir = os.environ.get('FREESURFER_HOME')
+    >>> surf_file = os.path.join(fs_dir, 'subjects', 'fsaverage', 'surf', 'lh.white')
+    >>> parc_file = os.path.join(fs_dir, 'subjects', 'fsaverage', 'label', 'lh.aparc.annot')
+    >>> df_area, _ = morpho.compute_reg_area_fromsurf(surf_file, parc_file, 'lh', surf_type="white")
+    >>> print(df_area.head())
+    
+    Using region format for output:
+    
+    >>> df_region, _ = morpho.compute_reg_area_fromsurf(
+    ...     surf_file, parc_file, 'lh', 
+    ...     table_type="region", surf_type="white", include_global=False
+    ... )
+    >>> print(df_region.head())
+    
+    Using Surface and AnnotParcellation objects:
+    
+    >>> import clabtoolkit.surfacetools as cltsurf
+    >>> import clabtoolkit.freesurfertools as cltfree
+    >>> surf = cltsurf.Surface(surface_file=surf_file)
+    >>> annot = cltfree.AnnotParcellation(parc_file=parc_file)
+    >>> df_obj, _ = morpho.compute_reg_area_fromsurf(surf, annot, 'lh', surf_type="white")
+    >>> print(df_obj.head())
+    
+    Saving results to a file:
+    
+    >>> output_path = '/path/to/area_stats.tsv'
+    >>> df_out, saved_path = morpho.compute_reg_area_fromsurf(
+    ...     surf_file, parc_file, 'lh', output_table=output_path, surf_type="white"
+    ... )
+    >>> print(f"Table saved to: {saved_path}")
     """
-
-    # Detect if the format is not region or metric
-    if format not in ["region", "metric"]:
-        raise ValueError("The format should be region or metric.")
-
-    # Detecting if the needed parcellation file as a string or an object
+    # Input validation
+    if table_type not in ["region", "metric"]:
+        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
+    
+    # Process parcellation file
     if isinstance(parc_file, str):
-        # Checking if the file exists if the file is a string. If exists, read the file and create the object
-        # Otherwise, raise an error
         if not os.path.exists(parc_file):
-            raise FileNotFoundError("The annotation file does not exist.")
-        else:
-            # Reading the annot file
-            sparc_data = cltfree.AnnotParcellation(
-                parc_file=parc_file,
-            )
-    elif type(parc_file).__name__ == "AnnotParcellation":
-        # If the file is an object, copy the object
+            raise FileNotFoundError(f"Annotation file not found: {parc_file}")
+        
+        sparc_data = cltfree.AnnotParcellation(parc_file=parc_file)
+    elif isinstance(parc_file, cltfree.AnnotParcellation):
         sparc_data = copy.deepcopy(parc_file)
-
+    else:
+        raise TypeError(f"parc_file must be a string or AnnotParcellation object, got {type(parc_file)}")
+    
+    # Process surface file
+    filename = ""
     if isinstance(surf_file, str):
-        # Checking if the file exists if the file is a string. If exists, read the file and create the object
-        # Otherwise, raise an error
         if not os.path.exists(surf_file):
-            raise FileNotFoundError("The surface file does not exist.")
-        else:
-            # Reading the surface file
-            surf = cltsurf.Surface(surface_file=surf_file)
-
+            raise FileNotFoundError(f"Surface file not found: {surf_file}")
+        
+        surf = cltsurf.Surface(surface_file=surf_file)
+        filename = surf_file
     elif isinstance(surf_file, cltsurf.Surface):
-        # If the file is an object, copy the object
         surf = copy.deepcopy(surf_file)
-
+    else:
+        raise TypeError(f"surf_file must be a string or Surface object, got {type(surf_file)}")
+    
+    # Extract mesh data
     coords = surf.mesh.points
     cells = surf.mesh.GetPolys()
     c = _vtk.vtk_to_numpy(cells.GetConnectivityArray())
     o = _vtk.vtk_to_numpy(cells.GetOffsetsArray())
     faces = split(c, o[1:-1])
     faces = np.squeeze(faces)
+    
+    # Filter unknown regions if needed
     if not include_unknown:
         tmp_names = sparc_data.regnames
         unk_indexes = cltmisc.get_indexes_by_substring(
             tmp_names, ["medialwall", "unknown", "corpuscallosum"]
         ).astype(int)
-
+        
         if len(unk_indexes) > 0:
-            # get the values of the unknown regions
             unk_codes = sparc_data.regtable[unk_indexes, 4]
             unk_vert = np.isin(sparc_data.codes, unk_codes)
-
+            
             sparc_data.codes[unk_vert] = 0
             sparc_data.regnames = np.delete(sparc_data.regnames, unk_indexes).tolist()
             sparc_data.regtable = np.delete(sparc_data.regtable, unk_indexes, axis=0)
-
-    # Setting the vertex values to 0 if the values are not in the table
-    # Set to 0 the values of sparc_data.codes that are not in the regtable
+    
+    # Clean up codes that don't exist in the region table
     unique_codes = np.unique(sparc_data.codes)
-
-    # Get the indexes of the unique codes that are not in the regtable
     not_in_table = np.setdiff1d(unique_codes, sparc_data.regtable[:, 4])
-
-    # Set to 0 the values of the codes that are not in the regtable
     sparc_data.codes[np.isin(sparc_data.codes, not_in_table)] = 0
-
+    
+    # Calculate area for each region
     dict_of_cols = {}
-
-    # # Compute the whole hemisphere
-    # temp = area_from_mesh(metric_vect[np.isin(sparc_data.codes, sparc_data.regtable[:, 4])], stats_list)
-    # dict_of_cols['ctx-' + hemi + '-hemisphere'] = temp
-
+    
     for regname in sparc_data.regnames:
-
         # Get the index of the region in the color table
         index = cltmisc.get_indexes_by_substring(
-            sparc_data.regnames, regname, matchww=True
+            sparc_data.regnames, regname, match_entire_world=True
         )
-        ind = np.where(sparc_data.codes == sparc_data.regtable[index, 4])
-
-        temp = np.isin(faces, ind).astype(int)
-        nps = np.sum(temp, axis=1)
-        reg_faces_3v = np.squeeze(
-            faces[np.where(nps == 3), :]
-        )  # All the vertices belong to the region
-        reg_faces_2v = np.squeeze(
-            faces[np.where(nps == 2), :]
-        )  # Two vertices belong to the region
-        reg_faces_1v = np.squeeze(
-            faces[np.where(nps == 1), :]
-        )  # One vertex belong to the region
-
+        
         if len(index):
-            # metric_vect[sparc_data.codes == sparc_data.regtable[index, 4]]
+            # Find vertices belonging to this region
+            ind = np.where(sparc_data.codes == sparc_data.regtable[index, 4])
+            
+            # Identify faces with different numbers of vertices in this region
+            temp = np.isin(faces, ind).astype(int)
+            nps = np.sum(temp, axis=1)
+            
+            # Group faces by how many vertices belong to the region
+            reg_faces_3v = np.squeeze(faces[np.where(nps == 3), :])  # All vertices in region
+            reg_faces_2v = np.squeeze(faces[np.where(nps == 2), :])  # Two vertices in region
+            reg_faces_1v = np.squeeze(faces[np.where(nps == 1), :])  # One vertex in region
+            
+            # Calculate area for each group
             temp_3v, _ = area_from_mesh(coords, reg_faces_3v)
             temp_2v, _ = area_from_mesh(coords, reg_faces_2v)
             temp_1v, _ = area_from_mesh(coords, reg_faces_1v)
-
+            
+            # Sum areas
             dict_of_cols[regname] = [temp_3v + temp_2v + temp_1v]
-
         else:
             dict_of_cols[regname] = [0]
-
+    
+    # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-
-    # Insert the column at the begining of the dataframe
-    df.insert(0, "ctx-" + hemi + "-hemisphere", df.sum(axis=1))
-
+    
+    # Add global area if requested
+    if include_global:
+        df.insert(0, f"ctx-{hemi}-hemisphere", df.sum(axis=1))
+    
+    # Add column prefixes
     colnames = df.columns.tolist()
-    colnames = cltmisc.correct_names(colnames, prefix="ctx-" + hemi + "-")
+    colnames = cltmisc.correct_names(colnames, prefix=f"ctx-{hemi}-")
     df.columns = colnames
-
-    if format == "region":
-        df.index = ["summary"]
+    
+    # Format table according to specified type
+    if table_type == "region":
+        # Create region-oriented table
+        df.index = ["Value"]
         df = df.reset_index()
-        df = df.rename(columns={"index": "statistics"})
-
-        # Convert the index to a column with name "metric"
-
+        df = df.rename(columns={"index": "Statistics"})
     else:
+        # Create metric-oriented table
         df = df.T
-        df.columns = ["summary"]
-
-        # Converting the row names to a new column called statistics
+        df.columns = ["Value"]
         df = df.reset_index()
         df = df.rename(columns={"index": "region"})
 
@@ -432,7 +448,8 @@ def compute_reg_area_fromsurf(
         df.insert(1, "side", reg_names[1])
 
     nrows = df.shape[0]
-
+    units = get_units("area")[0]
+    
     # Inserting the units
     units = get_units("area")
     df.insert(0, "metric", ["area"] * nrows)
@@ -441,14 +458,22 @@ def compute_reg_area_fromsurf(
     # Adding the entities related to BIDs
     if add_bids_entities:
         ent_list = entities4morphotable()
-        df_add = df2add(in_file=parc_file, ent_list=ent_list)
-
-        # Expand a first dataframe and concatenate with the second dataframe
+        df_add = df2add(in_file=parc_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
+    
+    # Save table if requested
+    if output_table is not None:
+        output_dir = os.path.dirname(output_table)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(
+                f"Directory does not exist: {output_dir}. Please create the directory before saving."
+            )
+        
+        df.to_csv(output_table, sep="\t", index=False)
+    
+    return df, output_table
 
-    return df
-
-
+####################################################################################################
 def compute_euler_fromsurf(
     surf_file: Union[str, cltsurf.Surface],
     hemi: str,  # Hemisphere id. It could be lh or rh
