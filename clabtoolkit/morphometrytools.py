@@ -438,25 +438,24 @@ def compute_reg_area_fromsurf(
         df = df.T
         df.columns = ["Value"]
         df = df.reset_index()
-        df = df.rename(columns={"index": "region"})
-
-        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
-        reg_names = df["region"].str.split("-", expand=True)
-
-        # Insert the new columns before the column "region"
-        df.insert(0, "supraregion", reg_names[0])
-        df.insert(1, "side", reg_names[1])
-
+        df = df.rename(columns={"index": "Region"})
+        
+        # Split region names into components
+        reg_names = df["Region"].str.split("-", expand=True)
+        df.insert(0, "Supraregion", reg_names[0])
+        df.insert(1, "Side", reg_names[1])
+    
+    # Add metadata columns
     nrows = df.shape[0]
     units = get_units("area")[0]
     
-    # Inserting the units
-    units = get_units("area")
-    df.insert(0, "metric", ["area"] * nrows)
-    df.insert(1, "units", units * nrows)
-
-    # Adding the entities related to BIDs
-    if add_bids_entities:
+    df.insert(0, "Source", [surf_type] * nrows)
+    df.insert(1, "Metric", ["area"] * nrows)
+    df.insert(2, "Units", [units] * nrows)
+    df.insert(3, "MetricFile", [filename] * nrows)
+    
+    # Add BIDS entities if requested
+    if add_bids_entities and isinstance(parc_file, str):
         ent_list = entities4morphotable()
         df_add = df2add(in_file=parc_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
