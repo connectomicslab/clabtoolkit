@@ -849,6 +849,7 @@ def compute_reg_val_fromparcellation(
     exclude_by_name: Union[list, str] = None,
     add_bids_entities: bool = True,
     region_prefix: str = "region-unknown-",
+    interp_method: str = "linear"
 ) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
     """
     Compute regional statistics from a volumetric metric map and a parcellation.
@@ -856,6 +857,9 @@ def compute_reg_val_fromparcellation(
     This function extracts regional values by combining voxel-wise volumetric metrics with 
     parcellation data defining anatomical regions. It supports various statistical measures 
     and output formats to facilitate regional analysis of volumetric neuroimaging data.
+    
+    If the metric and parcellation files have different resolutions, the metric data will be
+    automatically resampled to match the parcellation's resolution.
     
     Parameters
     ----------
@@ -889,6 +893,9 @@ def compute_reg_val_fromparcellation(
     region_prefix : str, default="region-unknown-"
         Prefix to use for region names when they cannot be determined from the parcellation object.
         The prefix will be combined with the region index number.
+    interp_method : str, default="linear"
+        Interpolation method to use when resampling the metric data to match parcellation resolution.
+        Options include: "linear", "nearest", "cubic". Use "nearest" for categorical data.
     
     Returns
     -------
@@ -923,8 +930,19 @@ def compute_reg_val_fromparcellation(
     ...     table_type="region", add_bids_entities=True
     ... )
     >>> # View statistics across regions
-    >>> print(df_region[['Statistics', 'brain-brain-wholebrain', 
-    ...                  'brain-left-thalamus', 'brain-right-thalamus']].head())
+    >>> print(df_region[['Statistics', 'brain-brain-wholebrain']].head())
+    
+    Working with images that have different resolutions:
+    
+    >>> # High-resolution functional metric with lower-resolution anatomical parcellation
+    >>> metric_file = os.path.join('data', 'sub-01', 'func', 'sub-01_task-rest_bold.nii.gz')
+    >>> parc_file = os.path.join('data', 'sub-01', 'anat', 'sub-01_T1w_parcellation.nii.gz')
+    >>> # The function will automatically resample the metric to the parcellation's space
+    >>> df, _, _ = morpho.compute_reg_val_fromparcellation(
+    ...     metric_file, parc_file, metric='bold',
+    ...     interpolation='linear'  # Use linear interpolation for continuous data
+    ... )
+    >>> print(df.head())
     
     Computing only specific statistics for each region:
     
@@ -985,6 +1003,11 @@ def compute_reg_val_fromparcellation(
     different workflows. When working with arrays directly, ensure the metric and 
     parcellation arrays have the same dimensions.
     
+    When metric and parcellation images have different resolutions, the metric data is
+    automatically resampled to match the parcellation's resolution using the specified
+    interpolation method. For continuous metrics (like intensity), linear or cubic
+    interpolation is recommended. For categorical data, use 'nearest' interpolation.
+    
     When working with BIDS-formatted data, setting `add_bids_entities=True` will extract
     subject, session, and other metadata from the filename to include in the output table.
     
@@ -992,6 +1015,13 @@ def compute_reg_val_fromparcellation(
     --------
     compute_reg_val_fromannot : Similar function for surface-based metrics and annotations
     """
+    # Import needed for resampling
+    import tempfile
+    import os
+    import warnings
+    import nibabel as nib
+    from nibabel.processing import resample_from_to
+    
     # Input validation
     if isinstance(stats_list, str):
         stats_list = [stats_list]
@@ -1001,35 +1031,84 @@ def compute_reg_val_fromparcellation(
     if table_type not in ["region", "metric"]:
         raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
     
+    if interp_method not in ["linear", "nearest", "cubic"]:
+        raise ValueError(f"Invalid interpolation: '{interp_method}'. Expected 'linear', 'nearest', or 'cubic'.")
+    
     # Process parcellation file
+    parc_img = None
     if isinstance(parc_file, str):
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Parcellation file not found: {parc_file}")
         
+        parc_img = nib.load(parc_file)
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
     elif isinstance(parc_file, cltparc.Parcellation):
         vparc_data = copy.deepcopy(parc_file)
+        if hasattr(vparc_data, 'img'):
+            parc_img = vparc_data.img
     elif isinstance(parc_file, np.ndarray):
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
     else:
         raise TypeError(f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}")
     
     # Process metric file
+    metric_img = None
     filename = ""
     if isinstance(metric_file, str):
         if not os.path.exists(metric_file):
             raise FileNotFoundError(f"Metric file not found: {metric_file}")
         
-        metric_vol = nib.load(metric_file).get_fdata()
+        metric_img = nib.load(metric_file)
+        metric_vol = metric_img.get_fdata()
         filename = metric_file
     elif isinstance(metric_file, np.ndarray):
         metric_vol = metric_file
     else:
         raise TypeError(f"metric_file must be a string or numpy array, got {type(metric_file)}")
     
-    # Check that dimensions match
+    # Handle resolution mismatch when we have both images
+    temp_file = None
+    if metric_img is not None and parc_img is not None:
+        # Check if dimensions or affines don't match
+        metric_shape = metric_img.shape
+        parc_shape = parc_img.shape
+        
+        if (metric_shape != parc_shape) or not np.allclose(metric_img.affine, parc_img.affine):
+            warnings.warn(
+                f"Metric image ({metric_shape}) and parcellation image ({parc_shape}) have different "
+                f"dimensions or orientations. Resampling metric to match parcellation."
+            )
+            
+            # Resample metric to match parcellation space
+            resampled_metric_img = resample_from_to(
+                metric_img, 
+                parc_img, 
+                order={'linear': 1, 'nearest': 0, 'cubic': 3}[interp_method]
+            )
+            
+            # Save to temporary file if needed for other operations
+            with tempfile.NamedTemporaryFile(suffix='.nii.gz', delete=False) as f:
+                temp_file = f.name
+            
+            nib.save(resampled_metric_img, temp_file)
+            
+            # Update metric volume with resampled data
+            metric_vol = resampled_metric_img.get_fdata()
+    
+    # Check that dimensions match with parcellation data
     if metric_vol.shape != vparc_data.data.shape:
-        raise ValueError(f"Metric data shape {metric_vol.shape} does not match parcellation data shape {vparc_data.data.shape}")
+        # If we already resampled and still don't match, there's a problem
+        if temp_file:
+            os.unlink(temp_file)  # Clean up temp file
+            raise ValueError(
+                f"Resampled metric data shape {metric_vol.shape} still does not match "
+                f"parcellation data shape {vparc_data.data.shape}. Please check your inputs."
+            )
+        else:
+            raise ValueError(
+                f"Metric data shape {metric_vol.shape} does not match parcellation data shape "
+                f"{vparc_data.data.shape}. Use file inputs instead of arrays for automatic resampling."
+            )
     
     # Apply exclusions if specified
     if exclude_by_code is not None:
@@ -1080,6 +1159,8 @@ def compute_reg_val_fromparcellation(
     
     # Check if we found any regions
     if len(dict_of_cols) == 0:
+        if temp_file:
+            os.unlink(temp_file)  # Clean up temp file
         raise ValueError("No valid regions found in the parcellation data")
     
     # Create DataFrame
@@ -1145,6 +1226,10 @@ def compute_reg_val_fromparcellation(
         
         df.to_csv(output_table, sep="\t", index=False)
         output_path = output_table
+    
+    # Clean up temporary file if it exists
+    if temp_file and os.path.exists(temp_file):
+        os.unlink(temp_file)
     
     return df, metric_vol, output_path
 
