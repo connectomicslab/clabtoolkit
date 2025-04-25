@@ -5,6 +5,7 @@ import copy
 from pyvista import _vtk, PolyData
 from numpy import split, ndarray
 import json
+import warnings
 
 import pandas as pd
 import nibabel as nib
@@ -832,7 +833,7 @@ def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############          Methods dedicated to compute metrics from parcellations           ############
+############     Section 2: Methods dedicated to compute metrics from parcellations     ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -847,7 +848,8 @@ def compute_reg_val_fromparcellation(
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
     add_bids_entities: bool = True,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+    region_prefix: str = "region-unknown-",
+) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
     """
     Compute regional statistics from a volumetric metric map and a parcellation.
     
@@ -859,29 +861,41 @@ def compute_reg_val_fromparcellation(
     ----------
     metric_file : str or np.ndarray
         Path to the volumetric metric file or array containing metric values for each voxel.
+        If array, it should have the same dimensions as the parcellation data.
     parc_file : str, cltparc.Parcellation, or np.ndarray
         Path to the parcellation file, Parcellation object, or numpy array defining regions.
+        Each unique integer value in the array represents a different anatomical region.
     output_table : str, optional
         Path to save the resulting table. If None, the table is not saved.
     metric : str, default="unknown"
-        Name of the metric being analyzed. Used for naming columns in the output DataFrame.
+        Name of the metric being analyzed. Used for naming columns in the output DataFrame
+        and determining appropriate units.
     stats_list : str or list, default=["value", "median", "std", "min", "max"]
         Statistics to compute for each region. Note: "value" is equivalent to the mean.
+        Supported statistics: "value", "median", "std", "min", "max", "count", "sum".
     table_type : str, default="metric"
         Output format specification:
-        - "metric": Each column represents a specific statistic for each region
+        - "metric": Each column represents a specific statistic for each region (regions as rows)
         - "region": Each column represents a region, with rows for different statistics
     exclude_by_code : list or np.ndarray, optional
         Region codes to exclude from the analysis. If None, no regions are excluded by code.
+        Useful for excluding regions like ventricles or non-brain tissue.
     exclude_by_name : list or str, optional
         Region names to exclude from the analysis. If None, no regions are excluded by name.
+        Example: ["Ventricles", "White-Matter"] to focus only on gray matter regions.
     add_bids_entities : bool, default=True
         Whether to include BIDS entities as columns in the resulting DataFrame.
+        This extracts subject, session, and other metadata from the filename.
+    region_prefix : str, default="region-unknown-"
+        Prefix to use for region names when they cannot be determined from the parcellation object.
+        The prefix will be combined with the region index number.
     
     Returns
     -------
     df : pd.DataFrame
         DataFrame containing the computed regional statistics.
+    metric_data : np.ndarray
+        Array of metric values used in the calculation.
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
         
@@ -891,42 +905,92 @@ def compute_reg_val_fromparcellation(
     
     >>> import os
     >>> import clabtoolkit.morphometrytools as morpho
-    >>> metric_file = os.path.join('data', 'sub-01_T1w_intensity.nii.gz')
-    >>> parc_file = os.path.join('data', 'sub-01_T1w_parcellation.nii.gz')
-    >>> df, _ = morpho.compute_reg_val_fromparcellation(metric_file, parc_file, metric='intensity')
-    >>> print(df.head())
+    >>> # Define paths to sample data
+    >>> metric_file = os.path.join('data', 'sub-01', 'anat', 'sub-01_T1w_intensity.nii.gz')
+    >>> parc_file = os.path.join('data', 'sub-01', 'anat', 'sub-01_T1w_parcellation.nii.gz')
+    >>> # Compute regional statistics
+    >>> df, metric_values, _ = morpho.compute_reg_val_fromparcellation(
+    ...     metric_file, parc_file, metric='intensity'
+    ... )
+    >>> # Display the first few rows of results
+    >>> print(f"Number of regions: {df.shape[0]}")
+    >>> print(df[['Region', 'Value', 'Median', 'Std']].head())
     
-    Using region format for output:
+    Using region format for output (regions as columns, statistics as rows):
     
-    >>> df_region, _ = morpho.compute_reg_val_fromparcellation(
+    >>> df_region, _, _ = morpho.compute_reg_val_fromparcellation(
     ...     metric_file, parc_file, metric='intensity', 
     ...     table_type="region", add_bids_entities=True
     ... )
-    >>> print(df_region.head())
+    >>> # View statistics across regions
+    >>> print(df_region[['Statistics', 'brain-brain-wholebrain', 
+    ...                  'brain-left-thalamus', 'brain-right-thalamus']].head())
     
-    Excluding specific regions:
+    Computing only specific statistics for each region:
     
-    >>> exclude_names = ["Cerebellum", "Ventricles"]
-    >>> df_filtered, _ = morpho.compute_reg_val_fromparcellation(
-    ...     metric_file, parc_file, metric='intensity',
+    >>> df_custom_stats, _, _ = morpho.compute_reg_val_fromparcellation(
+    ...     metric_file, parc_file, metric='FA',
+    ...     stats_list=['median', 'std'], table_type="metric"
+    ... )
+    >>> # View only median and standard deviation
+    >>> print(df_custom_stats[['Region', 'Median', 'Std']].head())
+    
+    Excluding specific regions from analysis:
+    
+    >>> # Exclude regions by name
+    >>> exclude_names = ["brain-left-ventricle", "brain-right-ventricle"]
+    >>> df_filtered, _, _ = morpho.compute_reg_val_fromparcellation(
+    ...     metric_file, parc_file, metric='thickness',
     ...     exclude_by_name=exclude_names
     ... )
-    >>> print(df_filtered.head())
+    >>> # Check that ventricles are not in results
+    >>> ventricle_count = sum(1 for r in df_filtered['Region'] if 'ventricle' in r.lower())
+    >>> print(f"Ventricle regions in results: {ventricle_count}")
     
     Saving the results to a file:
     
-    >>> output_path = os.path.join('results', 'regional_intensity.tsv')
-    >>> df_saved, saved_path = morpho.compute_reg_val_fromparcellation(
+    >>> output_path = os.path.join('results', 'sub-01_regional_intensity.tsv')
+    >>> df_saved, _, saved_path = morpho.compute_reg_val_fromparcellation(
     ...     metric_file, parc_file, output_table=output_path,
     ...     metric='intensity'
     ... )
     >>> print(f"Table saved to: {saved_path}")
+    >>> # You can load this table later with pandas
+    >>> import pandas as pd
+    >>> df_loaded = pd.read_csv(saved_path, sep='\t')
+    
+    Working with in-memory data instead of files:
+    
+    >>> import numpy as np
+    >>> import nibabel as nib
+    >>> # Load data into memory first
+    >>> metric_obj = nib.load(metric_file)
+    >>> metric_data = metric_obj.get_fdata()
+    >>> parc_obj = nib.load(parc_file)
+    >>> parc_data = parc_obj.get_fdata()
+    >>> # Process the in-memory arrays
+    >>> df_memory, _, _ = morpho.compute_reg_val_fromparcellation(
+    ...     metric_data, parc_data, metric='intensity',
+    ...     add_bids_entities=False  # No BIDS entities for in-memory data
+    ... )
+    >>> print(df_memory.head())
     
     Notes
     -----
     This function is designed for volumetric data, extracting statistics from voxel-wise 
     metrics within each region defined by a parcellation. For surface-based metrics, 
     consider using `compute_reg_val_fromannot` instead.
+    
+    The function handles both file paths and in-memory arrays, making it versatile for
+    different workflows. When working with arrays directly, ensure the metric and 
+    parcellation arrays have the same dimensions.
+    
+    When working with BIDS-formatted data, setting `add_bids_entities=True` will extract
+    subject, session, and other metadata from the filename to include in the output table.
+    
+    See Also
+    --------
+    compute_reg_val_fromannot : Similar function for surface-based metrics and annotations
     """
     # Input validation
     if isinstance(stats_list, str):
@@ -950,22 +1014,24 @@ def compute_reg_val_fromparcellation(
     else:
         raise TypeError(f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}")
     
-    # Detecting if the needed metric file as a string or an object. If the file is a string, check if the file exists
-    # Otherwise, raise an error
+    # Process metric file
+    filename = ""
     if isinstance(metric_file, str):
         if not os.path.exists(metric_file):
             raise FileNotFoundError(f"Metric file not found: {metric_file}")
         
         metric_vol = nib.load(metric_file).get_fdata()
-
+        filename = metric_file
     elif isinstance(metric_file, np.ndarray):
         metric_vol = metric_file
     else:
         raise TypeError(f"metric_file must be a string or numpy array, got {type(metric_file)}")
     
-    # Converting to lower case
-    stats_list = list(map(lambda x: x.lower(), stats_list))  # Converting to lower case
-
+    # Check that dimensions match
+    if metric_vol.shape != vparc_data.data.shape:
+        raise ValueError(f"Metric data shape {metric_vol.shape} does not match parcellation data shape {vparc_data.data.shape}")
+    
+    # Apply exclusions if specified
     if exclude_by_code is not None:
         vparc_data.remove_by_code(codes2remove=exclude_by_code)
     
@@ -975,35 +1041,46 @@ def compute_reg_val_fromparcellation(
     # Prepare data structures for results
     dict_of_cols = {}
     
-    # Compute global brain statistics
+    # Compute global brain statistics (non-zero parcellation values)
     brain_mask = vparc_data.data != 0
-    global_stats = stats_from_vector(metric_vol[brain_mask], stats_list)
-    dict_of_cols["brain-brain-wholebrain"] = global_stats
+    if np.any(brain_mask):  # Check if there are any non-zero values
+        global_stats = stats_from_vector(metric_vol[brain_mask], stats_list)
+        dict_of_cols["brain-brain-wholebrain"] = global_stats
+    else:
+        # Handle empty/invalid parcellation
+        dict_of_cols["brain-brain-wholebrain"] = [0] * len(stats_list)
     
     # Compute statistics for each region
     # Use unique region indices from the data itself
     unique_indices = np.unique(vparc_data.data)
     unique_indices = unique_indices[unique_indices != 0]  # Exclude background
     
-    for i, index in enumerate(unique_indices):
+    for index in unique_indices:
         # Get region name from the parcellation object if available
         if hasattr(vparc_data, 'name') and hasattr(vparc_data, 'index'):
             idx_pos = np.where(np.array(vparc_data.index) == index)[0]
             if len(idx_pos) > 0:
                 regname = vparc_data.name[idx_pos[0]]
             else:
-                regname = f"region-unknown-{index}"
+                regname = f"{region_prefix}{index}"
         else:
-            regname = f"region-unknown-{index}"
+            regname = f"{region_prefix}{index}"
             
         region_mask = vparc_data.data == index
         
         if np.any(region_mask):
             region_values = metric_vol[region_mask]
-            region_stats = stats_from_vector(region_values, stats_list)
-            dict_of_cols[regname] = region_stats
+            if len(region_values) > 0:  # Check if there are any values
+                region_stats = stats_from_vector(region_values, stats_list)
+                dict_of_cols[regname] = region_stats
+            else:
+                dict_of_cols[regname] = [0] * len(stats_list)
         else:
             dict_of_cols[regname] = [0] * len(stats_list)
+    
+    # Check if we found any regions
+    if len(dict_of_cols) == 0:
+        raise ValueError("No valid regions found in the parcellation data")
     
     # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
@@ -1023,14 +1100,25 @@ def compute_reg_val_fromparcellation(
         
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
-        df.insert(0, "Supraregion", reg_names[0])
-        df.insert(1, "Side", reg_names[1])
+        
+        # Safely handle region names that might not have 3 components
+        if reg_names.shape[1] >= 3:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", reg_names[1])
+        elif reg_names.shape[1] == 2:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", "unknown")
+        else:
+            df.insert(0, "Supraregion", "unknown")
+            df.insert(1, "Side", "unknown")
     
     # Add metadata columns
     nrows = df.shape[0]
     units = get_units(metric)
-    if isinstance(units, list):
+    if isinstance(units, list) and len(units) > 0:
         units = units[0]
+    elif units is None or (isinstance(units, list) and len(units) == 0):
+        units = "unknown"
     
     df.insert(0, "Source", ["volume"] * nrows)
     df.insert(1, "Metric", [metric] * nrows)
@@ -1039,9 +1127,12 @@ def compute_reg_val_fromparcellation(
     
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(metric_file, str):
-        ent_list = entities4morphotable()
-        df_add = df2add(in_file=metric_file, ent2add=ent_list)
-        df = cltmisc.expand_and_concatenate(df_add, df)
+        try:
+            ent_list = entities4morphotable()
+            df_add = df2add(in_file=metric_file, ent2add=ent_list)
+            df = cltmisc.expand_and_concatenate(df_add, df)
+        except Exception as e:
+            warnings.warn(f"Could not add BIDS entities: {str(e)}")
     
     # Save table if requested
     output_path = None
@@ -1055,7 +1146,7 @@ def compute_reg_val_fromparcellation(
         df.to_csv(output_table, sep="\t", index=False)
         output_path = output_table
     
-    return df, output_path
+    return df, metric_vol, output_path
 
 ####################################################################################################
 def compute_reg_volume_fromparcellation(
