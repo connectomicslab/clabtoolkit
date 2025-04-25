@@ -731,51 +731,98 @@ def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> Tuple[float, np.nda
     return face_area, tri_area
 
 ####################################################################################################
-def euler_from_mesh(coords, faces):
+def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
     """
-    This method computes the Euler characteristic of a mesh given the coordinates of the vertices and the faces of the mesh.
-
+    Compute the Euler characteristic of a mesh surface.
+    
+    The Euler characteristic (χ) is a topological invariant that describes the shape or 
+    structure of a topological space regardless of how it is bent or deformed. For a mesh,
+    it is calculated as χ = V - E + F, where V is the number of vertices, E is the number 
+    of edges, and F is the number of faces.
+    
     Parameters
     ----------
     coords : np.ndarray
-        Coordinates of the vertices of the mesh. The shape of the array should be (n,3) where n is the number of vertices.
-
+        Coordinates of the vertices of the mesh.
+        Shape must be (n, 3) where n is the number of vertices.
+        Each row contains the [x, y, z] coordinates of a vertex.
+    
     faces : np.ndarray
-        Faces of the mesh. The shape of the array should be (m,3) where m is the number of faces.
-
+        Triangular faces of the mesh defined by vertex indices.
+        Shape must be (m, 3) where m is the number of faces.
+        Each row contains three indices referring to vertices in the coords array.
+    
     Returns
     -------
-    euler : float
+    euler : int
         Euler characteristic of the mesh.
-
-
+        For a closed manifold surface of genus g, χ = 2 - 2g.
+        - Sphere: χ = 2 (genus 0)
+        - Torus: χ = 0 (genus 1)
+        - Double torus: χ = -2 (genus 2)
+    
+    Notes
+    -----
+    The Euler characteristic provides information about the topology of a mesh:
+    - For closed, orientable surfaces: χ = 2 - 2g, where g is the genus (number of "holes")
+    - For surfaces with boundaries (like cortical surfaces): χ = 2 - 2g - b, where b is the 
+    number of boundary components
+    
+    A change in the Euler characteristic can indicate topological defects in a surface.
+    
     Examples
     --------
+    Calculate Euler characteristic of a tetrahedron (a closed surface):
+    
     >>> import numpy as np
-    >>> coords = np.array([[0,0,0],[1,0,0],[0,1,0],[1,1,0]])
-    >>> faces = np.array([[0,1,2],[1,2,3]])
-    >>> euler_from_mesh(coords, faces)
-
-
+    >>> coords = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    >>> faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
+    >>> euler = euler_from_mesh(coords, faces)
+    >>> print(f"Euler characteristic: {euler}")
+    Euler characteristic: 2
+    
+    Calculate Euler characteristic of a simple two-triangle surface:
+    
+    >>> coords = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]])
+    >>> faces = np.array([[0, 1, 2], [1, 2, 3]])
+    >>> euler = euler_from_mesh(coords, faces)
+    >>> print(f"Euler characteristic: {euler}")
+    Euler characteristic: 1
     """
+    # Input validation
+    if coords.ndim != 2 or coords.shape[1] != 3:
+        raise ValueError(f"coords must have shape (n, 3), got {coords.shape}")
+    
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"faces must have shape (m, 3), got {faces.shape}")
+    
+    if np.any(faces >= coords.shape[0]) or np.any(faces < 0):
+        raise ValueError("faces contains invalid vertex indices")
+
     # Step 1: Count vertices
-    V = np.shape(coords)[0]
+    V = coords.shape[0]
 
     # Step 2: Count faces
-    F = np.shape(faces)[0]
+    F = faces.shape[0]
 
     # Step 3: Count unique edges
     # Create an array of all edges from faces
-    edges = np.vstack([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+    edges = np.vstack([
+        faces[:, [0, 1]],  # First edge of each face
+        faces[:, [1, 2]],  # Second edge of each face
+        faces[:, [2, 0]]   # Third edge of each face
+    ])
 
-    # Sort each edge pair (to treat (v1, v2) the same as (v2, v1)) and remove duplicates
+    # Sort each edge to ensure (v1,v2) and (v2,v1) are treated as the same edge
     edges = np.sort(edges, axis=1)
-    edges = np.unique(edges, axis=0)
-
+    
+    # Remove duplicate edges using unique
+    unique_edges = np.unique(edges, axis=0)
+    
     # Count edges
-    E = len(edges)
+    E = len(unique_edges)
 
-    # Calculate Euler's characteristic
+    # Calculate Euler characteristic
     euler = V - E + F
 
     return euler
