@@ -475,66 +475,101 @@ def compute_reg_area_fromsurf(
 ####################################################################################################
 def compute_euler_fromsurf(
     surf_file: Union[str, cltsurf.Surface],
-    hemi: str,  # Hemisphere id. It could be lh or rh
-    format: str = "metric",
-    add_bids_entities: bool = False,
-) -> pd.DataFrame:
+    hemi: str,
+    output_table: str = None,
+    table_type: str = "metric",
+    surf_type: str = "",
+    add_bids_entities: bool = True,
+) -> Tuple[pd.DataFrame, Optional[str]]:
     """
-    This method computes the Euler characteristic of a surface.
-
+    Compute the Euler characteristic of a surface mesh.
+    
+    This function calculates the Euler characteristic (χ = V - E + F) of a surface mesh,
+    which is a topological invariant that provides information about the surface's topology.
+    
     Parameters
     ----------
-    surf_file : str
-        Path to the surface file.
-
+    surf_file : str or cltsurf.Surface
+        Path to the surface file or Surface object containing the mesh.
     hemi : str
-        Hemisphere id. It could be lh or rh.
-
-    format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "metric".
-        With the "region" format, the output is a DataFrame with the regional values where each column
-        represent the value of column metric for each specific region. With the "metric" format, the output
-        is a DataFrame with the regional values where each column represent the value of a specific metric
-        for each region.
-
-    add_bids_entities: bool, optional
-        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
-
-
+        Hemisphere identifier ('lh' or 'rh').
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
+    table_type : str, default="metric"
+        Output format specification:
+        - "metric": Each column represents a specific metric for each region
+        - "region": Each column represents a region, with rows for different metrics
+    surf_type : str, default=""
+        Type of surface (e.g., "white", "pial") for metadata. If empty, determined from filename.
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+    
     Returns
     -------
     df : pd.DataFrame
-        DataFrame with the euler value.
-
-
+        DataFrame containing the computed Euler characteristic.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
+        
     Examples
     --------
-    >>> import clabtoolkit.morphometrytools as clmorphtools
+    Basic usage with default parameters:
+    
     >>> import os
-    >>> import pandas as pd
-    >>> surf_file = '/opt/freesurfer/subjects/fsaverage/surf/lh.white'
-    >>> annot_file = '/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot'
-    >>> df = clmorphtools.compute_euler_fromsurf(surf_file, 'lh')
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> fs_dir = os.environ.get('FREESURFER_HOME')
+    >>> hemi = 'lh'
+    >>> surf_file = os.path.join(fs_dir, 'subjects', 'bert', 'surf', f'{hemi}.white')
+    >>> df, _ = morpho.compute_euler_fromsurf(surf_file, hemi)
     >>> print(df.head())
+    
+    Using region format for output:
+    
+    >>> df_region, _ = morpho.compute_euler_fromsurf(
+    ...     surf_file, hemi, table_type="region", add_bids_entities=True
+    ... )
+    >>> print(df_region.head())
+    
+    Saving results to a file:
+    
+    >>> output_path = '/path/to/output/euler_stats.csv'
+    >>> df_saved, saved_path = morpho.compute_euler_fromsurf(
+    ...     surf_file, hemi, output_table=output_path
+    ... )
+    >>> print(f"Table saved to: {saved_path}")
+    
+    Notes
+    -----
+    The Euler characteristic (χ) is calculated as χ = V - E + F, where:
+    - V is the number of vertices
+    - E is the number of edges
+    - F is the number of faces
+    
+    For a closed, orientable surface without boundaries, the Euler characteristic
+    is related to the genus (g) by the formula: χ = 2 - 2g.
     """
+    # Input validation
+    if table_type not in ["region", "metric"]:
+        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
 
-    # Detect if the format is not region or metric
-    if format not in ["region", "metric"]:
-        raise ValueError("The format should be region or metric.")
-
+    # Process surface file
+    filename = ""
     if isinstance(surf_file, str):
-        # Checking if the file exists if the file is a string. If exists, read the file and create the object
-        # Otherwise, raise an error
         if not os.path.exists(surf_file):
-            raise FileNotFoundError("The surface file does not exist.")
-        else:
-            # Reading the surface file
-            surf = cltsurf.Surface(surface_file=surf_file)
-
+            raise FileNotFoundError(f"Surface file not found: {surf_file}")
+        
+        surf = cltsurf.Surface(surface_file=surf_file)
+        filename = surf_file
+        
+        # Extract surface type from filename if not provided
+        if not surf_type and os.path.basename(surf_file).split('.')[-1] not in ['gii', 'vtk']:
+            surf_type = os.path.basename(surf_file).split('.')[-1]
     elif isinstance(surf_file, cltsurf.Surface):
-        # If the file is an object, copy the object
         surf = copy.deepcopy(surf_file)
+    else:
+        raise TypeError(f"surf_file must be a string or Surface object, got {type(surf_file)}")
 
+    # Extract mesh components
     coords = surf.mesh.points
     cells = surf.mesh.GetPolys()
     c = _vtk.vtk_to_numpy(cells.GetConnectivityArray())
@@ -542,56 +577,69 @@ def compute_euler_fromsurf(
     faces = split(c, o[1:-1])
     faces = np.squeeze(faces)
 
+    # Compute Euler characteristic
     euler = euler_from_mesh(coords, faces)
 
+    # Create dictionary for DataFrame
     dict_of_cols = {}
-    dict_of_cols["ctx-" + hemi + "-hemisphere"] = [euler]
+    dict_of_cols[f"ctx-{hemi}-hemisphere"] = [euler]
+    
+    # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-
+    
+    # Add column prefixes
     colnames = df.columns.tolist()
-    colnames = cltmisc.correct_names(colnames, prefix="ctx-" + hemi + "-")
+    colnames = cltmisc.correct_names(colnames, prefix=f"ctx-{hemi}-")
     df.columns = colnames
-
-    if format == "region":
-        df.index = ["summary"]
+    
+    # Format table according to specified type
+    if table_type == "region":
+        # Create region-oriented table
+        df.index = ["Value"]
         df = df.reset_index()
-        df = df.rename(columns={"index": "statistics"})
-
-        # Convert the index to a column with name "metric"
-
+        df = df.rename(columns={"index": "Statistics"})
     else:
+        # Create metric-oriented table
         df = df.T
-        df.columns = ["summary"]
-
-        # Converting the row names to a new column called statistics
+        df.columns = ["Value"]
         df = df.reset_index()
-        df = df.rename(columns={"index": "region"})
-
-        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
-        reg_names = df["region"].str.split("-", expand=True)
-
-        # Insert the new columns before the column "region"
-        df.insert(0, "supraregion", reg_names[0])
-        df.insert(1, "side", reg_names[1])
-
+        df = df.rename(columns={"index": "Region"})
+        
+        # Split region names into components
+        reg_names = df["Region"].str.split("-", expand=True)
+        df.insert(0, "Supraregion", reg_names[0])
+        df.insert(1, "Side", reg_names[1])
+    
+    # Add metadata columns
     nrows = df.shape[0]
-
-    # Inserting the units
-    units = get_units("euler")
-    df.insert(0, "metric", ["euler"] * nrows)
-    df.insert(1, "units", units * nrows)
-
-    # Adding the entities related to BIDs
-    if add_bids_entities:
+    units = get_units("euler")[0] if isinstance(get_units("euler"), list) else get_units("euler")
+    
+    df.insert(0, "Source", [surf_type] * nrows)
+    df.insert(1, "Metric", ["euler"] * nrows)
+    df.insert(2, "Units", [units] * nrows)
+    df.insert(3, "MetricFile", [filename] * nrows)
+    
+    # Add BIDS entities if requested
+    if add_bids_entities and isinstance(surf_file, str):
         ent_list = entities4morphotable()
-        df_add = df2add(in_file=surf_file, ent_list=ent_list)
-
-        # Expand a first dataframe and concatenate with the second dataframe
+        df_add = df2add(in_file=surf_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
+    
+    # Save table if requested
+    output_path = None
+    if output_table is not None:
+        output_dir = os.path.dirname(output_table)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(
+                f"Directory does not exist: {output_dir}. Please create the directory before saving."
+            )
+        
+        df.to_csv(output_table, sep="\t", index=False)
+        output_path = output_table
+    
+    return df, output_path
 
-    return df
-
-
+####################################################################################################
 def area_from_mesh(coords, faces):
     """
     This method computes the area of a mesh given the coordinates of the vertices and the faces of the mesh.
