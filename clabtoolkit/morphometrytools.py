@@ -848,7 +848,7 @@ def compute_reg_val_fromparcellation(
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
     add_bids_entities: bool = True,
-    region_prefix: str = "region-unknown-",
+    region_prefix: str = "supra-side",
     interp_method: str = "linear"
 ) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
     """
@@ -1141,9 +1141,9 @@ def compute_reg_val_fromparcellation(
             if len(idx_pos) > 0:
                 regname = vparc_data.name[idx_pos[0]]
             else:
-                regname = f"{region_prefix}{index}"
+                regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
         else:
-            regname = f"{region_prefix}{index}"
+            regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
             
         region_mask = vparc_data.data == index
         
