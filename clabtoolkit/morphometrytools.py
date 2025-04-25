@@ -837,186 +837,227 @@ def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def compute_reg_val_fromparcellation(
     metric_file: Union[str, np.ndarray],
     parc_file: Union[str, cltparc.Parcellation, np.ndarray],
+    output_table: str = None,
     metric: str = "unknown",
-    stats_list: Union[str, list] = ["summary", "median", "std", "min", "max"],
-    format: str = "metric",
+    stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
+    table_type: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
-    add_bids_entities: bool = False,
-) -> pd.DataFrame:
+    add_bids_entities: bool = True,
+) -> Tuple[pd.DataFrame, Optional[str]]:
     """
-    This method computes the regional values of a scalar map inside each region of a specified parcellation.
-
+    Compute regional statistics from a volumetric metric map and a parcellation.
+    
+    This function extracts regional values by combining voxel-wise volumetric metrics with 
+    parcellation data defining anatomical regions. It supports various statistical measures 
+    and output formats to facilitate regional analysis of volumetric neuroimaging data.
+    
     Parameters
     ----------
-    metric_file : str
-        Path to the volumetric scalar map file. It represents the voxel-wise values of the metric.
-
-    parc_file : str
-        Path to the parcellation file.
-
-    metric : str
-        Name of the metric. It is used to create the column names of the output DataFrame.
-
-    stats_list : Union[str, list], optional
-        List of statistics to compute. The default is ["summary", "median", "std", "min", "max"].
-        Summary is equivalent to the mean value. This is used to merge different metrics in the same table.
-
-    format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "metric".
-        With the "region" format, the output is a DataFrame with the regional values where each column
-        represent the value of column metric for each specific region. With the "metric" format, the output
-        is a DataFrame with the regional values where each column represent the value of a specific metric
-        for each region.
-
-    exclude_by_code : Union[list, np.ndarray], optional
-        List of codes to exclude from the analysis. The default is None. If None, no codes are excluded.
-        Please see the method "build_indexes" in the miscellaneous module inside clabtoolkit to see how to build the list of codes.
-
-    exclude_by_name : Union[list, str], optional
-        List of names to exclude from the analysis. The default is None. If None, no names are excluded.
-
-    add_bids_entities: bool, optional
-        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
-
-
+    metric_file : str or np.ndarray
+        Path to the volumetric metric file or array containing metric values for each voxel.
+    parc_file : str, cltparc.Parcellation, or np.ndarray
+        Path to the parcellation file, Parcellation object, or numpy array defining regions.
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
+    metric : str, default="unknown"
+        Name of the metric being analyzed. Used for naming columns in the output DataFrame.
+    stats_list : str or list, default=["value", "median", "std", "min", "max"]
+        Statistics to compute for each region. Note: "value" is equivalent to the mean.
+    table_type : str, default="metric"
+        Output format specification:
+        - "metric": Each column represents a specific statistic for each region
+        - "region": Each column represents a region, with rows for different statistics
+    exclude_by_code : list or np.ndarray, optional
+        Region codes to exclude from the analysis. If None, no regions are excluded by code.
+    exclude_by_name : list or str, optional
+        Region names to exclude from the analysis. If None, no regions are excluded by name.
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+    
     Returns
     -------
     df : pd.DataFrame
-        DataFrame with the regional values.
-    metric_vect : np.ndarray
-
-
+        DataFrame containing the computed regional statistics.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
+        
     Examples
     --------
-    >>> import clabtoolkit.morphometrytools as cltmorphtools
+    Basic usage with default parameters:
+    
     >>> import os
-    >>> import pandas as pd
-    >>> metric_file = os.path.join('..', 'data', 'metric.nii.gz')
-    >>> parc_file = os.path.join('..', 'data', 'parcellation.nii.gz')
-    >>> df = cltmorphtools.compute_reg_val_fromparcellation(metric_file, parc_file)
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> metric_file = os.path.join('data', 'sub-01_T1w_intensity.nii.gz')
+    >>> parc_file = os.path.join('data', 'sub-01_T1w_parcellation.nii.gz')
+    >>> df, _ = morpho.compute_reg_val_fromparcellation(metric_file, parc_file, metric='intensity')
     >>> print(df.head())
-
+    
+    Using region format for output:
+    
+    >>> df_region, _ = morpho.compute_reg_val_fromparcellation(
+    ...     metric_file, parc_file, metric='intensity', 
+    ...     table_type="region", add_bids_entities=True
+    ... )
+    >>> print(df_region.head())
+    
+    Excluding specific regions:
+    
+    >>> exclude_names = ["Cerebellum", "Ventricles"]
+    >>> df_filtered, _ = morpho.compute_reg_val_fromparcellation(
+    ...     metric_file, parc_file, metric='intensity',
+    ...     exclude_by_name=exclude_names
+    ... )
+    >>> print(df_filtered.head())
+    
+    Saving the results to a file:
+    
+    >>> output_path = os.path.join('results', 'regional_intensity.tsv')
+    >>> df_saved, saved_path = morpho.compute_reg_val_fromparcellation(
+    ...     metric_file, parc_file, output_table=output_path,
+    ...     metric='intensity'
+    ... )
+    >>> print(f"Table saved to: {saved_path}")
+    
+    Notes
+    -----
+    This function is designed for volumetric data, extracting statistics from voxel-wise 
+    metrics within each region defined by a parcellation. For surface-based metrics, 
+    consider using `compute_reg_val_fromannot` instead.
     """
-
-    # Detecting if the stats_list is a string
+    # Input validation
     if isinstance(stats_list, str):
         stats_list = [stats_list]
-
-    # Detect if the format is not region or metric
-    if format not in ["region", "metric"]:
-        raise ValueError("The format should be region or metric.")
-
-    # Detecting if the needed parcellation file as a string or an object
+    
+    stats_list = [stat.lower() for stat in stats_list]
+    
+    if table_type not in ["region", "metric"]:
+        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
+    
+    # Process parcellation file
     if isinstance(parc_file, str):
-        # Checking if the file exists if the file is a string. If exists, read the file and create the object
-        # Otherwise, raise an error
         if not os.path.exists(parc_file):
-            raise FileNotFoundError("The parcellation file does not exist.")
-        else:
-            # Reading the annot file
-            vparc_data = cltparc.Parcellation(
-                parc_file=parc_file,
-            )
-            affine = vparc_data.affine
-    elif isinstance(parc_file, cltfree.AnnotParcellation):
-        # If the file is an object, copy the object
+            raise FileNotFoundError(f"Parcellation file not found: {parc_file}")
+        
+        vparc_data = cltparc.Parcellation(parc_file=parc_file)
+    elif isinstance(parc_file, cltparc.Parcellation):
         vparc_data = copy.deepcopy(parc_file)
-        affine = vparc_data.affine
-
     elif isinstance(parc_file, np.ndarray):
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
-        affine = vparc_data.affine
-
+    else:
+        raise TypeError(f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}")
+    
     # Detecting if the needed metric file as a string or an object. If the file is a string, check if the file exists
     # Otherwise, raise an error
     if isinstance(metric_file, str):
         if not os.path.exists(metric_file):
-            raise FileNotFoundError("The metric file does not exist.")
-        else:
-            # Reading the vertex-wise metric file
-            metric_vol = nib.load(metric_file).get_fdata()
+            raise FileNotFoundError(f"Metric file not found: {metric_file}")
+        
+        metric_vol = nib.load(metric_file).get_fdata()
 
     elif isinstance(metric_file, np.ndarray):
         metric_vol = metric_file
-
+    else:
+        raise TypeError(f"metric_file must be a string or numpy array, got {type(metric_file)}")
+    
     # Converting to lower case
     stats_list = list(map(lambda x: x.lower(), stats_list))  # Converting to lower case
 
     if exclude_by_code is not None:
         vparc_data.remove_by_code(codes2remove=exclude_by_code)
-
+    
     if exclude_by_name is not None:
         vparc_data.remove_by_name(names2remove=exclude_by_name)
-
+    
+    # Prepare data structures for results
     dict_of_cols = {}
-
-    # Values for each region in the annot
-    df = pd.DataFrame()
-
-    # Computing global metric
-    temp = stats_from_vector(metric_vol[vparc_data.data != 0], stats_list)
-    dict_of_cols["brain-brain-wholebrain"] = temp
-
-    for i, index in enumerate(vparc_data.index):
-        regname = vparc_data.name[i]
-        ind = np.where(vparc_data.data == index)
-
-        if len(ind) > 0:
-            temp_vect = metric_vol[ind[0], ind[1], ind[2]]
-            temp = stats_from_vector(temp_vect, stats_list)
-            dict_of_cols[regname] = temp
-
+    
+    # Compute global brain statistics
+    brain_mask = vparc_data.data != 0
+    global_stats = stats_from_vector(metric_vol[brain_mask], stats_list)
+    dict_of_cols["brain-brain-wholebrain"] = global_stats
+    
+    # Compute statistics for each region
+    # Use unique region indices from the data itself
+    unique_indices = np.unique(vparc_data.data)
+    unique_indices = unique_indices[unique_indices != 0]  # Exclude background
+    
+    for i, index in enumerate(unique_indices):
+        # Get region name from the parcellation object if available
+        if hasattr(vparc_data, 'name') and hasattr(vparc_data, 'index'):
+            idx_pos = np.where(np.array(vparc_data.index) == index)[0]
+            if len(idx_pos) > 0:
+                regname = vparc_data.name[idx_pos[0]]
+            else:
+                regname = f"region-unknown-{index}"
         else:
-            dict_of_cols[regname] = np.zeros_like(stats_list).tolist()
-
+            regname = f"region-unknown-{index}"
+            
+        region_mask = vparc_data.data == index
+        
+        if np.any(region_mask):
+            region_values = metric_vol[region_mask]
+            region_stats = stats_from_vector(region_values, stats_list)
+            dict_of_cols[regname] = region_stats
+        else:
+            dict_of_cols[regname] = [0] * len(stats_list)
+    
+    # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-
-    if format == "region":
-        df.index = stats_list
-
-        # Converting the row names to a new column called statistics
+    
+    # Format table according to specified type
+    if table_type == "region":
+        # Create region-oriented table
+        df.index = [stat_name.title() for stat_name in stats_list]
         df = df.reset_index()
-        df = df.rename(columns={"index": "statistics"})
-
+        df = df.rename(columns={"index": "Statistics"})
     else:
+        # Create metric-oriented table
         df = df.T
-        df.columns = stats_list
-
-        # Converting the row names to a new column called statistics
+        df.columns = [stat_name.title() for stat_name in stats_list]
         df = df.reset_index()
-        df = df.rename(columns={"index": "region"})
-
-        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
-        reg_names = df["region"].str.split("-", expand=True)
-
-        # Insert the new columns before the column "region"
-        df.insert(0, "supraregion", reg_names[0])
-        df.insert(1, "side", reg_names[1])
-
+        df = df.rename(columns={"index": "Region"})
+        
+        # Split region names into components
+        reg_names = df["Region"].str.split("-", expand=True)
+        df.insert(0, "Supraregion", reg_names[0])
+        df.insert(1, "Side", reg_names[1])
+    
+    # Add metadata columns
     nrows = df.shape[0]
-
-    # Inserting the units
     units = get_units(metric)
-    df.insert(0, "metric", [metric] * nrows)
-    df.insert(1, "units", units * nrows)
-
-    # Adding the entities related to BIDs
-    if add_bids_entities:
+    if isinstance(units, list):
+        units = units[0]
+    
+    df.insert(0, "Source", ["volume"] * nrows)
+    df.insert(1, "Metric", [metric] * nrows)
+    df.insert(2, "Units", [units] * nrows)
+    df.insert(3, "MetricFile", [filename] * nrows)
+    
+    # Add BIDS entities if requested
+    if add_bids_entities and isinstance(metric_file, str):
         ent_list = entities4morphotable()
-        df_add = df2add(in_file=metric_file, ent_list=ent_list)
-
-        # Expand a first dataframe and concatenate with the second dataframe
+        df_add = df2add(in_file=metric_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
+    
+    # Save table if requested
+    output_path = None
+    if output_table is not None:
+        output_dir = os.path.dirname(output_table)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(
+                f"Directory does not exist: {output_dir}. Please create the directory before saving."
+            )
+        
+        df.to_csv(output_table, sep="\t", index=False)
+        output_path = output_table
+    
+    return df, output_path
 
-    return df
-
-
+####################################################################################################
 def compute_reg_volume_fromparcellation(
     parc_file: Union[str, cltparc.Parcellation, np.ndarray],
     format: str = "metric",
