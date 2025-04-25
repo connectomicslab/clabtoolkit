@@ -1236,155 +1236,272 @@ def compute_reg_val_fromparcellation(
 ####################################################################################################
 def compute_reg_volume_fromparcellation(
     parc_file: Union[str, cltparc.Parcellation, np.ndarray],
-    format: str = "metric",
+    output_table: str = None,
+    table_type: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
-    add_bids_entities: bool = False,
-) -> pd.DataFrame:
+    add_bids_entities: bool = True,
+    region_prefix: str = "supra-side"
+) -> Tuple[pd.DataFrame, Optional[str]]:
     """
-    This method computes the volume for all the regions of a specified parcellation.
-
+    Compute volume for all regions in a parcellation.
+    
+    This function calculates the volume of each region defined in a parcellation by counting 
+    the number of voxels in each region and multiplying by the voxel volume. It supports 
+    various output formats and can exclude specific regions from the analysis.
+    
     Parameters
     ----------
-
-    parc_file : str
-        Path to the parcellation file.
-
-    format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "metric".
-        With the "region" format, the output is a DataFrame with the regional values where each column
-        represent the value of column metric for each specific region. With the "metric" format, the output
-        is a DataFrame with the regional values where each column represent the value of a specific metric
-        for each region.
-
-    exclude_by_code : Union[list, np.ndarray], optional
-        List of codes to exclude from the analysis. The default is None. If None, no codes are excluded.
-        Please see the method "build_indexes" in the miscellaneous module inside clabtoolkit to see how to build the list of codes.
-
-    exclude_by_name : Union[list, str], optional
-        List of names to exclude from the analysis. The default is None. If None, no names are excluded.
-
-    add_bids_entities: bool, optional
-        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
-
-
+    parc_file : str, cltparc.Parcellation, or np.ndarray
+        Path to the parcellation file, Parcellation object, or numpy array defining regions.
+        Each unique integer value in the array represents a different anatomical region.
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
+    table_type : str, default="metric"
+        Output format specification:
+        - "metric": Each column represents a specific statistic for each region (regions as rows)
+        - "region": Each column represents a region, with rows for different statistics
+    exclude_by_code : list or np.ndarray, optional
+        Region codes to exclude from the analysis. If None, no regions are excluded by code.
+        Useful for excluding regions like ventricles or non-brain tissue.
+    exclude_by_name : list or str, optional
+        Region names to exclude from the analysis. If None, no regions are excluded by name.
+        Example: ["Ventricles", "White-Matter"] to focus only on gray matter regions.
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+        This extracts subject, session, and other metadata from the filename.
+    region_prefix : str, default="supra-side"
+        Prefix to use for region names when they cannot be determined from the parcellation object.
+        The prefix will be combined with the region index number.
+    
     Returns
     -------
     df : pd.DataFrame
-        DataFrame with the regional values.
-    metric_vect : np.ndarray
-
-
+        DataFrame containing the computed regional volumes.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
+        
     Examples
     --------
-    >>> import clabtoolkit.morphometrytools as cltmorphtools
+    Basic usage with default parameters:
+    
     >>> import os
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> # Define path to sample data
+    >>> parc_file = os.path.join('data', 'sub-01', 'anat', 'sub-01_T1w_parcellation.nii.gz')
+    >>> # Compute regional volumes
+    >>> df, _ = morpho.compute_reg_volume_fromparcellation(parc_file)
+    >>> # Display the first few rows of results
+    >>> print(f"Number of regions: {df.shape[0]}")
+    >>> print(df[['Region', 'Value']].head())
+    
+    Using region format for output (regions as columns):
+    
+    >>> df_region, _ = morpho.compute_reg_volume_fromparcellation(
+    ...     parc_file, table_type="region", add_bids_entities=True
+    ... )
+    >>> # View volumes across regions
+    >>> print(df_region.head())
+    
+    Excluding specific regions from analysis:
+    
+    >>> # Exclude regions by name
+    >>> exclude_names = ["brain-left-ventricle", "brain-right-ventricle"]
+    >>> df_filtered, _ = morpho.compute_reg_volume_fromparcellation(
+    ...     parc_file, exclude_by_name=exclude_names
+    ... )
+    >>> # Check that ventricles are not in results
+    >>> ventricle_count = sum(1 for r in df_filtered['Region'] if 'ventricle' in r.lower())
+    >>> print(f"Ventricle regions in results: {ventricle_count}")
+    
+    Saving the results to a file:
+    
+    >>> output_path = os.path.join('results', 'sub-01_regional_volumes.tsv')
+    >>> df_saved, saved_path = morpho.compute_reg_volume_fromparcellation(
+    ...     parc_file, output_table=output_path
+    ... )
+    >>> print(f"Table saved to: {saved_path}")
+    >>> # You can load this table later with pandas
     >>> import pandas as pd
-    >>> metric_file = os.path.join('..', 'data', 'metric.nii.gz')
-    >>> parc_file = os.path.join('..', 'data', 'parcellation.nii.gz')
-    >>> df = cltmorphtools.compute_reg_volume_fromparcellation(parc_file)
-    >>> print(df.head())
-
+    >>> df_loaded = pd.read_csv(saved_path, sep='\t')
+    
+    Working with in-memory data instead of files:
+    
+    >>> import numpy as np
+    >>> import nibabel as nib
+    >>> # Load data into memory first
+    >>> parc_obj = nib.load(parc_file)
+    >>> parc_data = parc_obj.get_fdata()
+    >>> # Create a custom affine matrix (example: 1mm isotropic voxels)
+    >>> affine = np.eye(4)
+    >>> # Process the in-memory array
+    >>> df_memory, _ = morpho.compute_reg_volume_fromparcellation(
+    ...     parc_data, add_bids_entities=False
+    ... )
+    >>> print(df_memory.head())
+    
+    Notes
+    -----
+    This function calculates volumes in milliliters (ml) by default. The voxel volume is
+    calculated from the affine transformation matrix of the parcellation image. For arrays
+    without an affine matrix, an identity matrix is assumed (1mm isotropic voxels).
+    
+    The regional volumes are calculated by counting the number of voxels in each region
+    and multiplying by the voxel volume in cubic millimeters, then dividing by 1000 to
+    convert to milliliters.
+    
+    When working with BIDS-formatted data, setting `add_bids_entities=True` will extract
+    subject, session, and other metadata from the filename to include in the output table.
+    
+    See Also
+    --------
+    compute_reg_val_fromparcellation : Calculate statistics for metric values within parcellation regions
     """
-
-    # Detect if the format is not region or metric
-    if format not in ["region", "metric"]:
-        raise ValueError("The format should be region or metric.")
-
-    # Detecting if the needed parcellation file as a string or an object
+    import os
+    import warnings
+    import numpy as np
+    import pandas as pd
+    import copy
+    import nibabel as nib
+    
+    # Input validation
+    if table_type not in ["region", "metric"]:
+        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
+    
+    # Process parcellation file
+    filename = ""
     if isinstance(parc_file, str):
-        # Checking if the file exists if the file is a string. If exists, read the file and create the object
-        # Otherwise, raise an error
         if not os.path.exists(parc_file):
-            raise FileNotFoundError("The parcellation file does not exist.")
-        else:
-            # Reading the annot file
-            vparc_data = cltparc.Parcellation(
-                parc_file=parc_file,
-            )
-            affine = vparc_data.affine
-    elif isinstance(parc_file, cltfree.AnnotParcellation):
-        # If the file is an object, copy the object
+            raise FileNotFoundError(f"Parcellation file not found: {parc_file}")
+        
+        vparc_data = cltparc.Parcellation(parc_file=parc_file)
+        affine = vparc_data.affine
+        filename = parc_file
+    elif isinstance(parc_file, cltparc.Parcellation):
         vparc_data = copy.deepcopy(parc_file)
         affine = vparc_data.affine
-
     elif isinstance(parc_file, np.ndarray):
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
         affine = vparc_data.affine
-
-    # Excluding regions
+    else:
+        raise TypeError(f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}")
+    
+    # Apply exclusions if specified
     if exclude_by_code is not None:
         vparc_data.remove_by_code(codes2remove=exclude_by_code)
-
+    
     if exclude_by_name is not None:
         vparc_data.remove_by_name(names2remove=exclude_by_name)
-
-    # Computing the voxel volume
+    
+    # Computing the voxel volume (in cubic mm)
     vox_size = np.linalg.norm(affine[:3, :3], axis=1)
     vox_vol = np.prod(vox_size)
-
+    
+    # Prepare data structures for results
     dict_of_cols = {}
-
-    # Values for each region in the annot
-    df = pd.DataFrame()
-
-    # Computing global metric
-    temp = len(vparc_data.data[vparc_data.data != 0]) * vox_vol
-    dict_of_cols["brain-brain-wholebrain"] = temp / 1000
-
-    for i, index in enumerate(vparc_data.index):
-        regname = vparc_data.name[i]
-        ind = np.where(vparc_data.data == index)
-        temp = len(ind[0]) * vox_vol
-        if temp > 0:
-            dict_of_cols[regname] = [temp / 1000]
-
+    
+    # Compute global volume for the entire brain (convert to ml by dividing by 1000)
+    brain_mask = vparc_data.data != 0
+    if np.any(brain_mask):  # Check if there are any non-zero values
+        global_volume_ml = np.sum(brain_mask) * vox_vol / 1000
+        dict_of_cols["brain-brain-wholebrain"] = [global_volume_ml]
+    else:
+        # Handle empty/invalid parcellation
+        dict_of_cols["brain-brain-wholebrain"] = [0]
+    
+    # Compute volume for each region
+    # Use unique region indices from the data itself
+    unique_indices = np.unique(vparc_data.data)
+    unique_indices = unique_indices[unique_indices != 0]  # Exclude background
+    
+    for index in unique_indices:
+        # Get region name from the parcellation object if available
+        if hasattr(vparc_data, 'name') and hasattr(vparc_data, 'index'):
+            idx_pos = np.where(np.array(vparc_data.index) == index)[0]
+            if len(idx_pos) > 0:
+                regname = vparc_data.name[idx_pos[0]]
+            else:
+                regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
+        else:
+            regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
+            
+        region_mask = vparc_data.data == index
+        region_volume_ml = np.sum(region_mask) * vox_vol / 1000
+        
+        if region_volume_ml > 0:
+            dict_of_cols[regname] = [region_volume_ml]
         else:
             dict_of_cols[regname] = [0]
-
+    
+    # Check if we found any regions
+    if len(dict_of_cols) == 0:
+        raise ValueError("No valid regions found in the parcellation data")
+    
+    # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-
-    if format == "region":
-        df.index = ["summary"]
-
-        # Converting the row names to a new column called statistics
+    
+    # Format table according to specified type
+    if table_type == "region":
+        # Create region-oriented table
+        df.index = ["Value"]
         df = df.reset_index()
-        df = df.rename(columns={"index": "statistics"})
-
-        # Convert the index to a column with name "metric"
-
+        df = df.rename(columns={"index": "Statistics"})
     else:
+        # Create metric-oriented table
         df = df.T
-        df.columns = ["summary"]
-
-        # Converting the row names to a new column called statistics
+        df.columns = ["Value"]
         df = df.reset_index()
-        df = df.rename(columns={"index": "region"})
-
-        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
-        reg_names = df["region"].str.split("-", expand=True)
-
-        # Insert the new columns before the column "region"
-        df.insert(0, "supraregion", reg_names[0])
-        df.insert(1, "side", reg_names[1])
-
+        df = df.rename(columns={"index": "Region"})
+        
+        # Split region names into components
+        reg_names = df["Region"].str.split("-", expand=True)
+        
+        # Safely handle region names that might not have 3 components
+        if reg_names.shape[1] >= 3:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", reg_names[1])
+        elif reg_names.shape[1] == 2:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", "unknown")
+        else:
+            df.insert(0, "Supraregion", "unknown")
+            df.insert(1, "Side", "unknown")
+    
+    # Add metadata columns
     nrows = df.shape[0]
-
-    # Inserting the units
     units = get_units("volume")
-    df.insert(0, "metric", ["volume"] * nrows)
-    df.insert(1, "units", units * nrows)
-
-    # Adding the entities related to BIDs
-    if add_bids_entities:
-        ent_list = entities4morphotable()
-        df_add = df2add(in_file=parc_file, ent_list=ent_list)
-
-        # Expand a first dataframe and concatenate with the second dataframe
-        df = cltmisc.expand_and_concatenate(df_add, df)
-
-    return df
-
+    if isinstance(units, list) and len(units) > 0:
+        units = units[0]
+    elif units is None or (isinstance(units, list) and len(units) == 0):
+        units = "ml"
+    
+    df.insert(0, "Source", ["volume"] * nrows)
+    df.insert(1, "Metric", ["volume"] * nrows)
+    df.insert(2, "Units", [units] * nrows)
+    df.insert(3, "MetricFile", [filename] * nrows)
+    
+    # Add BIDS entities if requested
+    if add_bids_entities and isinstance(parc_file, str):
+        try:
+            ent_list = entities4morphotable()
+            df_add = df2add(in_file=parc_file, ent2add=ent_list)
+            df = cltmisc.expand_and_concatenate(df_add, df)
+        except Exception as e:
+            warnings.warn(f"Could not add BIDS entities: {str(e)}")
+    
+    # Save table if requested
+    output_path = None
+    if output_table is not None:
+        output_dir = os.path.dirname(output_table)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(
+                f"Directory does not exist: {output_dir}. Please create the directory before saving."
+            )
+        
+        df.to_csv(output_table, sep="\t", index=False)
+        output_path = output_table
+    
+    return df, output_path
 
 ####################################################################################################
 ####################################################################################################
