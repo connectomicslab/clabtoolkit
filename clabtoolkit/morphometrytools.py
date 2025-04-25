@@ -640,60 +640,97 @@ def compute_euler_fromsurf(
     return df, output_path
 
 ####################################################################################################
-def area_from_mesh(coords, faces):
+def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> Tuple[float, np.ndarray]:
     """
-    This method computes the area of a mesh given the coordinates of the vertices and the faces of the mesh.
-
+    Compute the total area and per-triangle areas of a mesh surface.
+    
+    This function calculates the area of each triangle in a mesh using Heron's formula
+    and returns both the total surface area and individual triangle areas.
+    
     Parameters
     ----------
     coords : np.ndarray
-        Coordinates of the vertices of the mesh. The shape of the array should be (n,3) where n is the number of vertices.
-
+        Coordinates of the vertices of the mesh. 
+        Shape must be (n, 3) where n is the number of vertices.
+        Each row contains the [x, y, z] coordinates of a vertex.
+    
     faces : np.ndarray
-        Faces of the mesh. The shape of the array should be (m,3) where m is the number of faces.
-
+        Triangular faces of the mesh defined by vertex indices.
+        Shape must be (m, 3) where m is the number of faces.
+        Each row contains three indices referring to vertices in the coords array.
+    
     Returns
     -------
     face_area : float
-        Total area of the mesh.
-
+        Total surface area of the mesh in square centimeters (cm²).
+    
     tri_area : np.ndarray
-        Area of each triangle in the mesh.
-
+        Array of areas for each triangle in the mesh in square centimeters (cm²).
+        Shape is (m,) where m is the number of faces.
+    
+    Notes
+    -----
+    The function uses Heron's formula to calculate the area of each triangle:
+        Area = √(s(s-a)(s-b)(s-c))
+    where s is the semi-perimeter: s = (a + b + c)/2, and a, b, c are the side lengths.
+    
+    The resulting areas are converted to square centimeters (cm²) by dividing by 100
+    (assuming the input coordinates are in millimeters).
+    
     Examples
     --------
+    Calculate area of a simple mesh with two triangles:
+    
     >>> import numpy as np
-    >>> coords = np.array([[0,0,0],[1,0,0],[0,1,0],[1,1,0]])
-    >>> faces = np.array([[0,1,2],[1,2,3]])
-    >>> area_from_mesh(coords, faces)
-    (1.0, array([0.5, 0.5]))
-
+    >>> coords = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]])
+    >>> faces = np.array([[0, 1, 2], [1, 3, 2]])
+    >>> total_area, triangle_areas = area_from_mesh(coords, faces)
+    >>> print(f"Total area: {total_area:.4f} cm²")
+    Total area: 1.0000 cm²
+    >>> print(f"Triangle areas: {triangle_areas}")
+    Triangle areas: [0.5 0.5]
+    
+    Calculate area of a pyramid:
+    
+    >>> coords = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, 1]])
+    >>> faces = np.array([[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4], [0, 2, 1], [0, 3, 2]])
+    >>> total_area, _ = area_from_mesh(coords, faces)
+    >>> print(f"Total area: {total_area:.4f} cm²")
+    Total area: ...
     """
+    # Input validation
+    if coords.ndim != 2 or coords.shape[1] != 3:
+        raise ValueError(f"coords must have shape (n, 3), got {coords.shape}")
+    
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"faces must have shape (m, 3), got {faces.shape}")
+    
+    if np.any(faces >= coords.shape[0]) or np.any(faces < 0):
+        raise ValueError("faces contains invalid vertex indices")
 
-    # Computing the distances between the vertices of the faces
-    d12 = np.power(
-        np.sum(np.power(coords[faces[:, 0], :] - coords[faces[:, 1], :], 2), axis=1),
-        0.5,
-    )
-    d13 = np.power(
-        np.sum(np.power(coords[faces[:, 0], :] - coords[faces[:, 2], :], 2), axis=1),
-        0.5,
-    )
-    d23 = np.power(
-        np.sum(np.power(coords[faces[:, 1], :] - coords[faces[:, 2], :], 2), axis=1),
-        0.5,
-    )
-
-    # Computing the perimeter of the triangles
-    per = (d12 + d23 + d13) / 2
-
-    # Computing the area of the triangles
-    tri_area = np.power(per * (per - d12) * (per - d13) * (per - d23), 0.5) / 100
-    face_area = np.sum(tri_area)  # cm2
-
+    # Extract vertex coordinates for each face
+    v1 = coords[faces[:, 0]]
+    v2 = coords[faces[:, 1]]
+    v3 = coords[faces[:, 2]]
+    
+    # Compute edge lengths using Euclidean distance
+    d12 = np.sqrt(np.sum((v1 - v2)**2, axis=1))
+    d23 = np.sqrt(np.sum((v2 - v3)**2, axis=1))
+    d31 = np.sqrt(np.sum((v3 - v1)**2, axis=1))
+    
+    # Compute semi-perimeter for each triangle
+    s = (d12 + d23 + d31) / 2
+    
+    # Compute area of each triangle using Heron's formula
+    # Division by 100 converts from mm² to cm²
+    tri_area = np.sqrt(np.maximum(0, s * (s - d12) * (s - d23) * (s - d31))) / 100
+    
+    # Compute total mesh area
+    face_area = np.sum(tri_area)
+    
     return face_area, tri_area
 
-
+####################################################################################################
 def euler_from_mesh(coords, faces):
     """
     This method computes the Euler characteristic of a mesh given the coordinates of the vertices and the faces of the mesh.
