@@ -1,14 +1,15 @@
 import os
-import shutil
 from typing import Union, Tuple, Optional, Dict, List
 import copy
 from pyvista import _vtk, PolyData
 from numpy import split, ndarray
 import json
 import warnings
+import tempfile
 
 import pandas as pd
 import nibabel as nib
+from nibabel.processing import resample_from_to
 import numpy as np
 
 # Importing local modules
@@ -17,6 +18,7 @@ from . import surfacetools as cltsurf
 from . import parcellationtools as cltparc
 from . import bidstools as cltbids
 from . import freesurfertools as cltfree
+
 
 ####################################################################################################
 ####################################################################################################
@@ -41,10 +43,10 @@ def compute_reg_val_fromannot(
 ) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
     """
     Compute regional statistics from a surface metric file and an annotation file.
-    
-    This function extracts regional values by combining vertex-wise surface metrics with 
+
+    This function extracts regional values by combining vertex-wise surface metrics with
     anatomical parcellation data. It supports various statistical measures and output formats.
-    
+
     Parameters
     ----------
     metric_file : str or np.ndarray
@@ -69,7 +71,7 @@ def compute_reg_val_fromannot(
         Whether to include hemisphere-wide statistics in the output.
     add_bids_entities : bool, default=True
         Whether to include BIDS entities as columns in the resulting DataFrame.
-    
+
     Returns
     -------
     df : pd.DataFrame
@@ -78,11 +80,11 @@ def compute_reg_val_fromannot(
         Array of metric values.
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
-        
+
     Examples
     --------
     Basic usage with default parameters:
-    
+
     >>> import os
     >>> import clabtoolkit.morphometrytools as morpho
     >>> hemi = 'lh'
@@ -93,16 +95,16 @@ def compute_reg_val_fromannot(
     >>> df_region, metric_values, _ = morpho.compute_reg_val_fromannot(
     ...     metric_file, parc_file, hemi, metric=metric_name, include_global=False
     ... )
-    
+
     Using region format for output:
-    
+
     >>> df_metric, _, _ = morpho.compute_reg_val_fromannot(
-    ...     metric_file, parc_file, hemi, metric=metric_name, 
+    ...     metric_file, parc_file, hemi, metric=metric_name,
     ...     include_global=False, table_type="region", add_bids_entities=True
     ... )
-    
+
     Including hemisphere-wide statistics and saving to file:
-    
+
     >>> output_path = '/path/to/output/regional_stats.csv'
     >>> df_global, _, saved_path = morpho.compute_reg_val_fromannot(
     ...     metric_file, parc_file, hemi, output_table=output_path,
@@ -113,90 +115,96 @@ def compute_reg_val_fromannot(
     # Input validation
     if isinstance(stats_list, str):
         stats_list = [stats_list]
-    
+
     stats_list = [stat.lower() for stat in stats_list]
-    
+
     if table_type not in ["region", "metric"]:
-        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
-    
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
+
     # Process parcellation file
     if isinstance(parc_file, str):
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Annotation file not found: {parc_file}")
-        
+
         sparc_data = cltfree.AnnotParcellation(parc_file=parc_file)
     elif isinstance(parc_file, cltfree.AnnotParcellation):
         sparc_data = copy.deepcopy(parc_file)
     else:
-        raise TypeError(f"parc_file must be a string or AnnotParcellation object, got {type(parc_file)}")
-    
+        raise TypeError(
+            f"parc_file must be a string or AnnotParcellation object, got {type(parc_file)}"
+        )
+
     # Process metric file
     filename = ""
     if isinstance(metric_file, str):
         if not os.path.exists(metric_file):
             raise FileNotFoundError(f"Metric file not found: {metric_file}")
-        
+
         metric_vect = nib.freesurfer.io.read_morph_data(metric_file)
         filename = metric_file
     elif isinstance(metric_file, np.ndarray):
         metric_vect = metric_file
     else:
-        raise TypeError(f"metric_file must be a string or numpy array, got {type(metric_file)}")
-    
+        raise TypeError(
+            f"metric_file must be a string or numpy array, got {type(metric_file)}"
+        )
+
     # Filter unknown regions if needed
     if not include_unknown:
         tmp_names = sparc_data.regnames
         unk_indexes = cltmisc.get_indexes_by_substring(
             tmp_names, ["medialwall", "unknown", "corpuscallosum"]
         ).astype(int)
-        
+
         if len(unk_indexes) > 0:
             unk_codes = sparc_data.regtable[unk_indexes, 4]
             unk_vert = np.isin(sparc_data.codes, unk_codes)
-            
+
             sparc_data.codes[unk_vert] = 0
             sparc_data.regnames = np.delete(sparc_data.regnames, unk_indexes).tolist()
             sparc_data.regtable = np.delete(sparc_data.regtable, unk_indexes, axis=0)
-    
+
     # Clean up codes that don't exist in the region table
     unique_codes = np.unique(sparc_data.codes)
     not_in_table = np.setdiff1d(unique_codes, sparc_data.regtable[:, 4])
     sparc_data.codes[np.isin(sparc_data.codes, not_in_table)] = 0
-    
+
     # Get unique valid region codes
     sts = np.unique(sparc_data.codes)
     sts = sts[sts != 0]
-    
+
     # Prepare data structures for results
     dict_of_cols = {}
-    
+
     # Compute global hemisphere statistics if requested
     if include_global:
         valid_vertices = np.isin(sparc_data.codes, sparc_data.regtable[:, 4])
         global_stats = stats_from_vector(metric_vect[valid_vertices], stats_list)
         dict_of_cols[f"ctx-{hemi}-hemisphere"] = global_stats
-    
+
     # Compute statistics for each region
     for regname in sparc_data.regnames:
         index = cltmisc.get_indexes_by_substring(
-            sparc_data.regnames, regname, match_entire_world=True
+            sparc_data.regnames, regname, match_entire_word=True
         )
-        
+
         if len(index):
             region_mask = sparc_data.codes == sparc_data.regtable[index, 4]
             region_stats = stats_from_vector(metric_vect[region_mask], stats_list)
             dict_of_cols[regname] = region_stats
         else:
             dict_of_cols[regname] = [0] * len(stats_list)
-    
+
     # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-    
+
     # Add column prefixes
     colnames = df.columns.tolist()
     colnames = cltmisc.correct_names(colnames, prefix=f"ctx-{hemi}-")
     df.columns = colnames
-    
+
     # Format table according to specified type
     if table_type == "region":
         # Create region-oriented table
@@ -209,27 +217,27 @@ def compute_reg_val_fromannot(
         df.columns = [stat_name.title() for stat_name in stats_list]
         df = df.reset_index()
         df = df.rename(columns={"index": "Region"})
-        
+
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
         df.insert(0, "Supraregion", reg_names[0])
         df.insert(1, "Side", reg_names[1])
-    
+
     # Add metadata columns
     nrows = df.shape[0]
     units = get_units(metric)[0]
-    
+
     df.insert(0, "Source", ["vertices"] * nrows)
     df.insert(1, "Metric", [metric] * nrows)
     df.insert(2, "Units", [units] * nrows)
     df.insert(3, "MetricFile", [filename] * nrows)
-    
+
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(metric_file, str):
         ent_list = entities4morphotable()
         df_add = df2add(in_file=metric_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
-    
+
     # Save table if requested
     if output_table is not None:
         output_dir = os.path.dirname(output_table)
@@ -237,10 +245,11 @@ def compute_reg_val_fromannot(
             raise FileNotFoundError(
                 f"Directory does not exist: {output_dir}. Please create the directory before saving."
             )
-        
+
         df.to_csv(output_table, sep="\t", index=False)
-    
+
     return df, metric_vect, output_table
+
 
 ####################################################################################################
 def compute_reg_area_fromsurf(
@@ -256,11 +265,11 @@ def compute_reg_area_fromsurf(
 ) -> Tuple[pd.DataFrame, Optional[str]]:
     """
     Compute surface area for each region defined in an annotation file.
-    
-    This function calculates the area for anatomical regions by combining 
-    surface mesh data with parcellation information. It supports different 
+
+    This function calculates the area for anatomical regions by combining
+    surface mesh data with parcellation information. It supports different
     output formats and can include global hemisphere measurements.
-    
+
     Parameters
     ----------
     surf_file : str or cltsurf.Surface
@@ -283,18 +292,18 @@ def compute_reg_area_fromsurf(
         Whether to include BIDS entities as columns in the resulting DataFrame.
     output_table : str, optional
         Path to save the resulting table. If None, the table is not saved.
-    
+
     Returns
     -------
     df : pd.DataFrame
         DataFrame containing the computed regional area values.
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
-        
+
     Examples
     --------
     Basic usage with default parameters:
-    
+
     >>> import os
     >>> import clabtoolkit.morphometrytools as morpho
     >>> fs_dir = os.environ.get('FREESURFER_HOME')
@@ -302,26 +311,26 @@ def compute_reg_area_fromsurf(
     >>> parc_file = os.path.join(fs_dir, 'subjects', 'fsaverage', 'label', 'lh.aparc.annot')
     >>> df_area, _ = morpho.compute_reg_area_fromsurf(surf_file, parc_file, 'lh', surf_type="white")
     >>> print(df_area.head())
-    
+
     Using region format for output:
-    
+
     >>> df_region, _ = morpho.compute_reg_area_fromsurf(
-    ...     surf_file, parc_file, 'lh', 
+    ...     surf_file, parc_file, 'lh',
     ...     table_type="region", surf_type="white", include_global=False
     ... )
     >>> print(df_region.head())
-    
+
     Using Surface and AnnotParcellation objects:
-    
+
     >>> import clabtoolkit.surfacetools as cltsurf
     >>> import clabtoolkit.freesurfertools as cltfree
     >>> surf = cltsurf.Surface(surface_file=surf_file)
     >>> annot = cltfree.AnnotParcellation(parc_file=parc_file)
     >>> df_obj, _ = morpho.compute_reg_area_fromsurf(surf, annot, 'lh', surf_type="white")
     >>> print(df_obj.head())
-    
+
     Saving results to a file:
-    
+
     >>> output_path = '/path/to/area_stats.tsv'
     >>> df_out, saved_path = morpho.compute_reg_area_fromsurf(
     ...     surf_file, parc_file, 'lh', output_table=output_path, surf_type="white"
@@ -330,32 +339,38 @@ def compute_reg_area_fromsurf(
     """
     # Input validation
     if table_type not in ["region", "metric"]:
-        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
-    
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
+
     # Process parcellation file
     if isinstance(parc_file, str):
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Annotation file not found: {parc_file}")
-        
+
         sparc_data = cltfree.AnnotParcellation(parc_file=parc_file)
     elif isinstance(parc_file, cltfree.AnnotParcellation):
         sparc_data = copy.deepcopy(parc_file)
     else:
-        raise TypeError(f"parc_file must be a string or AnnotParcellation object, got {type(parc_file)}")
-    
+        raise TypeError(
+            f"parc_file must be a string or AnnotParcellation object, got {type(parc_file)}"
+        )
+
     # Process surface file
     filename = ""
     if isinstance(surf_file, str):
         if not os.path.exists(surf_file):
             raise FileNotFoundError(f"Surface file not found: {surf_file}")
-        
+
         surf = cltsurf.Surface(surface_file=surf_file)
         filename = surf_file
     elif isinstance(surf_file, cltsurf.Surface):
         surf = copy.deepcopy(surf_file)
     else:
-        raise TypeError(f"surf_file must be a string or Surface object, got {type(surf_file)}")
-    
+        raise TypeError(
+            f"surf_file must be a string or Surface object, got {type(surf_file)}"
+        )
+
     # Extract mesh data
     coords = surf.mesh.points
     cells = surf.mesh.GetPolys()
@@ -363,71 +378,77 @@ def compute_reg_area_fromsurf(
     o = _vtk.vtk_to_numpy(cells.GetOffsetsArray())
     faces = split(c, o[1:-1])
     faces = np.squeeze(faces)
-    
+
     # Filter unknown regions if needed
     if not include_unknown:
         tmp_names = sparc_data.regnames
         unk_indexes = cltmisc.get_indexes_by_substring(
             tmp_names, ["medialwall", "unknown", "corpuscallosum"]
         ).astype(int)
-        
+
         if len(unk_indexes) > 0:
             unk_codes = sparc_data.regtable[unk_indexes, 4]
             unk_vert = np.isin(sparc_data.codes, unk_codes)
-            
+
             sparc_data.codes[unk_vert] = 0
             sparc_data.regnames = np.delete(sparc_data.regnames, unk_indexes).tolist()
             sparc_data.regtable = np.delete(sparc_data.regtable, unk_indexes, axis=0)
-    
+
     # Clean up codes that don't exist in the region table
     unique_codes = np.unique(sparc_data.codes)
     not_in_table = np.setdiff1d(unique_codes, sparc_data.regtable[:, 4])
     sparc_data.codes[np.isin(sparc_data.codes, not_in_table)] = 0
-    
+
     # Calculate area for each region
     dict_of_cols = {}
-    
+
     for regname in sparc_data.regnames:
         # Get the index of the region in the color table
         index = cltmisc.get_indexes_by_substring(
-            sparc_data.regnames, regname, match_entire_world=True
+            sparc_data.regnames, regname, match_entire_word=True
         )
-        
+
         if len(index):
             # Find vertices belonging to this region
             ind = np.where(sparc_data.codes == sparc_data.regtable[index, 4])
-            
+
             # Identify faces with different numbers of vertices in this region
             temp = np.isin(faces, ind).astype(int)
             nps = np.sum(temp, axis=1)
-            
+
             # Group faces by how many vertices belong to the region
-            reg_faces_3v = np.squeeze(faces[np.where(nps == 3), :])  # All vertices in region
-            reg_faces_2v = np.squeeze(faces[np.where(nps == 2), :])  # Two vertices in region
-            reg_faces_1v = np.squeeze(faces[np.where(nps == 1), :])  # One vertex in region
-            
+            reg_faces_3v = np.squeeze(
+                faces[np.where(nps == 3), :]
+            )  # All vertices in region
+            reg_faces_2v = np.squeeze(
+                faces[np.where(nps == 2), :]
+            )  # Two vertices in region
+            reg_faces_1v = np.squeeze(
+                faces[np.where(nps == 1), :]
+            )  # One vertex in region
+
             # Calculate area for each group
             temp_3v, _ = area_from_mesh(coords, reg_faces_3v)
             temp_2v, _ = area_from_mesh(coords, reg_faces_2v)
             temp_1v, _ = area_from_mesh(coords, reg_faces_1v)
-            
+
             # Sum areas
             dict_of_cols[regname] = [temp_3v + temp_2v + temp_1v]
         else:
             dict_of_cols[regname] = [0]
-    
+
     # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-    
+
     # Add global area if requested
     if include_global:
         df.insert(0, f"ctx-{hemi}-hemisphere", df.sum(axis=1))
-    
+
     # Add column prefixes
     colnames = df.columns.tolist()
     colnames = cltmisc.correct_names(colnames, prefix=f"ctx-{hemi}-")
     df.columns = colnames
-    
+
     # Format table according to specified type
     if table_type == "region":
         # Create region-oriented table
@@ -440,27 +461,27 @@ def compute_reg_area_fromsurf(
         df.columns = ["Value"]
         df = df.reset_index()
         df = df.rename(columns={"index": "Region"})
-        
+
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
         df.insert(0, "Supraregion", reg_names[0])
         df.insert(1, "Side", reg_names[1])
-    
+
     # Add metadata columns
     nrows = df.shape[0]
     units = get_units("area")[0]
-    
+
     df.insert(0, "Source", [surf_type] * nrows)
     df.insert(1, "Metric", ["area"] * nrows)
     df.insert(2, "Units", [units] * nrows)
     df.insert(3, "MetricFile", [filename] * nrows)
-    
+
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(parc_file, str):
         ent_list = entities4morphotable()
         df_add = df2add(in_file=parc_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
-    
+
     # Save table if requested
     if output_table is not None:
         output_dir = os.path.dirname(output_table)
@@ -468,10 +489,11 @@ def compute_reg_area_fromsurf(
             raise FileNotFoundError(
                 f"Directory does not exist: {output_dir}. Please create the directory before saving."
             )
-        
+
         df.to_csv(output_table, sep="\t", index=False)
-    
+
     return df, output_table
+
 
 ####################################################################################################
 def compute_euler_fromsurf(
@@ -484,10 +506,10 @@ def compute_euler_fromsurf(
 ) -> Tuple[pd.DataFrame, Optional[str]]:
     """
     Compute the Euler characteristic of a surface mesh.
-    
+
     This function calculates the Euler characteristic (χ = V - E + F) of a surface mesh,
     which is a topological invariant that provides information about the surface's topology.
-    
+
     Parameters
     ----------
     surf_file : str or cltsurf.Surface
@@ -504,18 +526,18 @@ def compute_euler_fromsurf(
         Type of surface (e.g., "white", "pial") for metadata. If empty, determined from filename.
     add_bids_entities : bool, default=True
         Whether to include BIDS entities as columns in the resulting DataFrame.
-    
+
     Returns
     -------
     df : pd.DataFrame
         DataFrame containing the computed Euler characteristic.
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
-        
+
     Examples
     --------
     Basic usage with default parameters:
-    
+
     >>> import os
     >>> import clabtoolkit.morphometrytools as morpho
     >>> fs_dir = os.environ.get('FREESURFER_HOME')
@@ -523,52 +545,59 @@ def compute_euler_fromsurf(
     >>> surf_file = os.path.join(fs_dir, 'subjects', 'bert', 'surf', f'{hemi}.white')
     >>> df, _ = morpho.compute_euler_fromsurf(surf_file, hemi)
     >>> print(df.head())
-    
+
     Using region format for output:
-    
+
     >>> df_region, _ = morpho.compute_euler_fromsurf(
     ...     surf_file, hemi, table_type="region", add_bids_entities=True
     ... )
     >>> print(df_region.head())
-    
+
     Saving results to a file:
-    
+
     >>> output_path = '/path/to/output/euler_stats.csv'
     >>> df_saved, saved_path = morpho.compute_euler_fromsurf(
     ...     surf_file, hemi, output_table=output_path
     ... )
     >>> print(f"Table saved to: {saved_path}")
-    
+
     Notes
     -----
     The Euler characteristic (χ) is calculated as χ = V - E + F, where:
     - V is the number of vertices
     - E is the number of edges
     - F is the number of faces
-    
+
     For a closed, orientable surface without boundaries, the Euler characteristic
     is related to the genus (g) by the formula: χ = 2 - 2g.
     """
     # Input validation
     if table_type not in ["region", "metric"]:
-        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
 
     # Process surface file
     filename = ""
     if isinstance(surf_file, str):
         if not os.path.exists(surf_file):
             raise FileNotFoundError(f"Surface file not found: {surf_file}")
-        
+
         surf = cltsurf.Surface(surface_file=surf_file)
         filename = surf_file
-        
+
         # Extract surface type from filename if not provided
-        if not surf_type and os.path.basename(surf_file).split('.')[-1] not in ['gii', 'vtk']:
-            surf_type = os.path.basename(surf_file).split('.')[-1]
+        if not surf_type and os.path.basename(surf_file).split(".")[-1] not in [
+            "gii",
+            "vtk",
+        ]:
+            surf_type = os.path.basename(surf_file).split(".")[-1]
     elif isinstance(surf_file, cltsurf.Surface):
         surf = copy.deepcopy(surf_file)
     else:
-        raise TypeError(f"surf_file must be a string or Surface object, got {type(surf_file)}")
+        raise TypeError(
+            f"surf_file must be a string or Surface object, got {type(surf_file)}"
+        )
 
     # Extract mesh components
     coords = surf.mesh.points
@@ -584,15 +613,15 @@ def compute_euler_fromsurf(
     # Create dictionary for DataFrame
     dict_of_cols = {}
     dict_of_cols[f"ctx-{hemi}-hemisphere"] = [euler]
-    
+
     # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-    
+
     # Add column prefixes
     colnames = df.columns.tolist()
     colnames = cltmisc.correct_names(colnames, prefix=f"ctx-{hemi}-")
     df.columns = colnames
-    
+
     # Format table according to specified type
     if table_type == "region":
         # Create region-oriented table
@@ -605,27 +634,31 @@ def compute_euler_fromsurf(
         df.columns = ["Value"]
         df = df.reset_index()
         df = df.rename(columns={"index": "Region"})
-        
+
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
         df.insert(0, "Supraregion", reg_names[0])
         df.insert(1, "Side", reg_names[1])
-    
+
     # Add metadata columns
     nrows = df.shape[0]
-    units = get_units("euler")[0] if isinstance(get_units("euler"), list) else get_units("euler")
-    
+    units = (
+        get_units("euler")[0]
+        if isinstance(get_units("euler"), list)
+        else get_units("euler")
+    )
+
     df.insert(0, "Source", [surf_type] * nrows)
     df.insert(1, "Metric", ["euler"] * nrows)
     df.insert(2, "Units", [units] * nrows)
     df.insert(3, "MetricFile", [filename] * nrows)
-    
+
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(surf_file, str):
         ent_list = entities4morphotable()
         df_add = df2add(in_file=surf_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
-    
+
     # Save table if requested
     output_path = None
     if output_table is not None:
@@ -634,54 +667,55 @@ def compute_euler_fromsurf(
             raise FileNotFoundError(
                 f"Directory does not exist: {output_dir}. Please create the directory before saving."
             )
-        
+
         df.to_csv(output_table, sep="\t", index=False)
         output_path = output_table
-    
+
     return df, output_path
+
 
 ####################################################################################################
 def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> Tuple[float, np.ndarray]:
     """
     Compute the total area and per-triangle areas of a mesh surface.
-    
+
     This function calculates the area of each triangle in a mesh using Heron's formula
     and returns both the total surface area and individual triangle areas.
-    
+
     Parameters
     ----------
     coords : np.ndarray
-        Coordinates of the vertices of the mesh. 
+        Coordinates of the vertices of the mesh.
         Shape must be (n, 3) where n is the number of vertices.
         Each row contains the [x, y, z] coordinates of a vertex.
-    
+
     faces : np.ndarray
         Triangular faces of the mesh defined by vertex indices.
         Shape must be (m, 3) where m is the number of faces.
         Each row contains three indices referring to vertices in the coords array.
-    
+
     Returns
     -------
     face_area : float
         Total surface area of the mesh in square centimeters (cm²).
-    
+
     tri_area : np.ndarray
         Array of areas for each triangle in the mesh in square centimeters (cm²).
         Shape is (m,) where m is the number of faces.
-    
+
     Notes
     -----
     The function uses Heron's formula to calculate the area of each triangle:
         Area = √(s(s-a)(s-b)(s-c))
     where s is the semi-perimeter: s = (a + b + c)/2, and a, b, c are the side lengths.
-    
+
     The resulting areas are converted to square centimeters (cm²) by dividing by 100
     (assuming the input coordinates are in millimeters).
-    
+
     Examples
     --------
     Calculate area of a simple mesh with two triangles:
-    
+
     >>> import numpy as np
     >>> coords = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]])
     >>> faces = np.array([[0, 1, 2], [1, 3, 2]])
@@ -690,9 +724,9 @@ def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> Tuple[float, np.nda
     Total area: 1.0000 cm²
     >>> print(f"Triangle areas: {triangle_areas}")
     Triangle areas: [0.5 0.5]
-    
+
     Calculate area of a pyramid:
-    
+
     >>> coords = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, 1]])
     >>> faces = np.array([[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4], [0, 2, 1], [0, 3, 2]])
     >>> total_area, _ = area_from_mesh(coords, faces)
@@ -702,10 +736,10 @@ def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> Tuple[float, np.nda
     # Input validation
     if coords.ndim != 2 or coords.shape[1] != 3:
         raise ValueError(f"coords must have shape (n, 3), got {coords.shape}")
-    
+
     if faces.ndim != 2 or faces.shape[1] != 3:
         raise ValueError(f"faces must have shape (m, 3), got {faces.shape}")
-    
+
     if np.any(faces >= coords.shape[0]) or np.any(faces < 0):
         raise ValueError("faces contains invalid vertex indices")
 
@@ -713,46 +747,47 @@ def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> Tuple[float, np.nda
     v1 = coords[faces[:, 0]]
     v2 = coords[faces[:, 1]]
     v3 = coords[faces[:, 2]]
-    
+
     # Compute edge lengths using Euclidean distance
-    d12 = np.sqrt(np.sum((v1 - v2)**2, axis=1))
-    d23 = np.sqrt(np.sum((v2 - v3)**2, axis=1))
-    d31 = np.sqrt(np.sum((v3 - v1)**2, axis=1))
-    
+    d12 = np.sqrt(np.sum((v1 - v2) ** 2, axis=1))
+    d23 = np.sqrt(np.sum((v2 - v3) ** 2, axis=1))
+    d31 = np.sqrt(np.sum((v3 - v1) ** 2, axis=1))
+
     # Compute semi-perimeter for each triangle
     s = (d12 + d23 + d31) / 2
-    
+
     # Compute area of each triangle using Heron's formula
     # Division by 100 converts from mm² to cm²
     tri_area = np.sqrt(np.maximum(0, s * (s - d12) * (s - d23) * (s - d31))) / 100
-    
+
     # Compute total mesh area
     face_area = np.sum(tri_area)
-    
+
     return face_area, tri_area
+
 
 ####################################################################################################
 def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
     """
     Compute the Euler characteristic of a mesh surface.
-    
-    The Euler characteristic (χ) is a topological invariant that describes the shape or 
+
+    The Euler characteristic (χ) is a topological invariant that describes the shape or
     structure of a topological space regardless of how it is bent or deformed. For a mesh,
-    it is calculated as χ = V - E + F, where V is the number of vertices, E is the number 
+    it is calculated as χ = V - E + F, where V is the number of vertices, E is the number
     of edges, and F is the number of faces.
-    
+
     Parameters
     ----------
     coords : np.ndarray
         Coordinates of the vertices of the mesh.
         Shape must be (n, 3) where n is the number of vertices.
         Each row contains the [x, y, z] coordinates of a vertex.
-    
+
     faces : np.ndarray
         Triangular faces of the mesh defined by vertex indices.
         Shape must be (m, 3) where m is the number of faces.
         Each row contains three indices referring to vertices in the coords array.
-    
+
     Returns
     -------
     euler : int
@@ -761,29 +796,29 @@ def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
         - Sphere: χ = 2 (genus 0)
         - Torus: χ = 0 (genus 1)
         - Double torus: χ = -2 (genus 2)
-    
+
     Notes
     -----
     The Euler characteristic provides information about the topology of a mesh:
     - For closed, orientable surfaces: χ = 2 - 2g, where g is the genus (number of "holes")
-    - For surfaces with boundaries (like cortical surfaces): χ = 2 - 2g - b, where b is the 
+    - For surfaces with boundaries (like cortical surfaces): χ = 2 - 2g - b, where b is the
     number of boundary components
-    
+
     A change in the Euler characteristic can indicate topological defects in a surface.
-    
+
     Examples
     --------
     Calculate Euler characteristic of a tetrahedron (a closed surface):
-    
+
     >>> import numpy as np
     >>> coords = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
     >>> faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
     >>> euler = euler_from_mesh(coords, faces)
     >>> print(f"Euler characteristic: {euler}")
     Euler characteristic: 2
-    
+
     Calculate Euler characteristic of a simple two-triangle surface:
-    
+
     >>> coords = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]])
     >>> faces = np.array([[0, 1, 2], [1, 2, 3]])
     >>> euler = euler_from_mesh(coords, faces)
@@ -793,10 +828,10 @@ def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
     # Input validation
     if coords.ndim != 2 or coords.shape[1] != 3:
         raise ValueError(f"coords must have shape (n, 3), got {coords.shape}")
-    
+
     if faces.ndim != 2 or faces.shape[1] != 3:
         raise ValueError(f"faces must have shape (m, 3), got {faces.shape}")
-    
+
     if np.any(faces >= coords.shape[0]) or np.any(faces < 0):
         raise ValueError("faces contains invalid vertex indices")
 
@@ -808,18 +843,20 @@ def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
 
     # Step 3: Count unique edges
     # Create an array of all edges from faces
-    edges = np.vstack([
-        faces[:, [0, 1]],  # First edge of each face
-        faces[:, [1, 2]],  # Second edge of each face
-        faces[:, [2, 0]]   # Third edge of each face
-    ])
+    edges = np.vstack(
+        [
+            faces[:, [0, 1]],  # First edge of each face
+            faces[:, [1, 2]],  # Second edge of each face
+            faces[:, [2, 0]],  # Third edge of each face
+        ]
+    )
 
     # Sort each edge to ensure (v1,v2) and (v2,v1) are treated as the same edge
     edges = np.sort(edges, axis=1)
-    
+
     # Remove duplicate edges using unique
     unique_edges = np.unique(edges, axis=0)
-    
+
     # Count edges
     E = len(unique_edges)
 
@@ -849,18 +886,18 @@ def compute_reg_val_fromparcellation(
     exclude_by_name: Union[list, str] = None,
     add_bids_entities: bool = True,
     region_prefix: str = "supra-side",
-    interp_method: str = "linear"
+    interp_method: str = "linear",
 ) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
     """
     Compute regional statistics from a volumetric metric map and a parcellation.
-    
-    This function extracts regional values by combining voxel-wise volumetric metrics with 
-    parcellation data defining anatomical regions. It supports various statistical measures 
+
+    This function extracts regional values by combining voxel-wise volumetric metrics with
+    parcellation data defining anatomical regions. It supports various statistical measures
     and output formats to facilitate regional analysis of volumetric neuroimaging data.
-    
+
     If the metric and parcellation files have different resolutions, the metric data will be
     automatically resampled to match the parcellation's resolution.
-    
+
     Parameters
     ----------
     metric_file : str or np.ndarray
@@ -896,7 +933,7 @@ def compute_reg_val_fromparcellation(
     interp_method : str, default="linear"
         Interpolation method to use when resampling the metric data to match parcellation resolution.
         Options include: "linear", "nearest", "cubic". Use "nearest" for categorical data.
-    
+
     Returns
     -------
     df : pd.DataFrame
@@ -905,11 +942,11 @@ def compute_reg_val_fromparcellation(
         Array of metric values used in the calculation.
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
-        
+
     Examples
     --------
     Basic usage with default parameters:
-    
+
     >>> import os
     >>> import clabtoolkit.morphometrytools as morpho
     >>> # Define paths to sample data
@@ -922,18 +959,18 @@ def compute_reg_val_fromparcellation(
     >>> # Display the first few rows of results
     >>> print(f"Number of regions: {df.shape[0]}")
     >>> print(df[['Region', 'Value', 'Median', 'Std']].head())
-    
+
     Using region format for output (regions as columns, statistics as rows):
-    
+
     >>> df_region, _, _ = morpho.compute_reg_val_fromparcellation(
-    ...     metric_file, parc_file, metric='intensity', 
+    ...     metric_file, parc_file, metric='intensity',
     ...     table_type="region", add_bids_entities=True
     ... )
     >>> # View statistics across regions
     >>> print(df_region[['Statistics', 'brain-brain-wholebrain']].head())
-    
+
     Working with images that have different resolutions:
-    
+
     >>> # High-resolution functional metric with lower-resolution anatomical parcellation
     >>> metric_file = os.path.join('data', 'sub-01', 'func', 'sub-01_task-rest_bold.nii.gz')
     >>> parc_file = os.path.join('data', 'sub-01', 'anat', 'sub-01_T1w_parcellation.nii.gz')
@@ -943,18 +980,18 @@ def compute_reg_val_fromparcellation(
     ...     interpolation='linear'  # Use linear interpolation for continuous data
     ... )
     >>> print(df.head())
-    
+
     Computing only specific statistics for each region:
-    
+
     >>> df_custom_stats, _, _ = morpho.compute_reg_val_fromparcellation(
     ...     metric_file, parc_file, metric='FA',
     ...     stats_list=['median', 'std'], table_type="metric"
     ... )
     >>> # View only median and standard deviation
     >>> print(df_custom_stats[['Region', 'Median', 'Std']].head())
-    
+
     Excluding specific regions from analysis:
-    
+
     >>> # Exclude regions by name
     >>> exclude_names = ["brain-left-ventricle", "brain-right-ventricle"]
     >>> df_filtered, _, _ = morpho.compute_reg_val_fromparcellation(
@@ -964,9 +1001,9 @@ def compute_reg_val_fromparcellation(
     >>> # Check that ventricles are not in results
     >>> ventricle_count = sum(1 for r in df_filtered['Region'] if 'ventricle' in r.lower())
     >>> print(f"Ventricle regions in results: {ventricle_count}")
-    
+
     Saving the results to a file:
-    
+
     >>> output_path = os.path.join('results', 'sub-01_regional_intensity.tsv')
     >>> df_saved, _, saved_path = morpho.compute_reg_val_fromparcellation(
     ...     metric_file, parc_file, output_table=output_path,
@@ -976,9 +1013,9 @@ def compute_reg_val_fromparcellation(
     >>> # You can load this table later with pandas
     >>> import pandas as pd
     >>> df_loaded = pd.read_csv(saved_path, sep='\t')
-    
+
     Working with in-memory data instead of files:
-    
+
     >>> import numpy as np
     >>> import nibabel as nib
     >>> # Load data into memory first
@@ -992,109 +1029,113 @@ def compute_reg_val_fromparcellation(
     ...     add_bids_entities=False  # No BIDS entities for in-memory data
     ... )
     >>> print(df_memory.head())
-    
+
     Notes
     -----
-    This function is designed for volumetric data, extracting statistics from voxel-wise 
-    metrics within each region defined by a parcellation. For surface-based metrics, 
+    This function is designed for volumetric data, extracting statistics from voxel-wise
+    metrics within each region defined by a parcellation. For surface-based metrics,
     consider using `compute_reg_val_fromannot` instead.
-    
+
     The function handles both file paths and in-memory arrays, making it versatile for
-    different workflows. When working with arrays directly, ensure the metric and 
+    different workflows. When working with arrays directly, ensure the metric and
     parcellation arrays have the same dimensions.
-    
+
     When metric and parcellation images have different resolutions, the metric data is
     automatically resampled to match the parcellation's resolution using the specified
     interpolation method. For continuous metrics (like intensity), linear or cubic
     interpolation is recommended. For categorical data, use 'nearest' interpolation.
-    
+
     When working with BIDS-formatted data, setting `add_bids_entities=True` will extract
     subject, session, and other metadata from the filename to include in the output table.
-    
+
     See Also
     --------
     compute_reg_val_fromannot : Similar function for surface-based metrics and annotations
     """
-    # Import needed for resampling
-    import tempfile
-    import os
-    import warnings
-    import nibabel as nib
-    from nibabel.processing import resample_from_to
-    
+
     # Input validation
     if isinstance(stats_list, str):
         stats_list = [stats_list]
-    
+
     stats_list = [stat.lower() for stat in stats_list]
-    
+
     if table_type not in ["region", "metric"]:
-        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
-    
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
+
     if interp_method not in ["linear", "nearest", "cubic"]:
-        raise ValueError(f"Invalid interpolation: '{interp_method}'. Expected 'linear', 'nearest', or 'cubic'.")
-    
+        raise ValueError(
+            f"Invalid interpolation: '{interp_method}'. Expected 'linear', 'nearest', or 'cubic'."
+        )
+
     # Process parcellation file
     parc_img = None
     if isinstance(parc_file, str):
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Parcellation file not found: {parc_file}")
-        
+
         parc_img = nib.load(parc_file)
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
     elif isinstance(parc_file, cltparc.Parcellation):
         vparc_data = copy.deepcopy(parc_file)
-        if hasattr(vparc_data, 'img'):
+        if hasattr(vparc_data, "img"):
             parc_img = vparc_data.img
     elif isinstance(parc_file, np.ndarray):
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
     else:
-        raise TypeError(f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}")
-    
+        raise TypeError(
+            f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}"
+        )
+
     # Process metric file
     metric_img = None
     filename = ""
     if isinstance(metric_file, str):
         if not os.path.exists(metric_file):
             raise FileNotFoundError(f"Metric file not found: {metric_file}")
-        
+
         metric_img = nib.load(metric_file)
         metric_vol = metric_img.get_fdata()
         filename = metric_file
     elif isinstance(metric_file, np.ndarray):
         metric_vol = metric_file
     else:
-        raise TypeError(f"metric_file must be a string or numpy array, got {type(metric_file)}")
-    
+        raise TypeError(
+            f"metric_file must be a string or numpy array, got {type(metric_file)}"
+        )
+
     # Handle resolution mismatch when we have both images
     temp_file = None
     if metric_img is not None and parc_img is not None:
         # Check if dimensions or affines don't match
         metric_shape = metric_img.shape
         parc_shape = parc_img.shape
-        
-        if (metric_shape != parc_shape) or not np.allclose(metric_img.affine, parc_img.affine):
+
+        if (metric_shape != parc_shape) or not np.allclose(
+            metric_img.affine, parc_img.affine
+        ):
             warnings.warn(
                 f"Metric image ({metric_shape}) and parcellation image ({parc_shape}) have different "
                 f"dimensions or orientations. Resampling metric to match parcellation."
             )
-            
+
             # Resample metric to match parcellation space
             resampled_metric_img = resample_from_to(
-                metric_img, 
-                parc_img, 
-                order={'linear': 1, 'nearest': 0, 'cubic': 3}[interp_method]
+                metric_img,
+                parc_img,
+                order={"linear": 1, "nearest": 0, "cubic": 3}[interp_method],
             )
-            
+
             # Save to temporary file if needed for other operations
-            with tempfile.NamedTemporaryFile(suffix='.nii.gz', delete=False) as f:
+            with tempfile.NamedTemporaryFile(suffix=".nii.gz", delete=False) as f:
                 temp_file = f.name
-            
+
             nib.save(resampled_metric_img, temp_file)
-            
+
             # Update metric volume with resampled data
             metric_vol = resampled_metric_img.get_fdata()
-    
+
     # Check that dimensions match with parcellation data
     if metric_vol.shape != vparc_data.data.shape:
         # If we already resampled and still don't match, there's a problem
@@ -1109,17 +1150,17 @@ def compute_reg_val_fromparcellation(
                 f"Metric data shape {metric_vol.shape} does not match parcellation data shape "
                 f"{vparc_data.data.shape}. Use file inputs instead of arrays for automatic resampling."
             )
-    
+
     # Apply exclusions if specified
     if exclude_by_code is not None:
         vparc_data.remove_by_code(codes2remove=exclude_by_code)
-    
+
     if exclude_by_name is not None:
         vparc_data.remove_by_name(names2remove=exclude_by_name)
-    
+
     # Prepare data structures for results
     dict_of_cols = {}
-    
+
     # Compute global brain statistics (non-zero parcellation values)
     brain_mask = vparc_data.data != 0
     if np.any(brain_mask):  # Check if there are any non-zero values
@@ -1128,15 +1169,15 @@ def compute_reg_val_fromparcellation(
     else:
         # Handle empty/invalid parcellation
         dict_of_cols["brain-brain-wholebrain"] = [0] * len(stats_list)
-    
+
     # Compute statistics for each region
     # Use unique region indices from the data itself
     unique_indices = np.unique(vparc_data.data)
     unique_indices = unique_indices[unique_indices != 0]  # Exclude background
-    
+
     for index in unique_indices:
         # Get region name from the parcellation object if available
-        if hasattr(vparc_data, 'name') and hasattr(vparc_data, 'index'):
+        if hasattr(vparc_data, "name") and hasattr(vparc_data, "index"):
             idx_pos = np.where(np.array(vparc_data.index) == index)[0]
             if len(idx_pos) > 0:
                 regname = vparc_data.name[idx_pos[0]]
@@ -1144,9 +1185,9 @@ def compute_reg_val_fromparcellation(
                 regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
         else:
             regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
-            
+
         region_mask = vparc_data.data == index
-        
+
         if np.any(region_mask):
             region_values = metric_vol[region_mask]
             if len(region_values) > 0:  # Check if there are any values
@@ -1156,16 +1197,16 @@ def compute_reg_val_fromparcellation(
                 dict_of_cols[regname] = [0] * len(stats_list)
         else:
             dict_of_cols[regname] = [0] * len(stats_list)
-    
+
     # Check if we found any regions
     if len(dict_of_cols) == 0:
         if temp_file:
             os.unlink(temp_file)  # Clean up temp file
         raise ValueError("No valid regions found in the parcellation data")
-    
+
     # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-    
+
     # Format table according to specified type
     if table_type == "region":
         # Create region-oriented table
@@ -1178,10 +1219,10 @@ def compute_reg_val_fromparcellation(
         df.columns = [stat_name.title() for stat_name in stats_list]
         df = df.reset_index()
         df = df.rename(columns={"index": "Region"})
-        
+
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
-        
+
         # Safely handle region names that might not have 3 components
         if reg_names.shape[1] >= 3:
             df.insert(0, "Supraregion", reg_names[0])
@@ -1192,7 +1233,7 @@ def compute_reg_val_fromparcellation(
         else:
             df.insert(0, "Supraregion", "unknown")
             df.insert(1, "Side", "unknown")
-    
+
     # Add metadata columns
     nrows = df.shape[0]
     units = get_units(metric)
@@ -1200,12 +1241,12 @@ def compute_reg_val_fromparcellation(
         units = units[0]
     elif units is None or (isinstance(units, list) and len(units) == 0):
         units = "unknown"
-    
+
     df.insert(0, "Source", ["volume"] * nrows)
     df.insert(1, "Metric", [metric] * nrows)
     df.insert(2, "Units", [units] * nrows)
     df.insert(3, "MetricFile", [filename] * nrows)
-    
+
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(metric_file, str):
         try:
@@ -1214,7 +1255,7 @@ def compute_reg_val_fromparcellation(
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
-    
+
     # Save table if requested
     output_path = None
     if output_table is not None:
@@ -1223,15 +1264,16 @@ def compute_reg_val_fromparcellation(
             raise FileNotFoundError(
                 f"Directory does not exist: {output_dir}. Please create the directory before saving."
             )
-        
+
         df.to_csv(output_table, sep="\t", index=False)
         output_path = output_table
-    
+
     # Clean up temporary file if it exists
     if temp_file and os.path.exists(temp_file):
         os.unlink(temp_file)
-    
+
     return df, metric_vol, output_path
+
 
 ####################################################################################################
 def compute_reg_volume_fromparcellation(
@@ -1241,15 +1283,15 @@ def compute_reg_volume_fromparcellation(
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
     add_bids_entities: bool = True,
-    region_prefix: str = "supra-side"
+    region_prefix: str = "supra-side",
 ) -> Tuple[pd.DataFrame, Optional[str]]:
     """
     Compute volume for all regions in a parcellation.
-    
-    This function calculates the volume of each region defined in a parcellation by counting 
-    the number of voxels in each region and multiplying by the voxel volume. It supports 
+
+    This function calculates the volume of each region defined in a parcellation by counting
+    the number of voxels in each region and multiplying by the voxel volume. It supports
     various output formats and can exclude specific regions from the analysis.
-    
+
     Parameters
     ----------
     parc_file : str, cltparc.Parcellation, or np.ndarray
@@ -1273,18 +1315,18 @@ def compute_reg_volume_fromparcellation(
     region_prefix : str, default="supra-side"
         Prefix to use for region names when they cannot be determined from the parcellation object.
         The prefix will be combined with the region index number.
-    
+
     Returns
     -------
     df : pd.DataFrame
         DataFrame containing the computed regional volumes.
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
-        
+
     Examples
     --------
     Basic usage with default parameters:
-    
+
     >>> import os
     >>> import clabtoolkit.morphometrytools as morpho
     >>> # Define path to sample data
@@ -1294,17 +1336,17 @@ def compute_reg_volume_fromparcellation(
     >>> # Display the first few rows of results
     >>> print(f"Number of regions: {df.shape[0]}")
     >>> print(df[['Region', 'Value']].head())
-    
+
     Using region format for output (regions as columns):
-    
+
     >>> df_region, _ = morpho.compute_reg_volume_fromparcellation(
     ...     parc_file, table_type="region", add_bids_entities=True
     ... )
     >>> # View volumes across regions
     >>> print(df_region.head())
-    
+
     Excluding specific regions from analysis:
-    
+
     >>> # Exclude regions by name
     >>> exclude_names = ["brain-left-ventricle", "brain-right-ventricle"]
     >>> df_filtered, _ = morpho.compute_reg_volume_fromparcellation(
@@ -1313,9 +1355,9 @@ def compute_reg_volume_fromparcellation(
     >>> # Check that ventricles are not in results
     >>> ventricle_count = sum(1 for r in df_filtered['Region'] if 'ventricle' in r.lower())
     >>> print(f"Ventricle regions in results: {ventricle_count}")
-    
+
     Saving the results to a file:
-    
+
     >>> output_path = os.path.join('results', 'sub-01_regional_volumes.tsv')
     >>> df_saved, saved_path = morpho.compute_reg_volume_fromparcellation(
     ...     parc_file, output_table=output_path
@@ -1324,9 +1366,9 @@ def compute_reg_volume_fromparcellation(
     >>> # You can load this table later with pandas
     >>> import pandas as pd
     >>> df_loaded = pd.read_csv(saved_path, sep='\t')
-    
+
     Working with in-memory data instead of files:
-    
+
     >>> import numpy as np
     >>> import nibabel as nib
     >>> # Load data into memory first
@@ -1339,41 +1381,37 @@ def compute_reg_volume_fromparcellation(
     ...     parc_data, add_bids_entities=False
     ... )
     >>> print(df_memory.head())
-    
+
     Notes
     -----
     This function calculates volumes in milliliters (ml) by default. The voxel volume is
     calculated from the affine transformation matrix of the parcellation image. For arrays
     without an affine matrix, an identity matrix is assumed (1mm isotropic voxels).
-    
+
     The regional volumes are calculated by counting the number of voxels in each region
     and multiplying by the voxel volume in cubic millimeters, then dividing by 1000 to
     convert to milliliters.
-    
+
     When working with BIDS-formatted data, setting `add_bids_entities=True` will extract
     subject, session, and other metadata from the filename to include in the output table.
-    
+
     See Also
     --------
     compute_reg_val_fromparcellation : Calculate statistics for metric values within parcellation regions
     """
-    import os
-    import warnings
-    import numpy as np
-    import pandas as pd
-    import copy
-    import nibabel as nib
-    
+
     # Input validation
     if table_type not in ["region", "metric"]:
-        raise ValueError(f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'.")
-    
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
+
     # Process parcellation file
     filename = ""
     if isinstance(parc_file, str):
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Parcellation file not found: {parc_file}")
-        
+
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
         affine = vparc_data.affine
         filename = parc_file
@@ -1384,22 +1422,24 @@ def compute_reg_volume_fromparcellation(
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
         affine = vparc_data.affine
     else:
-        raise TypeError(f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}")
-    
+        raise TypeError(
+            f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}"
+        )
+
     # Apply exclusions if specified
     if exclude_by_code is not None:
         vparc_data.remove_by_code(codes2remove=exclude_by_code)
-    
+
     if exclude_by_name is not None:
         vparc_data.remove_by_name(names2remove=exclude_by_name)
-    
+
     # Computing the voxel volume (in cubic mm)
     vox_size = np.linalg.norm(affine[:3, :3], axis=1)
     vox_vol = np.prod(vox_size)
-    
+
     # Prepare data structures for results
     dict_of_cols = {}
-    
+
     # Compute global volume for the entire brain (convert to ml by dividing by 1000)
     brain_mask = vparc_data.data != 0
     if np.any(brain_mask):  # Check if there are any non-zero values
@@ -1408,15 +1448,15 @@ def compute_reg_volume_fromparcellation(
     else:
         # Handle empty/invalid parcellation
         dict_of_cols["brain-brain-wholebrain"] = [0]
-    
+
     # Compute volume for each region
     # Use unique region indices from the data itself
     unique_indices = np.unique(vparc_data.data)
     unique_indices = unique_indices[unique_indices != 0]  # Exclude background
-    
+
     for index in unique_indices:
         # Get region name from the parcellation object if available
-        if hasattr(vparc_data, 'name') and hasattr(vparc_data, 'index'):
+        if hasattr(vparc_data, "name") and hasattr(vparc_data, "index"):
             idx_pos = np.where(np.array(vparc_data.index) == index)[0]
             if len(idx_pos) > 0:
                 regname = vparc_data.name[idx_pos[0]]
@@ -1424,22 +1464,22 @@ def compute_reg_volume_fromparcellation(
                 regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
         else:
             regname = cltmisc.create_names_from_indices(index, prefix=region_prefix)
-            
+
         region_mask = vparc_data.data == index
         region_volume_ml = np.sum(region_mask) * vox_vol / 1000
-        
+
         if region_volume_ml > 0:
             dict_of_cols[regname] = [region_volume_ml]
         else:
             dict_of_cols[regname] = [0]
-    
+
     # Check if we found any regions
     if len(dict_of_cols) == 0:
         raise ValueError("No valid regions found in the parcellation data")
-    
+
     # Create DataFrame
     df = pd.DataFrame.from_dict(dict_of_cols)
-    
+
     # Format table according to specified type
     if table_type == "region":
         # Create region-oriented table
@@ -1452,10 +1492,10 @@ def compute_reg_volume_fromparcellation(
         df.columns = ["Value"]
         df = df.reset_index()
         df = df.rename(columns={"index": "Region"})
-        
+
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
-        
+
         # Safely handle region names that might not have 3 components
         if reg_names.shape[1] >= 3:
             df.insert(0, "Supraregion", reg_names[0])
@@ -1466,7 +1506,7 @@ def compute_reg_volume_fromparcellation(
         else:
             df.insert(0, "Supraregion", "unknown")
             df.insert(1, "Side", "unknown")
-    
+
     # Add metadata columns
     nrows = df.shape[0]
     units = get_units("volume")
@@ -1474,12 +1514,12 @@ def compute_reg_volume_fromparcellation(
         units = units[0]
     elif units is None or (isinstance(units, list) and len(units) == 0):
         units = "ml"
-    
+
     df.insert(0, "Source", ["volume"] * nrows)
     df.insert(1, "Metric", ["volume"] * nrows)
     df.insert(2, "Units", [units] * nrows)
     df.insert(3, "MetricFile", [filename] * nrows)
-    
+
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(parc_file, str):
         try:
@@ -1488,7 +1528,7 @@ def compute_reg_volume_fromparcellation(
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
-    
+
     # Save table if requested
     output_path = None
     if output_table is not None:
@@ -1497,156 +1537,1070 @@ def compute_reg_volume_fromparcellation(
             raise FileNotFoundError(
                 f"Directory does not exist: {output_dir}. Please create the directory before saving."
             )
-        
+
         df.to_csv(output_table, sep="\t", index=False)
         output_path = output_table
-    
+
     return df, output_path
 
-####################################################################################################
-####################################################################################################
-############                                                                            ############
-############                                                                            ############
-############       Methods dedicated to parse stats file from freesurfer results        ############
-############                                                                            ############
-############                                                                            ############
-####################################################################################################
-####################################################################################################
 
-
-def parse_freesurfer_statsfile(
-    stat_file: str, format: str = "metric", 
-    add_bids_entities: bool = True
-) -> pd.DataFrame:
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############  Section 3: Methods dedicated to parse stats file from freesurfer results  ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def parse_freesurfer_global_fromaseg(
+    stat_file: str,
+    output_table: str = None,
+    table_type: str = "metric",
+    add_bids_entities: bool = True,
+    include_missing: bool = True,
+    config_json: str = None,
+) -> Tuple[pd.DataFrame, Optional[str]]:
     """
-    This function reads the estimated volume values from freesurfer aseg.stats file
+    Parse global volume measurements from a FreeSurfer aseg.stats file.
+
+    This function extracts key global volumetric measurements from FreeSurfer's aseg.stats file,
+    including intracranial volume, brain volume, gray/white matter volumes, and ventricle
+    volumes. It converts values to milliliters and organizes them into a structured DataFrame.
 
     Parameters
-
     ----------
     stat_file : str
-        Path to the aseg.stats file generated by freesurfer
-
-    format : str, optional
-        Format of the output. It could be "region" or "metric". The default is "metric".
-        With the "region" format, the output is a DataFrame with the regional values where each column
-        represent the value of column metric for each specific region. With the "metric" format, the output
-        is a DataFrame with the regional values where each column represent the value of a specific metric
-        for each region.
-
-    add_bids_entities: bool, optional
-        Boolean variable to include the BIDs entities as columns in the resulting dataframe. The default is True.
+        Path to the aseg.stats file generated by FreeSurfer.
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
+    table_type : str, default="metric"
+        Output format specification:
+        - "metric": Each column represents a specific statistic for each region (regions as rows)
+        - "region": Each column represents a region, with rows for different statistics
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+        This extracts subject, session, and other metadata from the filename.
+    include_missing : bool, default=True
+        Whether to include missing values as zeros in the output. If False, missing values
+        will be excluded from the DataFrame.
+    config_json : str, optional
+        Path to a JSON configuration file defining volume measurements to extract.
+        If None, a default configuration will be used.
 
     Returns
-
     -------
-    df : pandas.DataFrame
-        A dataframe with the values of the estimated volume
-
+    df : pd.DataFrame
+        DataFrame containing the extracted global volume measurements.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
     """
 
     # Verify if the file exists
-    if os.path.isfile(stat_file):
+    if not os.path.isfile(stat_file):
+        raise FileNotFoundError(f"Stats file not found: {stat_file}")
 
-        # Read the each file and extract the eTIV, total gray matter volume and cerebral white matter volume
+    # Input validation
+    if table_type not in ["region", "metric"]:
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
+
+    # Load volume measurements from config file or use defaults
+    if config_json and os.path.isfile(config_json):
+        try:
+            with open(config_json, "r") as f:
+                config_data = json.load(f)
+                # Check if the config has a "global" key
+                if "global" in config_data:
+                    volume_measurements = config_data["global"]
+                else:
+                    volume_measurements = config_data
+        except Exception as e:
+            warnings.warn(f"Error loading config file {config_json}: {e}")
+            volume_measurements = get_stats_dictionary("global")
+    else:
+        volume_measurements = get_stats_dictionary("global")
+
+    # Dictionary to store the extracted values
+    extracted_values = {}
+
+    # Read the stats file
+    try:
         with open(stat_file, "r") as file:
-            for line in file:
-                if (
-                    "EstimatedTotalIntraCranialVol" in line
-                ):  # Selecting the line with the eTIV
-                    eTIV = line.split()[-2].split(",")[
-                        0
-                    ]  # Splitting the line and selecting the eTIV value
-                    # Convert the value to float and divide by 1000 to convert to cm3
-                    eTIV = float(eTIV) / 1000
+            file_content = file.readlines()
 
-                if "Brain Segmentation Volume," in line:
-                    brain_seg = line.split()[-2].split(",")[0]
-                    brain_seg = float(brain_seg) / 1000
+            # Create dictionaries to store parsed data
+            global_measures = {}  # For "# Measure" lines - global stats
+            segmented_data = {}  # For tabular data - segmentation stats
 
-                if "TotalGrayVol" in line:
-                    total_grey = line.split()[-2].split(",")[0]
-                    total_grey = float(total_grey) / 1000
+            # First, parse all global measures (lines starting with "# Measure")
+            for line in file_content:
+                if line.startswith("# Measure"):
+                    try:
+                        parts = line.split(", ")
+                        if len(parts) >= 4:
+                            # Get description (which is parts[2]) and value (parts[3])
+                            measure_description = parts[2].strip()
+                            measure_value = float(parts[3].strip())
+                            global_measures[measure_description] = measure_value
 
-                if "CerebralWhiteMatterVol" in line:
-                    white_matter = line.split()[-2].split(",")[0]
-                    white_matter = float(white_matter) / 1000
+                            # Also store by the short name (parts[1]) for alternative lookup
+                            if len(parts) >= 2:
+                                short_name = parts[1].strip()
+                                global_measures[short_name] = measure_value
+                    except Exception as e:
+                        warnings.warn(
+                            f"Error parsing global measure line: {line.strip()}. Error: {e}"
+                        )
 
-                if "Left-Lateral-Ventricle" in line:
-                    left_lat_vent = line.split()[3]
-                    left_lat_vent = float(left_lat_vent) / 1000
+            # Next, parse segmentation table (lines starting with a number)
+            # First identify where the table starts
+            table_start = False
+            for i, line in enumerate(file_content):
+                if line.startswith("# ColHeaders"):
+                    table_start = True
+                    continue
 
-                if "Left-Inf-Lat-Vent" in line:
-                    left_inf_lat_vent = line.split()[3]
-                    left_inf_lat_vent = float(left_inf_lat_vent) / 1000
+                if table_start and line.strip() and line.strip()[0].isdigit():
+                    try:
+                        parts = line.strip().split()
+                        if len(parts) >= 5:
+                            # Structure name is in position 4, volume is in position 3
+                            seg_name = parts[4]
+                            seg_volume = float(parts[3])
+                            segmented_data[seg_name] = seg_volume
+                    except Exception as e:
+                        warnings.warn(
+                            f"Error parsing table line: {line.strip()}. Error: {e}"
+                        )
 
-                if "Right-Lateral-Ventricle" in line:
-                    right_lat_vent = line.split()[3]
-                    right_lat_vent = float(right_lat_vent) / 1000
+            # If we didn't find table data with the precise method, try a more general approach
+            if not segmented_data:
+                for line in file_content:
+                    if line.strip() and line.strip()[0].isdigit():
+                        try:
+                            parts = line.strip().split()
+                            if len(parts) >= 5:
+                                seg_name = parts[4]
+                                seg_volume = float(parts[3])
+                                segmented_data[seg_name] = seg_volume
+                        except Exception as e:
+                            pass  # Silently skip lines that don't match expected format
 
-                if "Right-Inf-Lat-Vent" in line:
-                    right_inf_lat_vent = line.split()[3]
-                    right_inf_lat_vent = float(right_inf_lat_vent) / 1000
+            # Now extract the values based on the configuration
+            for region_key, region_info in volume_measurements.items():
+                value_found = False
 
-        # Create a dictionary with the values
-        dict_of_cols = {}
-        dict_of_cols["brain-brain-intracraneal"] = [eTIV]
-        dict_of_cols["brain-brain-wholebrain"] = [brain_seg]
-        dict_of_cols["gm-brain-graymatter"] = [total_grey]
-        dict_of_cols["wm-brain-whitematter"] = [white_matter]
-        dict_of_cols["vent-lh-lateral"] = [left_lat_vent]
-        dict_of_cols["vent-lh-inferior"] = [left_inf_lat_vent]
-        dict_of_cols["vent-rh-lateral"] = [right_lat_vent]
-        dict_of_cols["vent-rh-inferior"] = [right_inf_lat_vent]
+                # Get configuration details
+                key = region_info["key"]
+                divisor = region_info.get("divisor", 1000)
+
+                # STEP 1: Try to find in global measures
+                if key in global_measures:
+                    value = global_measures[key] / divisor
+                    extracted_values[region_key] = [value]
+                    value_found = True
+                    continue
+
+                # STEP 2: Try to find in segmented data
+                if key in segmented_data:
+                    value = segmented_data[key] / divisor
+                    extracted_values[region_key] = [value]
+                    value_found = True
+                    continue
+
+                # STEP 3: Try any alternate keys from config
+                alt_keys = region_info.get("alternate_keys", [])
+                for alt_key in alt_keys:
+                    if alt_key in global_measures:
+                        value = global_measures[alt_key] / divisor
+                        extracted_values[region_key] = [value]
+                        value_found = True
+                        break
+                    if alt_key in segmented_data:
+                        value = segmented_data[alt_key] / divisor
+                        extracted_values[region_key] = [value]
+                        value_found = True
+                        break
+
+                if value_found:
+                    continue
+
+                # STEP 4: Fallback to line search (legacy method)
+                if "index" in region_info:
+                    for line in file_content:
+                        if key in line:
+                            try:
+                                index = region_info["index"]
+                                parts = line.split()
+
+                                if index < 0:
+                                    index = len(parts) + index
+
+                                if 0 <= index < len(parts):
+                                    value_str = parts[index].split(",")[0]
+                                    value = float(value_str) / divisor
+                                    extracted_values[region_key] = [value]
+                                    value_found = True
+                                    break
+                            except (IndexError, ValueError) as e:
+                                warnings.warn(
+                                    f"Error parsing value for {region_key} using index: {e}"
+                                )
+
+                # If value not found and we're including missing values
+                if not value_found and include_missing:
+                    extracted_values[region_key] = [0.0]
+                    warnings.warn(
+                        f"Value for {region_key} (key: {key}) not found in {stat_file}"
+                    )
+
+    except Exception as e:
+        raise RuntimeError(f"Error reading stats file {stat_file}: {e}")
+
+    # Check if we found any values
+    if not extracted_values:
+        raise ValueError(f"No volume measurements found in {stat_file}")
 
     # Create a dataframe with the values
-    df = pd.DataFrame.from_dict(dict_of_cols)
+    df = pd.DataFrame.from_dict(extracted_values)
 
-    if format == "region":
-        df.index = ["summary"]
+    # Format table according to specified type
+    if table_type == "region":
+        # Create region-oriented table
+        df.index = ["Value"]
         df = df.reset_index()
-        df = df.rename(columns={"index": "statistics"})
-
-        # Convert the index to a column with name "metric"
-
+        df = df.rename(columns={"index": "Statistics"})
     else:
+        # Create metric-oriented table
         df = df.T
-        df.columns = ["summary"]
+        df.columns = ["Value"]
 
         # Converting the row names to a new column called statistics
         df = df.reset_index()
-        df = df.rename(columns={"index": "region"})
+        df = df.rename(columns={"index": "Region"})
 
-        # Get the column called "region" and split it into three columns "supraregion", "side" and "region"
-        reg_names = df["region"].str.split("-", expand=True)
+        # Split region names into components
+        reg_names = df["Region"].str.split("-", expand=True)
 
-        # Insert the new columns before the column "region"
-        df.insert(0, "supraregion", reg_names[0])
-        df.insert(1, "side", reg_names[1])
+        # Safely handle region names that might not have 3 components
+        if reg_names.shape[1] >= 3:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", reg_names[1])
+        elif reg_names.shape[1] == 2:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", "unknown")
+        else:
+            df.insert(0, "Supraregion", "unknown")
+            df.insert(1, "Side", "unknown")
 
+    # Add metadata columns
     nrows = df.shape[0]
-
-    # Inserting the units
     units = get_units("volume")
-    df.insert(0, "metric", ["volume"] * nrows)
-    df.insert(1, "units", units * nrows)
+    if isinstance(units, list) and len(units) > 0:
+        units = units[0]
+    elif units is None or (isinstance(units, list) and len(units) == 0):
+        units = "ml"
 
-    # Adding the entities related to BIDs
+    df.insert(0, "Source", ["statsfile"] * nrows)
+    df.insert(1, "Metric", ["volume"] * nrows)
+    df.insert(2, "Units", [units] * nrows)
+    df.insert(3, "MetricFile", [stat_file] * nrows)
+
+    # Add BIDS entities if requested
     if add_bids_entities:
-        ent_list = entities4morphotable()
-        df_add = df2add(in_file=stat_file, ent_list=ent_list)
+        try:
+            ent_list = entities4morphotable()
+            df_add = df2add(in_file=stat_file, ent2add=ent_list)
+            df = cltmisc.expand_and_concatenate(df_add, df)
+        except Exception as e:
+            warnings.warn(f"Could not add BIDS entities: {str(e)}")
 
-        # Expand a first dataframe and concatenate with the second dataframe
-        df = cltmisc.expand_and_concatenate(df_add, df)
+    # Save table if requested
+    output_path = None
+    if output_table is not None:
+        output_dir = os.path.dirname(output_table)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(
+                f"Directory does not exist: {output_dir}. Please create the directory before saving."
+            )
 
-    return df
+        df.to_csv(output_table, sep="\t", index=False)
+        output_path = output_table
+
+    return df, output_path
+
+
+####################################################################################################
+def parse_freesurfer_stats_fromaseg(
+    stat_file: str,
+    output_table: str = None,
+    table_type: str = "metric",
+    add_bids_entities: bool = True,
+    include_missing: bool = True,
+    config_json: str = None,
+) -> Tuple[pd.DataFrame, Optional[str]]:
+    """
+    Parse regional volume measurements from a FreeSurfer aseg.stats file.
+
+    This function extracts volume measurements for specific brain regions from the tabular
+    data section of FreeSurfer's aseg.stats file. It converts values to milliliters
+    and organizes them into a structured DataFrame.
+
+    Parameters
+    ----------
+    stat_file : str
+        Path to the aseg.stats file generated by FreeSurfer.
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
+    table_type : str, default="metric"
+        Output format specification:
+        - "metric": Each column represents a specific statistic for each region (regions as rows)
+        - "region": Each column represents a region, with rows for different statistics
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+        This extracts subject, session, and other metadata from the filename.
+    include_missing : bool, default=True
+        Whether to include missing values as zeros in the output. If False, missing values
+        will be excluded from the DataFrame.
+    config_json : str, optional
+        Path to a JSON configuration file defining region measurements to extract.
+        If None, a default configuration will be used.
+
+    Returns
+    -------
+    df : pd.DataFrame
+        DataFrame containing the extracted region volume measurements.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
+
+    Examples
+    --------
+    Basic usage with default parameters:
+
+    >>> import os
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> # Define path to FreeSurfer stats file
+    >>> stats_file = os.path.join('freesurfer', 'sub-01', 'stats', 'aseg.stats')
+    >>> # Parse the stats file
+    >>> df, _ = morpho.parse_freesurfer_stats_fromaseg(stats_file)
+    >>> # Display the first few rows of results
+    >>> print(df[['Region', 'Value']].head())
+
+    Using region format (regions as columns, statistics as rows):
+
+    >>> df_region, _ = morpho.parse_freesurfer_stats_fromaseg(
+    ...     stats_file, table_type="region"
+    ... )
+    >>> # View volumes across regions
+    >>> print(df_region.head())
+
+    Saving the results to a file:
+
+    >>> output_path = os.path.join('results', 'sub-01_fs-regional-volumes.tsv')
+    >>> df_saved, saved_path = morpho.parse_freesurfer_stats_fromaseg(
+    ...     stats_file, output_table=output_path
+    ... )
+    >>> print(f"Table saved to: {saved_path}")
+
+    Notes
+    -----
+    This function extracts regional volume measurements from the table section of the aseg.stats file.
+    The aseg.stats file contains a table with measurements for different brain regions, with
+    each row representing a different segmented region.
+
+    All volumes are converted to milliliters (ml) by dividing the FreeSurfer values
+    (typically in mm³) by 1000.
+
+    The aseg.stats file is typically found in the `[subject]/stats/` directory of a
+    FreeSurfer output directory.
+
+    See Also
+    --------
+    parse_freesurfer_global_fromaseg : Extract global volume measurements from aseg.stats
+    """
+
+    # Verify if the file exists
+    if not os.path.isfile(stat_file):
+        raise FileNotFoundError(f"Stats file not found: {stat_file}")
+
+    # Input validation
+    if table_type not in ["region", "metric"]:
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
+
+    # Load region measurements from config file or use defaults
+    if config_json and os.path.isfile(config_json):
+        try:
+            with open(config_json, "r") as f:
+                config_data = json.load(f)
+                # Check if the config has an "aseg" key
+                if "aseg" in config_data:
+                    region_measurements = config_data["aseg"]
+                else:
+                    region_measurements = config_data
+        except Exception as e:
+            warnings.warn(f"Error loading config file {config_json}: {e}")
+            region_measurements = get_stats_dictionary("aseg")
+    else:
+        region_measurements = get_stats_dictionary("aseg")
+
+    # Dictionary to store the extracted values
+    extracted_values = {}
+
+    # Read the stats file
+    try:
+        with open(stat_file, "r") as file:
+            file_content = file.readlines()
+
+            # Parse the tabular data from the aseg.stats file
+            segmented_data = {}
+            region_data = {}
+
+            # First determine the column positions by looking for TableCol definitions
+            column_indices = {}
+            volume_index = 3  # Default volume index if not specified
+
+            for line in file_content:
+                if line.startswith("# TableCol"):
+                    try:
+                        parts = line.split()
+                        if len(parts) >= 4 and "ColHeader" in line:
+                            col_num = int(parts[2]) - 1  # Convert to 0-based index
+                            col_name = parts[-1]
+                            column_indices[col_name] = col_num
+                            if col_name == "Volume_mm3":
+                                volume_index = col_num
+                    except (ValueError, IndexError) as e:
+                        warnings.warn(
+                            f"Error parsing TableCol line: {line.strip()}. Error: {e}"
+                        )
+
+            # Parse the table rows (lines starting with a number)
+            for line in file_content:
+                if line.strip() and line.strip()[0].isdigit():
+                    try:
+                        parts = line.strip().split()
+                        if len(parts) >= 5:
+                            # Structure name is typically in position 4
+                            seg_name = parts[4]
+                            # Use detected volume index or default to 3
+                            vol_idx = (
+                                volume_index if 0 <= volume_index < len(parts) else 3
+                            )
+                            seg_volume = float(parts[vol_idx])
+                            segmented_data[seg_name] = seg_volume
+
+                            # Also store additional information about the region
+                            region_data[seg_name] = {
+                                "SegId": int(parts[1]),
+                                "NVoxels": int(parts[2]),
+                                "Volume": seg_volume,
+                            }
+                    except Exception as e:
+                        warnings.warn(
+                            f"Error parsing table line: {line.strip()}. Error: {e}"
+                        )
+
+            # Extract values based on the configuration
+            for region_key, region_info in region_measurements.items():
+                value_found = False
+
+                # Get configuration details
+                key = region_info["key"]
+                divisor = region_info.get("divisor", 1000)
+
+                # Try to find in segmented data
+                if key in segmented_data:
+                    value = segmented_data[key] / divisor
+                    extracted_values[region_key] = [value]
+                    value_found = True
+                    continue
+
+                # Try any alternate keys from config
+                alt_keys = region_info.get("alternate_keys", [])
+                for alt_key in alt_keys:
+                    if alt_key in segmented_data:
+                        value = segmented_data[alt_key] / divisor
+                        extracted_values[region_key] = [value]
+                        value_found = True
+                        break
+
+                if value_found:
+                    continue
+
+                # Fallback to SegId lookup if provided
+                seg_id = region_info.get("seg_id")
+                if seg_id is not None:
+                    for name, data in region_data.items():
+                        if data["SegId"] == seg_id:
+                            value = data["Volume"] / divisor
+                            extracted_values[region_key] = [value]
+                            value_found = True
+                            break
+
+                # If value not found and we're including missing values
+                if not value_found and include_missing:
+                    extracted_values[region_key] = [0.0]
+                    warnings.warn(
+                        f"Value for {region_key} (key: {key}) not found in {stat_file}"
+                    )
+
+    except Exception as e:
+        raise RuntimeError(f"Error reading stats file {stat_file}: {e}")
+
+    # Check if we found any values
+    if not extracted_values:
+        raise ValueError(f"No region measurements found in {stat_file}")
+
+    # Create a dataframe with the values
+    df = pd.DataFrame.from_dict(extracted_values)
+
+    # Format table according to specified type
+    if table_type == "region":
+        # Create region-oriented table
+        df.index = ["Value"]
+        df = df.reset_index()
+        df = df.rename(columns={"index": "Statistics"})
+    else:
+        # Create metric-oriented table
+        df = df.T
+        df.columns = ["Value"]
+
+        # Converting the row names to a new column called statistics
+        df = df.reset_index()
+        df = df.rename(columns={"index": "Region"})
+
+        # Split region names into components
+        reg_names = df["Region"].str.split("-", expand=True)
+
+        # Safely handle region names that might not have 3 components
+        if reg_names.shape[1] >= 3:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", reg_names[1])
+        elif reg_names.shape[1] == 2:
+            df.insert(0, "Supraregion", reg_names[0])
+            df.insert(1, "Side", "unknown")
+        else:
+            df.insert(0, "Supraregion", "unknown")
+            df.insert(1, "Side", "unknown")
+
+    # Add metadata columns
+    nrows = df.shape[0]
+    units = get_units("volume")
+    if isinstance(units, list) and len(units) > 0:
+        units = units[0]
+    elif units is None or (isinstance(units, list) and len(units) == 0):
+        units = "ml"
+
+    df.insert(0, "Source", ["statsfile"] * nrows)
+    df.insert(1, "Metric", ["volume"] * nrows)
+    df.insert(2, "Units", [units] * nrows)
+    df.insert(3, "MetricFile", [stat_file] * nrows)
+
+    # Add BIDS entities if requested
+    if add_bids_entities:
+        try:
+            ent_list = entities4morphotable()
+            df_add = df2add(in_file=stat_file, ent2add=ent_list)
+            df = cltmisc.expand_and_concatenate(df_add, df)
+        except Exception as e:
+            warnings.warn(f"Could not add BIDS entities: {str(e)}")
+
+    # Save table if requested
+    output_path = None
+    if output_table is not None:
+        output_dir = os.path.dirname(output_table)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(
+                f"Directory does not exist: {output_dir}. Please create the directory before saving."
+            )
+
+        df.to_csv(output_table, sep="\t", index=False)
+        output_path = output_table
+
+    return df, output_path
+
+
+####################################################################################################
+def parse_freesurfer_cortex_stats(
+    stats_file: str,
+    output_table: str = None,
+    table_type: str = "metric",
+    add_bids_entities: bool = True,
+    hemi: str = None,
+    config_json: str = None,
+    include_metrics: list = None,
+) -> Tuple[pd.DataFrame, Optional[str]]:
+    """
+    Parse cortical parcellation statistics from a FreeSurfer aparc.stats file.
+
+    This function extracts regional measurements from FreeSurfer's aparc.stats files,
+    including surface area, gray matter volume, cortical thickness, and curvature
+    for each cortical region. It organizes the data into a structured DataFrame.
+
+    Parameters
+    ----------
+    stats_file : str
+        Path to the aparc.stats file generated by FreeSurfer (lh.aparc.stats or rh.aparc.stats).
+    output_table : str, optional
+        Path to save the resulting table. If None, the table is not saved.
+    table_type : str, default="metric"
+        Output format specification:
+        - "metric": Each row represents a region, with columns for different metrics
+        - "region": Each row represents a metric, with columns for different regions
+    add_bids_entities : bool, default=True
+        Whether to include BIDS entities as columns in the resulting DataFrame.
+        This extracts subject, session, and other metadata from the filename.
+    hemi : str, optional
+        Hemisphere identifier ('lh' for left or 'rh' for right). If None, it will be
+        automatically detected from the filename or the file content.
+    config_json : str, optional
+        Path to a JSON configuration file defining cortical metrics to extract.
+        If None, a default configuration will be used.
+    include_metrics : list, optional
+        List of metrics to extract from the stats file. If provided, only these metrics
+        will be extracted from the configuration. If None, all metrics in the configuration
+        will be extracted.
+
+    Returns
+    -------
+    df : pd.DataFrame
+        DataFrame containing the extracted cortical measurements.
+    output_path : str or None
+        Path where the table was saved, or None if no table was saved.
+
+    Examples
+    --------
+    Basic usage with default parameters:
+
+    >>> import os
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> # Define path to FreeSurfer stats file
+    >>> stats_file = os.path.join('freesurfer', 'sub-01', 'stats', 'lh.aparc.stats')
+    >>> # Parse the stats file
+    >>> df, _ = morpho.parse_freesurfer_cortex_stats(stats_file)
+    >>> # Display the results for thickness
+    >>> thickness_df = df[df['Metric'] == 'thickness']
+    >>> print(thickness_df[['Region', 'Value', 'Std']].head())
+
+    Using a custom configuration file:
+
+    >>> config_file = os.path.join('config', 'stats_mapping.json')
+    >>> df, _ = morpho.parse_freesurfer_cortex_stats(stats_file, config_json=config_file)
+
+    Extract only specific metrics:
+
+    >>> df_area_vol, _ = morpho.parse_freesurfer_cortex_stats(
+    ...     stats_file, include_metrics=["area", "volume"]
+    ... )
+    >>> print(df_area_vol['Metric'].unique())
+
+    Using region format (metrics as rows, regions as columns):
+
+    >>> df_region, _ = morpho.parse_freesurfer_cortex_stats(
+    ...     stats_file, table_type="region"
+    ... )
+    >>> # View thickness across regions
+    >>> thickness_row = df_region[df_region['Statistics'] == 'thickness']
+    >>> print(thickness_row.iloc[:, :5])  # Print first 5 columns for thickness
+
+    Saving the results to a file:
+
+    >>> output_path = os.path.join('results', 'sub-01_lh_cortical-metrics.tsv')
+    >>> df_saved, saved_path = morpho.parse_freesurfer_cortex_stats(
+    ...     stats_file, output_table=output_path
+    ... )
+    >>> print(f"Table saved to: {saved_path}")
+
+    Notes
+    -----
+    This function extracts metrics from aparc.stats files based on the configuration.
+    By default, these include:
+    - Surface area (SurfArea column) in mm²
+    - Gray matter volume (GrayVol column) in mm³
+    - Cortical thickness (ThickAvg column) in mm
+    - Thickness standard deviation (ThickStd column) in mm
+    - Mean curvature (MeanCurv column) in mm⁻¹
+
+    The function automatically detects the hemisphere from the filename or file content
+    if not specified.
+
+    Cortical parcellation stats files (lh.aparc.stats and rh.aparc.stats) are typically
+    found in the `[subject]/stats/` directory of a FreeSurfer output directory.
+
+    See Also
+    --------
+    parse_freesurfer_global_fromaseg : Parse global volumes from aseg.stats file
+    parse_freesurfer_stats_fromaseg : Parse regional volumes from aseg.stats file
+    """
+
+    # Verify if the file exists
+    if not os.path.isfile(stats_file):
+        raise FileNotFoundError(f"Stats file not found: {stats_file}")
+
+    # Input validation
+    if table_type not in ["region", "metric"]:
+        raise ValueError(
+            f"Invalid table_type: '{table_type}'. Expected 'region' or 'metric'."
+        )
+
+    # Detect hemisphere from filename or file content if not provided
+    if hemi is None:
+        # Try to detect from filename
+        basename = os.path.basename(stats_file)
+        if "lh." in basename:
+            hemi = "lh"
+        elif "rh." in basename:
+            hemi = "rh"
+        else:
+            # Try to detect from file content
+            with open(stats_file, "r") as f:
+                content = f.read()
+                if "# hemi lh" in content:
+                    hemi = "lh"
+                elif "# hemi rh" in content:
+                    hemi = "rh"
+                else:
+                    warnings.warn(
+                        f"Could not determine hemisphere from file: {stats_file}. Using 'lh' as default."
+                    )
+                    hemi = "lh"
+
+    # Load metrics configuration from file or use defaults
+    if config_json and os.path.isfile(config_json):
+        try:
+            with open(config_json, "r") as f:
+                config_data = json.load(f)
+                # Check if the config has a "cortex" key
+                if "cortex" in config_data:
+                    metric_mapping = config_data["cortex"]
+                else:
+                    metric_mapping = config_data
+        except Exception as e:
+            warnings.warn(f"Error loading config file {config_json}: {e}")
+            metric_mapping = get_stats_dictionary("cortex")
+    else:
+        metric_mapping = get_stats_dictionary("cortex")
+
+    # Filter metrics if include_metrics is provided
+    if include_metrics:
+        include_metrics = [m.lower() for m in include_metrics]
+        metric_mapping = {
+            k: v for k, v in metric_mapping.items() if k.lower() in include_metrics
+        }
+
+        # Validate that requested metrics exist
+        if not metric_mapping:
+            raise ValueError(
+                f"None of the requested metrics {include_metrics} found in configuration."
+            )
+
+    # Validate metrics after filtering
+    valid_metrics = list(metric_mapping.keys())
+    if not valid_metrics:
+        raise ValueError("No valid metrics found in configuration.")
+
+    # Read the stats file
+    try:
+        with open(stats_file, "r") as file:
+            lines = file.readlines()
+
+        # Debug information
+        print(f"Total lines in file: {len(lines)}")
+
+        # Find the data section by looking for column headers
+        col_headers_line = None
+        column_headers = []
+        for i, line in enumerate(lines):
+            if "# ColHeaders" in line:
+                col_headers_line = i
+                column_headers = line.replace("# ColHeaders", "").strip().split()
+                print(f"Found column headers at line {i}: {column_headers}")
+                break
+
+        # If column headers not found, try to find the end of the comment section
+        if not column_headers:
+            for i, line in enumerate(lines):
+                if not line.startswith("#") and line.strip():
+                    # This might be the start of the data section
+                    if i > 0 and "# TableCol" in lines[i - 1]:
+                        # The previous line was a table column definition, this is likely the data
+                        parts = line.strip().split()
+                        if len(parts) >= 7:  # Ensure enough columns
+                            # Assume a fixed structure based on the example file
+                            column_headers = [
+                                "StructName",
+                                "NumVert",
+                                "SurfArea",
+                                "GrayVol",
+                                "ThickAvg",
+                                "ThickStd",
+                                "MeanCurv",
+                                "GausCurv",
+                                "FoldInd",
+                                "CurvInd",
+                            ]
+                            col_headers_line = i - 1
+                            print(
+                                f"Inferred column headers at line {i}: {column_headers}"
+                            )
+                            break
+
+        if not column_headers:
+            # Final fallback: manually parse the TableCol definitions
+            table_cols = {}
+            for line in lines:
+                if "# TableCol" in line and "ColHeader" in line:
+                    try:
+                        parts = line.split()
+                        col_num = int(parts[2])
+                        col_name = parts[-1]
+                        table_cols[col_num] = col_name
+                    except (ValueError, IndexError):
+                        continue
+
+            if table_cols:
+                # Sort by column number
+                column_headers = [table_cols[i] for i in sorted(table_cols.keys())]
+                print(
+                    f"Extracted column headers from TableCol definitions: {column_headers}"
+                )
+
+        if not column_headers:
+            raise ValueError(f"Could not find column headers in {stats_file}")
+
+        # Create column index mapping
+        column_indices = {name: idx for idx, name in enumerate(column_headers)}
+        print(f"Column indices: {column_indices}")
+
+        # Determine where to start reading data
+        data_lines = []
+        if col_headers_line is not None:
+            # Start from the line after the column headers
+            data_start = col_headers_line + 1
+        else:
+            # Try to find the first non-comment line
+            data_start = 0
+            for i, line in enumerate(lines):
+                if not line.startswith("#") and line.strip():
+                    data_start = i
+                    break
+
+        # Extract data lines (non-comment, non-empty lines)
+        for i in range(data_start, len(lines)):
+            line = lines[i]
+            if not line.startswith("#") and line.strip():
+                data_lines.append(line)
+
+        print(f"Found {len(data_lines)} data lines starting at line {data_start}")
+
+        # Now parse the data lines to extract region metrics
+        regions_data = []
+
+        for line in data_lines:
+            parts = line.strip().split()
+            if len(parts) < len(column_headers):
+                print(
+                    f"Warning: Line has fewer parts ({len(parts)}) than headers ({len(column_headers)}): {line[:50]}..."
+                )
+                continue
+
+            # Extract region name (first field in most aparc.stats files)
+            region_name = parts[0]
+
+            # Process each metric
+            for metric_name, metric_info in metric_mapping.items():
+                column = metric_info.get("column")
+
+                # Get the column index
+                col_idx = None
+                if column in column_indices:
+                    col_idx = column_indices[column]
+                elif "index" in metric_info:
+                    # Fallback to index if provided
+                    col_idx = int(metric_info["index"])
+                    if col_idx >= len(parts):
+                        print(
+                            f"Warning: Index {col_idx} out of range for line with {len(parts)} parts"
+                        )
+                        continue
+                else:
+                    print(
+                        f"Warning: Could not find column {column} for metric {metric_name}"
+                    )
+                    continue
+
+                # Get metric value
+                try:
+                    value = float(parts[col_idx])
+
+                    # Get standard deviation if applicable
+                    std_value = None
+                    std_column = metric_info.get("std_index")
+
+                    if std_column is not None and std_column not in (
+                        None,
+                        "null",
+                        "None",
+                    ):
+                        if isinstance(std_column, int) or (
+                            isinstance(std_column, str) and std_column.isdigit()
+                        ):
+                            std_idx = int(std_column)
+                            if 0 <= std_idx < len(parts):
+                                std_value = float(parts[std_idx])
+                        elif (
+                            "ThickStd" in column_indices
+                            and metric_name.lower() == "thickness"
+                        ):
+                            std_idx = column_indices["ThickStd"]
+                            std_value = float(parts[std_idx])
+
+                    # Add to results
+                    region_data = {
+                        "Region": f"ctx-{hemi}-{region_name}",
+                        "Metric": metric_name,
+                        "Value": value,
+                        "Source": metric_info.get("source", "statsfile"),
+                        "Units": metric_info.get("unit", ""),
+                    }
+
+                    if std_value is not None:
+                        region_data["Std"] = std_value
+
+                    regions_data.append(region_data)
+                except (IndexError, ValueError) as e:
+                    print(f"Error parsing {metric_name} for region {region_name}: {e}")
+
+        # Check if we found any data
+        if not regions_data:
+            print(f"Warning: No data parsed from {len(data_lines)} data lines")
+            # Print a sample of the first data line for debugging
+            if data_lines:
+                print(f"Sample data line: {data_lines[0]}")
+            raise ValueError(f"No cortical parcellation data found in {stats_file}")
+
+        # Create DataFrame
+        df = pd.DataFrame(regions_data)
+
+        # Split region names into components
+        df["Side"] = hemi
+        df["Supraregion"] = "ctx"
+
+        # Add metadata column for the source file
+        df["MetricFile"] = stats_file
+
+        # Reorder columns
+        column_order = [
+            "Source",
+            "Metric",
+            "Units",
+            "MetricFile",
+            "Supraregion",
+            "Side",
+            "Region",
+            "Value",
+        ]
+
+        # Add Std if it exists
+        if "Std" in df.columns:
+            column_order.append("Std")
+
+        # Filter columns to those that exist
+        column_order = [col for col in column_order if col in df.columns]
+        df = df[column_order]
+
+        # Format table according to specified type
+        if table_type == "region":
+            # Create region-oriented table (pivot)
+            value_cols = ["Value"]
+            if "Std" in df.columns:
+                value_cols.append("Std")
+
+            pivot_df = pd.pivot_table(
+                df,
+                values=value_cols,
+                index=[
+                    "Source",
+                    "Metric",
+                    "Units",
+                    "MetricFile",
+                    "Supraregion",
+                    "Side",
+                ],
+                columns="Region",
+            )
+
+            # Flatten the multi-index columns
+            if isinstance(pivot_df.columns, pd.MultiIndex):
+                pivot_df.columns = [
+                    f"{col[0]}_{col[1]}" if col[0] != "" else col[1]
+                    for col in pivot_df.columns
+                ]
+
+            # Reset index and extract metric as Statistics
+            pivot_df = pivot_df.reset_index()
+            pivot_df = pivot_df.rename(columns={"Metric": "Statistics"})
+
+            # Final DataFrame
+            df = pivot_df
+
+        # Add BIDS entities if requested
+        if add_bids_entities:
+            try:
+                ent_list = entities4morphotable()
+                df_add = df2add(in_file=stats_file, ent2add=ent_list)
+                df = cltmisc.expand_and_concatenate(df_add, df)
+            except Exception as e:
+                warnings.warn(f"Could not add BIDS entities: {str(e)}")
+
+        # Save table if requested
+        output_path = None
+        if output_table is not None:
+            output_dir = os.path.dirname(output_table)
+            if output_dir and not os.path.exists(output_dir):
+                raise FileNotFoundError(
+                    f"Directory does not exist: {output_dir}. Please create the directory before saving."
+                )
+
+            df.to_csv(output_table, sep="\t", index=False)
+            output_path = output_table
+
+        return df, output_path
+
+    except Exception as e:
+        raise RuntimeError(f"Error parsing stats file {stats_file}: {e}")
+
+
+####################################################################################################
+def get_stats_dictionary(region_level: str = "global"):
+    """
+    Return the default global volume measurements configuration for FreeSurfer aseg.stats files.
+
+    Returns
+    -------
+    dict
+        Dictionary containing configuration for extracting global volume measurements.
+    """
+
+    # Get the absolute of this file
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    mapping_stats_json = os.path.join(cwd, "config", "stats_mapping.json")
+
+    with open(mapping_stats_json) as f:
+        mapp_dict = json.load(f)
+
+    return mapp_dict[region_level]
 
 
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############                        Auxiliary methods                                   ############
+############                        Section 4: Auxiliary methods                        ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -1677,7 +2631,7 @@ def stats_from_vector(metric_vect, stats_list):
 
     out_vals = []
     for v in stats_list:
-        if v == "mean" or v == "summary":
+        if v == "mean" or v == "value":
             val = np.mean(metric_vect)
 
         if v == "median":
@@ -1696,7 +2650,10 @@ def stats_from_vector(metric_vect, stats_list):
     return out_vals
 
 
-def entities4morphotable(entities_json: str = None) -> list:
+####################################################################################################
+def entities4morphotable(
+    entities_json: str = None, selected_entities: Union[str, Dict] = None
+) -> list:
     """
     This method returns the BIDs entities that will be included in the morphometric table.
 
@@ -1708,8 +2665,8 @@ def entities4morphotable(entities_json: str = None) -> list:
 
     Returns
     -------
-    entities : list
-        List of valid entities.
+    ent_out_dict : dict
+        ent_out_dict of valid entities.
 
     Examples
     --------
@@ -1736,7 +2693,11 @@ def entities4morphotable(entities_json: str = None) -> list:
     if entities_json is None:
         with open(config_json) as f:
             config_json = json.load(f)
-        entities = config_json["bids_entities"]
+        ent_out_dict = {
+            **config_json["bids_entities"]["raw_entities"],
+            **config_json["bids_entities"]["derivatives_entities"],
+        }
+
     elif isinstance(entities_json, str):
         if not os.path.isfile(entities_json):
             raise ValueError(
@@ -1744,11 +2705,21 @@ def entities4morphotable(entities_json: str = None) -> list:
             )
         else:
             with open(entities_json) as f:
-                entities = json.load(f)
+                ent_out_dict = json.load(f)
 
-    return entities
+    if selected_entities is not None:
+        if isinstance(selected_entities, str):
+            selected_entities = cltbids.str2entity(selected_entities)
+        elif isinstance(selected_entities, dict):
+            selected_entities = selected_entities.items()
+
+        # Select the pairs (keys and values) that are in the entities_dict
+        ent_out_dict = {k: v for k, v in ent_out_dict.items() if k in selected_entities}
+
+    return ent_out_dict
 
 
+####################################################################################################
 def get_units(metrics: Union[str, list], metrics_json: Union[str, dict] = None) -> list:
     """
     This method returns the units of a specific metric.
@@ -1811,7 +2782,8 @@ def get_units(metrics: Union[str, list], metrics_json: Union[str, dict] = None) 
     return units
 
 
-def df2add(in_file: str, ent_list: Union[str, list] == None):
+####################################################################################################
+def df2add(in_file: str, ent2add: Union[str, list, dict] == None):
     """
     Method to create a dataframe that could be added in front of the metrics dataframe.
 
@@ -1823,47 +2795,56 @@ def df2add(in_file: str, ent_list: Union[str, list] == None):
 
     file_path = os.path.dirname(in_file)
     file_name = os.path.basename(in_file)
-    ent_dict = cltbids.str2entity(file_name)
+    name_ent_dict = cltbids.str2entity(file_name)
 
     df2add = pd.DataFrame()
 
     if cltbids.is_bids_filename(file_name):
-        if ent_list is not None:
-            if isinstance(ent_list, str):
-                ent_list = [ent_list]
-            for entity in reversed(ent_list):
+        if ent2add is not None:
+            if isinstance(ent2add, str):
+                ent2add = [ent2add]
 
-                if entity in ent_dict.keys():
-                    value = ent_dict[entity]
+            if isinstance(ent2add, list):
+                # Create a dictionary with the entities as keys and the entities as values as well
+                ent2add = {k: ent2add.get(k, "") for k in ent2add}
+
+            # Ensure df2add has at least one row before inserting data
+            if df2add.empty:
+                df2add = pd.DataFrame([{}])  # Creates an empty row
+
+            tmp_keys = list(ent2add.keys())
+            for entity in tmp_keys[::-1]:
+                if entity in name_ent_dict.keys():
+                    value = name_ent_dict[entity]
                 else:
                     value = ""
 
                 if entity == "sub":
-                    df2add.insert(0, "participant_id", value)
+                    df2add.insert(0, "Participant", value)
                 elif entity == "ses":
-                    df2add.insert(0, "session_id", value)
+                    df2add.insert(0, "Session", value)
                 elif entity == "atlas":
                     if "chimera" in value:
-                        df2add.insert(0, "atlas_id", "chimera")
-                        # Remove the word chimera from tmp string
-                        tmp = value.replace("chimera", "")
-                        df2add.insert(1, "chimera_id", tmp)
+                        df2add.insert(0, "Atlas", "chimera")
+                        df2add.insert(0, "ChimeraCode", value.replace("chimera", ""))
                     else:
-                        df2add.insert(0, "atlas_id", value)
-                        df2add.insert(1, "chimera_id", "")
-
+                        df2add.insert(0, "Atlas", value)
+                        df2add.insert(0, "ChimeraCode", "")
                 elif entity == "desc":
-                    df2add.insert(0, "desc_id", value)
+                    df2add.insert(0, "Description", value)
                     if "grow" in value:
-                        tmp = value.replace("grow", "")
-                        df2add.insert(1, "grow", tmp)
+                        df2add.insert(0, "GrowIntoWM", value.replace("grow", ""))
                 else:
-                    df2add.insert(0, entity + "_id", value)
+                    df2add.insert(0, ent2add[entity], value)
         else:
-            # Adding the participant_id as the full name of the file without the extension
-            if "extension" in ent_dict.keys():
-                ent_dict["suffix"] = ""
+            # Ensure df2add is initialized before inserting
+            if df2add.empty:
+                df2add = pd.DataFrame([{}])  # Creates an empty row
 
-            df2add.insert(0, "participant_id", cltbids.entity2str(ent_dict))
+            # Adding the Participant as the full file name without extension
+            if "extension" in name_ent_dict.keys():
+                name_ent_dict["suffix"] = ""
+
+            df2add.insert(0, "Participant", cltbids.entity2str(name_ent_dict))
 
     return df2add
