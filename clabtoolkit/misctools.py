@@ -9,6 +9,7 @@ import inspect
 import sys
 import types
 import re
+import json
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
@@ -1681,6 +1682,17 @@ def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> di
         >>> extract_string_values(data, only_last_key=False)
         {'a.b': 'value1', 'a.c.d': 'value2', 'f': 'value3'}
     """
+
+    if isinstance(data_dict, str):
+        # Check if the string is a valid JSON file path
+        if os.path.isfile(data_dict):
+            # Load the custom JSON file
+            with open(data_dict, "r") as file:
+                data_dict = json.load(file)
+        else:
+            # If the file does not exist, raise an error
+            raise ValueError(f"Invalid file path: {data_dict}")
+
     result = {}
 
     def explore_dict(d, path=""):
