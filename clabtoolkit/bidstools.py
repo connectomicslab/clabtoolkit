@@ -452,8 +452,180 @@ def recursively_replace_entity_value(
                 new_name = dir_name.replace(subst_x, subst_y)
                 new_path = os.path.join(root, new_name)
                 os.rename(old_path, new_path)
-                
-                
+
+
+####################################################################################################
+def entities_to_table(
+    filepath: str,
+    entities_to_extract: Optional[Union[str, List[str], Dict[str, str]]] = None,
+) -> pd.DataFrame:
+    """
+    Creates a DataFrame with BIDS entities extracted from a filename.
+
+    This function parses BIDS-compliant filenames to extract specified entities
+    (such as subject, session, task) and organizes them into a DataFrame with
+    appropriate column names. It supports special handling for certain entities
+    like atlas and description fields.
+
+    Parameters
+    ----------
+    filepath : str
+        Full path to the BIDS file from which to extract entities.
+    entities_to_extract : str, list, dict, or None, default=None
+        Specifies which entities to extract from the filename:
+        - If str: A single entity name to extract
+        - If list: Multiple entity names to extract
+        - If dict: Keys are entity names, values are custom column names
+        - If None: Returns a single column with the full filename
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing the extracted entities as columns.
+        If the file is not BIDS-compliant, returns an empty DataFrame.
+
+    Examples
+    --------
+    >>> # Extract subject and session from a BIDS file
+    >>> df = entities_to_table(
+    ...     '/data/sub-01/ses-pre/sub-01_ses-pre_task-rest_bold.nii.gz',
+    ...     ['sub', 'ses']
+    ... )
+    >>> print(df)
+        Participant Session
+    0          01     pre
+
+    >>> # Extract entities with custom column names
+    >>> df = entities_to_table(
+    ...     '/data/sub-01/anat/sub-01_T1w.nii.gz',
+    ...     {'sub': 'SubjectID'}
+    ... )
+    >>> print(df)
+        SubjectID
+    0        01
+
+    >>> # Extract atlas with special handling
+    >>> df = entities_to_table(
+    ...     '/data/sub-01/atlas-chimera123_desc-parcellation.nii.gz',
+    ...     ['atlas', 'desc']
+    ... )
+    >>> print(df)
+        Atlas ChimeraCode Description
+    0   chimera        123 parcellation
+
+    """
+    # Type checking
+    if filepath is None or not isinstance(filepath, str):
+        raise TypeError("filepath must be a string")
+
+    # Reading the mapping dictionary
+    default_config_path = "/media/COSAS/Yasser/COSAS/GithubRepositories/Worktools/clabtoolkit/clabtoolkit/config/bids.json"
+    try:
+        with open(default_config_path, "r") as f:
+            config_data = json.load(f)
+
+        # Merge raw and derivatives entities
+        if (
+            "bids_entities" in config_data
+            and "raw_entities" in config_data["bids_entities"]
+            and "derivatives_entities" in config_data["bids_entities"]
+        ):
+            ent_out_dict = {
+                **config_data["bids_entities"]["raw_entities"],
+                **config_data["bids_entities"]["derivatives_entities"],
+            }
+        else:
+            raise ValueError(
+                "Default config JSON does not have the expected structure."
+            )
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"Default configuration file not found at: {default_config_path}"
+        )
+    except json.JSONDecodeError:
+        raise ValueError(
+            f"Error parsing the default configuration file: {default_config_path}"
+        )
+
+    # Extract file directory and name
+    file_directory = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+
+    # Create an empty DataFrame
+    result_df = pd.DataFrame()
+
+    # Only process if the file follows BIDS naming convention
+    if is_bids_filename(filename):
+
+        # Parse entities from the filename
+        entities_dict = str2entity(filename)
+
+        # Remove the 'extension' key if it exists
+        if "extension" in entities_dict:
+            entities_dict.pop("extension")
+        # Remove the 'suffix' key if it exists
+        if "suffix" in entities_dict:
+            entities_dict.pop("suffix")
+
+        if entities_to_extract is not None:
+            # Convert string input to list
+            if isinstance(entities_to_extract, str):
+                entities_to_extract = [entities_to_extract]
+
+            # Convert list to dictionary for unified processing
+            if isinstance(entities_to_extract, list):
+                # Create dict with entity names as both keys and values
+                entities_to_extract = {entity: "" for entity in entities_to_extract}
+        else:
+            entities_to_extract = {entity: "" for entity in entities_dict.keys()}
+
+        # Initialize DataFrame with one empty row
+        if result_df.empty:
+            result_df = pd.DataFrame([{}])
+
+        # Process entities in reverse order to maintain column order
+        entity_keys = list(entities_to_extract.keys())
+        for entity in reversed(entity_keys):
+            # Get entity value from filename or empty string if not found
+            value = entities_dict.get(entity, "")
+
+            if entity in ent_out_dict.keys():
+                # If entity is in the mapping dictionary, use its value
+                var_name = ent_out_dict[entity]
+                if entity == "atlas":
+                    # Special handling for atlas
+                    if "chimera" in value:
+                        result_df.insert(0, "Atlas", "chimera")
+                        result_df.insert(0, "ChimeraCode", value.replace("chimera", ""))
+                    else:
+                        result_df.insert(0, "Atlas", value)
+                        result_df.insert(0, "ChimeraCode", "")
+                elif entity == "desc":
+                    # Special handling for description
+                    result_df.insert(0, "Description", value)
+                    if "grow" in value:
+                        result_df.insert(0, "GrowIntoWM", value.replace("grow", ""))
+
+                else:
+                    result_df.insert(0, var_name, value)
+            else:
+
+                result_df.insert(0, entity.capitalize(), value)
+
+    else:
+        # If no entities specified, use full filename as Participant
+        if result_df.empty:
+            result_df = pd.DataFrame([{}])
+
+        if "Participant" not in result_df.columns:
+            # If 'Participant' column doesn't exist, create it
+            # Remove the extension from the filename in case it exists
+            temp = os.path.splitext(filename)[0]
+            result_df.insert(0, "Participant", temp)
+
+    return result_df
+
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
