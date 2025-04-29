@@ -1,0 +1,31 @@
+{
+    "common_pattern": {
+        "subject": "sub-[a-zA-Z0-9]+",
+        "session": "_ses-[a-zA-Z0-9]+",
+        "task": "_task-[a-zA-Z0-9]+",
+        "acquisition": "_acq-[a-zA-Z0-9]+",
+        "run": "_run-[0-9]+",
+        "echo": "_echo-[0-9]+",
+        "direction": "_dir-[a-zA-Z0-9]+",
+        "reconstruction": "_rec-[a-zA-Z0-9]+",
+        "contrast": "_ce-[a-zA-Z0-9]+"
+    },
+    "derivative_pattern": {
+        "from": "_from-[a-zA-Z0-9]+",
+        "to": "_to-[a-zA-Z0-9]+",
+        "space": "_space-[a-zA-Z0-9]+",
+        "atlas": "_atlas-[a-zA-Z0-9]+",
+        "scale": "_scale-[a-zA-Z0-9]+",
+	"segmentation": "_seg-[a-zA-Z0-9]+",
+        "description": "_desc-[a-zA-Z0-9]+"
+    },
+    "modality_suffix": [
+        "bold", "T1w", "T2w", "dwi", "fmap", "pet", "asl",
+        "meg", "eeg", "ieeg",
+        "mask", "probseg", "dseg"
+    ],
+    "extensions": [
+        ".nii.gz", ".nii", ".json", ".bvec", ".bval", ".tsv", ".edf", ".tsv.gz",
+        ".gii", ".csv", ".mat", ".set", ".fif"
+    ]
+}

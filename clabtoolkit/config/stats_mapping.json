@@ -1,0 +1,140 @@
+{ "global": 
+    {
+        "brain-brain-intracraneal": {
+        "key": "Estimated Total Intracranial Volume",
+        "alternate_keys": ["EstimatedTotalIntraCranialVol", "eTIV"],
+        "divisor": 1000
+        },
+        "brain-brain-wholebrain": {
+        "key": "Brain Segmentation Volume",
+        "alternate_keys": ["BrainSegVol", "BrainSeg"],
+        "divisor": 1000
+        },
+        "gm-brain-graymatter": {
+        "key": "Total gray matter volume",
+        "alternate_keys": ["TotalGrayVol", "TotalGray"],
+        "divisor": 1000
+        },
+        "wm-brain-whitematter": {
+        "key": "Total cerebral white matter volume",
+        "alternate_keys": ["CerebralWhiteMatterVol", "CerebralWhiteMatter"],
+        "divisor": 1000
+        },
+        "vent-lh-lateral": {
+        "key": "Left-Lateral-Ventricle",
+        "index": 3,
+        "divisor": 1000
+        },
+        "vent-lh-inferior": {
+        "key": "Left-Inf-Lat-Vent",
+        "index": 3,
+        "divisor": 1000
+        },
+        "vent-rh-lateral": {
+        "key": "Right-Lateral-Ventricle",
+        "index": 3,
+        "divisor": 1000
+        },
+        "vent-rh-inferior": {
+        "key": "Right-Inf-Lat-Vent",
+        "index": 3,
+        "divisor": 1000
+        }
+    },
+    
+"aseg": {
+        "thal-lh-thalamus": {
+        "key": "Left-Thalamus-Proper",
+        "alternate_keys": ["Left-Thalamus"],
+        "seg_id": 10,
+        "divisor": 1000
+        },
+        "thal-rh-thalamus": {
+        "key": "Right-Thalamus-Proper",
+        "alternate_keys": ["Right-Thalamus"],
+        "seg_id": 49,
+        "divisor": 1000
+        },
+        "subc-lh-caudate": {
+        "key": "Left-Caudate",
+        "seg_id": 11,
+        "divisor": 1000
+        },
+        "subc-rh-caudate": {
+        "key": "Right-Caudate",
+        "seg_id": 50,
+        "divisor": 1000
+        },
+        "subc-lh-putamen": {
+        "key": "Left-Putamen",
+        "seg_id": 12,
+        "divisor": 1000
+        },
+        "subc-rh-putamen": {
+        "key": "Right-Putamen",
+        "seg_id": 51,
+        "divisor": 1000
+        },
+        "subc-lh-pallidum": {
+        "key": "Left-Pallidum",
+        "seg_id": 13,
+        "divisor": 1000
+        },
+        "subc-rh-pallidum": {
+        "key": "Right-Pallidum",
+        "seg_id": 52,
+        "divisor": 1000
+        },
+        "hipp-lh-hippocampus": {
+        "key": "Left-Hippocampus",
+        "seg_id": 17,
+        "divisor": 1000
+        },
+        "hipp-rh-hippocampus": {
+        "key": "Right-Hippocampus",
+        "seg_id": 53,
+        "divisor": 1000
+        },
+        "amyg-lh-amygdala": {
+        "key": "Left-Amygdala",
+        "seg_id": 18,
+        "divisor": 1000
+        },
+        "amyg-rh-amygdala": {
+        "key": "Right-Amygdala",
+        "seg_id": 54,
+        "divisor": 1000
+        }
+    },
+"cortex": 
+    {
+    "area": {
+            "column": "SurfArea",
+            "source": "statsfile",
+            "unit": "mm²",
+            "index": 2,
+            "std_index": null
+        },
+        "volume": {
+            "column": "GrayVol",
+            "source": "statsfile",
+            "unit": "mm³",
+            "index": 3,
+            "std_index": null
+        },
+        "thickness": {
+            "column": "ThickAvg",
+            "source": "statsfile",
+            "unit": "mm",
+            "index": 4,
+            "std_index": 5
+        },
+        "curv": {
+            "column": "MeanCurv",
+            "source": "statsfile",
+            "unit": "mm⁻¹",
+            "index": 6,
+            "std_index": null
+        }
+    }
+}

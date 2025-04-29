@@ -2605,49 +2605,88 @@ def get_stats_dictionary(region_level: str = "global"):
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def stats_from_vector(metric_vect, stats_list):
     """
-    This method computes the statistics from a vector.
+    Computes specified statistics from a numeric vector.
+
+    This function calculates various statistical measures from a numpy array
+    based on the requested statistics in stats_list.
 
     Parameters
     ----------
     metric_vect : np.ndarray
         Vector with the values of the metric.
-
     stats_list : list
-        List of statistics to compute.
+        List of statistics to compute. Supported values are:
+        'mean', 'value' (same as 'mean'), 'median', 'std', 'min', 'max'.
 
     Returns
     -------
+    list
+        List with the computed statistics in the same order as requested.
+        Values are returned as Python floats, not numpy.float64.
 
-    out_vals : list
-        List with the computed statistics.
+    Raises
+    ------
+    ValueError
+        If an unsupported statistic is requested.
+    TypeError
+        If inputs are not of expected types.
 
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([1, 2, 3, 4, 5])
+    >>> stats_from_vector(data, ['mean', 'median', 'std'])
+    [3.0, 3.0, 1.4142135623730951]
+
+    >>> stats_from_vector(data, ['min', 'max'])
+    [1.0, 5.0]
+
+    >>> # Case-insensitive statistic names
+    >>> stats_from_vector(data, ['MEAN', 'Mean', 'mean'])
+    [3.0, 3.0, 3.0]
+
+    >>> # 'value' is an alias for 'mean'
+    >>> stats_from_vector(data, ['mean', 'value'])
+    [3.0, 3.0]
+
+    >>> # Empty arrays return NaN for all statistics
+    >>> stats_from_vector(np.array([]), ['mean', 'median'])
+    [nan, nan]
+
+    >>> # Error on unsupported statistic
+    >>> stats_from_vector(data, ['mean', 'mode'])
+    Traceback (most recent call last):
+        ...
+    ValueError: Unsupported statistics: mode
     """
+    if not isinstance(stats_list, (list, tuple)):
+        raise TypeError("stats_list must be a list or tuple")
 
-    stats_list = list(map(lambda x: x.lower(), stats_list))  # Converting to lower case
+    if len(metric_vect) == 0:
+        return [float("nan")] * len(stats_list)
 
-    out_vals = []
-    for v in stats_list:
-        if v == "mean" or v == "value":
-            val = np.mean(metric_vect)
+    # Map of statistic names to their computation functions
+    stats_map = {
+        "mean": np.mean,
+        "value": np.mean,
+        "median": np.median,
+        "std": np.std,
+        "min": np.min,
+        "max": np.max,
+    }
 
-        if v == "median":
-            val = np.median(metric_vect)
+    # Convert all stats to lowercase for case-insensitive matching
+    lowercase_stats = [s.lower() for s in stats_list]
 
-        if v == "std":
-            val = np.std(metric_vect)
+    # Check for unsupported statistics
+    unsupported = [s for s in lowercase_stats if s not in stats_map]
+    if unsupported:
+        raise ValueError(f"Unsupported statistics: {', '.join(unsupported)}")
 
-        if v == "min":
-            val = np.min(metric_vect)
-
-        if v == "max":
-            val = np.max(metric_vect)
-
-        out_vals.append(val)
-    return out_vals
+    # Compute all requested statistics and convert to native Python float
+    return [float(stats_map[stat](metric_vect)) for stat in lowercase_stats]
 
 
 ####################################################################################################
