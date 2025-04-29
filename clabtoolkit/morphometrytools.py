@@ -2141,6 +2141,9 @@ def parse_freesurfer_cortex_stats(
     including surface area, gray matter volume, cortical thickness, and curvature
     for each cortical region. It organizes the data into a structured DataFrame.
 
+    Surface area is automatically converted from mm² to cm² (divided by 100)
+    and volume is automatically converted from mm³ to cm³ (divided by 1000).
+
     Parameters
     ----------
     stats_file : str
@@ -2219,11 +2222,11 @@ def parse_freesurfer_cortex_stats(
     -----
     This function extracts metrics from aparc.stats files based on the configuration.
     By default, these include:
-    - Surface area (SurfArea column) in mm²
-    - Gray matter volume (GrayVol column) in mm³
-    - Cortical thickness (ThickAvg column) in mm
-    - Thickness standard deviation (ThickStd column) in mm
-    - Mean curvature (MeanCurv column) in mm⁻¹
+    - Surface area (SurfArea column) in cm² (converted from mm² by dividing by 100)
+    - Gray matter volume (GrayVol column) in cm³ (converted from mm³ by dividing by 1000)
+    - Cortical thickness (ThickAvg column) in mm (unchanged)
+    - Thickness standard deviation (ThickStd column) in mm (unchanged)
+    - Mean curvature (MeanCurv column) in mm⁻¹ (unchanged)
 
     The function automatically detects the hemisphere from the filename or file content
     if not specified.
@@ -2279,6 +2282,20 @@ def parse_freesurfer_cortex_stats(
                     metric_mapping = config_data["cortex"]
                 else:
                     metric_mapping = config_data
+
+                # Update unit information in the configuration
+                if (
+                    "area" in metric_mapping
+                    and metric_mapping["area"].get("unit") == "mm²"
+                ):
+                    metric_mapping["area"]["unit"] = "cm²"
+
+                if (
+                    "volume" in metric_mapping
+                    and metric_mapping["volume"].get("unit") == "mm³"
+                ):
+                    metric_mapping["volume"]["unit"] = "cm³"
+
         except Exception as e:
             warnings.warn(f"Error loading config file {config_json}: {e}")
             metric_mapping = get_stats_dictionary("cortex")
@@ -2436,6 +2453,25 @@ def parse_freesurfer_cortex_stats(
                 # Get metric value
                 try:
                     value = float(parts[col_idx])
+
+                    # Apply unit conversions
+                    # Convert area from mm² to cm²
+                    if metric_name.lower() == "area" or column == "SurfArea":
+                        value = value / 100.0  # mm² to cm²
+                        # Update the unit in metric_info to reflect conversion
+                        if "unit" in metric_info and metric_info["unit"] == "mm²":
+                            metric_info["unit"] = "cm²"
+                        elif "unit" not in metric_info:
+                            metric_info["unit"] = "cm²"
+
+                    # Convert volume from mm³ to cm³
+                    elif metric_name.lower() == "volume" or column == "GrayVol":
+                        value = value / 1000.0  # mm³ to cm³
+                        # Update the unit in metric_info to reflect conversion
+                        if "unit" in metric_info and metric_info["unit"] == "mm³":
+                            metric_info["unit"] = "cm³"
+                        elif "unit" not in metric_info:
+                            metric_info["unit"] = "cm³"
 
                     # Get standard deviation if applicable
                     std_value = None
@@ -2831,66 +2867,96 @@ def entities4morphotable(
 
 
 ####################################################################################################
-def get_units(metrics: Union[str, list], metrics_json: Union[str, dict] = None) -> list:
+def get_units(
+    metrics: Union[str, List[str]], metrics_json: Optional[Union[str, Dict]] = None
+) -> List[str]:
     """
-    This method returns the units of a specific metric.
+    Get the units associated with specified metrics.
+
+    Retrieves the corresponding units for one or more metrics from either a provided
+    JSON file, dictionary, or the default configuration.
 
     Parameters
     ----------
-    metrics : str or list
-        Name of the metrics. It could be a string or a list of strings.
+    metrics : str or list of str
+        Name(s) of the metrics. Can be a single metric as a string or multiple metrics as a list.
 
-    metrics_json : str, optional
-        Path to the json file with the information of the metrics. The default is None.
-        If None, the method uses the default json file.
+    metrics_json : str or dict, optional
+        Either:
+        - Path to a JSON file containing the metrics units dictionary
+        - Dictionary directly containing the metrics units mapping
+        - None (default), which uses the package's built-in configuration
 
     Returns
     -------
-    units : list
-        Units of the supplied metrics.
+    list of str
+        Units corresponding to each requested metric. Returns "unknown" for any metric
+        not found in the dictionary.
+
+    Raises
+    ------
+    ValueError
+        If the provided JSON file path is invalid or the metrics_json structure is incorrect.
 
     Examples
     --------
     >>> import clabtoolkit.morphometrytools as clmorphtools
+    >>> # Get unit for a single metric
     >>> clmorphtools.get_units('thickness')
     ['mm']
+    >>>
+    >>> # Get units for multiple metrics
+    >>> clmorphtools.get_units(['thickness', 'area', 'volume'])
+    ['mm', 'cm²', 'cm³']
+    >>>
+    >>> # Using a custom metrics dictionary
+    >>> custom_dict = {"metrics_units": {"custom_metric": "kg"}}
+    >>> clmorphtools.get_units('custom_metric', metrics_json=custom_dict)
+    ['kg']
+    >>>
+    >>> # Handling unknown metrics
+    >>> clmorphtools.get_units(['thickness', 'unknown_metric'])
+    ['mm', 'unknown']
     """
-
+    # Convert single metric to list for uniform processing
     if isinstance(metrics, str):
         metrics = [metrics]
 
+    # Get metrics dictionary from appropriate source
     if metrics_json is None:
-        config_json = os.path.join(os.path.dirname(__file__), "config", "config.json")
-        with open(config_json) as f:
-            config_json = json.load(f)
-        metric_dict = config_json["metrics_units"]
-    else:
-        if isinstance(metrics_json, str):
-            if not os.path.isfile(metrics_json):
+        # Use default configuration
+        config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
+        try:
+            with open(config_path, "r") as f:
+                config_data = json.load(f)
+            metric_dict = config_data.get("metrics_units", {})
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            raise ValueError(f"Error loading default configuration: {str(e)}")
+    elif isinstance(metrics_json, str):
+        # Load from provided JSON file path
+        if not os.path.isfile(metrics_json):
+            raise ValueError(f"Invalid JSON file path: {metrics_json}")
+        try:
+            with open(metrics_json, "r") as f:
+                config_data = json.load(f)
+            metric_dict = config_data.get("metrics_units", {})
+            if not metric_dict:
                 raise ValueError(
-                    "Please, provide a valid JSON file containing the units dictionary."
+                    "Missing 'metrics_units' key in the provided JSON file"
                 )
-            else:
-                with open(metrics_json) as f:
-                    metric_dict = json.load(f)
-        elif isinstance(metrics_json, dict):
-            metric_dict = metrics_json
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid JSON format in file: {metrics_json}")
+    elif isinstance(metrics_json, dict):
+        # Use provided dictionary
+        metric_dict = metrics_json.get("metrics_units", metrics_json)
+    else:
+        raise ValueError("metrics_json must be a file path, dictionary, or None")
 
-    # get dictionary keys
-    metric_keys = metric_dict.keys()
-    # lower all the metric_keys
-    metric_keys = list(map(lambda x: x.lower(), metric_keys))
+    # Create a case-insensitive lookup dictionary (only once)
+    lookup_dict = {k.lower(): v for k, v in metric_dict.items()}
 
-    # Search for the metric in the dictionary
-    units = []
-
-    for metric in metrics:
-        if metric.lower() in metric_keys:
-            units.append(metric_dict[metric.lower()])
-        else:
-            units.append("unknown")
-
-    return units
+    # Lookup units for each metric
+    return [lookup_dict.get(metric.lower(), "unknown") for metric in metrics]
 
 
 ####################################################################################################
