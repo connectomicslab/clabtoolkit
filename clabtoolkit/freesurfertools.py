@@ -1619,7 +1619,9 @@ class FreeSurferSubject:
         if add_bids_entities:
             ent_list = morpho.entities4morphotable(selected_entities=self.subj_id)
 
-            df_add = morpho.df2add(in_file=self.subj_id, ent2add=ent_list)
+            df_add = morpho.extract_bids_entities_to_dataframe(
+                in_file=self.subj_id, ent2add=ent_list
+            )
 
             stats_table = cltmisc.expand_and_concatenate(df_add, stats_table)
 
@@ -1648,7 +1650,7 @@ class FreeSurferSubject:
             #         stats_table.insert(0, entity, value)
 
             # ent_list = morpho.entities4morphotable(selected_entities=self.subj_id)
-            # df_add = morpho.df2add(in_file=self.subj_id, ent_list=ent_list)
+            # df_add = morpho.extract_bids_entities_to_dataframe(in_file=self.subj_id, ent_list=ent_list)
             # stats_table = cltmisc.expand_and_concatenate(df_add, stats_table)
         else:
             # Expand a first dataframe and concatenate with the second dataframe
@@ -1753,7 +1755,7 @@ class FreeSurferSubject:
             Each row corresponds to a different region or measurement source.
         """
 
-        import morphometrytools as morpho
+        from . import morphometrytools as morpho
 
         # Retrieve relevant FreeSurfer files
         parc_files_dict = self.fs_files["surf"][hemi]["parc"]
