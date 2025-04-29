@@ -21,7 +21,7 @@ from typing import Union, List, Optional
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############           Methods dedicated to improve the documentation                   ############
+############         Section 1: Methods dedicated to improve the documentation          ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -87,7 +87,7 @@ class SmartFormatter(argparse.HelpFormatter):
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############                    Methods related to progress bar                         ############
+############          Section 2: Methods dedicated to work with progress bar            ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -134,7 +134,7 @@ def printprogressbar(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############                    Methods dedicated to work with colors                   ############
+############              Section 3: Methods dedicated to work with colors              ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -797,7 +797,7 @@ def visualize_colors(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############                    Methods dedicated to work with dates                    ############
+############              Section 4: Methods dedicated to work with dates               ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -876,7 +876,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############           Methods dedicated to create and work with indices,               ############
+############      Section 5: Methods dedicated to create and work with indices,         ############
 ############           to search for elements in a list, etc                            ############
 ############                                                                            ############
 ############                                                                            ############
@@ -1139,35 +1139,34 @@ def build_indices_with_conditions(
     nonzeros: bool = True,
     **kwargs,
 ) -> List[int]:
-    
     """
     Combine numeric, range, and condition-based inputs into a unified list of indices.
     Parameters
     ----------
     inputs : list
         Mixed list containing integers, lists, arrays, or strings with comma-separated numeric ranges or conditions.
-        
+
     nonzeros : bool
         If True, removes zeros from the output.
-        
+
     **kwargs : dict
         Variables used for evaluating conditions (must include exactly one array-like for conditions).
-        
+
     Returns
     -------
     List[int]
         Sorted, unique list of resulting indices.
-        
+
     Raises
     ------
     ValueError
         If any item cannot be interpreted correctly.
-        If the condition references variables not in kwargs (excluding literals).   
-        If no array variable is found.  
+        If the condition references variables not in kwargs (excluding literals).
+        If no array variable is found.
         If more than one array-like variable is provided.
         If the condition does not yield a boolean array.
         If the condition is invalid.
-        
+
         Usage:
         -------
         # Test 2: Pure range strings
@@ -1197,7 +1196,7 @@ def build_indices_with_conditions(
         >>> result = build_indices_with_conditions(input5, data=data)
         >>> print(f"Result: {result}")
         >>> print("Expected: [2,3,4,9] (indices including where data==0)")
-        
+
         # Test 6: Non-zero filtering
         >>> input6 = [0, "0:3", "data != 0", 9]
         >>> print(f"Input: {input6}")
@@ -1210,9 +1209,9 @@ def build_indices_with_conditions(
         >>> result = build_indices_with_conditions(input7, data=data, threshold=threshold)
         >>> print(f"Result: {result}")
         >>> print("Expected: [0,1,2,3,5,6,7,8,9] (all valid indices)")
-                
+
     """
-    
+
     all_values = []
 
     for item in inputs:
@@ -1490,7 +1489,7 @@ def get_indexes_by_substring(
     substr: Union[str, list],
     invert: bool = False,
     bool_case: bool = False,
-    match_entire_world: bool = False,
+    match_entire_word: bool = False,
 ):
     """
     Function extracts the indexes of the elements of a list of elements that contain
@@ -1511,7 +1510,7 @@ def get_indexes_by_substring(
     bool_case : bool
         Boolean to indicate if the search is case sensitive. Default is False
 
-    match_entire_world : bool
+    match_entire_word : bool
         Boolean to indicate if the search is a whole word match. Default is False
 
     Returns
@@ -1533,7 +1532,7 @@ def get_indexes_by_substring(
 
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["apple", "cherry"]
-        >>> indexes = get_indexes_by_substring(input_list, substr, match_entire_world=True)
+        >>> indexes = get_indexes_by_substring(input_list, substr, match_entire_word=True)
         >>> print(indexes) # Output: [0, 2]
     """
 
@@ -1555,7 +1554,7 @@ def get_indexes_by_substring(
         tmp_input_list = input_list
 
     # Get the indexes of the list elements that contain any of the strings in the list aa
-    if match_entire_world:
+    if match_entire_word:
         indexes = [
             i for i, x in enumerate(tmp_input_list) if any(a == x for a in tmp_substr)
         ]
@@ -1648,11 +1647,67 @@ def ismember_from_list(a, b):
 
 
 ####################################################################################################
+def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> dict:
+    """
+    Recursively extracts all keys with string values from a nested dictionary. It will avoid keys
+
+    Parameters:
+    -----------
+        data_dict: A nested dictionary to search through
+        only_last_key: If True, uses only the leaf key name; if False, uses the full path
+
+    Returns:
+    --------
+        A dictionary where keys are either leaf keys or paths to string values,
+        and values are the corresponding strings
+
+    Examples:
+        >>> data = {
+        ...     "a": {
+        ...         "b": "value1",
+        ...         "c": {
+        ...             "d": "value2"
+        ...         }
+        ...     },
+        ...     "e": ["list", "of", "values"],
+        ...     "f": "value3"
+        ... }
+        >>>
+        >>> # With only_last_key=True (default)
+        >>> extract_string_values(data)
+        {'b': 'value1', 'd': 'value2', 'f': 'value3'}
+        >>>
+        >>> # With only_last_key=False
+        >>> extract_string_values(data, only_last_key=False)
+        {'a.b': 'value1', 'a.c.d': 'value2', 'f': 'value3'}
+    """
+    result = {}
+
+    def explore_dict(d, path=""):
+        if not isinstance(d, dict):
+            return
+
+        for key, value in d.items():
+            current_path = f"{path}.{key}" if path else key
+
+            if isinstance(value, str):
+                # Use either just the key or the full path based on the parameter
+                result_key = key if only_last_key else current_path
+                result[result_key] = value
+            elif isinstance(value, dict):
+                explore_dict(value, current_path)
+            # Skip lists and other types
+
+    explore_dict(data_dict)
+    return result
+
+
+####################################################################################################
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############     Methods dedicated to find directories, remove empty folders            ############
-############     find all the files inside a certain directory, etc                     ############                                                 ############
+############   Section 6: Methods dedicated to find directories, remove empty folders   ############
+############     find all the files inside a certain directory, etc                     ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -1802,7 +1857,7 @@ def remove_empty_folders(start_path, deleted_folders=None):
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############              Methods dedicated to strings and characters                   ############
+############        Section 7: Methods dedicated to strings and characters              ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -1840,6 +1895,71 @@ def rem_duplicate_char(strcad: str, dchar: str):
 
 
 ####################################################################################################
+def create_names_from_indices(
+    indices: Union[int, List[int], np.ndarray],
+    prefix: str = "auto-roi",
+    sufix: str = None,
+) -> list[str]:
+    """
+    Generates a list of region names with the format "auto-roi-000001"
+    based on a list of indices, using list comprehension.
+
+    Parameters
+    ----------
+    indices : int or list
+        A single integer or a list of integers representing the indices.
+
+    prefix : str
+        A prefix to add to the region names. Default is "auto-roi"
+
+    sufix : str
+        A sufix to add to the region names. Default is None
+
+    Returns
+    -------
+    list[str]
+        A list of formatted region names.
+
+    Examples
+    ---------
+    >>> indices = [1, 2, 3]
+    >>> names = create_names_from_indices(indices)
+    >>> print(names)  # Output: ['auto-roi-000001', 'auto-roi-000002', 'auto-roi-000003']
+
+    >>> indices = 5
+    >>> names = create_names_from_indices(indices)
+    >>> print(names)  # Output: ['auto-roi-000005']
+
+    >>> indices = np.array([10, 20, 30])
+    >>> names = create_names_from_indices(indices, sufix="lh")
+    >>> print(names)  # Output: ['auto-roi-000010-lh', 'auto-roi-000020-lh', 'auto-roi-000030-lh']
+
+    >>> indices = [1, 2, 3]
+    >>> names = create_names_from_indices(indices, prefix="ctx")
+    >>> print(names)  # Output: ['ctx-000001', 'ctx-000002', 'ctx-000003']
+
+    """
+
+    # Check if indices is a single integer or a list of integers
+    if isinstance(indices, int):
+        indices = [indices]
+    elif isinstance(indices, np.ndarray):
+        indices = indices.tolist()
+    elif not isinstance(indices, list):
+        raise ValueError("Indices must be an integer, list, or numpy array.")
+    elif not all(isinstance(i, int) for i in indices):
+        raise ValueError("All elements in indices must be integers.")
+
+    if sufix is not None:
+        names = [f"{prefix}-{index:06d}-{sufix}" for index in indices]
+    else:
+        # Generate names with the specified prefix and formatted index
+        names = [f"{prefix}-{index:06d}" for index in indices]
+
+    return names
+
+
+####################################################################################################
 def correct_names(
     regnames: list,
     prefix: str = None,
@@ -1872,7 +1992,7 @@ def correct_names(
     -------
     regnames: list
         List of corrected region names
-        
+
     How to Use:
     --------------
         >>> regnames = ["ctx-lh-1", "ctx-rh-2", "ctx-lh-3"]
@@ -1932,7 +2052,7 @@ def correct_names(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############        Methods dedicated to work with dictionaries and dataframes          ############
+############    Section 8: Methods dedicated to work with dictionaries and dataframes   ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -2010,7 +2130,7 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############           Methods dedicated to containerization assistance                 ############
+############        Section 9: Methods dedicated to containerization assistance         ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -2112,7 +2232,7 @@ def generate_container_command(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############            Methods to print modules information and signatures             ############
+############       Section 10: Methods to print modules information and signatures      ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
