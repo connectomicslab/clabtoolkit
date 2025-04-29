@@ -2691,69 +2691,141 @@ def stats_from_vector(metric_vect, stats_list):
 
 ####################################################################################################
 def entities4morphotable(
-    entities_json: str = None, selected_entities: Union[str, Dict] = None
-) -> list:
+    entities_json: str = None, selected_entities: Union[str, Dict, List] = None
+) -> Dict:
     """
-    This method returns the BIDs entities that will be included in the morphometric table.
+    Returns the BIDS entities that will be included in the morphometric table.
+
+    This function loads BIDS entities from a JSON configuration file and filters
+    them based on optional selected entities.
 
     Parameters
     ----------
     entities_json : str, optional
-        Path to the json file with the information of the metrics. The default is None.
-        If None, the method uses the default config json file.
+        Path to the JSON file with entity definitions.
+        If None, the method uses the default config JSON file.
+    selected_entities : Union[str, Dict, List], optional
+        Entities to select from the loaded entities. Can be:
+        - A string with comma-separated entity names
+        - A dictionary with entity names as keys
+        - A list of entity names
+        If None, all entities are included.
 
     Returns
     -------
-    ent_out_dict : dict
-        ent_out_dict of valid entities.
+    Dict
+        Dictionary of entity names and their values.
+
+    Raises
+    ------
+    ValueError
+        If the provided JSON file path is invalid or the JSON format is incorrect.
+    FileNotFoundError
+        If the specified JSON file does not exist.
 
     Examples
     --------
-    >>> import clabtoolkit.morphometrytools as clmorphtools
-    >>> clmorphtools.entities4morphotable()
-    ["sub",
-    "ses",
-    "acq",
-    "dir",
-    "run",
-    "ce",
-    "rec",
-    "space",
-    "res",
-    "model",
-    "desc",
-    "atlas",
-    "scale",
-    "seg",
-    "grow"]
-    """
-    config_json = os.path.join(os.path.dirname(__file__), "config", "config.json")
+    >>> # Using default config file (returns all entities)
+    >>> entities4morphotable()
+    {'sub': {'...'}, 'ses': {'...'}, ... 'scale': {'...'}}
 
+    >>> # Using a custom JSON file
+    >>> entities4morphotable('path/to/custom/entities.json')
+    {'sub': {'...'}, 'ses': {'...'}, ... 'scale': {'...'}}
+
+    >>> # Selecting specific entities
+    >>> entities4morphotable(selected_entities='sub,ses,run')
+    {'sub': {'...'}, 'ses': {'...'}, 'run': {'...'}}
+
+    >>> # Using a dictionary to select entities
+    >>> entities4morphotable(selected_entities={'sub': None, 'ses': None})
+    {'sub': {'...'}, 'ses': {'...'}}
+
+    >>> # Using a list to select entities
+    >>> entities4morphotable(selected_entities=['sub', 'ses'])
+    {'sub': {'...'}, 'ses': {'...'}}
+    """
+    import os
+    import json
+    from typing import Dict, Union, List
+
+    # Load entities from JSON
     if entities_json is None:
-        with open(config_json) as f:
-            config_json = json.load(f)
-        ent_out_dict = {
-            **config_json["bids_entities"]["raw_entities"],
-            **config_json["bids_entities"]["derivatives_entities"],
-        }
+        # Define path to default config JSON
+        default_config_path = os.path.join(
+            os.path.dirname(__file__), "config", "bids.json"
+        )
+        try:
+            with open(default_config_path, "r") as f:
+                config_data = json.load(f)
+
+            # Merge raw and derivatives entities
+            if (
+                "bids_entities" in config_data
+                and "raw_entities" in config_data["bids_entities"]
+                and "derivatives_entities" in config_data["bids_entities"]
+            ):
+                ent_out_dict = {
+                    **config_data["bids_entities"]["raw_entities"],
+                    **config_data["bids_entities"]["derivatives_entities"],
+                }
+            else:
+                raise ValueError(
+                    "Default config JSON does not have the expected structure."
+                )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Default configuration file not found at: {default_config_path}"
+            )
+        except json.JSONDecodeError:
+            raise ValueError(
+                f"Error parsing the default configuration file: {default_config_path}"
+            )
 
     elif isinstance(entities_json, str):
+        # Load from provided JSON file path
         if not os.path.isfile(entities_json):
-            raise ValueError(
-                "Please, provide a valid JSON file containing the entities dictionary."
-            )
-        else:
-            with open(entities_json) as f:
-                ent_out_dict = json.load(f)
+            raise FileNotFoundError(f"JSON file not found: {entities_json}")
 
+        try:
+
+            ent_out_dict = cltmisc.extract_string_values(entities_json)
+        except json.JSONDecodeError:
+            raise ValueError(f"Error parsing the JSON file: {entities_json}")
+    else:
+        raise TypeError("entities_json must be None or a string path to a JSON file.")
+
+    # Filter entities based on selected_entities
     if selected_entities is not None:
-        if isinstance(selected_entities, str):
-            selected_entities = cltbids.str2entity(selected_entities)
-        elif isinstance(selected_entities, dict):
-            selected_entities = selected_entities.items()
+        selected_entity_keys = []
 
-        # Select the pairs (keys and values) that are in the entities_dict
-        ent_out_dict = {k: v for k, v in ent_out_dict.items() if k in selected_entities}
+        # Handle string input (convert to list of keys)
+        if isinstance(selected_entities, str):
+            try:
+                # Assume it's a comma-separated string
+                selected_entity_keys = [e.strip() for e in selected_entities.split(",")]
+            except Exception:
+                # Fall back to custom function if available
+                try:
+                    selected_entities = cltbids.str2entity(selected_entities)
+                    selected_entity_keys = list(selected_entities.keys())
+                except (ImportError, AttributeError):
+                    raise ValueError(
+                        "Cannot parse selected_entities string. Provide a comma-separated list."
+                    )
+
+        # Handle dictionary input
+        elif isinstance(selected_entities, dict):
+            selected_entity_keys = list(selected_entities.keys())
+
+        # Handle list input
+        elif isinstance(selected_entities, list):
+            selected_entity_keys = selected_entities
+
+        # Filter the output dictionary to include only selected entities
+        ent_out_dict = {
+            k: v for k, v in ent_out_dict.items() if k in selected_entity_keys
+        }
 
     return ent_out_dict
 
