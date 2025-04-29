@@ -235,7 +235,9 @@ def compute_reg_val_fromannot(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(metric_file, str):
         ent_list = entities4morphotable()
-        df_add = df2add(in_file=metric_file, ent2add=ent_list)
+        df_add = extract_bids_entities_to_dataframe(
+            in_file=metric_file, ent2add=ent_list
+        )
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -479,7 +481,7 @@ def compute_reg_area_fromsurf(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(parc_file, str):
         ent_list = entities4morphotable()
-        df_add = df2add(in_file=parc_file, ent2add=ent_list)
+        df_add = extract_bids_entities_to_dataframe(in_file=parc_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -656,7 +658,7 @@ def compute_euler_fromsurf(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(surf_file, str):
         ent_list = entities4morphotable()
-        df_add = df2add(in_file=surf_file, ent2add=ent_list)
+        df_add = extract_bids_entities_to_dataframe(in_file=surf_file, ent2add=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -1251,7 +1253,9 @@ def compute_reg_val_fromparcellation(
     if add_bids_entities and isinstance(metric_file, str):
         try:
             ent_list = entities4morphotable()
-            df_add = df2add(in_file=metric_file, ent2add=ent_list)
+            df_add = extract_bids_entities_to_dataframe(
+                in_file=metric_file, ent2add=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -1524,7 +1528,9 @@ def compute_reg_volume_fromparcellation(
     if add_bids_entities and isinstance(parc_file, str):
         try:
             ent_list = entities4morphotable()
-            df_add = df2add(in_file=parc_file, ent2add=ent_list)
+            df_add = extract_bids_entities_to_dataframe(
+                in_file=parc_file, ent2add=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -1812,7 +1818,9 @@ def parse_freesurfer_global_fromaseg(
     if add_bids_entities:
         try:
             ent_list = entities4morphotable()
-            df_add = df2add(in_file=stat_file, ent2add=ent_list)
+            df_add = extract_bids_entities_to_dataframe(
+                in_file=stat_file, ent2add=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2104,7 +2112,9 @@ def parse_freesurfer_stats_fromaseg(
     if add_bids_entities:
         try:
             ent_list = entities4morphotable()
-            df_add = df2add(in_file=stat_file, ent2add=ent_list)
+            df_add = extract_bids_entities_to_dataframe(
+                in_file=stat_file, ent2add=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2588,7 +2598,9 @@ def parse_freesurfer_cortex_stats(
         if add_bids_entities:
             try:
                 ent_list = entities4morphotable()
-                df_add = df2add(in_file=stats_file, ent2add=ent_list)
+                df_add = extract_bids_entities_to_dataframe(
+                    in_file=stats_file, ent2add=ent_list
+                )
                 df = cltmisc.expand_and_concatenate(df_add, df)
             except Exception as e:
                 warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2960,68 +2972,135 @@ def get_units(
 
 
 ####################################################################################################
-def df2add(in_file: str, ent2add: Union[str, list, dict] == None):
+def extract_bids_entities_to_dataframe(
+    filepath: str,
+    entities_to_extract: Optional[Union[str, List[str], Dict[str, str]]] = None,
+) -> pd.DataFrame:
     """
-    Method to create a dataframe that could be added in front of the metrics dataframe.
+    Creates a DataFrame with BIDS entities extracted from a filename.
 
-    Parameters:
-    in_file : str
-        Filename path to extract the entities from.
+    This function parses BIDS-compliant filenames to extract specified entities
+    (such as subject, session, task) and organizes them into a DataFrame with
+    appropriate column names. It supports special handling for certain entities
+    like atlas and description fields.
 
+    Parameters
+    ----------
+    filepath : str
+        Full path to the BIDS file from which to extract entities.
+    entities_to_extract : str, list, dict, or None, default=None
+        Specifies which entities to extract from the filename:
+        - If str: A single entity name to extract
+        - If list: Multiple entity names to extract
+        - If dict: Keys are entity names, values are custom column names
+        - If None: Returns a single column with the full filename
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing the extracted entities as columns.
+        If the file is not BIDS-compliant, returns an empty DataFrame.
+
+    Examples
+    --------
+    >>> # Extract subject and session from a BIDS file
+    >>> df = extract_bids_entities_to_dataframe(
+    ...     '/data/sub-01/ses-pre/sub-01_ses-pre_task-rest_bold.nii.gz',
+    ...     ['sub', 'ses']
+    ... )
+    >>> print(df)
+       Participant Session
+    0          01     pre
+
+    >>> # Extract entities with custom column names
+    >>> df = extract_bids_entities_to_dataframe(
+    ...     '/data/sub-01/anat/sub-01_T1w.nii.gz',
+    ...     {'sub': 'SubjectID'}
+    ... )
+    >>> print(df)
+       SubjectID
+    0        01
+
+    >>> # Extract atlas with special handling
+    >>> df = extract_bids_entities_to_dataframe(
+    ...     '/data/sub-01/atlas-chimera123_desc-parcellation.nii.gz',
+    ...     ['atlas', 'desc']
+    ... )
+    >>> print(df)
+          Atlas ChimeraCode Description
+    0   chimera        123 parcellation
+
+    Notes
+    -----
+    This function requires the `cltbids` module for BIDS file parsing.
     """
+    import cltbids  # Import here to avoid issues if not installed
 
-    file_path = os.path.dirname(in_file)
-    file_name = os.path.basename(in_file)
-    name_ent_dict = cltbids.str2entity(file_name)
+    # Extract file directory and name
+    file_directory = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
 
-    df2add = pd.DataFrame()
+    # Parse entities from the filename
+    entities_dict = cltbids.str2entity(filename)
 
-    if cltbids.is_bids_filename(file_name):
-        if ent2add is not None:
-            if isinstance(ent2add, str):
-                ent2add = [ent2add]
+    # Create an empty DataFrame
+    result_df = pd.DataFrame()
 
-            if isinstance(ent2add, list):
-                # Create a dictionary with the entities as keys and the entities as values as well
-                ent2add = {k: ent2add.get(k, "") for k in ent2add}
+    # Only process if the file follows BIDS naming convention
+    if cltbids.is_bids_filename(filename):
+        if entities_to_extract is not None:
+            # Convert string input to list
+            if isinstance(entities_to_extract, str):
+                entities_to_extract = [entities_to_extract]
 
-            # Ensure df2add has at least one row before inserting data
-            if df2add.empty:
-                df2add = pd.DataFrame([{}])  # Creates an empty row
+            # Convert list to dictionary for unified processing
+            if isinstance(entities_to_extract, list):
+                # Create dict with entity names as both keys and values
+                entities_to_extract = {entity: "" for entity in entities_to_extract}
 
-            tmp_keys = list(ent2add.keys())
-            for entity in tmp_keys[::-1]:
-                if entity in name_ent_dict.keys():
-                    value = name_ent_dict[entity]
-                else:
-                    value = ""
+            # Initialize DataFrame with one empty row
+            if result_df.empty:
+                result_df = pd.DataFrame([{}])
 
+            # Process entities in reverse order to maintain column order
+            entity_keys = list(entities_to_extract.keys())
+            for entity in reversed(entity_keys):
+                # Get entity value from filename or empty string if not found
+                value = entities_dict.get(entity, "")
+
+                # Process specific entities with custom handling
                 if entity == "sub":
-                    df2add.insert(0, "Participant", value)
+                    result_df.insert(0, "Participant", value)
                 elif entity == "ses":
-                    df2add.insert(0, "Session", value)
+                    result_df.insert(0, "Session", value)
                 elif entity == "atlas":
                     if "chimera" in value:
-                        df2add.insert(0, "Atlas", "chimera")
-                        df2add.insert(0, "ChimeraCode", value.replace("chimera", ""))
+                        result_df.insert(0, "Atlas", "chimera")
+                        result_df.insert(0, "ChimeraCode", value.replace("chimera", ""))
                     else:
-                        df2add.insert(0, "Atlas", value)
-                        df2add.insert(0, "ChimeraCode", "")
+                        result_df.insert(0, "Atlas", value)
+                        result_df.insert(0, "ChimeraCode", "")
                 elif entity == "desc":
-                    df2add.insert(0, "Description", value)
+                    result_df.insert(0, "Description", value)
                     if "grow" in value:
-                        df2add.insert(0, "GrowIntoWM", value.replace("grow", ""))
+                        result_df.insert(0, "GrowIntoWM", value.replace("grow", ""))
                 else:
-                    df2add.insert(0, ent2add[entity], value)
+                    # Use provided column name if not empty, otherwise use entity name
+                    column_name = (
+                        entities_to_extract[entity]
+                        if entities_to_extract[entity]
+                        else entity.capitalize()
+                    )
+                    result_df.insert(0, column_name, value)
         else:
-            # Ensure df2add is initialized before inserting
-            if df2add.empty:
-                df2add = pd.DataFrame([{}])  # Creates an empty row
+            # If no entities specified, use full filename as Participant
+            if result_df.empty:
+                result_df = pd.DataFrame([{}])
 
-            # Adding the Participant as the full file name without extension
-            if "extension" in name_ent_dict.keys():
-                name_ent_dict["suffix"] = ""
+            # Remove extension before using as identifier
+            if "extension" in entities_dict:
+                entities_dict["suffix"] = ""
 
-            df2add.insert(0, "Participant", cltbids.entity2str(name_ent_dict))
+            result_df.insert(0, "Participant", cltbids.entity2str(entities_dict))
 
-    return df2add
+    return result_df
