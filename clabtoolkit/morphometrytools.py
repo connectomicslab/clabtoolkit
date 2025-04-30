@@ -235,7 +235,7 @@ def compute_reg_val_fromannot(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(metric_file, str):
         ent_list = entities4morphotable()
-        df_add = cltbids.entities_to_table(in_file=metric_file, entities_to_extract=ent_list)
+        df_add = cltbids.entities_to_table(filepath=metric_file, entities_to_extract=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -479,7 +479,7 @@ def compute_reg_area_fromsurf(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(parc_file, str):
         ent_list = entities4morphotable()
-        df_add = cltbids.entities_to_table(in_file=parc_file, entities_to_extract=ent_list)
+        df_add = cltbids.entities_to_table(filepath=parc_file, entities_to_extract=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -656,7 +656,7 @@ def compute_euler_fromsurf(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(surf_file, str):
         ent_list = entities4morphotable()
-        df_add = cltbids.entities_to_table(in_file=surf_file, entities_to_extract=ent_list)
+        df_add = cltbids.entities_to_table(filepath=surf_file, entities_to_extract=ent_list)
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -1251,7 +1251,7 @@ def compute_reg_val_fromparcellation(
     if add_bids_entities and isinstance(metric_file, str):
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(in_file=metric_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(filepath=metric_file, entities_to_extract=ent_list)
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -1524,7 +1524,7 @@ def compute_reg_volume_fromparcellation(
     if add_bids_entities and isinstance(parc_file, str):
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(in_file=parc_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(filepath=parc_file, entities_to_extract=ent_list)
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -1812,7 +1812,7 @@ def parse_freesurfer_global_fromaseg(
     if add_bids_entities:
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(in_file=stat_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(filepath=stat_file, entities_to_extract=ent_list)
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2104,7 +2104,7 @@ def parse_freesurfer_stats_fromaseg(
     if add_bids_entities:
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(in_file=stat_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(filepath=stat_file, entities_to_extract=ent_list)
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2588,7 +2588,7 @@ def parse_freesurfer_cortex_stats(
         if add_bids_entities:
             try:
                 ent_list = entities4morphotable()
-                df_add = cltbids.entities_to_table(in_file=stats_file, entities_to_extract=ent_list)
+                df_add = cltbids.entities_to_table(filepath=stats_file, entities_to_extract=ent_list)
                 df = cltmisc.expand_and_concatenate(df_add, df)
             except Exception as e:
                 warnings.warn(f"Could not add BIDS entities: {str(e)}")
