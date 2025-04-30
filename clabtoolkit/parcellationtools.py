@@ -13,6 +13,17 @@ from . import segmentationtools as cltseg
 
 
 class Parcellation:
+    """
+    The `Parcellation` class provides comprehensive tools for working with brain parcellation data.
+    It enables loading, manipulating, and analyzing parcellation files (typically in NIfTI format)
+    along with their associated lookup tables. This class supports various operations including
+    filtering regions by name or code, applying masks, grouping regions, calculating volumes, and
+    exporting results. It handles both the volumetric data and the associated metadata (region
+    indices, names, and colors), making it a complete solution for neuroimaging parcellation analysis
+    workflows. The class is designed to work seamlessly with annotation files that define brain
+    regions and supports various common file formats in neuroimaging research.
+
+    """
 
     def __init__(
         self, parc_file: Union[str, np.uint] = None, affine: np.float64 = None
