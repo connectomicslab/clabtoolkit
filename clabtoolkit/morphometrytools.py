@@ -13,11 +13,11 @@ from nibabel.processing import resample_from_to
 import numpy as np
 
 # Importing local modules
-from . import misctools as cltmisc
-from . import surfacetools as cltsurf
-from . import parcellationtools as cltparc
-from . import bidstools as cltbids
-from . import freesurfertools as cltfree
+import misctools as cltmisc
+import surfacetools as cltsurf
+import parcellationtools as cltparc
+import bidstools as cltbids
+import freesurfertools as cltfree
 
 
 ####################################################################################################
@@ -235,7 +235,9 @@ def compute_reg_val_fromannot(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(metric_file, str):
         ent_list = entities4morphotable()
-        df_add = cltbids.entities_to_table(filepath=metric_file, entities_to_extract=ent_list)
+        df_add = cltbids.entities_to_table(
+            filepath=metric_file, entities_to_extract=ent_list
+        )
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -479,7 +481,9 @@ def compute_reg_area_fromsurf(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(parc_file, str):
         ent_list = entities4morphotable()
-        df_add = cltbids.entities_to_table(filepath=parc_file, entities_to_extract=ent_list)
+        df_add = cltbids.entities_to_table(
+            filepath=parc_file, entities_to_extract=ent_list
+        )
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -656,7 +660,9 @@ def compute_euler_fromsurf(
     # Add BIDS entities if requested
     if add_bids_entities and isinstance(surf_file, str):
         ent_list = entities4morphotable()
-        df_add = cltbids.entities_to_table(filepath=surf_file, entities_to_extract=ent_list)
+        df_add = cltbids.entities_to_table(
+            filepath=surf_file, entities_to_extract=ent_list
+        )
         df = cltmisc.expand_and_concatenate(df_add, df)
 
     # Save table if requested
@@ -1251,7 +1257,9 @@ def compute_reg_val_fromparcellation(
     if add_bids_entities and isinstance(metric_file, str):
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(filepath=metric_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(
+                filepath=metric_file, entities_to_extract=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -1524,7 +1532,9 @@ def compute_reg_volume_fromparcellation(
     if add_bids_entities and isinstance(parc_file, str):
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(filepath=parc_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(
+                filepath=parc_file, entities_to_extract=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -1812,7 +1822,9 @@ def parse_freesurfer_global_fromaseg(
     if add_bids_entities:
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(filepath=stat_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(
+                filepath=stat_file, entities_to_extract=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2104,7 +2116,9 @@ def parse_freesurfer_stats_fromaseg(
     if add_bids_entities:
         try:
             ent_list = entities4morphotable()
-            df_add = cltbids.entities_to_table(filepath=stat_file, entities_to_extract=ent_list)
+            df_add = cltbids.entities_to_table(
+                filepath=stat_file, entities_to_extract=ent_list
+            )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2588,7 +2602,9 @@ def parse_freesurfer_cortex_stats(
         if add_bids_entities:
             try:
                 ent_list = entities4morphotable()
-                df_add = cltbids.entities_to_table(filepath=stats_file, entities_to_extract=ent_list)
+                df_add = cltbids.entities_to_table(
+                    filepath=stats_file, entities_to_extract=ent_list
+                )
                 df = cltmisc.expand_and_concatenate(df_add, df)
             except Exception as e:
                 warnings.warn(f"Could not add BIDS entities: {str(e)}")
@@ -2643,6 +2659,7 @@ def get_stats_dictionary(region_level: str = "global"):
 ####################################################################################################
 ####################################################################################################
 
+
 def network_metrics_to_table(cmat, lut_name, cmat_met):
 
     if os.path.isfile(lut_name):
@@ -2652,15 +2669,24 @@ def network_metrics_to_table(cmat, lut_name, cmat_met):
     else:
         # Reading the tsv
         st_codes, st_names, st_colors = cltparc.Parcellation.read_luttable(tsv_name)
-    
-    net_metrics = ['degree', 'strength', 'clustering_coeff','betw_centrality', 'loc_efficiency','glob_efficiency','transitivity','density_coeff']
-    cmat_bin = cmat>0
+
+    net_metrics = [
+        "degree",
+        "strength",
+        "clustering_coeff",
+        "betw_centrality",
+        "loc_efficiency",
+        "glob_efficiency",
+        "transitivity",
+        "density_coeff",
+    ]
+    cmat_bin = cmat > 0
     deg_coeff = bct.degree.degrees_und(cmat_bin)
     str_coeff = bct.degree.strengths_und(cmat)
     clu_coeff = bct.clustering_coef_bu(cmat_bin)
     btw_cent = bct.betweenness_bin(cmat_bin)
     sho_path = bct.distance_bin(cmat_bin)
-    loc_eff = bct.efficiency_bin(cmat_bin,local=True)
+    loc_eff = bct.efficiency_bin(cmat_bin, local=True)
 
     trans_coeff_g = bct.transitivity_bu(cmat_bin)
     glob_eff_g = bct.efficiency_bin(cmat_bin)
@@ -2670,7 +2696,11 @@ def network_metrics_to_table(cmat, lut_name, cmat_met):
     dict_of_cols["metric"] = ["conn_matrix_" + cmat_met] * len(net_metrics)
     dict_of_cols["statistics"] = net_metrics
     dict_of_cols["units"] = ["au"] * len(net_metrics)
-    dict_of_cols["total_brain"] = ['']*(len(net_metrics)-3) +  [glob_eff_g, trans_coeff_g, den_coeff_g[0]]
+    dict_of_cols["total_brain"] = [""] * (len(net_metrics) - 3) + [
+        glob_eff_g,
+        trans_coeff_g,
+        den_coeff_g[0],
+    ]
 
     if os.path.isfile(lut_name) or os.path.isfile(tsv_name):
 
@@ -2680,14 +2710,22 @@ def network_metrics_to_table(cmat, lut_name, cmat_met):
         # outnames = []
         for i in range(1, nreg + 1):
             if i < len(cmat):
-                outvals = [deg_coeff[i-1], str_coeff[i-1], clu_coeff[i-1], btw_cent[i-1], loc_eff[i-1]] + ['']*3
+                outvals = [
+                    deg_coeff[i - 1],
+                    str_coeff[i - 1],
+                    clu_coeff[i - 1],
+                    btw_cent[i - 1],
+                    loc_eff[i - 1],
+                ] + [""] * 3
             else:
-                outvals = ['']*(len(net_metrics))  #
+                outvals = [""] * (len(net_metrics))  #
 
-            dict_of_cols[st_names[i-1]] = outvals
+            dict_of_cols[st_names[i - 1]] = outvals
 
     df = pd.DataFrame.from_dict(dict_of_cols)
     return df
+
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -2895,16 +2933,18 @@ def entities4morphotable(
         if isinstance(selected_entities, str):
             try:
                 # Assume it's a comma-separated string
-                selected_entity_keys = [e.strip() for e in selected_entities.split(",")]
-            except Exception:
-                # Fall back to custom function if available
-                try:
+                if "," in selected_entities:
+                    selected_entity_keys = [
+                        e.strip() for e in selected_entities.split(",")
+                    ]
+                elif cltbids.is_bids_filename(selected_entities):
                     selected_entities = cltbids.str2entity(selected_entities)
                     selected_entity_keys = list(selected_entities.keys())
-                except (ImportError, AttributeError):
-                    raise ValueError(
-                        "Cannot parse selected_entities string. Provide a comma-separated list."
-                    )
+
+            except (ImportError, AttributeError):
+                raise ValueError(
+                    "Cannot parse selected_entities string. Provide a comma-separated list or a BIDs-like string (e.g. sub-XXX_ses-SSS_run-01 )."
+                )
 
         # Handle dictionary input
         elif isinstance(selected_entities, dict):
