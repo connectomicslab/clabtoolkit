@@ -1524,7 +1524,7 @@ def compute_reg_volume_fromparcellation(
     elif units is None or (isinstance(units, list) and len(units) == 0):
         units = "ml"
 
-    df.insert(0, "Source", ["volume"] * nrows)
+    df.insert(0, "Source", ["parcellation"] * nrows)
     df.insert(1, "Metric", ["volume"] * nrows)
     df.insert(2, "Units", [units] * nrows)
     df.insert(3, "MetricFile", [filename] * nrows)
