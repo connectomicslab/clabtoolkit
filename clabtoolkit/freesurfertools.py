@@ -1855,6 +1855,13 @@ class FreeSurferSubject:
                     [df_parc, df_area_lobes, df_area_region, df_euler], axis=0
                 )
 
+            # Read the stats file
+            stat_file = self.fs_files["stats"][hemi][parc_name]
+            df_stats_cortex, _ = morpho.parse_freesurfer_cortex_stats(
+                stat_file, add_bids_entities=False
+            )
+            df_stats_cortex.insert(4, "Atlas", parc_base_name)
+
             # Merge morphometric and area metrics
             if not df_metric.empty:
                 df_parc = pd.concat([df_parc, df_metric], axis=0)
