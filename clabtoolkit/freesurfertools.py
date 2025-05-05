@@ -1609,52 +1609,38 @@ class FreeSurferSubject:
         rh_surf_df = self.surface_hemi_morpho(hemi="rh", lobes_grouping=lobes_grouping)
         vol_df = self.volume_morpho()
 
-        stat_file = self.fs_files["stats"]["global"]["aseg"]
-        stats_df = morpho.parse_freesurfer_statsfile(stat_file=stat_file)
+        # Adding the volumes extracted by FreeSurfer and stored at aseg.stats
+        stats_df, _ = morpho.parse_freesurfer_stats_fromaseg(
+            self.fs_files["stats"]["global"]["aseg"], add_bids_entities=False
+        )
+        stats_df.insert(4, "Atlas", "")
+
+        # Parsing global metrics from aseg.mgz
+        global_df, _ = morpho.parse_freesurfer_global_fromaseg(
+            self.fs_files["stats"]["global"]["aseg"], add_bids_entities=False
+        )
+        global_df.insert(4, "Atlas", "")
 
         # Combine all data into a single DataFrame
-        stats_table = pd.concat([stats_df, vol_df, lh_surf_df, rh_surf_df], axis=0)
+        stats_table = pd.concat(
+            [global_df, stats_df, vol_df, lh_surf_df, rh_surf_df], axis=0
+        )
 
         # Adding the entities related to BIDs
         if add_bids_entities:
             ent_list = morpho.entities4morphotable(selected_entities=self.subj_id)
 
-            df_add = morpho.extract_bids_entities_to_dataframe(
-                in_file=self.subj_id, ent2add=ent_list
+            df_add = cltbids.entities_to_table(
+                in_file=self.subj_id, entities_to_extract=ent_list
             )
 
             stats_table = cltmisc.expand_and_concatenate(df_add, stats_table)
-
-            # ent_list = cltbids.str2entity(self.subj_id)
-            # for entity in list(ent_list.keys())[::-1]:  # Reversing the list
-            #     value = ent_list[entity]
-
-            #     if entity == "sub":
-            #         stats_table.insert(0, "Participant", value)
-            #     elif entity == "ses":
-            #         stats_table.insert(0, "Session", value)
-            #     elif entity == "atlas":
-            #         if "chimera" in value:
-            #             stats_table.insert(0, "Altas", value)
-            #             stats_table.insert(
-            #                 0, "ChimeraCode", value.replace("chimera", "")
-            #             )
-            #         else:
-            #             stats_table.insert(0, "Altas", value)
-            #             stats_table.insert(0, "ChimeraCode", "")
-            #     elif entity == "desc":
-            #         stats_table.insert(0, "Description", value)
-            #         if "grow" in value:
-            #             stats_table.insert(0, "GrowIntoWM", value.replace("grow", ""))
-            #     else:
-            #         stats_table.insert(0, entity, value)
-
-            # ent_list = morpho.entities4morphotable(selected_entities=self.subj_id)
-            # df_add = morpho.extract_bids_entities_to_dataframe(in_file=self.subj_id, ent_list=ent_list)
-            # stats_table = cltmisc.expand_and_concatenate(df_add, stats_table)
         else:
             # Expand a first dataframe and concatenate with the second dataframe
             stats_table.insert(0, "Participant", self.subj_id)
+
+        # Adding the table as an attribute
+        self.stats_table = stats_table
 
         # Save the DataFrame to a file if an output path is specified
         if output_file:
