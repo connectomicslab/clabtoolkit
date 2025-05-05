@@ -1426,6 +1426,7 @@ def compute_reg_volume_fromparcellation(
     elif isinstance(parc_file, cltparc.Parcellation):
         vparc_data = copy.deepcopy(parc_file)
         affine = vparc_data.affine
+        filename = vparc_data.parc_file
     elif isinstance(parc_file, np.ndarray):
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
         affine = vparc_data.affine
