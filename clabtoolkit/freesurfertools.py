@@ -1796,13 +1796,22 @@ class FreeSurferSubject:
                     continue
 
                 # Compute lobar and regional metrics
-                df_lobes, _ = morpho.compute_reg_val_fromannot(
-                    metric_file, lobar_obj, hemi, metric_name
+                df_lobes, _, _ = morpho.compute_reg_val_fromannot(
+                    metric_file,
+                    lobar_obj,
+                    hemi,
+                    metric=metric_name,
+                    add_bids_entities=False,
                 )
                 df_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
 
-                df_region, _ = morpho.compute_reg_val_fromannot(
-                    metric_file, parc_file, hemi, metric_name, include_global=False
+                df_region, _, _ = morpho.compute_reg_val_fromannot(
+                    metric_file,
+                    parc_file,
+                    hemi,
+                    metric=metric_name,
+                    include_global=False,
+                    add_bids_entities=False,
                 )
                 df_region.insert(4, "Atlas", parc_base_name)
 
@@ -1815,24 +1824,29 @@ class FreeSurferSubject:
             for surface, source_label in zip(
                 [pial_surf, white_surf], ["pial", "white"]
             ):
-                df_area_region = morpho.compute_reg_area_fromsurf(
+                df_area_region, _ = morpho.compute_reg_area_fromsurf(
                     surface,
                     parc_file,
                     hemi,
                     include_global=False,
+                    add_bids_entities=False,
                     surf_type=source_label,
                 )
 
                 df_area_region.insert(4, "Atlas", parc_base_name)
 
-                df_area_lobes = morpho.compute_reg_area_fromsurf(
-                    surface, lobar_obj, hemi, surf_type=source_label
+                df_area_lobes, _ = morpho.compute_reg_area_fromsurf(
+                    surface,
+                    lobar_obj,
+                    hemi,
+                    surf_type=source_label,
+                    add_bids_entities=False,
                 )
                 df_area_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
 
                 # Compute Euler characteristic
-                df_euler = morpho.compute_euler_fromsurf(
-                    surface, hemi, surf_type=source_label
+                df_euler, _ = morpho.compute_euler_fromsurf(
+                    surface, hemi, surf_type=source_label, add_bids_entities=False
                 )
                 df_euler.insert(4, "Atlas", "")
 
