@@ -2295,6 +2295,20 @@ class FreeSurferSubject:
                     out_vol,
                 ]
 
+            elif gm_grow == "wm":
+                md_bashargs = [
+                    "mri_aparc2aseg",
+                    "--s",
+                    self.subj_id,
+                    "--annot",
+                    atlas,
+                    "--labelwm",
+                    "--hypo-as-wm",
+                    "--new-ribbon",
+                    "--o",
+                    out_vol,
+                ]
+                
             else:
                 # Creating the volumetric parcellation using the annot files
                 cmd_bashargs = [
