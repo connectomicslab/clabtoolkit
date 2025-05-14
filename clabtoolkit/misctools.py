@@ -1630,49 +1630,75 @@ def remove_substrings(
 
 
 ####################################################################################################
-def replace_substrings(strings: List[str], replacements: Dict[str, str]) -> List[str]:
+def replace_substrings(
+    strings: Union[str, List[str]],
+    substrings: Union[str, List[str]],
+    replaced_by: Union[str, List[str]],
+    bool_case: bool = True,
+) -> List[str]:
     """
-    Replace substrings in each element of a list of strings according to a mapping dictionary.
+    Replace substrings or regex patterns in each element of a list of strings.
 
     Parameters
     ----------
-    strings : List[str]
-        A list of strings in which substrings will be replaced.
-    replacements : Dict[str, str]
-        A dictionary where each key is a substring to be replaced, and each value is the new substring.
+    strings : Union[str, List[str]]
+        A string or a list of strings to modify.
+    substrings : Union[str, List[str]]
+        A string or list of substrings or regular expression patterns to search for.
+    replaced_by : Union[str, List[str]]
+        A string or list of replacement strings corresponding to each substring pattern.
+    bool_case : bool, optional
+        If False, the matching will be case-insensitive. Default is True (case-sensitive).
 
     Returns
     -------
     List[str]
-        A new list of strings with the specified substrings replaced.
+        A new list of strings with the specified patterns replaced.
 
     Raises
     ------
     TypeError
-        If `strings` is not a list of strings, or `replacements` is not a dictionary of string keys and values.
+        If inputs are not strings or lists of strings.
+    ValueError
+        If `substrings` and `replaced_by` have different lengths.
 
     Examples
     --------
-    >>> replace_substrings(["cat_dog", "dog_cat", "catfish"], {"cat": "lion", "dog": "wolf"})
-    ['lion_wolf', 'wolf_lion', 'lionfish']
+    >>> replace_substrings_regex("Hello_World", "World", "Earth", bool_case=False)
+    ['Hello_Earth']
 
-    >>> replace_substrings(["2024-01", "2025-02"], {"2024": "YearA", "2025": "YearB"})
-    ['YearA-01', 'YearB-02']
+    >>> replace_substrings_regex(["abc123", "ABC123"], ["abc", "123"], ["xyz", "789"], bool_case=False)
+    ['xyz789', 'xyz789']
     """
-    if not isinstance(strings, list) or not all(isinstance(s, str) for s in strings):
-        raise TypeError("`strings` must be a list of strings.")
+    # Normalize inputs to lists
+    if isinstance(strings, str):
+        strings = [strings]
+    if isinstance(substrings, str):
+        substrings = [substrings]
+    if isinstance(replaced_by, str):
+        replaced_by = [replaced_by]
 
-    if not isinstance(replacements, dict) or not all(
-        isinstance(k, str) and isinstance(v, str) for k, v in replacements.items()
+    # Validate inputs
+    if not (
+        isinstance(strings, list)
+        and all(isinstance(s, str) for s in strings)
+        and isinstance(substrings, list)
+        and all(isinstance(s, str) for s in substrings)
+        and isinstance(replaced_by, list)
+        and all(isinstance(s, str) for s in replaced_by)
     ):
-        raise TypeError(
-            "`replacements` must be a dictionary with string keys and string values."
-        )
+        raise TypeError("All inputs must be strings or lists of strings.")
+
+    if len(substrings) != len(replaced_by):
+        raise ValueError("`substrings` and `replaced_by` must have the same length.")
+
+    flags = 0 if bool_case else re.IGNORECASE
+    compiled_patterns = [re.compile(pat, flags) for pat in substrings]
 
     result = []
     for s in strings:
-        for old, new in replacements.items():
-            s = s.replace(old, new)
+        for pattern, replacement in zip(compiled_patterns, replaced_by):
+            s = pattern.sub(replacement, s)
         result.append(s)
 
     return result
