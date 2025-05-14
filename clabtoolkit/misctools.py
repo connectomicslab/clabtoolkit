@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Union
+from typing import Union, Dict, List
 import shlex
 import os
 import argparse
@@ -1625,6 +1625,55 @@ def remove_substrings(
         for sub in list2:
             item = item.replace(sub, "")
         result.append(item)
+
+    return result
+
+
+####################################################################################################
+def replace_substrings(strings: List[str], replacements: Dict[str, str]) -> List[str]:
+    """
+    Replace substrings in each element of a list of strings according to a mapping dictionary.
+
+    Parameters
+    ----------
+    strings : List[str]
+        A list of strings in which substrings will be replaced.
+    replacements : Dict[str, str]
+        A dictionary where each key is a substring to be replaced, and each value is the new substring.
+
+    Returns
+    -------
+    List[str]
+        A new list of strings with the specified substrings replaced.
+
+    Raises
+    ------
+    TypeError
+        If `strings` is not a list of strings, or `replacements` is not a dictionary of string keys and values.
+
+    Examples
+    --------
+    >>> replace_substrings(["cat_dog", "dog_cat", "catfish"], {"cat": "lion", "dog": "wolf"})
+    ['lion_wolf', 'wolf_lion', 'lionfish']
+
+    >>> replace_substrings(["2024-01", "2025-02"], {"2024": "YearA", "2025": "YearB"})
+    ['YearA-01', 'YearB-02']
+    """
+    if not isinstance(strings, list) or not all(isinstance(s, str) for s in strings):
+        raise TypeError("`strings` must be a list of strings.")
+
+    if not isinstance(replacements, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in replacements.items()
+    ):
+        raise TypeError(
+            "`replacements` must be a dictionary with string keys and string values."
+        )
+
+    result = []
+    for s in strings:
+        for old, new in replacements.items():
+            s = s.replace(old, new)
+        result.append(s)
 
     return result
 
