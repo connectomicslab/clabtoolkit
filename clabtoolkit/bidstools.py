@@ -175,7 +175,7 @@ def delete_entity(
 
 ####################################################################################################
 def replace_entity_value(
-    entity: Union[dict, str], ent2replace: dict, verbose: bool = False
+    entity: Union[dict, str], ent2replace: Union[dict, str], verbose: bool = False
 ) -> Union[dict, str]:
     """
     Replaces values in an entity dictionary or string representation.
@@ -185,8 +185,8 @@ def replace_entity_value(
     entity : dict or str
         Dictionary or string containing the entities.
 
-    ent2replace : dict
-        Dictionary of entities to replace with new values.
+    ent2replace : dict or str
+        Dictionary or string containing entities to replace with new values.
 
     verbose : bool, optional
         If True, prints warnings for non-existent or empty values.
@@ -210,6 +210,10 @@ def replace_entity_value(
         entity_out = entity.copy()
     else:
         raise ValueError("The entity must be a dictionary or a string.")
+
+    # Adding the possibility to enter a string value. It will convert it to a dictionary
+    if isinstance(ent2replace, str):
+        ent2replace = str2entity(ent2replace)
 
     # Remove any empty keys or values from `ent2replace`.
     ent2replace = {k: v for k, v in ent2replace.items() if v}
