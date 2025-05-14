@@ -1574,6 +1574,62 @@ def get_indexes_by_substring(
 
 
 ####################################################################################################
+def remove_substrings(
+    list1: Union[str, List[str]], list2: Union[str, List[str]]
+) -> List[str]:
+    """
+    Remove substrings from each element of list1 that match any string in list2.
+
+    Parameters
+    ----------
+    list1 : Union[str, List[str]]
+        A string or a list of strings to process.
+
+    list2 : Union[str, List[str]]
+        A string or a list of strings to be removed from each element in list1.
+        If a single string is provided, it will be converted to a list internally.
+
+    Returns
+    -------
+    List[str]
+        A new list with the substrings removed from each element of list1.
+
+    Raises
+    ------
+    TypeError
+        If list1 is not a list of strings or list2 is not a string or list of strings.
+
+    Examples
+    --------
+    >>> remove_substrings(["hello_world", "test_world", "worldwide"], "world")
+    ['hello_', 'test_', 'wide']
+
+    >>> remove_substrings(["apple_pie", "banana_pie", "cherry_pie"], ["pie", "_"])
+    ['apple', 'banana', 'cherry']
+    """
+
+    if isinstance(list1, str):
+        list1 = [list1]
+
+    elif not isinstance(list1, list) or not all(isinstance(s, str) for s in list1):
+        raise TypeError("list1 must be a list of strings.")
+
+    if isinstance(list2, str):
+        list2 = [list2]
+
+    elif not isinstance(list2, list) or not all(isinstance(s, str) for s in list2):
+        raise TypeError("list2 must be a string or a list of strings.")
+
+    result = []
+    for item in list1:
+        for sub in list2:
+            item = item.replace(sub, "")
+        result.append(item)
+
+    return result
+
+
+####################################################################################################
 def list_intercept(list1: list, list2: list):
     """
     Function to intercept the elements from 2 different lists.
