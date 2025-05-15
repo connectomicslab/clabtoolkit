@@ -2300,7 +2300,7 @@ def read_file_with_separator_detection(
 
 
 ####################################################################################################
-def read_file_separator(
+def smart_read_table(
     file_path: Union[str, Path], sample_size: int = 10, possible_seps=None, **kwargs
 ):
     """
