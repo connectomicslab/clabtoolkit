@@ -1779,73 +1779,6 @@ def ismember_from_list(a, b):
 
 
 ####################################################################################################
-def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> dict:
-    """
-    Recursively extracts all keys with string values from a nested dictionary. It will avoid keys
-
-    Parameters:
-    -----------
-        data_dict: A nested dictionary to search through
-        only_last_key: If True, uses only the leaf key name; if False, uses the full path
-
-    Returns:
-    --------
-        A dictionary where keys are either leaf keys or paths to string values,
-        and values are the corresponding strings
-
-    Examples:
-        >>> data = {
-        ...     "a": {
-        ...         "b": "value1",
-        ...         "c": {
-        ...             "d": "value2"
-        ...         }
-        ...     },
-        ...     "e": ["list", "of", "values"],
-        ...     "f": "value3"
-        ... }
-        >>>
-        >>> # With only_last_key=True (default)
-        >>> extract_string_values(data)
-        {'b': 'value1', 'd': 'value2', 'f': 'value3'}
-        >>>
-        >>> # With only_last_key=False
-        >>> extract_string_values(data, only_last_key=False)
-        {'a.b': 'value1', 'a.c.d': 'value2', 'f': 'value3'}
-    """
-
-    if isinstance(data_dict, str):
-        # Check if the string is a valid JSON file path
-        if os.path.isfile(data_dict):
-            # Load the custom JSON file
-            with open(data_dict, "r") as file:
-                data_dict = json.load(file)
-        else:
-            # If the file does not exist, raise an error
-            raise ValueError(f"Invalid file path: {data_dict}")
-
-    result = {}
-
-    def explore_dict(d, path=""):
-        if not isinstance(d, dict):
-            return
-
-        for key, value in d.items():
-            current_path = f"{path}.{key}" if path else key
-
-            if isinstance(value, str):
-                # Use either just the key or the full path based on the parameter
-                result_key = key if only_last_key else current_path
-                result[result_key] = value
-            elif isinstance(value, dict):
-                explore_dict(value, current_path)
-            # Skip lists and other types
-
-    explore_dict(data_dict)
-    return result
-
-
-####################################################################################################
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
@@ -2279,6 +2212,74 @@ def save_dictionary_to_json(data_dictionary: dict, json_file_path: str):
         print(f"Dictionary successfully saved to: {json_file_path}")
     except Exception as e:
         print(f"An error occurred while saving the dictionary: {e}")
+
+
+####################################################################################################
+def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> dict:
+    """
+    Recursively extracts all keys with string values from a nested dictionary. It will avoid keys
+    that are lists or other types. The keys can be either the leaf key name or the full path.
+
+    Parameters:
+    -----------
+        data_dict: A nested dictionary to search through
+        only_last_key: If True, uses only the leaf key name; if False, uses the full path
+
+    Returns:
+    --------
+        A dictionary where keys are either leaf keys or paths to string values,
+        and values are the corresponding strings
+
+    Examples:
+        >>> data = {
+        ...     "a": {
+        ...         "b": "value1",
+        ...         "c": {
+        ...             "d": "value2"
+        ...         }
+        ...     },
+        ...     "e": ["list", "of", "values"],
+        ...     "f": "value3"
+        ... }
+        >>>
+        >>> # With only_last_key=True (default)
+        >>> extract_string_values(data)
+        {'b': 'value1', 'd': 'value2', 'f': 'value3'}
+        >>>
+        >>> # With only_last_key=False
+        >>> extract_string_values(data, only_last_key=False)
+        {'a.b': 'value1', 'a.c.d': 'value2', 'f': 'value3'}
+    """
+
+    if isinstance(data_dict, str):
+        # Check if the string is a valid JSON file path
+        if os.path.isfile(data_dict):
+            # Load the custom JSON file
+            with open(data_dict, "r") as file:
+                data_dict = json.load(file)
+        else:
+            # If the file does not exist, raise an error
+            raise ValueError(f"Invalid file path: {data_dict}")
+
+    result = {}
+
+    def explore_dict(d, path=""):
+        if not isinstance(d, dict):
+            return
+
+        for key, value in d.items():
+            current_path = f"{path}.{key}" if path else key
+
+            if isinstance(value, str):
+                # Use either just the key or the full path based on the parameter
+                result_key = key if only_last_key else current_path
+                result[result_key] = value
+            elif isinstance(value, dict):
+                explore_dict(value, current_path)
+            # Skip lists and other types
+
+    explore_dict(data_dict)
+    return result
 
 
 ####################################################################################################
