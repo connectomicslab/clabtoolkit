@@ -2238,6 +2238,50 @@ def remove_empty_keys_or_values(d: dict) -> dict:
 
 
 ####################################################################################################
+def save_dictionary_to_json(data_dictionary: dict, json_file_path: str):
+    """
+    Saves a Python dictionary to a JSON file.
+
+    Parameters
+    ----------
+    data_dictionary : dict
+        The dictionary to be saved.
+
+    file_path : str
+        The path to the JSON file where the dictionary will be saved.
+
+    Returns
+    -------
+    None
+        This function does not return anything. It only saves the dictionary to a JSON file.
+
+    Example
+    -------
+    >>> data = {'key': 'value'}
+    >>> save_dictionary_to_json(data, 'data.json')
+    ----------
+        data_dictionary (dict): The dictionary to be saved.
+        file_path (str): The path to the JSON file where the dictionary will be saved.
+    """
+
+    # Check if the file path is valid
+    if not isinstance(json_file_path, str):
+        raise ValueError("The file path must be a string.")
+    if not json_file_path.endswith(".json"):
+        raise ValueError("The file path must end with '.json'.")
+    # Check if the dictionary is valid
+    if not isinstance(data_dictionary, dict):
+        raise ValueError("The data must be a dictionary.")
+
+    try:
+        with open(json_file_path, "w") as json_file:
+            json.dump(data_dictionary, json_file, indent=4)
+        print(f"Dictionary successfully saved to: {json_file_path}")
+    except Exception as e:
+        print(f"An error occurred while saving the dictionary: {e}")
+
+
+####################################################################################################
 def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
     """
     Expands df_add to match the number of rows in df and concatenates them along columns.
