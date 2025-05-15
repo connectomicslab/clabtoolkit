@@ -10,6 +10,8 @@ import sys
 import types
 import re
 import json
+import pandas as pd
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
@@ -2212,6 +2214,142 @@ def save_dictionary_to_json(data_dictionary: dict, json_file_path: str):
         print(f"Dictionary successfully saved to: {json_file_path}")
     except Exception as e:
         print(f"An error occurred while saving the dictionary: {e}")
+
+
+####################################################################################################
+def read_file_with_separator_detection(
+    file_path, sample_size=10, possible_seps=None, **kwargs
+):
+    """
+    Reads a delimited text file with automatic separator detection.
+
+    Parameters
+    ----------
+    file_path : str or Path
+        Path to the delimited input file (e.g., CSV or TSV).
+    sample_size : int, optional
+        Number of lines to sample for separator detection (default is 10).
+    possible_seps : list of str, optional
+        List of possible separators to try (default is [',', '\\t']).
+    **kwargs :
+        Additional keyword arguments passed to `pandas.read_csv`.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the parsed file data.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        If the file is empty or no valid separator could be detected.
+
+    Examples
+    --------
+    >>> df = read_file_with_separator_detection("data.txt")
+    >>> df.head()
+    """
+    if possible_seps is None:
+        possible_seps = [",", "\t"]
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"The file {file_path} does not exist")
+
+    # Read a sample of lines to detect the delimiter
+    sample_lines = []
+    with open(file_path, "r", encoding="utf-8") as file:
+        for _ in range(sample_size):
+            try:
+                sample_lines.append(next(file))
+            except StopIteration:
+                break
+
+    if not sample_lines:
+        raise ValueError("File is empty")
+
+    # Count the number of times each possible separator appears in the sample
+    sep_counts = {
+        sep: sum(line.count(sep) for line in sample_lines) for sep in possible_seps
+    }
+    valid_seps = {sep: count for sep, count in sep_counts.items() if count > 0}
+
+    # Fallback to space separator if nothing valid was found
+    if not valid_seps:
+        space_count = sum(line.count(" ") for line in sample_lines)
+        if space_count == 0:
+            raise ValueError("Could not detect a valid separator in the file")
+        detected_sep = " "
+    else:
+        detected_sep = max(valid_seps.items(), key=lambda x: x[1])[0]
+
+    # Attempt to read the file using the detected separator
+    try:
+        df = pd.read_csv(file_path, sep=detected_sep, engine="python", **kwargs)
+    except Exception:
+        try:
+            df = pd.read_csv(file_path, sep=detected_sep, **kwargs)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to read file with detected separator '{detected_sep}': {str(e)}"
+            )
+
+    return df
+
+
+####################################################################################################
+def read_file_separator(
+    file_path: Union[str, Path], sample_size: int = 10, possible_seps=None, **kwargs
+):
+    """
+    Reads a delimited file using pandas auto-detection or fallback separator detection.
+
+    Parameters
+    ----------
+    file_path : str or Path
+        Path to the delimited input file.
+    sample_size : int, optional
+        Number of lines to sample for fallback detection (default is 10).
+    possible_seps : list of str, optional
+        List of separators to try if auto-detection fails (default is [',', '\\t', ';', '|']).
+    **kwargs :
+        Additional keyword arguments passed to `pandas.read_csv`.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the parsed file data.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        If the file is empty or no valid separator could be detected.
+
+    Examples
+    --------
+    >>> df = read_file_with_fallback_detection("data.txt")
+    >>> df.shape
+    """
+    if possible_seps is None:
+        possible_seps = [",", "\t", ";", "|"]
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"The file {file_path} does not exist")
+
+    # Try pandas built-in separator auto-detection
+    try:
+        df = pd.read_csv(file_path, sep=None, engine="python", **kwargs)
+        return df
+    except Exception:
+        # If auto-detection fails, fall back to manual separator detection
+        return read_file_with_separator_detection(
+            file_path, sample_size, possible_seps, **kwargs
+        )
 
 
 ####################################################################################################
