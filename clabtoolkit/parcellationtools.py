@@ -1288,9 +1288,14 @@ class Parcellation:
             self.maxlab = 0
 
     def compute_volume_table(self):
-        from morphometrytools import compute_reg_volume_fromparcellation
+        """
+        Compute the volume table of the parcellation.
+        This method computes the volume of each region in the parcellation and stores it in the attribute called volumetable.
+        
+        """
+        import morphometrytools as cltmorpho
 
-        volume_table = compute_reg_volume_fromparcellation(self)
+        volume_table = cltmorpho.compute_reg_volume_fromparcellation(self)
         self.volumetable = volume_table
 
     @staticmethod
