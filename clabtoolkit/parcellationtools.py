@@ -286,9 +286,39 @@ class Parcellation:
     def remove_by_name(self, names2remove: Union[list, str], rearrange: bool = False):
         """
         Remove the structures with the names specified in the list.
-        @params:
-            names2remove     - Required  : List of the names of the structures that will be removed:
-            rearrange        - Required  : If True, the parcellation will be rearranged starting from 1. Default = False
+
+        Parameters
+        ----------
+        names2remove : list, str
+            List of names to remove. It can be a list of strings or just a string.
+
+        rearrange : bool
+            If True, the parcellation will be rearranged starting from 1. Default = False.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If the names were not found in the parcellation.
+        ValueError
+            If the parcellation does not contain the attributes name, index and color.
+        ValueError
+            If the names2remove is not a list or string.
+        ValueError
+            If the names2remove is a list of strings and the parcellation does not contain the attributes name, index and color.
+
+        Examples
+        --------
+        >>> parcellation = Parcellation("parc_file.nii")
+        >>> parcellation.remove_by_name(["name1", "name2"], rearrange=True)
+        This will produce a new object with the parcellation data, index, name and color without the regions with names equal to name1 or name2.
+        The new labels will go now from 1 to N-2, where N is the original number of regions in that parcellation
+
+        >>> parcellation.remove_by_name("name3", rearrange=False)
+        This will produce a new object with the parcellation data, index, name and color without the regions with names equal to name3
         """
 
         if isinstance(names2remove, str):
@@ -297,7 +327,7 @@ class Parcellation:
         if hasattr(self, "name") and hasattr(self, "index") and hasattr(self, "color"):
 
             indexes = cltmisc.get_indexes_by_substring(
-                list1=self.name, substr=names2remove, invert=True, boolcase=False
+                input_list=self.name, substr=names2remove, invert=True, bool_case=False
             )
 
             if len(indexes) > 0:
