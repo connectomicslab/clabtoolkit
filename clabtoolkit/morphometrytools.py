@@ -13,11 +13,11 @@ from nibabel.processing import resample_from_to
 import numpy as np
 
 # Importing local modules
-import misctools as cltmisc
-import surfacetools as cltsurf
-import parcellationtools as cltparc
-import bidstools as cltbids
-import freesurfertools as cltfree
+from . import misctools as cltmisc
+from . import surfacetools as cltsurf
+from . import parcellationtools as cltparc
+from . import bidstools as cltbids
+from . import freesurfertools as cltfree
 
 
 ####################################################################################################
@@ -1430,6 +1430,7 @@ def compute_reg_volume_fromparcellation(
     elif isinstance(parc_file, np.ndarray):
         vparc_data = cltparc.Parcellation(parc_file=parc_file)
         affine = vparc_data.affine
+        filename = "3darray"
     else:
         raise TypeError(
             f"parc_file must be a string, Parcellation object, or numpy array, got {type(parc_file)}"
@@ -2340,9 +2341,6 @@ def parse_freesurfer_cortex_stats(
         with open(stats_file, "r") as file:
             lines = file.readlines()
 
-        # Debug information
-        print(f"Total lines in file: {len(lines)}")
-
         # Find the data section by looking for column headers
         col_headers_line = None
         column_headers = []
@@ -2350,7 +2348,6 @@ def parse_freesurfer_cortex_stats(
             if "# ColHeaders" in line:
                 col_headers_line = i
                 column_headers = line.replace("# ColHeaders", "").strip().split()
-                print(f"Found column headers at line {i}: {column_headers}")
                 break
 
         # If column headers not found, try to find the end of the comment section
@@ -2406,7 +2403,6 @@ def parse_freesurfer_cortex_stats(
 
         # Create column index mapping
         column_indices = {name: idx for idx, name in enumerate(column_headers)}
-        print(f"Column indices: {column_indices}")
 
         # Determine where to start reading data
         data_lines = []
@@ -2426,8 +2422,6 @@ def parse_freesurfer_cortex_stats(
             line = lines[i]
             if not line.startswith("#") and line.strip():
                 data_lines.append(line)
-
-        print(f"Found {len(data_lines)} data lines starting at line {data_start}")
 
         # Now parse the data lines to extract region metrics
         regions_data = []
