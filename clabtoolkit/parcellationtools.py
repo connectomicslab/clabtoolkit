@@ -1343,17 +1343,25 @@ class Parcellation:
         # Update parcellation range
         self.parc_range()
 
-    def parc_range(self):
+    def parc_range(self) -> None:
         """
-        Detect the range of labels
-
+        Detect and update the range of non-zero labels in the data.
+        
+        Updates the minlab and maxlab attributes based on unique non-zero values
+        in self.data.
+        
+        Returns
+        -------
+        None
+            Updates self.minlab and self.maxlab attributes in-place
         """
-        # Detecting the unique elements in the parcellation different from zero
-        st_codes = np.unique(self.data)
-        st_codes = st_codes[st_codes != 0]
-        if np.size(st_codes) > 0:
-            self.minlab = np.min(st_codes)
-            self.maxlab = np.max(st_codes)
+        # Get unique non-zero elements
+        unique_codes = np.unique(self.data)
+        nonzero_codes = unique_codes[unique_codes != 0]
+        
+        if nonzero_codes.size > 0:
+            self.minlab = np.min(nonzero_codes)
+            self.maxlab = np.max(nonzero_codes)
         else:
             self.minlab = 0
             self.maxlab = 0
