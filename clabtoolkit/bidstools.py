@@ -1,6 +1,10 @@
 import os
 import shutil
 import pandas as pd
+import time
+import queue
+import threading
+import numpy as np
 
 from typing import Union, Dict, List, Optional
 
@@ -14,7 +18,10 @@ from rich.progress import (
     TimeRemainingColumn,
     TextColumn,
     MofNCompleteColumn,
+    SpinnerColumn,
 )
+from rich.console import Console
+from rich.panel import Panel
 
 # Importing the clabtoolkit modules
 from . import misctools as cltmisc
@@ -1050,24 +1057,43 @@ def copy_bids_folder(
 #     return False  # Invalid if the last part is not a known suffix
 
 
-def get_derivatives_folders(deriv_dir: str) -> list:
+def get_derivatives_folders(
+    deriv_dir: str,
+) -> list:
     """
     Get a list of all derivatives folders in the specified directory.
+
     Parameters
     ----------
     deriv_dir : str
         Path to the derivatives directory.
+
     Returns
     -------
     list
         List of derivatives folder names.
+
+    Raises
+    ------
+    ValueError
+        If the derivatives directory does not exist.
+
+    TypeError
+        If the derivatives directory is not a string.
+
+    Usage example:
+    >>> deriv_dir = "/path/to/derivatives"
+    >>> print(get_derivatives_folders(deriv_dir))
+
     """
 
     # Check if the derivatives directory exists
     if not os.path.isdir(deriv_dir):
         raise ValueError("The derivatives directory does not exist.")
+
     # Get all directories in the derivatives directory
     directories = os.listdir(deriv_dir)
+
     # Filter out hidden directories and keep only valid directories
     der_pipe_folders = []
     for directory in directories:
@@ -1119,478 +1145,79 @@ def is_bids_filename(filename: str) -> bool:
 
 
 ####################################################################################################
-def create_processing_status_table(
-    deriv_dir: str,
-    subj_ids: Union[list, str],
-    output_table: str = None,
-    n_jobs: int = -1,
+def get_individual_files_and_folders(
+    input_folder: str, cad4query: Union[str, list, dict]
 ):
     """
-    This method creates a table with the processing status of the subjects in the BIDs derivatives directory.
-    Uses parallel processing for improved performance with rich progress visualization.
-
-    Parameters
-    ----------
-    deriv_dir : str
-        Path to the derivatives directory.
-
-    subj_ids : list or str
-        List of subject IDs or a text file containing the subject IDs.
-
-    output_table : str, optional
-        Path to save the resulting table. If None, the table is not saved.
-
-    n_jobs : int, optional
-        Number of parallel jobs to run. Default is -1 which uses all available cores.
-
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame containing the processing status of the subjects.
-
-    str
-        Path to the saved table if output_table is provided, otherwise None.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the derivatives directory or the subject IDs file does not exist.
-    ValueError
-        If no derivatives folders are found or if the subject IDs list is empty.
-
-    TypeError
-        If subj_ids is not a list or a string path to a file.
-
-    Examples
-    --------
-    >>> deriv_dir = "/path/to/derivatives"
-    >>> subj_ids = ["sub-01", "sub-02"]
-    >>> output_table = "/path/to/output_table.csv"
-    >>> df, saved_path = create_processing_status_table(deriv_dir, subj_ids, output_table)
-    >>> print(df)
-    """
-
-    from joblib import Parallel, delayed
-    from . import morphometrytools as cltmorpho
-
-    # Initialize rich console
-    console = Console()
-
-    # Check if the derivatives directory exists
-    deriv_dir = cltmisc.remove_trailing_separators(deriv_dir)
-
-    if not os.path.isdir(deriv_dir):
-        raise FileNotFoundError(
-            f"The derivatives directory {deriv_dir} does not exist."
-        )
-
-    # Process subject IDs
-    if isinstance(subj_ids, str):
-        if not os.path.isfile(subj_ids):
-            raise FileNotFoundError(f"The file {subj_ids} does not exist.")
-        else:
-            with open(subj_ids, "r") as f:
-                subj_list = f.read().splitlines()
-    elif isinstance(subj_ids, list):
-        if len(subj_ids) == 0:
-            raise ValueError("The list of subject IDs is empty.")
-        else:
-            subj_list = subj_ids
-    else:
-        raise TypeError("subj_ids must be a list or a string path to a file")
-
-    # Number of Ids
-    n_subj = len(subj_list)
-
-    # Find all the derivatives folders
-    pipe_dirs = get_derivatives_folders(deriv_dir)
-
-    if len(pipe_dirs) == 0:
-        raise ValueError(
-            "No derivatives folders were found in the specified directory."
-        )
-
-    # Create a message queue to communicate across threads
-    progress_queue = queue.Queue()
-
-    # Function to process a single subject
-    def process_subject(full_id):
-        try:
-            # Parse the subject ID
-            id_dict = str2entity(full_id)
-            subject = id_dict["sub"]
-
-            # Get entity information for this subject
-            ent_list = cltmorpho.entities4morphotable(selected_entities=full_id)
-            df_add = entities_to_table(filepath=full_id, entities_to_extract=ent_list)
-
-            # Create a new DataFrame for this subject's processing status
-            proc_table = pd.DataFrame(
-                columns=pipe_dirs, index=[0]
-            )  # Single row for this subject
-
-            # Remove suffix and extension from entities
-            clean_id_dict = id_dict.copy()
-            if "suffix" in clean_id_dict:
-                del clean_id_dict["suffix"]
-            if "extension" in clean_id_dict:
-                del clean_id_dict["extension"]
-
-            # Create list of entity key-value pairs
-            subj_ent = [f"{k}-{v}" for k, v in clean_id_dict.items()]
-
-            # Process each derivatives directory
-            for tmp_pipe_deriv in pipe_dirs:
-                # Find subject's directory in this pipeline
-                ind_der_dir = glob(
-                    os.path.join(
-                        deriv_dir, tmp_pipe_deriv, "sub-" + clean_id_dict["sub"] + "*"
-                    )
-                )
-
-                # Filter if multiple directories found
-                if len(ind_der_dir) > 1:
-                    ind_der_dir = cltmisc.filter_by_substring(
-                            ind_der_dir, or_filter=[id_dict["sub"]], and_filter=subj_ent
-                        )
-                    elif len(ind_der_dir) == 0:
-                # Filter if multiple directories found
-                # Count files for this subject in this pipeline
-                all_pip_files = cltmisc.detect_recursive_files(ind_der_dir[0])
-
-                if len(ind_der_dir) == 0:
-                    proc_table.at[0, tmp_pipe_deriv] = 0
-                    continue
-
-                # Count files for this subject in this pipeline
-                all_pip_files = cltmisc.detect_recursive_files(ind_der_dir[0])
-                n_files = len(subj_pipe_files)
-                    # Filter the files by the entities
-                    subj_pipe_files = cltmisc.filter_by_substring(
-                        all_pip_files, subj_ent
-            # Combine the entity info with processing counts
-            subj_proc_table = cltmisc.expand_and_concatenate(df_add, proc_table)
-
-                # Store the count
-                proc_table.at[0, tmp_pipe_deriv] = n_files
-
-            # Combine the entity info with processing counts
-            subj_proc_table = cltmisc.expand_and_concatenate(df_add, proc_table)
-
-            # Signal completion through the queue
-            progress_queue.put((True, full_id))
-
-            return subj_proc_table
-        except Exception as e:
-            # Signal error through the queue
-            progress_queue.put((False, f"{full_id}: {str(e)}"))
-            raise e
-
-    # Use Rich for progress tracking
-    all_results = []
-    stop_monitor = threading.Event()
-
-    # Start a separate thread for the progress bar
-    def progress_monitor(progress_queue, total_subjects, progress_task, stop_event):
-        completed = 0
-        errors = 0
-
-        while (completed + errors < total_subjects) and not stop_event.is_set():
-            try:
-                success, message = progress_queue.get(timeout=0.1)
-                if success:
-                    completed += 1
-                else:
-                if success:
-                    completed += 1
-                else:
-                if success:
-                    completed += 1
-                else:
-                if success:
-                    completed += 1
-                else:
-                if success:
-                    completed += 1
-                else:
-
-                    errors += 1
-                    console.print(f"[bold red]Error: {message}[/bold red]")
-
-                progress.update(
-                    progress_task,
-                    completed=completed,
-                    description=f"[yellow]Processing subjects - {completed}/{total_subjects} completed",
-                )
-
-                progress.update(
-                    progress_task,
-                    completed=completed,
-                    description=f"[yellow]Processing subjects - {completed}/{total_subjects} completed",
-                )
-
-                # Update progress bar
-                # Important: mark the task as done in the queue
-                progress_queue.task_done()
-
-            except queue.Empty:
-                # No updates, just continue waiting
-                pass
-
-        # Ensure the progress bar shows 100% completion
-        if not stop_event.is_set():
-            progress.update(progress_task, completed=total_subjects)
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]{task.description}"),
-        BarColumn(bar_width=50),
-        TextColumn("[progress.percentage]{task.percentage:>3.1f}%"),
-        TimeRemainingColumn(),
-        MofNCompleteColumn(),
-        console=console,
-        refresh_per_second=10,  # Increase refresh rate
-    ) as progress:
-        # Add main task to track progress
-        main_task = progress.add_task("[yellow]Processing subjects", total=n_subj)
-
-        # Start progress monitor thread
-        monitor_thread = threading.Thread(
-            target=progress_monitor,
-            args=(progress_queue, n_subj, main_task, stop_monitor),
-            daemon=True,
-    # Save table if requested
-    if output_table is not None:
-        output_dir = os.path.dirname(output_table)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
-        proc_status_df.to_csv(output_table, sep="\t", index=False)
-
-        try:
-            # Process subjects in parallel with joblib
-            results = Parallel(n_jobs=n_jobs, backend="threading", verbose=0)(
-                delayed(process_subject)(subject) for subject in subj_list
-            )
-
-            # Allow some time for the queue to process final updates
-            time.sleep(0.5)
-
-            # Directly set progress to 100% after all processing is done
-            progress.update(main_task, completed=n_subj, refresh=True)
-
-            # Wait for the progress queue to be empty
-            progress_queue.join()
-
-        finally:
-            # Signal the monitor thread to stop
-            stop_monitor.set()
-
-            # Make absolutely sure progress shows completion
-            progress.update(main_task, completed=n_subj, refresh=True)
-
-    # Combine all results
-    proc_status_df = pd.concat(results, ignore_index=True)
-    # Save table if requested
-    if output_table is not None:
-        output_dir = os.path.dirname(output_table)
-    return proc_status_df, output_table
-    if output_table is not None:
-        output_dir = os.path.dirname(output_table)
-    return proc_status_df, output_table
-
-            except queue.Empty:
-                # No updates, just continue waiting
-        if not stop_event.is_set():
-            progress.update(progress_task, completed=total_subjects)
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]{task.description}"),
-        BarColumn(bar_width=50),
-        TextColumn("[progress.percentage]{task.percentage:>3.1f}%"),
-        TimeRemainingColumn(),
-        MofNCompleteColumn(),
-        console=console,
-        refresh_per_second=10,  # Increase refresh rate
-    ) as progress:
-        # Add main task to track progress
-        main_task = progress.add_task("[yellow]Processing subjects", total=n_subj)
+    This function detects all the files or folders inside a folder and its subfolders containing the strings supplied by the variable cad4query.
 
     Parameters:
     ----------
-    proc_status_df : str or dict
-        Path to the processing status DataFrame or a DataFrame itself. This DataFrame can be
-        obtained with the function "create_processing_status_table".
+    input_folder : str
+        Path to the input folder.
 
-        try:
-            # Process subjects in parallel with joblib
-            results = Parallel(n_jobs=n_jobs, backend="threading", verbose=0)(
-                delayed(process_subject)(subject) for subject in subj_list
-            )
+    cad4query : str, list, or dict
+        String or list of strings to filter the files and folders. If a dictionary is provided, it should contain key-value pairs where the key is the string before '-' and the value is the string after '-'.
 
-            # Allow some time for the queue to process final updates
-            time.sleep(0.5)
+    Returns:
+    -------
+    list
+        List of files or folders that match the query.
 
-            # Directly set progress to 100% after all processing is done
-            progress.update(main_task, completed=n_subj, refresh=True)
+    Raises:
+    ------
+    ValueError
+        If the input folder does not exist.
 
-            # Wait for the progress queue to be empty
-            progress_queue.join()
+    TypeError
+        If the input folder is not a string.
 
-        finally:
-            # Signal the monitor thread to stop
-            stop_monitor.set()
+    Examples:
+    --------
+    >>> input_folder = "/path/to/input/folder"
+    >>> cad4query = "sub-01"
+    >>> files = get_individual_files_and_folders(input_folder, cad4query)
 
-            # Make absolutely sure progress shows completion
-            progress.update(main_task, completed=n_subj, refresh=True)
 
-    # Combine all results
-    proc_status_df = pd.concat(results, ignore_index=True)
+    """
 
-                progress.update(
-                    progress_task,
-                    completed=completed,
-                    description=f"[yellow]Processing subjects - {completed}/{total_subjects} completed",
-                )
-                # Update progress bar
-                # Important: mark the task as done in the queue
-                progress_queue.task_done()
+    # Checking if the folder is not a string or if the folder does not exist
+    if not isinstance(input_folder, str):
+        raise TypeError("The input folder must be a string.")
 
-            except queue.Empty:
-                # No updates, just continue waiting
-                pass
+    if not os.path.isdir(input_folder):
+        raise ValueError(f"The input folder {input_folder} does not exist.")
 
-        # Ensure the progress bar shows 100% completion
-        if not stop_event.is_set():
-            progress.update(progress_task, completed=total_subjects)
+    # Create a dictionary from cad4query where the key is the string before - and the value is the string after -
+    if isinstance(cad4query, str):
+        cad4query = [cad4query]
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]{task.description}"),
-        BarColumn(bar_width=50),
-        TextColumn("[progress.percentage]{task.percentage:>3.1f}%"),
-        TimeRemainingColumn(),
-        MofNCompleteColumn(),
-        console=console,
-        refresh_per_second=10,  # Increase refresh rate
-    ) as progress:
-        # Add main task to track progress
-        main_task = progress.add_task("[yellow]Processing subjects", total=n_subj)
+    if isinstance(cad4query, list):
+        clean_id_dict = dict([i.split("-") for i in cad4query])
 
-        # Start progress monitor thread
-        monitor_thread = threading.Thread(
-            target=progress_monitor,
-            args=(progress_queue, n_subj, main_task, stop_monitor),
-            daemon=True,
+    elif isinstance(cad4query, dict):
+        clean_id_dict = cad4query.copy()
+
+    # Detecting the all the files for the reference subject
+    ind_der_dir = glob(os.path.join(input_folder, "sub-" + clean_id_dict["sub"] + "*"))
+
+    # Filter if multiple directories found
+    if len(ind_der_dir) > 1:
+        ind_der_dir = cltmisc.filter_by_substring(
+            ind_der_dir,
+            or_filter=[clean_id_dict["sub"]],
+            and_filter=cad4query,
         )
-        monitor_thread.start()
 
-        try:
-            # Process subjects in parallel with joblib
-            results = Parallel(n_jobs=n_jobs, backend="threading", verbose=0)(
-                delayed(process_subject)(subject) for subject in subj_list
-            )
-
-            # Allow some time for the queue to process final updates
-            time.sleep(0.5)
-
-            # Directly set progress to 100% after all processing is done
-            progress.update(main_task, completed=n_subj, refresh=True)
-
-            # Wait for the progress queue to be empty
-            progress_queue.join()
-
-        finally:
-            # Signal the monitor thread to stop
-            stop_monitor.set()
-
-            # Make absolutely sure progress shows completion
-            progress.update(main_task, completed=n_subj, refresh=True)
-
-    # Combine all results
-    proc_status_df = pd.concat(results, ignore_index=True)
-
-    # Save table if requested
-    if output_table is not None:
-        output_dir = os.path.dirname(output_table)
-        if output_dir and not os.path.exists(output_dir):
-                # No updates, just continue waiting
-                pass
-
-        # Ensure the progress bar shows 100% completion
-        if not stop_event.is_set():
-            progress.update(progress_task, completed=total_subjects)
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]{task.description}"),
-        BarColumn(bar_width=50),
-        TextColumn("[progress.percentage]{task.percentage:>3.1f}%"),
-        TimeRemainingColumn(),
-        MofNCompleteColumn(),
-        console=console,
-        refresh_per_second=10,  # Increase refresh rate
-    ) as progress:
-        # Add main task to track progress
-        main_task = progress.add_task("[yellow]Processing subjects", total=n_subj)
-
-        # Start progress monitor thread
-        monitor_thread = threading.Thread(
-            target=progress_monitor,
-            args=(progress_queue, n_subj, main_task, stop_monitor),
-            daemon=True,
+    # Set count to 0 if no directory found
+    if len(ind_der_dir) > 0:
+        # Count files for this subject in this pipeline
+        all_files = cltmisc.detect_recursive_files(ind_der_dir[0])
+        all_files = cltmisc.filter_by_substring(
+            all_files, or_filter=clean_id_dict["sub"], and_filter=cad4query
         )
-        monitor_thread.start()
 
-        try:
-            # Process subjects in parallel with joblib
-            results = Parallel(n_jobs=n_jobs, backend="threading", verbose=0)(
-                delayed(process_subject)(subject) for subject in subj_list
-            )
+    else:
+        all_files = []
 
-            # Allow some time for the queue to process final updates
-            time.sleep(0.5)
-
-            # Directly set progress to 100% after all processing is done
-            progress.update(main_task, completed=n_subj, refresh=True)
-
-            # Wait for the progress queue to be empty
-            progress_queue.join()
-
-        finally:
-            # Signal the monitor thread to stop
-            stop_monitor.set()
-
-            # Make absolutely sure progress shows completion
-            progress.update(main_task, completed=n_subj, refresh=True)
-
-    # Combine all results
-    proc_status_df = pd.concat(results, ignore_index=True)
-
-                progress.update(
-                    progress_task,
-                    completed=completed,
-                    description=f"[yellow]Processing subjects - {completed}/{total_subjects} completed",
-                )
-                if i == 0:
-                    all_subjects_df = subj_proc_table
-                else:
-                    all_subjects_df = pd.concat(
-                        [all_subjects_df, subj_proc_table], ignore_index=True
-                    )
-
-            # Save table if requested
-            if output_table is not None:
-                output_dir = os.path.dirname(output_table)
-                if output_dir and not os.path.exists(output_dir):
-                    raise FileNotFoundError(
-                        f"Directory does not exist: {output_dir}. Please create the directory before saving."
-                    )
-
-                all_subjects_df.to_csv(output_table, sep="\t", index=False)
-
-        # Update the progress bar to 100%
-        progress.update(task, completed=n_subj)
-
-    return all_subjects_df, output_table
+    return all_files
