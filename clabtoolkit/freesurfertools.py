@@ -849,7 +849,7 @@ class AnnotParcellation:
             rgb = cltmisc.hex2rgb(lobe_colors)
 
             # Detect the codes of the regions that belong to the lobe
-            reg_indexes = cltmisc.search_in_list(self.regnames, lobe_regions)
+            reg_indexes = cltmisc.get_indexes_by_substring(self.regnames, lobe_regions)
 
             if len(reg_indexes) != 0:
                 reg_values = reg_codes[reg_indexes]
@@ -1631,7 +1631,7 @@ class FreeSurferSubject:
             ent_list = morpho.entities4morphotable(selected_entities=self.subj_id)
 
             df_add = cltbids.entities_to_table(
-                in_file=self.subj_id, entities_to_extract=ent_list
+                filepath=self.subj_id, entities_to_extract=ent_list
             )
 
             stats_table = cltmisc.expand_and_concatenate(df_add, stats_table)
@@ -1696,7 +1696,7 @@ class FreeSurferSubject:
             vol_parc = parc.Parcellation(parc_file=parc_file)
             vol_parc.load_colortable()
             vol_parc.compute_volume_table()
-            df = vol_parc.volumetable
+            df, _ = vol_parc.volumetable
 
             # Add identifying columns
             df.insert(4, "Atlas", volparc)
@@ -1708,9 +1708,10 @@ class FreeSurferSubject:
 
         return df_vol
 
-    def surface_hemi_morpho(
-        self, hemi: str = "lh", lobes_grouping: str = "desikan"
-    ) -> pd.DataFrame:
+    def surface_hemi_morpho(self, 
+                            hemi: str = "lh", 
+                            lobes_grouping: str = "desikan"
+                            ) -> pd.DataFrame:
         """
         Computes morphometric metrics for a given hemisphere using cortical surface maps
         and parcellations from FreeSurfer.
@@ -1741,7 +1742,7 @@ class FreeSurferSubject:
             Each row corresponds to a different region or measurement source.
         """
 
-        from . import morphometrytools as morpho
+        import morphometrytools as morpho
 
         # Retrieve relevant FreeSurfer files
         parc_files_dict = self.fs_files["surf"][hemi]["parc"]
@@ -1853,7 +1854,7 @@ class FreeSurferSubject:
                 df_parc = pd.concat([df_parc, df_metric], axis=0)
 
             if not df_parc.empty:
-                df_hemi = pd.concat([df_hemi, df_parc], axis=0)
+                df_hemi = pd.concat([df_hemi, df_parc, df_stats_cortex], axis=0)
 
         return df_hemi
 
@@ -2227,7 +2228,7 @@ class FreeSurferSubject:
             # Check if the elements of the list are tsv or lut. If the elements are not tsv or lut delete them
             # Lower all the elements in the list
             color_table = cltmisc.filter_by_substring(
-                color_table, ["tsv", "lut"], boolcase=False
+                color_table, ["tsv", "lut"], bool_case=False
             )
 
             # If the list is empty set its value to None
@@ -2296,7 +2297,7 @@ class FreeSurferSubject:
                 ]
 
             elif gm_grow == "wm":
-                md_bashargs = [
+                cmd_bashargs = [
                     "mri_aparc2aseg",
                     "--s",
                     self.subj_id,
