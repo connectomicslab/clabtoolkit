@@ -2,6 +2,7 @@ import os
 from glob import glob
 import subprocess
 import tarfile
+import shutil
 import pandas as pd
 import sys
 import pydicom
@@ -538,7 +539,7 @@ def create_session_series_names(dataset):
         ser_id = ser_id.replace(cad, "")
 
     # Removing the dupplicated _ characters and replacing the remaining by -
-    ser_id = cltmisc.rem_dupplicate_char(ser_id, "_")
+    ser_id = cltmisc.rem_duplicate_char(ser_id, "_")
     ser_id = ser_id.replace("_", "-")
 
     if any("SeriesNumber" in s for s in attributes):
@@ -613,6 +614,7 @@ def uncompress_dicom_session(
     ...     boolrmtar=True
     ... )
     """
+
     # Validate input directory
     dic_path = Path(dic_dir)
     if not dic_path.exists():
@@ -711,89 +713,187 @@ def uncompress_dicom_session(
     return failed_sessions
 
 
-def compress_dicom_session(dic_dir: str, subj_ids=None):
+def compress_dicom_session(
+    dic_dir: str,
+    subj_ids: Optional[Union[str, List[str]]] = None,
+    remove_original: bool = True,
+) -> List[str]:
     """
-    Compress session folders
-    @params:
-        dic_dir     - Required  : Directory containing the subjects. It assumes an organization in:
-        <subj_id>/<session_id>/<series_id>(Str)
-    """
+    Compress session folders containing DICOM files into tar.gz archives.
 
+    Parameters
+    ----------
+    dic_dir : str
+        Directory containing the subjects. It assumes an organization in:
+        <subj_id>/<session_id>/<series_id>
+    subj_ids : str, list of str, or None, optional
+        Subject IDs to be considered. Can be:
+        - None: consider all subjects in the directory (default)
+        - str: path to text file containing subject IDs (one per line)
+        - list of str: explicit list of subject IDs
+    remove_original : bool, optional, default=True
+        Whether to remove the original session directories after successful compression.
+
+    Returns
+    -------
+    list of str
+        List of session directories that failed to be compressed. Empty list if all successful.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified directory does not exist.
+    ValueError
+        If subj_ids is not None, str, or list, or if subject IDs file cannot be read.
+    tarfile.TarError
+        If there are issues with creating or writing tar files.
+    PermissionError
+        If there are insufficient permissions to compress files or remove directories.
+    OSError
+        If there are filesystem-related errors during compression.
+
+    Examples
+    --------
+    >>> # Basic usage - compress all sessions in directory
+    >>> failed = compress_dicom_session('/path/to/dicom/directory')
+    >>> if not failed:
+    ...     print("All sessions compressed successfully")
+
+    >>> # Compress sessions but keep original directories
+    >>> failed = compress_dicom_session(
+    ...     dic_dir='/path/to/dicom/directory',
+    ...     remove_original=False
+    ... )
+
+    >>> # Compress sessions for specific subjects only
+    >>> failed = compress_dicom_session(
+    ...     dic_dir='/path/to/dicom/directory',
+    ...     subj_ids=['sub-001', 'sub-002', 'sub-003']
+    ... )
+
+    >>> # Use subject IDs from file
+    >>> failed = compress_dicom_session(
+    ...     dic_dir='/path/to/dicom/directory',
+    ...     subj_ids='/path/to/subject_ids.txt'
+    ... )
+    """
+    # Validate input directory
+    dic_path = Path(dic_dir)
+    if not dic_path.exists():
+        raise FileNotFoundError(f"Directory {dic_dir} does not exist")
+    if not dic_path.is_dir():
+        raise ValueError(f"{dic_dir} is not a directory")
+
+    # Process subject IDs
     if subj_ids is None:
-        # Listing the subject ids inside the dicom folder
-        my_list = os.listdir(dic_dir)
-        subj_ids = []
-        for it in my_list:
-            if "sub-" in it:
-                subj_ids.append(it)
+        # Get all subjects with 'sub-' prefix
+        subj_ids = [
+            item.name
+            for item in dic_path.iterdir()
+            if item.is_dir() and item.name.startswith("sub-")
+        ]
         subj_ids.sort()
+    elif isinstance(subj_ids, str):
+        # Read subject IDs from file
+        try:
+            with open(subj_ids, "r", encoding="utf-8") as file:
+                subj_ids = [line.strip() for line in file if line.strip()]
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Subject IDs file {subj_ids} not found")
+        except Exception as e:
+            raise ValueError(f"Error reading subject IDs file: {e}")
+    elif isinstance(subj_ids, list):
+        # Validate list elements
+        if not all(isinstance(subj_id, str) for subj_id in subj_ids):
+            raise ValueError("All subject IDs must be strings")
     else:
-        if isinstance(subj_ids, str):
-            # Read  the text file and save the lines in a list
-            with open(subj_ids, "r") as file:
-                subj_ids = file.readlines()
-                subj_ids = [x.strip() for x in subj_ids]
-        elif not isinstance(subj_ids, list):
-            raise ValueError("The subj_ids parameter must be a list or a string")
+        raise ValueError("subj_ids must be None, str (file path), or list of str")
+
+    if not subj_ids:
+        print("No subjects found to process")
+        return []
 
     n_subj = len(subj_ids)
-    # Failed sessions
-    fail_sess = []
-    with Progress() as pb:
-        t1 = pb.add_task("[green]Compressing subjects...", total=n_subj)
+    failed_sessions = []
+    total_sessions = 0
+    compressed_sessions = 0
 
-        # Loop around all the subjects
-        nsubj = len(subj_ids)
-        for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
-            subj_dir = os.path.join(dic_dir, subj_id)
+    with Progress() as pb:
+        task = pb.add_task("[green]Compressing sessions...", total=n_subj)
+
+        for i, subj_id in enumerate(subj_ids):
+            subj_dir = dic_path / subj_id
+
             pb.update(
-                task_id=t1,
-                description=f"[green]Compressing sessions for {subj_id} ({i+1}/{n_subj})",
-                completed=i + 1,
+                task_id=task,
+                description=f"[green]Processing {subj_id} ({i+1}/{n_subj})",
+                completed=i,
             )
 
-            # Loop along all the sessions inside the subject directory
-            ses_dirs = os.listdir(subj_dir)
+            # Skip if subject directory doesn't exist
+            if not subj_dir.exists():
+                print(f"Warning: Subject directory {subj_dir} not found, skipping...")
+                continue
 
-            # Detect which of the folders are sessions
-            ses_dirs = [x for x in ses_dirs if os.path.isdir(os.path.join(subj_dir, x))]
+            # Find all session directories (starting with 'ses-')
+            session_dirs = [
+                item
+                for item in subj_dir.iterdir()
+                if item.is_dir() and item.name.startswith("ses-")
+            ]
 
-            # Detect which of the folders start with 'ses-'
-            ses_dirs = [x for x in ses_dirs if x.startswith("ses-")]
-            n_sessions = len(ses_dirs)
+            total_sessions += len(session_dirs)
 
-            for n_ses, ses_id in enumerate(ses_dirs):  # Loop along the session
-                ses_dir = os.path.join(subj_dir, ses_id)
-                #         print('SubjectId: ' + subjId + ' ======>  Session: ' +  sesId)
-                # Compress only if it is a folder
-                if os.path.isdir(ses_dir):
-                    tar_filename = ses_dir + ".tar.gz"
-                    try:
-                        # Compressing the folder
-                        subprocess.run(
-                            ["tar", "-C", subj_dir, "-czvf", tar_filename, ses_id],
-                            stdout=subprocess.PIPE,
-                            universal_newlines=True,
-                        )
+            for ses_dir in session_dirs:
+                tar_file_path = ses_dir.with_suffix(".tar.gz")
 
-                        # Removing the uncompressed dicom folder
-                        subprocess.run(
-                            ["rm", "-r", ses_dir],
-                            stdout=subprocess.PIPE,
-                            universal_newlines=True,
-                        )
-                    except:
-                        fail_sess.append(ses_dir)
+                # Skip if tar file already exists
+                if tar_file_path.exists():
+                    print(f"Warning: {tar_file_path} already exists, skipping...")
+                    continue
+
+                try:
+                    # Create tar.gz archive using Python's tarfile module
+                    with tarfile.open(tar_file_path, "w:gz") as tar:
+                        # Add the session directory to the archive
+                        # Use arcname to preserve the directory structure
+                        tar.add(ses_dir, arcname=ses_dir.name)
+
+                    # Remove original directory if requested and compression succeeded
+                    if remove_original:
+                        shutil.rmtree(ses_dir)
+
+                    compressed_sessions += 1
+
+                except tarfile.TarError as e:
+                    print(f"Error compressing {ses_dir}: {e}")
+                    failed_sessions.append(str(ses_dir))
+                    # Clean up partially created tar file
+                    if tar_file_path.exists():
+                        try:
+                            tar_file_path.unlink()
+                        except Exception:
+                            pass
+                except PermissionError as e:
+                    print(f"Permission error with {ses_dir}: {e}")
+                    failed_sessions.append(str(ses_dir))
+                except Exception as e:
+                    print(f"Unexpected error with {ses_dir}: {e}")
+                    failed_sessions.append(str(ses_dir))
 
         pb.update(
-            task_id=t1,
-            description=f"[green]Compressing sessions for {subj_id} ({n_subj}/{n_subj})",
-            completed=n_subj,
+            task_id=task, description=f"[green]Completed compression", completed=n_subj
         )
 
-    if fail_sess:
-        print("THE PROCESS FAILED TO COMPRESS THE FOLLOWING SESSIONS:")
-        for i in fail_sess:
-            print(i)
-    print(" ")
-    print("End of the compression process.")
+    # Report results
+    if failed_sessions:
+        print("\nTHE PROCESS FAILED TO COMPRESS THE FOLLOWING SESSIONS:")
+        for failed_session in failed_sessions:
+            print(f"  - {failed_session}")
+    else:
+        print("\nAll sessions compressed successfully!")
+
+    print(
+        f"\nProcessed {n_subj} subjects, {compressed_sessions}/{total_sessions} sessions compressed successfully."
+    )
+    return failed_sessions
