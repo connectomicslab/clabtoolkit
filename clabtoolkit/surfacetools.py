@@ -9,6 +9,7 @@ import pyvista as pv
 from . import freesurfertools as cltfree
 from . import visualizationtools as cltvis
 
+
 class Surface:
 
     def __init__(self, surface_file: str, hemi: str = None):
@@ -304,7 +305,7 @@ class Surface:
     #         print("  " * level + str(value))
 
 
-def _vert_neib(faces, max_neib: int = 100):
+def vert_neib(faces, max_neib: int = 100):
     """
     Returns a list of neighboring vertices for each vertex in a mesh
     Parameters
