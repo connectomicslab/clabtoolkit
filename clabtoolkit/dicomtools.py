@@ -39,6 +39,7 @@ def progress_indicator(future):
             completed=n_comp,
         )
 
+
 def org_conv_dicoms(
     in_dic_dir: str,
     out_dic_dir: str,
@@ -52,24 +53,70 @@ def org_conv_dicoms(
     nthreads: int = 0,
 ):
     """
-    This method organizes the DICOM files in sessions and series. It could also uses the demographics file to define the session ID.
+    This method organizes the DICOM files in sessions and series. It could also use the demographics file to define the session ID.
 
-    @params:
-        in_dic_dir     - Required  : Directory containing the subjects. It assumes all individual folders inside the directory as individual subjects.
-                                    The subjects directory should start with 'sub-' otherwise the subjects will not be considered unless the "nosub"
-                                    variable is set to True.
-        out_dic_dir    - Required  : Output directory where the organized DICOM files will be saved. A new folder called 'Dicom' will be created inside this directory.
-        demog_file     - Optional  : Demographics file containing the information about the subjects. The file should contain the following mandatory columns:
-                                    'participant_id', ' session_id', 'acq_date'. Other columns such as 'birth_date', 'sex', 'group_id' or 'scanner_id' could be added.
-        ids_file       - Optional  : Text file containing the list of subject IDs to be considered. The file should contain the subject IDs in a single column.
-        ses_id         - Optional  : Session ID to be added to the session name. If not provided, the session ID will be the date of the study or the session ID
-                                    extracted from the demographics table.
-        nosub          - Optional  : Boolean variable to consider the subjects that do not start with 'sub-'. Default is False.
-        booldic        - Optional  : Boolean variable to organice the DICOM files. Default is True. If False it will leave the folders as they are.
-        boolcomp       - Optional  : Boolean variable to compress the sessions containing the organized DICOM files. Default is False. If True it will compress the sessions.
-        force          - Optional  : Boolean variable to force the copy of the DICOM file if the file already exists. Default is False.
-        nthreds        - Optional  : Number of threads to be used in the process. Default is 0 that means automatic selection of the number of cores.
+    Parameters
+    ----------
+    in_dic_dir : str
+        Directory containing the subjects. It assumes all individual folders inside the directory as individual subjects.
+        The subjects directory should start with 'sub-' otherwise the subjects will not be considered unless the "nosub"
+        variable is set to True.
+    out_dic_dir : str
+        Output directory where the organized DICOM files will be saved. A new folder called 'Dicom' will be created inside this directory.
+    demog_file : str, optional
+        Demographics file containing the information about the subjects. The file should contain the following mandatory columns:
+        'participant_id', 'session_id', 'acq_date'. Other columns such as 'birth_date', 'sex', 'group_id' or 'scanner_id' could be added.
+    ids_file : str, optional
+        Text file containing the list of subject IDs to be considered. The file should contain the subject IDs in a single column.
+    ses_id : str, optional
+        Session ID to be added to the session name. If not provided, the session ID will be the date of the study or the session ID
+        extracted from the demographics table.
+    nosub : bool, optional, default=False
+        Boolean variable to consider the subjects that do not start with 'sub-'.
+    booldic : bool, optional, default=True
+        Boolean variable to organize the DICOM files. If False it will leave the folders as they are.
+    boolcomp : bool, optional, default=False
+        Boolean variable to compress the sessions containing the organized DICOM files. If True it will compress the sessions.
+    force : bool, optional, default=False
+        Boolean variable to force the copy of the DICOM file if the file already exists.
+    nthreds : int, optional, default=0
+        Number of threads to be used in the process. Default is 0 that means automatic selection of the number of cores.
 
+    Returns
+    -------
+    None
+        This method performs file organization operations and does not return a value.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the input directory does not exist.
+    ValueError
+        If the demographics file is provided but does not contain the mandatory columns.
+    PermissionError
+        If there are insufficient permissions to write to the output directory.
+
+    Examples
+    --------
+    >>> # Basic usage with input and output directories
+    >>> organize_dicom_files('/path/to/input/dicoms', '/path/to/output')
+
+    >>> # Using demographics file and custom session ID
+    >>> organize_dicom_files(
+    ...     in_dic_dir='/path/to/input/dicoms',
+    ...     out_dic_dir='/path/to/output',
+    ...     demog_file='/path/to/demographics.csv',
+    ...     ses_id='session01'
+    ... )
+
+    >>> # Process only specific subjects with compression
+    >>> organize_dicom_files(
+    ...     in_dic_dir='/path/to/input/dicoms',
+    ...     out_dic_dir='/path/to/output',
+    ...     ids_file='/path/to/subject_ids.txt',
+    ...     boolcomp=True,
+    ...     nthreds=4
+    ... )
     """
 
     # Declaring global variables
