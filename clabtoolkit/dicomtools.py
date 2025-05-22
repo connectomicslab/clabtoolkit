@@ -1,6 +1,7 @@
 import os
 from glob import glob
 import subprocess
+import tarfile
 import pandas as pd
 import sys
 import pydicom
@@ -13,6 +14,9 @@ import numpy as np
 from rich.progress import Progress
 from threading import Lock
 import time
+
+from typing import List, Optional, Union
+
 
 # Importing local modules
 from . import misctools as cltmisc
@@ -547,90 +551,164 @@ def create_session_series_names(dataset):
     return ses_id, ser_id
 
 
-def uncompress_dicom_session(dic_dir: str, boolrmtar: bool = False, subj_ids=None):
+def uncompress_dicom_session(
+    dic_dir: str,
+    boolrmtar: bool = False,
+    subj_ids: Optional[Union[str, List[str]]] = None,
+) -> List[str]:
     """
-    Uncompress session folders
-    Parameters:
-    -----------
+    Uncompress session folders containing the DICOM files for all the series.
 
-        dic_dir     - Required  : Directory containing the subjects. It assumes an organization in:
-        <subj_id>/<session_id>/<series_id>(Str)
-        boolrmtar   - Optional  : Boolean variable to remove the tar files after uncompressing the session. Default is False.
-        subj_ids    - Optional  : List of subject IDs to be considered. If not provided, it will consider all the subjects in the directory.
+    Parameters
+    ----------
+    dic_dir : str
+        Directory containing the subjects. It assumes an organization in:
+        <subj_id>/<session_id>/<series_id>
+    boolrmtar : bool, optional, default=False
+        Boolean variable to remove the tar files after uncompressing the session.
+    subj_ids : str, list of str, or None, optional
+        Subject IDs to be considered. Can be:
+        - None: consider all subjects in the directory (default)
+        - str: path to text file containing subject IDs (one per line)
+        - list of str: explicit list of subject IDs
 
+    Returns
+    -------
+    list of str
+        List of tar files that failed to be uncompressed. Empty list if all successful.
 
+    Raises
+    ------
+    FileNotFoundError
+        If the specified directory does not exist.
+    ValueError
+        If subj_ids is not None, str, or list, or if subject IDs file cannot be read.
+    tarfile.TarError
+        If there are issues with reading or extracting tar files.
+    PermissionError
+        If there are insufficient permissions to extract files or remove tar archives.
+    OSError
+        If there are filesystem-related errors during extraction.
+
+    Examples
+    --------
+    >>> # Basic usage - uncompress all sessions in directory
+    >>> failed = uncompress_dicom_session('/path/to/dicom/directory')
+    >>> if not failed:
+    ...     print("All sessions uncompressed successfully")
+
+    >>> # Uncompress sessions and remove tar files after extraction
+    >>> failed = uncompress_dicom_session('/path/to/dicom/directory', boolrmtar=True)
+
+    >>> # Uncompress sessions for specific subjects only
+    >>> failed = uncompress_dicom_session(
+    ...     dic_dir='/path/to/dicom/directory',
+    ...     subj_ids=['sub-001', 'sub-002', 'sub-003']
+    ... )
+
+    >>> # Use subject IDs from file
+    >>> failed = uncompress_dicom_session(
+    ...     dic_dir='/path/to/dicom/directory',
+    ...     subj_ids='/path/to/subject_ids.txt',
+    ...     boolrmtar=True
+    ... )
     """
+    # Validate input directory
+    dic_path = Path(dic_dir)
+    if not dic_path.exists():
+        raise FileNotFoundError(f"Directory {dic_dir} does not exist")
+    if not dic_path.is_dir():
+        raise ValueError(f"{dic_dir} is not a directory")
 
+    # Process subject IDs
     if subj_ids is None:
-        # Listing the subject ids inside the dicom folder
-        my_list = os.listdir(dic_dir)
-        subj_ids = []
-        for it in my_list:
-            if "sub-" in it:
-                subj_ids.append(it)
+        # Get all subjects with 'sub-' prefix
+        subj_ids = [
+            item.name
+            for item in dic_path.iterdir()
+            if item.is_dir() and item.name.startswith("sub-")
+        ]
         subj_ids.sort()
+    elif isinstance(subj_ids, str):
+        # Read subject IDs from file
+        try:
+            with open(subj_ids, "r", encoding="utf-8") as file:
+                subj_ids = [line.strip() for line in file if line.strip()]
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Subject IDs file {subj_ids} not found")
+        except Exception as e:
+            raise ValueError(f"Error reading subject IDs file: {e}")
+    elif isinstance(subj_ids, list):
+        # Validate list elements
+        if not all(isinstance(subj_id, str) for subj_id in subj_ids):
+            raise ValueError("All subject IDs must be strings")
     else:
-        if isinstance(subj_ids, str):
-            # Read  the text file and save the lines in a list
-            with open(subj_ids, "r") as file:
-                subj_ids = file.readlines()
-                subj_ids = [x.strip() for x in subj_ids]
-        elif not isinstance(subj_ids, list):
-            raise ValueError("The subj_ids parameter must be a list or a string")
+        raise ValueError("subj_ids must be None, str (file path), or list of str")
+
+    if not subj_ids:
+        print("No subjects found to process")
+        return []
 
     n_subj = len(subj_ids)
-    # Failed sessions
-    fail_sess = []
-    with Progress() as pb:
-        t1 = pb.add_task("[green]Uncompressing ...", total=n_subj)
+    failed_sessions = []
 
-        # Loop around all the subjects
-        n_subj = len(subj_ids)
-        for i, subj_id in enumerate(subj_ids):  # Loop along the IDs
-            subj_dir = os.path.join(dic_dir, subj_id)
+    with Progress() as pb:
+        task = pb.add_task("[green]Uncompressing sessions...", total=n_subj)
+
+        for i, subj_id in enumerate(subj_ids):
+            subj_dir = dic_path / subj_id
+
             pb.update(
-                task_id=t1,
-                description=f"[green]Uncompressing sessions for {subj_id} ({i+1}/{n_subj})",
-                completed=i + 1,
+                task_id=task,
+                description=f"[green]Processing {subj_id} ({i+1}/{n_subj})",
+                completed=i,
             )
 
-            # Loop along all the sessions inside the subject directory
-            for ses_tar in glob(
-                subj_dir + os.path.sep + "*.tar.gz"
-            ):  # Loop along the session
-                #         print('SubjectId: ' + subjId + ' ======>  Session: ' +  sesId)
-                # Compress only if it is a folder
-                if os.path.isfile(ses_tar):
-                    try:
-                        # Compressing the folder
-                        subprocess.run(
-                            ["tar", "xzf", ses_tar, "-C", subj_dir],
-                            stdout=subprocess.PIPE,
-                            universal_newlines=True,
-                        )
+            # Skip if subject directory doesn't exist
+            if not subj_dir.exists():
+                print(f"Warning: Subject directory {subj_dir} not found, skipping...")
+                continue
 
-                        # Removing the uncompressed dicom folder
-                        if boolrmtar:
-                            subprocess.run(
-                                ["rm", "-r", ses_tar],
-                                stdout=subprocess.PIPE,
-                                universal_newlines=True,
-                            )
-                    except:
-                        fail_sess.append(ses_tar)
+            # Find all tar.gz files in subject directory
+            tar_files = list(subj_dir.glob("*.tar.gz"))
+
+            for tar_file in tar_files:
+                try:
+                    # Use Python's tarfile module for better error handling
+                    with tarfile.open(tar_file, "r:gz") as tar:
+                        # Extract to subject directory
+                        tar.extractall(path=subj_dir)
+
+                    # Remove tar file if requested
+                    if boolrmtar:
+                        tar_file.unlink()
+
+                except tarfile.TarError as e:
+                    print(f"Error extracting {tar_file}: {e}")
+                    failed_sessions.append(str(tar_file))
+                except PermissionError as e:
+                    print(f"Permission error with {tar_file}: {e}")
+                    failed_sessions.append(str(tar_file))
+                except Exception as e:
+                    print(f"Unexpected error with {tar_file}: {e}")
+                    failed_sessions.append(str(tar_file))
 
         pb.update(
-            task_id=t1,
-            description=f"[green]Compressing sessions for {subj_id} ({n_subj}/{n_subj})",
+            task_id=task,
+            description=f"[green]Completed uncompression",
             completed=n_subj,
         )
 
-    if fail_sess:
-        print("THE PROCESS FAILED TO UNCOMPRESS THE FOLLOWING TAR FILES:")
-        for i in fail_sess:
-            print(i)
-    print(" ")
-    print("End of the uncompression process.")
+    # Report results
+    if failed_sessions:
+        print("\nTHE PROCESS FAILED TO UNCOMPRESS THE FOLLOWING TAR FILES:")
+        for failed_file in failed_sessions:
+            print(f"  - {failed_file}")
+    else:
+        print("\nAll sessions uncompressed successfully!")
+
+    print(f"\nProcessed {n_subj} subjects with {len(failed_sessions)} failures.")
+    return failed_sessions
 
 
 def compress_dicom_session(dic_dir: str, subj_ids=None):
