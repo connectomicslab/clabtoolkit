@@ -396,7 +396,22 @@ def copy_dicom_file(
 
 # Extract Series Id and Sessions Id from a pydicom object
 def create_session_series_names(dataset):
+    """
+    Function to create names from a DICOM object.
 
+    Parameters
+    ----------
+    dataset: pydicom.dataset.FileDataset
+        DICOM dataset object.
+
+    Returns
+    -------
+    ses_id: str
+        Session ID.
+    ser_id: str
+        Series ID.
+
+    """
     # % This function creates the session and the series name for a dicom object
 
     # Extracting the study date from DICOM file
