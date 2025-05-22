@@ -4,10 +4,10 @@
 
 from setuptools import setup, find_packages
 
-with open("README.rst") as readme_file:
+with open("README.rst", encoding="utf-8") as readme_file:
     readme = readme_file.read()
 
-with open("HISTORY.rst") as history_file:
+with open("HISTORY.rst", encoding="utf-8") as history_file:
     history = history_file.read()
 
 requirements = []
@@ -36,10 +36,10 @@ setup(
     keywords="clabtoolkit",
     name="clabtoolkit",
     packages=find_packages(include=["clabtoolkit", "clabtoolkit.*"]),
-    package_data={"clabtoolkit": ["clabtoolkit/config/*"]},
+    package_data={"clabtoolkit": ["config/*"]},  # FIXED LINE
     test_suite="tests",
     tests_require=test_requirements,
     url="https://github.com/connectomicslab/clabtoolkit",
-    version="0.3.0",
+    version="0.3.1",
     zip_safe=False,
 )
