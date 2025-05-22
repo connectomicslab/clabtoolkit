@@ -63,9 +63,29 @@ class Parcellation:
                         elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
                             self.load_colortable(lut_file=lut_file, lut_type="lut")
 
-            elif isinstance(parc_file, np.ndarray):
-                self.data = parc_file
+                    # Adding index, name and color attributes
+                    if not hasattr(self, "index"):
+                        self.index = np.unique(self.data)
+                        self.index = self.index[self.index != 0].tolist()
+                        self.index = [int(x) for x in self.index]
 
+                    if not hasattr(self, "name"):
+                        # create a list with the names of the regions. I would like a format for the names similar to this supra-side-000001
+                        self.name = cltmisc.create_names_from_indices(self.index)
+
+                    if not hasattr(self, "color"):
+                        self.color = cltmisc.create_random_colors(
+                            len(self.index), output_format="hex"
+                        )
+
+                else:
+                    raise ValueError("The parcellation file does not exist")
+
+            # If the parcellation is a numpy array
+            elif isinstance(parc_file, np.ndarray):
+
+                self.data = parc_file
+                self.parc_file = "numpy_array"
                 # Creating a new affine matrix if the affine matrix is None
                 if affine is None:
                     affine = np.eye(4)
@@ -80,13 +100,19 @@ class Parcellation:
                 st_codes = st_codes[st_codes != 0]
 
                 self.index = st_codes.tolist()
-                self.name = ["ROI{}".format(i) for i in self.index]
+                self.index = [int(x) for x in self.index]
+                self.name = cltmisc.create_names_from_indices(self.index)
 
                 # Generate the colors
-                color = cltmisc.create_random_colors(len(self.index))
-                self.color = cltmisc.multi_rgb2hex(color)
+                self.color = cltmisc.create_random_colors(
+                    len(self.index), output_format="hex"
+                )
 
             # Adjust values to the ones present in the parcellation
+
+            # Force index to be int
+            if hasattr(self, "index"):
+                self.index = [int(x) for x in self.index]
 
             if (
                 hasattr(self, "index")
