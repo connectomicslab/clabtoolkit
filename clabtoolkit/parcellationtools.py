@@ -1218,70 +1218,155 @@ class Parcellation:
             raise ValueError("The lut_type must be 'lut' or 'tsv'")
 
     def replace_values(
-        self, codes2rep: Union[list, np.ndarray], new_codes: Union[list, np.ndarray]
-    ):
+        self,
+        codes2rep: Union[List[Union[int, List[int]]], np.ndarray],
+        new_codes: Union[int, List[int], np.ndarray],
+    ) -> None:
         """
-        Replace groups of values of the image with the new codes.
-        @params:
-            codes2rep        - Required  : List, numpy array or list of list of codes to be replaced:
-            new_codes        - Optional  : New codes:
+        Replace groups of values in the 3D array/image with new codes.
 
+        This method allows for flexible replacement of pixel/voxel values, supporting
+        both single value replacements and group replacements where multiple original
+        values are mapped to a single new value.
+
+        Parameters
+        ----------
+        codes2rep : list, np.ndarray, or list of lists
+            Values or groups of values to be replaced. Can be:
+            - Single list: [1, 2, 3] - replace values 1, 2, 3 individually
+            - List of lists: [[1, 2], [3, 4]] - replace groups (1,2)->new_code[0], (3,4)->new_code[1]
+            - numpy array: np.array([1, 2, 3]) - replace values 1, 2, 3 individually
+        new_codes : int, list, or np.ndarray
+            New values to replace with. Must match the number of groups in codes2rep.
+            - Single int: used when codes2rep is a single group
+            - List/array: length must equal number of groups in codes2rep
+
+        Returns
+        -------
+        None
+            Modifies self.data in-place
+
+        Raises
+        ------
+        ValueError
+            If the number of new codes doesn't match the number of groups to replace
+        TypeError
+            If input types are not supported
+
+        Examples
+        --------
+        >>> # Single value replacement
+        >>> image.replace_values([1], [100])  # Replace all 1s with 100s
+
+        >>> # Multiple individual replacements
+        >>> image.replace_values([1, 2, 3], [10, 20, 30])  # 1->10, 2->20, 3->30
+
+        >>> # Group replacements
+        >>> image.replace_values([[1, 2], [3, 4]], [100, 200])  # (1,2)->100, (3,4)->200
+
+        >>> # Mixed usage with numpy array
+        >>> image.replace_values(np.array([5, 6]), 500)  # Replace 5s and 6s with 500
         """
 
-        # Correcting if new_codes is an integer
-        if isinstance(new_codes, int):
+        # Input validation
+        if not hasattr(self, "data"):
+            raise AttributeError("Object must have 'data' attribute")
+
+        # Handle single integer new_codes
+        if isinstance(new_codes, (int, np.integer)):
             new_codes = [np.int32(new_codes)]
 
-        # Detect thecodes2group is a list of list
+        # Process codes2rep to determine structure and number of groups
         if isinstance(codes2rep, list):
-            if isinstance(codes2rep[0], list):
-                n_groups = len(codes2rep)
+            if len(codes2rep) == 0:
+                raise ValueError("codes2rep cannot be empty")
 
-            elif isinstance(codes2rep[0], (str, np.integer, tuple)):
-                codes2rep = [codes2rep]
-                n_groups = 1
+            # Detect whether it's a flat list of ints or a list of lists
+            if all(isinstance(x, (int, np.integer)) for x in codes2rep):
+                # Interpret as individual values -> multiple groups
+                codes2rep = [[x] for x in codes2rep]
+            elif all(isinstance(x, list) for x in codes2rep):
+                pass  # Already in group form
+            else:
+                raise TypeError(
+                    "codes2rep must be a list of ints or a list of lists of ints"
+                )
+            n_groups = len(codes2rep)
 
         elif isinstance(codes2rep, np.ndarray):
-            codes2rep = codes2rep.tolist()
-            n_groups = 1
-
-        for i, v in enumerate(codes2rep):
-            if isinstance(v, list):
-                codes2rep[i] = cltmisc.build_indices(v, nonzeros=False)
-
-        # Convert the new_codes to a numpy array
-        if isinstance(new_codes, list):
-            new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
-            new_codes = np.array(new_codes)
-        elif isinstance(new_codes, np.integer):
-            new_codes = np.array([new_codes])
-
-        if len(new_codes) != n_groups:
-            raise ValueError(
-                "The number of new codes must be equal to the number of groups of values that will be replaced"
+            if codes2rep.ndim == 1:
+                codes2rep = [[int(x)] for x in codes2rep.tolist()]
+            else:
+                raise TypeError("Unsupported numpy array shape for codes2rep")
+            n_groups = len(codes2rep)
+        else:
+            raise TypeError(
+                f"codes2rep must be list or numpy array, got {type(codes2rep)}"
             )
 
-        for ng in np.arange(n_groups):
-            code2look = np.array(codes2rep[ng])
-            mask = np.isin(self.data, code2look)
-            self.data[mask] = new_codes[ng]
+        # Optionally convert codes using cltmisc.build_indices if available
+        for i, group in enumerate(codes2rep):
+            try:
+                import cltmisc
 
+                codes2rep[i] = cltmisc.build_indices(group, nonzeros=False)
+            except (ImportError, NameError):
+                codes2rep[i] = group
+
+        # Process new_codes
+        if isinstance(new_codes, list):
+            try:
+                import cltmisc
+
+                new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
+            except (ImportError, NameError):
+                pass
+            new_codes = np.array(new_codes, dtype=np.int32)
+        elif isinstance(new_codes, (int, np.integer)):
+            new_codes = np.array([new_codes], dtype=np.int32)
+        else:
+            new_codes = np.array(new_codes, dtype=np.int32)
+
+        # Validate matching lengths
+        if len(new_codes) != n_groups:
+            raise ValueError(
+                f"Number of new codes ({len(new_codes)}) must equal "
+                f"number of groups ({n_groups}) to be replaced"
+            )
+
+        # Perform replacements
+        for group_idx in range(n_groups):
+            codes_to_replace = np.array(codes2rep[group_idx])
+            mask = np.isin(self.data, codes_to_replace)
+            self.data[mask] = new_codes[group_idx]
+
+        # Optional post-processing
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            self.adjust_values()
+            if hasattr(self, "adjust_values"):
+                self.adjust_values()
 
-        self.parc_range()
+        if hasattr(self, "parc_range"):
+            self.parc_range()
 
-    def parc_range(self):
+    def parc_range(self) -> None:
         """
-        Detect the range of labels
+        Detect and update the range of non-zero labels in the data.
 
+        Updates the minlab and maxlab attributes based on unique non-zero values
+        in self.data.
+
+        Returns
+        -------
+        None
+            Updates self.minlab and self.maxlab attributes in-place
         """
-        # Detecting the unique elements in the parcellation different from zero
-        st_codes = np.unique(self.data)
-        st_codes = st_codes[st_codes != 0]
-        if np.size(st_codes) > 0:
-            self.minlab = np.min(st_codes)
-            self.maxlab = np.max(st_codes)
+        # Get unique non-zero elements
+        unique_codes = np.unique(self.data)
+        nonzero_codes = unique_codes[unique_codes != 0]
+
+        if nonzero_codes.size > 0:
+            self.minlab = np.min(nonzero_codes)
+            self.maxlab = np.max(nonzero_codes)
         else:
             self.minlab = 0
             self.maxlab = 0
