@@ -1708,10 +1708,9 @@ class FreeSurferSubject:
 
         return df_vol
 
-    def surface_hemi_morpho(self, 
-                            hemi: str = "lh", 
-                            lobes_grouping: str = "desikan"
-                            ) -> pd.DataFrame:
+    def surface_hemi_morpho(
+        self, hemi: str = "lh", lobes_grouping: str = "desikan", verbose: bool = False
+    ) -> pd.DataFrame:
         """
         Computes morphometric metrics for a given hemisphere using cortical surface maps
         and parcellations from FreeSurfer.
@@ -1742,7 +1741,7 @@ class FreeSurferSubject:
             Each row corresponds to a different region or measurement source.
         """
 
-        import morphometrytools as morpho
+        from . import morphometrytools as morpho
 
         # Retrieve relevant FreeSurfer files
         parc_files_dict = self.fs_files["surf"][hemi]["parc"]
@@ -1757,12 +1756,30 @@ class FreeSurferSubject:
         desikan_parc = parc_files_dict.get("desikan", None)
         include_lobes = os.path.isfile(desikan_parc) if desikan_parc else False
         if include_lobes:
+            # Print  Step 0: Grouping into lobes
+            if verbose:
+                print(" ")
+                print("Step 0: Grouping into lobes")
+                start_time = time.time()
+
             lobar_obj = AnnotParcellation(parc_file=desikan_parc)
             lobar_obj.group_into_lobes(grouping=lobes_grouping)
 
+            # Compute the elapsed time and print it
+            if verbose:
+                elapsed_time = time.time() - start_time
+                print(f"Elapsed time: {elapsed_time:.2f} seconds")
+
         # Iterate over parcellations
-        metric_filename = []
+        if verbose:
+            print(" ")
+            print(
+                f"Step 1: Computing morphometric metrics for the {hemi.upper()} hemisphere"
+            )
+        n_parc = len(parc_files_dict)
+        cont_parc = 0
         for parc_name, parc_file in parc_files_dict.items():
+            cont_parc += 1
             if not os.path.isfile(parc_file):
                 continue  # Skip missing parcellations
 
@@ -1775,12 +1792,27 @@ class FreeSurferSubject:
             elif parc_base_name == "aparc.DKTatlas":
                 parc_base_name = "dkt"
 
+            if verbose:
+                print(" ")
+                print(
+                    f"    - Step 1.1: Surface-based metrics (Parcellation: {parc_base_name} [{cont_parc}/{n_parc}])"
+                )
+
             df_metric = pd.DataFrame()
 
             # Compute mean thickness per region
+            n_metrics = len(metric_files_dict)
+            cont_metric = 0
             for metric_name, metric_file in metric_files_dict.items():
                 if not os.path.isfile(metric_file):
                     continue
+
+                cont_metric += 1
+                if verbose:
+                    print(
+                        f"        - Metric: {metric_name} [{cont_metric}/{n_metrics+1}]"
+                    )
+                    start_time = time.time()
 
                 # Compute lobar and regional metrics
                 df_lobes, _, _ = morpho.compute_reg_val_fromannot(
@@ -1804,13 +1836,19 @@ class FreeSurferSubject:
 
                 # Concatenate results
                 df_metric = pd.concat([df_metric, df_lobes, df_region], axis=0)
+                if verbose:
+                    elapsed_time = time.time() - start_time
+                    print(f"        Elapsed time: {elapsed_time:.2f} seconds")
 
             # Compute surface area and Euler characteristic for both pial and white surfaces
             df_parc = pd.DataFrame()
             df_e = pd.DataFrame()
+            cont_metric += 1
+            cont_euler = cont_metric + 1
             for surface, source_label in zip(
                 [pial_surf, white_surf], ["pial", "white"]
             ):
+                start_time = time.time()
                 df_area_region, _ = morpho.compute_reg_area_fromsurf(
                     surface,
                     parc_file,
@@ -1831,10 +1869,26 @@ class FreeSurferSubject:
                 )
                 df_area_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
 
+                if verbose:
+                    print(
+                        f"        - Metric: {surface.capitalize()} Surface Area [{cont_metric}/{n_metrics+1}]"
+                    )
+                    elapsed_time = time.time() - start_time
+                    print(f"        Elapsed time: {elapsed_time:.2f} seconds")
+
                 # Compute Euler characteristic
+                start_time = time.time()
                 df_euler, _ = morpho.compute_euler_fromsurf(
                     surface, hemi, surf_type=source_label, add_bids_entities=False
                 )
+
+                if verbose:
+                    print(
+                        f"        - Metric: Euler Characteristic for {surface.capitalize()} Surface [{cont_euler}/{n_metrics+1}]"
+                    )
+                    elapsed_time = time.time() - start_time
+                    print(f"        Elapsed time: {elapsed_time:.2f} seconds")
+
                 df_euler.insert(4, "Atlas", "")
 
                 # Concatenate all the results
@@ -1842,11 +1896,23 @@ class FreeSurferSubject:
                     [df_parc, df_area_lobes, df_area_region, df_euler], axis=0
                 )
 
+            if verbose:
+                print(" ")
+                print(
+                    f"    - Step 1.2: Metrics from Stats files (Parcellation: {parc_base_name})"
+                )
+                start_time = time.time()
+
             # Read the stats file
             stat_file = self.fs_files["stats"][hemi][parc_name]
+
             df_stats_cortex, _ = morpho.parse_freesurfer_cortex_stats(
                 stat_file, add_bids_entities=False
             )
+            if verbose:
+                elapsed_time = time.time() - start_time
+                print(f"        Elapsed time: {elapsed_time:.2f} seconds")
+
             df_stats_cortex.insert(4, "Atlas", parc_base_name)
 
             # Merge morphometric and area metrics
@@ -2309,7 +2375,7 @@ class FreeSurferSubject:
                     "--o",
                     out_vol,
                 ]
-                
+
             else:
                 # Creating the volumetric parcellation using the annot files
                 cmd_bashargs = [
