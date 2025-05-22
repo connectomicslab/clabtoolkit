@@ -29,12 +29,10 @@ class Parcellation:
         self, parc_file: Union[str, np.uint] = None, affine: np.float64 = None
     ):
 
-        self.parc_file = parc_file
-
         if parc_file is not None:
             if isinstance(parc_file, str):
                 if os.path.exists(parc_file):
-
+                    self.parc_file = parc_file
                     temp_iparc = nib.load(parc_file)
                     affine = temp_iparc.affine
                     self.data = temp_iparc.get_fdata()
@@ -168,7 +166,7 @@ class Parcellation:
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             # Find the indexes of the names that contain the substring
             indexes = cltmisc.get_indexes_by_substring(
-                list1=self.name, substr=names2look, invert=False, boolcase=False
+                input_list=self.name, substr=names2look, invert=False, bool_case=False
             )
 
             if len(indexes) > 0:
@@ -566,7 +564,7 @@ class Parcellation:
         index_new = temp_index[mask]
 
         if hasattr(self, "index"):
-            self.index = index_new
+            self.index = [int(x) for x in index_new.tolist()]
 
         # If name is an attribute of self
         if hasattr(self, "name"):
@@ -795,7 +793,7 @@ class Parcellation:
 
         for i in range(n_groups):
             indexes = cltmisc.get_indexes_by_substring(
-                list1=self.name, substr=names2group[i]
+                input_list=self.name, substr=names2group[i]
             )
             code2look = np.array(indexes) + 1
 
@@ -908,8 +906,9 @@ class Parcellation:
                             ):
 
                                 if append:
+                                    # Adjust the values of the index
                                     tmp_parc_obj.index = [
-                                        x + self.maxlab for x in tmp_parc_obj.index
+                                        int(x + self.maxlab) for x in tmp_parc_obj.index
                                     ]
 
                                 if isinstance(tmp_parc_obj.index, list) and isinstance(
@@ -1219,149 +1218,70 @@ class Parcellation:
             raise ValueError("The lut_type must be 'lut' or 'tsv'")
 
     def replace_values(
-        self, 
-        codes2rep: Union[List[Union[int, List[int]]], np.ndarray], 
-        new_codes: Union[int, List[int], np.ndarray]
-    ) -> None:
+        self, codes2rep: Union[list, np.ndarray], new_codes: Union[list, np.ndarray]
+    ):
         """
-        Replace groups of values in the 3D array/image with new codes.
-        
-        This method allows for flexible replacement of pixel/voxel values, supporting
-        both single value replacements and group replacements where multiple original
-        values are mapped to a single new value.
-        
-        Parameters
-        ----------
-        codes2rep : list, np.ndarray, or list of lists
-            Values or groups of values to be replaced. Can be:
-            - Single list: [1, 2, 3] - replace values 1, 2, 3 individually
-            - List of lists: [[1, 2], [3, 4]] - replace groups (1,2)->new_code[0], (3,4)->new_code[1]
-            - numpy array: np.array([1, 2, 3]) - replace values 1, 2, 3 individually
-        new_codes : int, list, or np.ndarray
-            New values to replace with. Must match the number of groups in codes2rep.
-            - Single int: used when codes2rep is a single group
-            - List/array: length must equal number of groups in codes2rep
-        
-        Returns
-        -------
-        None
-            Modifies self.data in-place
-        
-        Raises
-        ------
-        ValueError
-            If the number of new codes doesn't match the number of groups to replace
-        TypeError
-            If input types are not supported
-        
-        Examples
-        --------
-        >>> # Single value replacement
-        >>> image.replace_values([1], [100])  # Replace all 1s with 100s
-        
-        >>> # Multiple individual replacements
-        >>> image.replace_values([1, 2, 3], [10, 20, 30])  # 1->10, 2->20, 3->30
-        
-        >>> # Group replacements
-        >>> image.replace_values([[1, 2], [3, 4]], [100, 200])  # (1,2)->100, (3,4)->200
-        
-        >>> # Mixed usage with numpy array
-        >>> image.replace_values(np.array([5, 6]), 500)  # Replace 5s and 6s with 500
+        Replace groups of values of the image with the new codes.
+        @params:
+            codes2rep        - Required  : List, numpy array or list of list of codes to be replaced:
+            new_codes        - Optional  : New codes:
+
         """
-        
-        # Input validation
-        if not hasattr(self, 'data'):
-            raise AttributeError("Object must have 'data' attribute")
-        
-        # Handle single integer new_codes
-        if isinstance(new_codes, (int, np.integer)):
+
+        # Correcting if new_codes is an integer
+        if isinstance(new_codes, int):
             new_codes = [np.int32(new_codes)]
-        
-        # Process codes2rep to determine structure and number of groups
+
+        # Detect thecodes2group is a list of list
         if isinstance(codes2rep, list):
-            if len(codes2rep) == 0:
-                raise ValueError("codes2rep cannot be empty")
-            
-            # Check if it's a list of lists (multiple groups)
             if isinstance(codes2rep[0], list):
                 n_groups = len(codes2rep)
-            elif isinstance(codes2rep[0], (int, np.integer, str, tuple)):
-                # Single group - wrap in list
+
+            elif isinstance(codes2rep[0], (str, np.integer, tuple)):
                 codes2rep = [codes2rep]
                 n_groups = 1
-            else:
-                raise TypeError(f"Unsupported type in codes2rep: {type(codes2rep[0])}")
-        
+
         elif isinstance(codes2rep, np.ndarray):
-            # Convert numpy array to single group
-            codes2rep = [codes2rep.tolist()]
+            codes2rep = codes2rep.tolist()
             n_groups = 1
-        else:
-            raise TypeError(f"codes2rep must be list or numpy array, got {type(codes2rep)}")
-        
-        # Process each group through build_indices if needed
-        for i, group in enumerate(codes2rep):
-            if isinstance(group, list):
-                # Assuming cltmisc.build_indices exists, otherwise use group directly
-                try:
-                    codes2rep[i] = cltmisc.build_indices(group, nonzeros=False)
-                except NameError:
-                    # If cltmisc is not available, use the group as-is
-                    codes2rep[i] = group
-        
-        # Process new_codes
+
+        for i, v in enumerate(codes2rep):
+            if isinstance(v, list):
+                codes2rep[i] = cltmisc.build_indices(v, nonzeros=False)
+
+        # Convert the new_codes to a numpy array
         if isinstance(new_codes, list):
-            try:
-                new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
-            except NameError:
-                # If cltmisc is not available, use as-is
-                pass
-            new_codes = np.array(new_codes, dtype=np.int32)
-        elif isinstance(new_codes, (int, np.integer)):
-            new_codes = np.array([new_codes], dtype=np.int32)
-        else:
-            new_codes = np.array(new_codes, dtype=np.int32)
-        
-        # Validate matching lengths
+            new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
+            new_codes = np.array(new_codes)
+        elif isinstance(new_codes, np.integer):
+            new_codes = np.array([new_codes])
+
         if len(new_codes) != n_groups:
             raise ValueError(
-                f"Number of new codes ({len(new_codes)}) must equal "
-                f"number of groups ({n_groups}) to be replaced"
+                "The number of new codes must be equal to the number of groups of values that will be replaced"
             )
-        
-        # Perform replacements
-        for group_idx in range(n_groups):
-            codes_to_replace = np.array(codes2rep[group_idx])
-            mask = np.isin(self.data, codes_to_replace)
-            self.data[mask] = new_codes[group_idx]
-        
-        # Update object state if methods exist
+
+        for ng in np.arange(n_groups):
+            code2look = np.array(codes2rep[ng])
+            mask = np.isin(self.data, code2look)
+            self.data[mask] = new_codes[ng]
+
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            if hasattr(self, "adjust_values"):
-                self.adjust_values()
-        
-        # Update parcellation range
+            self.adjust_values()
+
         self.parc_range()
 
-    def parc_range(self) -> None:
+    def parc_range(self):
         """
-        Detect and update the range of non-zero labels in the data.
-        
-        Updates the minlab and maxlab attributes based on unique non-zero values
-        in self.data.
-        
-        Returns
-        -------
-        None
-            Updates self.minlab and self.maxlab attributes in-place
+        Detect the range of labels
+
         """
-        # Get unique non-zero elements
-        unique_codes = np.unique(self.data)
-        nonzero_codes = unique_codes[unique_codes != 0]
-        
-        if nonzero_codes.size > 0:
-            self.minlab = np.min(nonzero_codes)
-            self.maxlab = np.max(nonzero_codes)
+        # Detecting the unique elements in the parcellation different from zero
+        st_codes = np.unique(self.data)
+        st_codes = st_codes[st_codes != 0]
+        if np.size(st_codes) > 0:
+            self.minlab = np.min(st_codes)
+            self.maxlab = np.max(st_codes)
         else:
             self.minlab = 0
             self.maxlab = 0
@@ -1370,7 +1290,7 @@ class Parcellation:
         """
         Compute the volume table of the parcellation.
         This method computes the volume of each region in the parcellation and stores it in the attribute called volumetable.
-        
+
         """
         import morphometrytools as cltmorpho
 
@@ -1378,7 +1298,7 @@ class Parcellation:
         self.volumetable = volume_table
 
     @staticmethod
-    def write_fslcolortable(lut_file_fs: str, lut_file_fsl: str):
+    def lut_to_fsllut(lut_file_fs: str, lut_file_fsl: str):
         """
         Convert FreeSurfer lut file to FSL lut file
         @params:
@@ -1411,94 +1331,235 @@ class Parcellation:
             colorLUT_f.write("\n".join(lut_lines))
 
     @staticmethod
-    def read_luttable(in_file: str):
+    def read_luttable(
+        in_file: str, filter_by_name: Union[str, List[str]] = None
+    ) -> dict:
         """
-        Reading freesurfer lut file
-        @params:
-            in_file     - Required  : FreeSurfer color lut:
+        Read and parse a FreeSurfer Color Lookup Table (LUT) file.
+
+        This method reads a FreeSurfer color lookup table file and parses its contents into
+        a structured dictionary containing region codes, names, and colors. The LUT file format
+        follows FreeSurfer's standard format where each non-comment line contains a region code,
+        name, and RGB color values.
+
+        Parameters
+        ----------
+        in_file : str
+            Path to the color lookup table file.
+
+        filter_by_name: Union[str, List[str]], optional
+            If provided, filter the regions by name. Only regions containing this substring will be included.
+            Can be a single string or a list of strings.
 
         Returns
         -------
-        st_codes: list
-            List of codes for the parcellation
-        st_names: list
-            List of names for the parcellation
-        st_colors: list
-            List of colors for the parcellation
+        dict
+            Dictionary with the following keys:
+            - 'index': List of integer region codes (standard Python integers)
+            - 'name': List of region name strings
+            - 'color': List of hex color codes (format: '#RRGGBB')
 
+        Examples
+        --------
+        # Setup common variables
+        >>> fs_dir = os.environ.get('FREESURFER_HOME')
+        >>> lut_file = os.path.join(fs_dir, 'FreeSurferColorLUT.txt')
+
+        >>> lut_dict = read_luttable(lut_file)
+        >>> lut_dict['index'][:3]  # First three region codes
+        [0, 1, 2]
+        >>> lut_dict['name'][:3]  # First three region names
+        ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter']
+        >>> lut_dict['color'][:3]  # First three colors in hex format
+        ['#000000', '#4682b4', '#f5f5f5']
+
+        >>> # Get information for a specific region (e.g., hippocampus)
+        >>> lut_dict = cltparc.Parcellation.read_luttable(lut_file, filter_by_name='hippocampus')
+        >>> print(f"Index: {lut_dict["index"]}...")
+        Index: [17, 53, 106, 115]...
+        >>> print(f"Label: {lut_dict["name"]}...")
+        Label: ['Left-Hippocampus', 'Right-Hippocampus', 'Left-hippocampus-intensity-abnormality', 'Right-hippocampus-intensity-abnormality']...
+        >>> print(f"Color: {lut_dict["color"]}...")
+        Color: ['#dcd814', '#dcd814', '#7c8fb2', '#7c8fb2']...
+
+        Notes
+        -----
+        - Comment lines (starting with '#') in the LUT file are ignored
+        - Each non-comment line should have at least 5 elements: code, name, R, G, B
+        - The returned region codes are standard Python integers, not numpy objects
+        - If the multi_rgb2hex function is not available, the color conversion will need
+        to be modified
         """
 
-        # Readind a color LUT file
-        fid = open(in_file)
-        LUT = fid.readlines()
-        fid.close()
+        # Read the LUT file content
+        with open(in_file, "r", encoding="utf-8") as f:
+            lut_content = f.readlines()
 
-        # Make dictionary of labels
-        LUT = [row.split() for row in LUT]
-        st_names = []
-        st_codes = []
-        cont = 0
-        for row in LUT:
-            if (
-                len(row) > 1 and row[0][0] != "#" and row[0][0] != "\\\\"
-            ):  # Get rid of the comments
-                st_codes.append(int(row[0]))
-                st_names.append(row[1])
-                if cont == 0:
-                    st_colors = np.array([[int(row[2]), int(row[3]), int(row[4])]])
-                else:
-                    ctemp = np.array([[int(row[2]), int(row[3]), int(row[4])]])
-                    st_colors = np.append(st_colors, ctemp, axis=0)
-                cont = cont + 1
+        # Initialize lists to store parsed data
+        region_codes = []
+        region_names = []
+        region_colors_rgb = []
 
-        # Convert the elements to integer 32 bits
-        st_codes = [np.int32(x) for x in st_codes]
+        # Parse each non-comment line in the file
+        for line in lut_content:
+            # Skip comments and empty lines
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("\\\\"):
+                continue
 
-        # Converting colors to hexadecimal format
-        st_colors = cltmisc.multi_rgb2hex(st_colors)
+            # Split line into components
+            parts = line.split()
+            if len(parts) < 5:  # Need at least code, name, R, G, B
+                continue
 
-        # Create the dictionary
-        lut_dict = {"index": st_codes, "name": st_names, "color": st_colors}
+            # Extract data
+            try:
+                code = int(parts[0])  # Using Python's built-in int, not numpy.int32
+                name = parts[1]
+                r, g, b = int(parts[2]), int(parts[3]), int(parts[4])
 
-        return lut_dict
+                region_codes.append(code)
+                region_names.append(name)
+                region_colors_rgb.append([r, g, b])
+            except (ValueError, IndexError):
+                # Skip malformed lines
+                continue
+
+        # Convert RGB colors to hex format
+        try:
+            # Use the existing multi_rgb2hex function if available
+            region_colors_hex = cltmisc.multi_rgb2hex(np.array(region_colors_rgb))
+        except (NameError, AttributeError):
+            # Fallback to direct conversion if the function isn't available
+            region_colors_hex = [
+                f"#{r:02x}{g:02x}{b:02x}" for r, g, b in region_colors_rgb
+            ]
+        if filter_by_name is not None:
+            if isinstance(filter_by_name, str):
+                filter_by_name = [filter_by_name]
+
+            filtered_indices = cltmisc.get_indexes_by_substring(
+                region_names, filter_by_name
+            )
+
+            # Filter the LUT based on the provided names
+            # filtered_indices = [
+            #     i for i, name in enumerate(region_names) if name in filter_by_name
+            # ]
+            region_codes = [region_codes[i] for i in filtered_indices]
+            region_names = [region_names[i] for i in filtered_indices]
+            region_colors_hex = [region_colors_hex[i] for i in filtered_indices]
+
+        # Create and return the result dictionary
+        return {
+            "index": region_codes,  # Now contains standard Python integers
+            "name": region_names,
+            "color": region_colors_hex,
+        }
 
     @staticmethod
-    def read_tsvtable(in_file: str):
+    def read_tsvtable(
+        in_file: str, filter_by_name: Union[str, List[str]] = None
+    ) -> dict:
         """
-        Reading tsv table
-        @params:
-            in_file     - Required  : TSV file:
-            cl_format   - Optional  : Color format: 'rgb' or 'hex'. Default = 'rgb'
+        Read and parse a TSV (Tab-Separated Values) lookup table file.
+
+        This method reads a TSV file containing parcellation information and returns a dictionary
+        with the data. The TSV file must contain at least 'index' and 'name' columns. If a 'color'
+        column is present, it will be included in the returned dictionary.
+
+        Parameters
+        ----------
+        in_file : str
+            Path to the TSV lookup table file
+
+        filter_by_name: Union[str, List[str]], optional
+            If provided, filter the regions by name. Only regions containing this substring will be included.
+            Can be a single string or a list of strings.
 
         Returns
         -------
-        tsv_dict: dict
-            Dictionary with the tsv table
+        dict
+            Dictionary with keys corresponding to column names in the TSV file.
+            Must include at least:
+            - 'index': List of integer region codes (standard Python integers)
+            - 'name': List of region name strings
+            May also include:
+            - 'color': List of color codes if present in the TSV file
+            - Any other columns present in the TSV file
 
+        Examples
+        --------
+        >>> tsv_dict = read_tsvtable('regions.tsv')
+        >>> tsv_dict['index'][:3]  # First three region codes
+        [0, 1, 2]
+        >>> tsv_dict['name'][:3]  # First three region names
+        ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter']
 
+        >>> # Check if color information is available
+        >>> if 'color' in tsv_dict:
+        ...     print(f"Color for region {tsv_dict['name'][0]}: {tsv_dict['color'][0]}")
+
+        Raises
+        ------
+        FileNotFoundError
+            If the specified TSV file does not exist
+        ValueError
+            If the TSV file does not contain required 'index' and 'name' columns
+
+        Notes
+        -----
+        - The 'index' column values are converted to standard Python integers
+        - All other columns are preserved in their original format
+        - If the file cannot be parsed as a TSV, pandas exceptions may be raised
         """
-
-        # Read the tsv file
+        # Check if file exists
         if not os.path.exists(in_file):
-            raise ValueError("The file does not exist")
+            raise FileNotFoundError(f"TSV file not found: {in_file}")
 
-        tsv_df = pd.read_csv(in_file, sep="\t")
+        try:
+            # Read the TSV file into a pandas DataFrame
+            tsv_df = pd.read_csv(in_file, sep="\t")
 
-        # Convert to dictionary
-        tsv_dict = tsv_df.to_dict(orient="list")
+            # Check for required columns
+            required_columns = ["index", "name"]
+            missing_columns = [
+                col for col in required_columns if col not in tsv_df.columns
+            ]
+            if missing_columns:
+                raise ValueError(
+                    f"TSV file missing required columns: {', '.join(missing_columns)}"
+                )
 
-        if "index" in tsv_dict.keys():
-            # Convert the elements to integer 32 bits
-            tsv_dict["index"] = [np.int32(x) for x in tsv_dict["index"]]
+            # Convert DataFrame to dictionary
+            tsv_dict = tsv_df.to_dict(orient="list")
 
-        # Test if index and name are keys
-        if "index" not in tsv_dict.keys() or "name" not in tsv_dict.keys():
-            raise ValueError("The tsv file must contain the columns 'index' and 'name'")
+            # Convert index values to integers
+            if "index" in tsv_dict:
+                tsv_dict["index"] = [int(x) for x in tsv_dict["index"]]
 
-        if "color" in tsv_dict.keys():
-            temp_colors = tsv_dict["color"]
+            if filter_by_name is not None:
+                if isinstance(filter_by_name, str):
+                    filter_by_name = [filter_by_name]
 
-        return tsv_dict
+                filtered_indices = cltmisc.get_indexes_by_substring(
+                    tsv_dict["name"], filter_by_name
+                )
+
+                # Filter the TSV based on the provided names
+                tsv_dict = {
+                    key: [tsv_dict[key][i] for i in filtered_indices]
+                    for key in tsv_dict.keys()
+                }
+
+            return tsv_dict
+
+        except pd.errors.EmptyDataError:
+            raise ValueError("The TSV file is empty or improperly formatted")
+        except pd.errors.ParserError:
+            raise ValueError("The TSV file could not be parsed correctly")
+        except Exception as e:
+            raise ValueError(f"Error reading TSV file: {str(e)}")
 
     @staticmethod
     def write_luttable(
