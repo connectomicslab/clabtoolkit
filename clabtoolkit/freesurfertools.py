@@ -1681,7 +1681,7 @@ class FreeSurferSubject:
             - Other columns contain computed volume values for each region.
         """
 
-        import parcellationtools as parc
+        from . import parcellationtools as parc
 
         # Initialize an empty DataFrame for results
         df_vol = pd.DataFrame()
