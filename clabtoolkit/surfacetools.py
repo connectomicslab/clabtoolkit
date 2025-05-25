@@ -11,9 +11,66 @@ from . import visualizationtools as cltvis
 
 
 class Surface:
+    """
+    A class for loading and visualizing brain surfaces from FreeSurfer format files.
+
+    This class provides comprehensive functionality for loading brain surface meshes,
+    overlaying scalar data (maps), loading anatomical annotations, and creating
+    publication-quality visualizations with multiple anatomical views.
+
+    Attributes
+    ----------
+    surf : str
+        Path to the surface file
+    mesh : pv.PolyData
+        PyVista mesh object containing the surface geometry
+    hemi : str
+        Hemisphere identifier ("lh" for left, "rh" for right)
+    colors : pv.LookupTable, optional
+        Color lookup table for scalar data visualization
+    names : list of str, optional
+        Region names from annotation files
+
+    Examples
+    --------
+    >>> # Load a basic surface
+    >>> surf = Surface("lh.pial")
+    >>> surf.show()
+
+    >>> # Load surface with scalar data
+    >>> surf = Surface("lh.pial", hemi="lh")
+    >>> surf.load_map("thickness.mgh")
+    >>> surf.show(view=["lateral", "medial"], colorbar_title="Thickness (mm)")
+
+    >>> # Load surface with anatomical parcellation
+    >>> surf.load_annot("lh.aparc.annot")
+    >>> surf.show(view="all", title="Anatomical Parcellation")
+    """
 
     def __init__(self, surface_file: str, hemi: str = None):
+        """
+        Initialize a Surface object from a FreeSurfer surface file.
 
+        Parameters
+        ----------
+        surface_file : str
+            Path to the FreeSurfer surface file (e.g., "lh.pial", "rh.white")
+        hemi : str, optional
+            Hemisphere identifier ("lh" or "rh"). If None, attempts to auto-detect
+            from the filename.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the surface file does not exist
+        ValueError
+            If the surface file cannot be loaded
+
+        Examples
+        --------
+        >>> surf = Surface("/path/to/lh.pial")
+        >>> surf = Surface("rh.white", hemi="rh")
+        """
         self.surf = surface_file
         self.mesh = self.load_surf()
 
@@ -22,32 +79,79 @@ class Surface:
         else:
             self.hemi = cltfree.detect_hemi(self.surf)
 
-        # Trying to guess the hemisphere from BIDs organization
+        # Trying to guess the hemisphere from BIDS organization
         surf_name = os.path.basename(self.surf)
+        detected_hemi = cltfree.detect_hemi(surf_name)
 
-        hemi = cltfree.detect_hemi(surf_name)
-
-        if hemi is None:
-            self.hemi = "lh"
+        if detected_hemi is None:
+            self.hemi = "lh"  # Default to left hemisphere
 
     def load_surf(self):
+        """
+        Load surface geometry from FreeSurfer format file.
 
+        Returns
+        -------
+        pv.PolyData
+            PyVista mesh object containing vertices and faces
+
+        Raises
+        ------
+        FileNotFoundError
+            If surface file cannot be found
+        ValueError
+            If surface file format is invalid
+
+        Notes
+        -----
+        This method reads FreeSurfer surface files using nibabel and converts
+        them to PyVista PolyData format for visualization. The faces array is
+        modified to include a leading column of 3's as required by PyVista.
+        """
         vertices, faces = nib.freesurfer.read_geometry(self.surf)
 
         # add a column with 3's to the faces array. The column is needed for pyvista
         faces = np.c_[np.full(len(faces), 3), faces]
 
         mesh = pv.PolyData(vertices, faces)
-
         mesh.colors = "white"
 
         return mesh
 
     def load_map(self, map_file: str, cmap: str = "viridis"):
+        """
+        Load scalar data (map) onto the surface for visualization.
 
+        Parameters
+        ----------
+        map_file : str
+            Path to the scalar data file. Supported formats include FreeSurfer
+            morphometry files (.mgh, .mgz), curvature files (.curv), and others.
+        cmap : str, default "viridis"
+            Colormap name for visualizing the scalar data. Any matplotlib
+            colormap name is supported.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the map file does not exist
+        ValueError
+            If the map file format is not supported or data dimensions don't match
+
+        Examples
+        --------
+        >>> surf = Surface("lh.pial")
+        >>> surf.load_map("lh.thickness")  # Load cortical thickness
+        >>> surf.load_map("lh.curv", cmap="RdBu")  # Load curvature with custom colormap
+
+        Notes
+        -----
+        The scalar data is stored in the mesh's "values" array and can be
+        visualized using the show() method. The colormap is stored as a
+        PyVista LookupTable for consistent visualization.
+        """
         if not os.path.isfile(map_file):
-            print("Map file not found")
-            return
+            raise FileNotFoundError(f"Map file not found: {map_file}")
 
         # Read the map file
         map_data = nib.freesurfer.read_morph_data(map_file)
@@ -58,10 +162,35 @@ class Surface:
         self.colors = lut
 
     def load_annot(self, annot_file: str):
+        """
+        Load anatomical annotation data onto the surface.
 
+        Parameters
+        ----------
+        annot_file : str
+            Path to the FreeSurfer annotation file (e.g., "lh.aparc.annot")
+
+        Raises
+        ------
+        FileNotFoundError
+            If the annotation file does not exist
+        ValueError
+            If the annotation file format is invalid or incompatible
+
+        Examples
+        --------
+        >>> surf = Surface("lh.pial")
+        >>> surf.load_annot("lh.aparc.annot")  # Desikan-Killiany atlas
+        >>> surf.load_annot("lh.aparc.a2009s.annot")  # Destrieux atlas
+
+        Notes
+        -----
+        Annotation files contain anatomical parcellations with region labels
+        and colors. The data is processed to create consistent vertex labeling
+        and a color lookup table. Region names are stored in the 'names' attribute.
+        """
         if not os.path.isfile(annot_file):
-            print("Annotation file not found")
-            return
+            raise FileNotFoundError(f"Annotation file not found: {annot_file}")
 
         # Read the annotation file
         lab, reg_ctable, reg_names = nib.freesurfer.read_annot(
@@ -74,10 +203,10 @@ class Surface:
         # Labels for all the regions
         sts = np.unique(lab)
 
-        # Relabelling to assing the correct colors
+        # Relabelling to assign the correct colors
         lab_ord = np.full(len(lab), 0)
 
-        # Create an an empty numpy array to store the colors
+        # Create an empty numpy array to store the colors
         reg_ctable_ord = np.ones((len(sts), 4)) * 255
 
         # Names of the regions
@@ -98,15 +227,11 @@ class Surface:
                 reg_ctable_ord[i, :4] = reg_ctable[ind, :4]
                 names_ord.append(reg_names[ind[0]])
             else:
-
                 names_ord.append("unknown")
 
         ctable = reg_ctable_ord[:, :3]
         # Add a 4th column with 255's
         ctable = np.c_[ctable, np.full(len(ctable), 255)]
-
-        # Create a matrix of ones with dimensions len(sts) x 3
-        # # Generate the pyvista mesh objects using polydata
 
         # Create a lookup table
         lut = pv.LookupTable()
@@ -115,194 +240,151 @@ class Surface:
         lut.scalar_range = (np.min(self.mesh["values"]), np.max(self.mesh["values"]))
 
         self.colors = lut
-        self.names = reg_names
+        self.names = names_ord
 
     def show(
         self,
-        cmap=None,
+        cmap: str = None,
         view: Union[str, List[str]] = "lateral",
+        link_views: bool = False,
+        colorbar_title: str = None,
+        title: str = None,
+        window_size: tuple = (1400, 900),
+        background_color: str = "white",
         ambient: float = 0.2,
         diffuse: float = 0.5,
         specular: float = 0.5,
         specular_power: int = 50,
-        opacity: float = 1,
+        opacity: float = 1.0,
         style: str = "surface",
         smooth_shading: bool = True,
         intensity: float = 0.2,
     ):
+        """
+        Display the brain surface with specified views and rendering options.
 
-        if cmap is not None:
+        Parameters
+        ----------
+        cmap : str, optional
+            Colormap name for scalar data visualization. Only used if surface has values.
+        view : str or list of str, default "lateral"
+            Anatomical view(s) to display. Options: "lateral", "medial", "dorsal",
+            "ventral", "rostral", "caudal", "all", or list of views.
+        link_views : bool, default False
+            Whether to synchronize camera movements between multiple views.
+        colorbar_title : str, optional
+            Title for the colorbar. Auto-detected if not provided.
+        title : str, optional
+            Main title for the visualization.
+        window_size : tuple, default (1400, 900)
+            Window size as (width, height) in pixels.
+        background_color : str, default "white"
+            Background color for the visualization.
+        ambient : float, default 0.2
+            Ambient lighting coefficient (0.0-1.0).
+        diffuse : float, default 0.5
+            Diffuse lighting coefficient (0.0-1.0).
+        specular : float, default 0.5
+            Specular lighting coefficient (0.0-1.0).
+        specular_power : int, default 50
+            Specular power for surface shininess.
+        opacity : float, default 1.0
+            Surface opacity (0.0-1.0).
+        style : str, default "surface"
+            Surface rendering style ("surface", "wireframe", "points").
+        smooth_shading : bool, default True
+            Whether to use smooth shading.
+        intensity : float, default 0.2
+            Light intensity (0.0-1.0).
+
+        Returns
+        -------
+        pv.Plotter
+            The PyVista plotter object for further customization.
+
+        Examples
+        --------
+        >>> surf = Surface("lh.pial")
+        >>> surf.show(view="lateral")
+
+        >>> surf.load_map("thickness.mgh")
+        >>> surf.show(view=["lateral", "medial"], colorbar_title="Thickness (mm)",
+        ...          link_views=True)
+
+        >>> surf.show(view="all", title="Brain Surface - All Views")
+        """
+        # Import here to avoid circular import
+        from . import visualizationtools as cltvis
+
+        # Apply custom colormap if provided and surface has values
+        if cmap is not None and "values" in self.mesh.array_names:
             lut = pv.LookupTable(cmap, n_values=len(np.unique(self.mesh["values"])))
             lut.scalar_range = (
                 np.min(self.mesh["values"]),
                 np.max(self.mesh["values"]),
             )
-            self.mesh.colors = lut
+            self.colors = lut
 
+        # Validate view parameter
         if isinstance(view, str):
             view = [view]
-            if not isinstance(view, List[str]):
-                raise ValueError("view must be a string or a list of strings")
+        elif not isinstance(view, list):
+            raise ValueError("view must be a string or a list of strings")
 
-        ly2plot = cltvis.DefineLayout(
-            [self.mesh], both=True, views=view, showtitle=False, showcolorbar=True
+        # Determine if we should show colorbar
+        show_colorbar = "values" in self.mesh.array_names and hasattr(self, "colors")
+
+        # Auto-detect colorbar title if not provided
+        if show_colorbar and colorbar_title is None:
+            colorbar_title = "Values"  # Default title
+
+        # Create layout (excluding intensity as it's not used by PyVista add_mesh)
+        layout = cltvis.DefineLayout(
+            meshes=[self],
+            views=view,
+            showtitle=title is not None,  # Enable title row if title is provided
+            showcolorbar=show_colorbar,
+            colorbar_title=colorbar_title,
+            ambient=ambient,
+            diffuse=diffuse,
+            specular=specular,
+            specular_power=specular_power,
+            opacity=opacity,
+            style=style,
+            smooth_shading=smooth_shading,
         )
 
-        ly2plot.plot()
+        # Plot and return plotter object
+        return layout.plot(
+            link_views=link_views,
+            window_size=window_size,
+            background_color=background_color,
+            title=title,
+        )
 
-    #     light1 = pv.Light(
-    #         position=(-0.9037, -0.4282, 0),
-    #         focal_point=(0, 0, 0),
-    #         color=[1.0, 1.0, 0.9843, 1.0],  # Color temp. 5400 K
-    #         intensity=intensity,
-    #     )
+    def print_available_views(self, hemisphere: str = None):
+        """
+        Print available views for brain surface visualization.
 
-    #     light2 = pv.Light(
-    #         position=(0.7877, -0.6160, 0),
-    #         focal_point=(0, 0, 0),
-    #         color=[1.0, 1.0, 0.9843, 1.0],  # Color temp. 5400 K
-    #         intensity=intensity,
-    #     )
-    #     light3 = pv.Light(
-    #         position=(0.1978, 0.9802, 0),
-    #         focal_point=(0, 0, 0),
-    #         color=[1.0, 1.0, 0.9843, 1.0],  # Color temp. 5400 K
-    #         intensity=intensity,
-    #     )
-    #     light4 = pv.Light(
-    #         position=(-0.9650, -0.2624, 0),
-    #         focal_point=(0, 0, 0),
-    #         color=[1.0, 1.0, 0.9843, 1.0],  # Color temp. 5400 K
-    #         intensity=intensity,
-    #     )
-    #     light5 = pv.Light(
-    #         position=(-0.4481, 0, 0.8940),
-    #         focal_point=(0, 0, 0),
-    #         color=[1.0, 1.0, 0.9843, 1.0],  # Color temp. 5400 K
-    #         intensity=intensity,
-    #     )
-    #     light6 = pv.Light(
-    #         position=(0.9844, 0, -0.1760),
-    #         focal_point=(0, 0, 0),
-    #         color=[1.0, 1.0, 0.9843, 1.0],  # Color temp. 5400 K
-    #         intensity=intensity,
-    #     )
+        Parameters
+        ----------
+        hemisphere : str, optional
+            Which hemisphere views to show. If None, uses the surface's hemisphere.
+            Options: 'lh', 'rh', 'both'
+        """
+        if hemisphere is None:
+            # Use the surface's hemisphere, but show both if unclear
+            if hasattr(self, "hemi") and self.hemi:
+                hemisphere = self.hemi
+            else:
+                hemisphere = "both"
 
-    #     pl = pv.Plotter(notebook=0, window_size=(800, 800))
-    #     pl.add_light(light1)
-    #     pl.add_light(light2)
-    #     pl.add_light(light3)
-    #     pl.add_light(light4)
-    #     pl.add_light(light5)
-    #     pl.add_light(light6)
+        # Import here to avoid circular import
+        from . import visualizationtools as cltvis
 
-    #     if cmap is None:
-    #         if hasattr(self, "values"):
-    #             if hasattr(self, "colors"):
-    #                 pl.add_mesh(
-    #                     self.mesh,
-    #                     scalars="values",
-    #                     cmap=self.colors,
-    #                     ambient=ambient,
-    #                     diffuse=diffuse,
-    #                     specular=specular,
-    #                     opacity=opacity,
-    #                     specular_power=specular_power,
-    #                     style=style,
-    #                     smooth_shading=smooth_shading,
-    #                 )
-    #             else:
-    #                 pl.add_mesh(
-    #                     self.mesh,
-    #                     scalars="values",
-    #                     ambient=ambient,
-    #                     diffuse=diffuse,
-    #                     specular=specular,
-    #                     opacity=opacity,
-    #                     specular_power=specular_power,
-    #                     style=style,
-    #                     smooth_shading=smooth_shading,
-    #                 )
-    #         else:
-    #             if hasattr(self, "colors"):
-    #                 pl.add_mesh(
-    #                     self.mesh,
-    #                     cmap=self.colors,
-    #                     ambient=ambient,
-    #                     diffuse=diffuse,
-    #                     specular=specular,
-    #                     opacity=opacity,
-    #                     specular_power=specular_power,
-    #                     style=style,
-    #                     smooth_shading=smooth_shading,
-    #                 )
-
-    #             else:
-    #                 pl.add_mesh(
-    #                     self.mesh,
-    #                     ambient=ambient,
-    #                     diffuse=diffuse,
-    #                     specular=specular,
-    #                     opacity=opacity,
-    #                     specular_power=specular_power,
-    #                     style=style,
-    #                     smooth_shading=smooth_shading,
-    #                 )
-    #     else:
-
-    #         lut = pv.LookupTable(cmap, n_values=len(np.unique(self.mesh["values"])))
-    #         lut.scalar_range = (
-    #             np.min(self.mesh["values"]),
-    #             np.max(self.mesh["values"]),
-    #         )
-    #         self.colors = lut
-
-    #         pl.add_mesh(
-    #             self.mesh,
-    #             scalars="values",
-    #             cmap=self.colors,
-    #             ambient=ambient,
-    #             diffuse=diffuse,
-    #             specular=specular,
-    #             opacity=opacity,
-    #             specular_power=specular_power,
-    #             style=style,
-    #             smooth_shading=smooth_shading,
-    #         )
-
-    #     pl.link_views()
-    #     pl.view_xy()  # link all the views
-    #     pl.show()
-
-    # def color_mesh(self):
-    #     if self.colors == "aparc":
-    #         mesh = self.mesh
-    #         mesh["values"] = self.annot
-    #         mesh = mesh.point_data_to_cell_data()
-    #         mesh.set_active_scalars("values")
-    #         mesh = mesh.warp_by_scalar()
-    #         mesh = mesh.smooth()
-    #         mesh = mesh.decimate(0.95)
-    #         return mesh
-    #     else:
-    #         mesh = self.mesh
-    #         mesh["values"] = 0
-    #         return mesh
-
-    # def print_attributes(self):
-    #     # Print all attributes and their values
-    #     for key, value in vars(self).items():
-    #         print(f"{key}:")
-    #         self._print_value(value, level=1)
-
-    # def _print_value(self, value, level):
-    #     """Helper method to print values hierarchically."""
-    #     if isinstance(value, dict):
-    #         for sub_key, sub_value in value.items():
-    #             print("  " * level + f"{sub_key}:")
-    #             self._print_value(sub_value, level + 1)
-    #     else:
-    #         print("  " * level + str(value))
+        # Create a temporary layout object to access the print method
+        temp_layout = cltvis.DefineLayout([self], views=["lateral"])
+        temp_layout.print_available_views(hemisphere)
 
 
 def vert_neib(faces, max_neib: int = 100):
@@ -339,7 +421,7 @@ def vert_neib(faces, max_neib: int = 100):
         # add temp array to vert_neib array
         vert_neib[i, : len(temp)] = temp
 
-    # Remove the colums that are all zeros
+    # Remove the columns that are all zeros
     vert_neib = vert_neib[:, ~np.all(vert_neib == 0, axis=0)]
 
     return vert_neib
@@ -377,10 +459,10 @@ def annot2pyvista(annot_file):
     # Labels for all the regions
     sts = np.unique(lab)
 
-    # Relabelling to assing the correct colors
+    # Relabelling to assign the correct colors
     lab_ord = np.full(len(lab), 0)
 
-    # Create an an empty numpy array to store the colors
+    # Create an empty numpy array to store the colors
     reg_ctable_ord = np.ones((len(sts), 4)) * 255
 
     # Names of the regions
@@ -399,7 +481,6 @@ def annot2pyvista(annot_file):
             reg_ctable_ord[i, :4] = reg_ctable[ind, :4]
             names_ord.append(reg_names[ind[0]])
         else:
-
             names_ord.append("unknown")
 
     return lab_ord, reg_ctable_ord, names_ord
