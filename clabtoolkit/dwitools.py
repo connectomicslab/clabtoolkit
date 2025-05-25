@@ -123,7 +123,7 @@ def delete_volumes(
     
     >>> delete_volumes('dwi.nii.gz', bvec_file='dwi.bvec', bval_file='dwi.bval') # will remove the last B0s and it will assume the bvec and bval files are in the same directory as the DWI file.
     
-    >>> delete_volumes('dwi.nii.gz', bvals_to_delete= [3000, "bvals >=5000"], out_image='dwi_clean.nii.gz') # will remove the volumes with bvals equal to 3000 and equal or higher than 5000. 
+    >>> delete_volumes('dwi.nii.gz', bvec_file='dwi.bvec', bval_file='dwi.bval', bvals_to_delete= [3000, "bvals >=5000"], out_image='dwi_clean.nii.gz') # will remove the volumes with bvals equal to 3000 and equal or higher than 5000. 
         The output will be saved in in dwi_clean.nii.gz
         IMPORTANT: the b-values file dwi.bval should be in the same directory as the DWI file.
         
