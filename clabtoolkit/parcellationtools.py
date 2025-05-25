@@ -1377,7 +1377,7 @@ class Parcellation:
         This method computes the volume of each region in the parcellation and stores it in the attribute called volumetable.
 
         """
-        import morphometrytools as cltmorpho
+        from . import morphometrytools as cltmorpho
 
         volume_table = cltmorpho.compute_reg_volume_fromparcellation(self)
         self.volumetable = volume_table
