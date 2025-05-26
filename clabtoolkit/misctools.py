@@ -606,42 +606,141 @@ def readjust_colors(
 
 ####################################################################################################
 def create_random_colors(
-    n: int, output_format: str = "rgb"
+    n: int,
+    output_format: str = "rgb",
+    cmap: Optional[str] = None,
+    random_seed: Optional[int] = None,
 ) -> Union[list[str], np.ndarray]:
     """
-    Function to create a list of n random colors
+    Generate n colors either randomly or from a specified matplotlib colormap.
+
+    This function creates a collection of colors that can be used for data visualization,
+    plotting, or other applications requiring distinct color schemes. Colors can be
+    generated randomly or sampled from matplotlib colormaps for better visual harmony.
 
     Parameters
     ----------
     n : int
-        Number of colors
-
-    fmt : str
-        Format of the colors. It can be 'rgb', 'rgbnorm' or 'hex'. Default is 'rgb'.
+        Number of colors to generate. Must be a positive integer.
+    output_format : str, default "rgb"
+        Format of the output colors. Supported formats:
+        - "rgb": RGB values as integers in range [0, 255]
+        - "rgbnorm": RGB values as floats in range [0.0, 1.0]
+        - "hex": Hexadecimal color strings (e.g., "#FF5733")
+    cmap : str or None, default None
+        Name of matplotlib colormap to use for color generation. If None,
+        colors are generated randomly. Popular options include:
+        - "viridis", "plasma", "inferno", "magma" (perceptually uniform)
+        - "PiYG", "RdYlBu", "Spectral" (diverging)
+        - "Set1", "Set2", "tab10" (qualitative)
+        - "Blues", "Reds", "Greens" (sequential)
+        See matplotlib.pyplot.colormaps() for full list.
+    random_seed : int or None, default None
+        Seed for random number generator to ensure reproducible results.
+        Only used when cmap is None.
 
     Returns
     -------
-    colors: list
-        List of random colors
+    colors : list of str or numpy.ndarray
+        Generated colors in the specified format:
+        - If output_format is "hex": list of hex color strings
+        - If output_format is "rgb" or "rgbnorm": numpy array of shape (n, 3)
 
-    How to Use:
-    ----------------
-        >>> colors = create_random_colors(5)
-        >>> print(colors)  # Output: [[123, 45, 67], [89, 12, 34], ...]
+    Raises
+    ------
+    ValueError
+        If output_format is not one of the supported formats.
+        If n is not a positive integer.
+        If cmap is not a valid matplotlib colormap name.
+    TypeError
+        If n is not an integer.
 
+    Examples
+    --------
+    Generate random colors:
+
+    >>> colors = create_random_colors(3, output_format="hex")
+    >>> print(colors)  # ['#A1B2C3', '#D4E5F6', '#789ABC']
+
+    >>> colors = create_random_colors(3, output_format="rgb")
+    >>> print(colors)  # [[161, 178, 195], [212, 229, 246], [120, 154, 188]]
+
+    Generate colors from a colormap:
+
+    >>> colors = create_random_colors(5, output_format="hex", cmap="PiYG")
+    >>> print(colors)  # ['#8E0152', '#C994C7', '#F7F7F7', '#A1DAB4', '#276419']
+
+    >>> colors = create_random_colors(4, output_format="rgbnorm", cmap="viridis")
+    >>> print(colors)  # [[0.267, 0.005, 0.329], [0.229, 0.322, 0.545], ...]
+
+    Notes
+    -----
+    - When using a colormap, colors are evenly spaced across the colormap range
+    - Random colors are generated uniformly across RGB space and may not be
+      visually harmonious
+    - For better visual results with random colors, consider using the
+      harmonize_colors() function (if available)
+    - Colormaps provide better perceptual uniformity and accessibility
     """
+
+    # Input validation
+    if not isinstance(n, int):
+        raise TypeError("n must be an integer")
+    if n <= 0:
+        raise ValueError("n must be a positive integer")
 
     output_format = output_format.lower()
     if output_format not in ["hex", "rgb", "rgbnorm"]:
         raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
-    # Create a numpy array with n random colors in the range 0-255
-    colors = np.random.randint(0, 255, size=(n, 3))
+    # Set random seed if provided
+    if random_seed is not None:
+        np.random.seed(random_seed)
 
-    # Harmonizing the colors
-    colors = harmonize_colors(colors, output_format=output_format)
+    if cmap is not None:
+        # Generate colors from colormap
+        try:
+            colormap = plt.get_cmap(cmap)
+        except ValueError:
+            raise ValueError(
+                f"'{cmap}' is not a valid matplotlib colormap name. "
+                f"Use plt.colormaps() to see available options."
+            )
 
-    return colors
+        # Generate evenly spaced points across the colormap
+        if n == 1:
+            indices = [0.5]  # Use middle of colormap for single color
+        else:
+            indices = np.linspace(0, 1, n)
+
+        # Get colors from colormap (returns RGBA, we take only RGB)
+        colors_norm = np.array([colormap(idx)[:3] for idx in indices])
+
+        if output_format == "rgbnorm":
+            return colors_norm
+        elif output_format == "rgb":
+            return (colors_norm * 255).astype(int)
+        else:  # hex
+            return [mcolors.rgb2hex(color) for color in colors_norm]
+
+    else:
+        # Generate random colors
+        colors = np.random.randint(0, 255, size=(n, 3))
+
+        # Apply harmonization if the function is available
+        try:
+            colors = harmonize_colors(colors, output_format=output_format)
+            return colors
+        except NameError:
+            # harmonize_colors function not available, proceed without harmonization
+            pass
+
+        if output_format == "rgb":
+            return colors
+        elif output_format == "rgbnorm":
+            return colors / 255.0
+        else:  # hex
+            return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
 
 ###################################################################################################
