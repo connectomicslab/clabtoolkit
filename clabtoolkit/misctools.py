@@ -17,6 +17,7 @@ import pandas as pd
 
 from pathlib import Path
 from colorama import init, Fore, Style, Back
+init(autoreset=True)
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
