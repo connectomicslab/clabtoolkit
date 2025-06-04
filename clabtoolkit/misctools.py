@@ -2126,7 +2126,13 @@ def remove_trailing_separators(path: str) -> str:
 
 
 ####################################################################################################
-def detect_recursive_files(in_dir):
+def get_all_files(
+    in_dir: Union[str, Path],
+    recursive: bool = True,
+    or_filter: Union[str, List[str]] = None,
+    and_filter: Union[str, List[str]] = None,
+    bool_case: bool = False,
+) -> list:
     """
     Function to detect all the files in a directory and its subdirectories
 
@@ -2135,25 +2141,219 @@ def detect_recursive_files(in_dir):
     in_dir : str
         Input directory
 
+    recursive : bool
+        If True, the function will search recursively in all subdirectories.
+        If False, it will only search in the specified directory.
+
+    Raises
+    ------
+    ValueError
+        If the input directory does not exist or is not a directory.
+    ValueError
+        If the input directory is empty.
+    ValueError
+        If the input directory is not a string.
+    ValueError
+        If the input directory is not a valid path.
+
     Returns
     -------
     files: list
         List of files in the directory and its subdirectories
 
-    How to Use:
+    Examples:
     ----------------
         >>> in_dir = "/path/to/directory"
-        >>> files = detect_recursive_files(in_dir)
+        >>> files = get_all_files(in_dir)
         >>> print(files)  # Output: List of files in the directory and its subdirectories
     """
 
-    files = []
-    # r=root, d=directories, f = files
-    for r, d, f in os.walk(in_dir):
-        for file in f:
-            files.append(os.path.join(r, file))
+    if isinstance(in_dir, str):
+        try:
+            in_dir = Path(in_dir)
+        except Exception as e:
+            raise ValueError(f"Invalid input directory path: {in_dir}. Error: {e}")
+    elif not isinstance(in_dir, Path):
+        raise ValueError("The input in_dir must be a string or a Path object.")
 
-    return files
+    # If the input directory is a file, raise an error
+    if in_dir.is_file():
+        raise ValueError(f"The input path is a file, not a directory: {in_dir}")
+
+    # If the input directory is a symlink, raise an error
+    if in_dir.is_symlink():
+        raise ValueError(f"The input path is a symlink, not a directory: {in_dir}")
+
+    if not isinstance(in_dir, Path):
+        raise ValueError("The input in_dir must be a string or a Path object.")
+
+    if not in_dir.exists():
+        raise ValueError(f"The input directory does not exist: {in_dir}")
+    if not in_dir.is_dir():
+        raise ValueError(f"The input path is not a directory: {in_dir}")
+
+    if not in_dir.is_absolute():
+        raise ValueError(f"The input path is not an absolute path: {in_dir}")
+
+    if not os.listdir(in_dir):
+        raise ValueError(f"The input directory is empty: {in_dir}")
+
+    if or_filter is not None:
+        if isinstance(or_filter, str):
+            or_filter = [or_filter]
+
+        if not isinstance(or_filter, list):
+            raise ValueError("The or_filter must be a string or a list of strings.")
+
+    # Initialize an empty list to store the file paths
+    if not recursive:
+        all_files = [
+            os.path.join(in_dir, f)
+            for f in os.listdir(in_dir)
+            if os.path.isfile(os.path.join(in_dir, f))
+        ]
+    else:
+
+        all_files = []
+        # r=root, d=directories, f = files
+        for r, d, f in os.walk(in_dir):
+            for file in f:
+                all_files.append(os.path.join(r, file))
+
+    if or_filter is not None:
+        all_files = filter_by_substring(
+            all_files, or_filter=or_filter, and_filter=None, bool_case=bool_case
+        )
+
+    if and_filter is not None:
+        all_files = filter_by_substring(
+            all_files,
+            or_filter=and_filter[0],
+            and_filter=and_filter,
+            bool_case=bool_case,
+        )
+
+    # Check if the list of files is empty
+    if not all_files:
+        raise ValueError(f"No files found in the directory: {in_dir}")
+
+    return all_files
+
+
+####################################################################################################
+def rename_folders(
+    folder_paths: List[str], replacements: Dict[str, str], bool_case: bool = True
+) -> List[Tuple[str, str]]:
+    """
+    Rename folders by replacing specified strings in their paths.
+
+    This function identifies all unique directory paths that need renaming (including parent
+    directories) and renames them from deepest to shallowest to avoid conflicts.
+
+    Parameters
+    ----------
+    folder_paths : List[str]
+        List of folder paths to be renamed.
+    replacements : Dict[str, str]
+        Dictionary where keys are old strings to replace and values are new strings.
+        Replacements are applied in order of string length (longest first) to avoid
+        partial matches.
+    bool_case : bool, optional
+        If True (default), performs case-sensitive replacement.
+        If False, performs case-insensitive replacement.
+
+    Returns
+    -------
+    List[Tuple[str, str]]
+        List of tuples containing (old_path, new_path) for successfully renamed folders.
+
+    Raises
+    ------
+    OSError
+        If there are permission issues or filesystem errors during renaming.
+    FileNotFoundError
+        If a folder path doesn't exist when attempting to rename.
+    FileExistsError
+        If the target path already exists.
+
+    Example
+    -------
+    >>> folder_paths = [
+    ...     '/data/sub-CHUVL488/ses-V1/dwi',
+    ...     '/data/sub-CHUVL488/ses-V1/func'
+    ... ]
+    >>> replacements = {"CHUVL488": "L488", "V1": "S1"}
+    >>> renamed = rename_folders(folder_paths, replacements, bool_case=True)
+    >>> print(f"Renamed {len(renamed)} folders")
+    """
+
+    def apply_replacements(path: str) -> str:
+        """Apply all replacements to a path string."""
+        new_path = path
+        # Sort replacements by length (longer strings first) to avoid partial matches
+        sorted_replacements = sorted(
+            replacements.items(), key=lambda x: len(x[0]), reverse=True
+        )
+
+        for old_str, new_str in sorted_replacements:
+            if bool_case:
+                new_path = new_path.replace(old_str, new_str)
+            else:
+                pattern = re.escape(old_str)
+                new_path = re.sub(pattern, new_str, new_path, flags=re.IGNORECASE)
+        return new_path
+
+    # Collect all unique directory paths that need to be considered for renaming
+    all_directories: Set[str] = set()
+
+    for folder_path in folder_paths:
+        # Add the folder itself and all its parent directories
+        current_path = folder_path
+        while current_path and current_path != "/":
+            all_directories.add(current_path)
+            current_path = os.path.dirname(current_path)
+
+    # Build rename operations for directories that actually need renaming
+    rename_operations = []
+
+    for old_path in all_directories:
+        new_path = apply_replacements(old_path)
+
+        # Only add to operations if path actually changed
+        if old_path != new_path:
+            rename_operations.append((old_path, new_path))
+
+    # Sort by path depth (deepest first) to avoid parent-child conflicts
+    rename_operations.sort(key=lambda x: x[0].count("/"), reverse=True)
+
+    # Execute rename operations
+    successfully_renamed = []
+
+    for old_path, new_path in rename_operations:
+        try:
+            if os.path.exists(old_path):
+                # Create parent directories of new path if they don't exist
+                parent_dir = os.path.dirname(new_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
+
+                # Check if target already exists
+                if os.path.exists(new_path):
+                    print(f"Warning: Target already exists, skipping: {new_path}")
+                    continue
+
+                # Perform the rename
+                os.rename(old_path, new_path)
+                successfully_renamed.append((old_path, new_path))
+                print(f"Renamed: {old_path} -> {new_path}")
+            else:
+                print(f"Warning: Path does not exist: {old_path}")
+
+        except OSError as e:
+            print(f"Error renaming {old_path}: {e}")
+            continue
+
+    return successfully_renamed
 
 
 ####################################################################################################
