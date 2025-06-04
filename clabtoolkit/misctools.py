@@ -1,5 +1,8 @@
 import numpy as np
-from typing import Union, Dict, List
+import h5py
+
+from typing import Union, Dict, List, Tuple, Set, Any, Optional
+
 import shlex
 import os
 import argparse
@@ -11,7 +14,9 @@ import types
 import re
 import json
 import pandas as pd
+
 from pathlib import Path
+from colorama import init, Fore, Style, Back
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
@@ -2068,7 +2073,7 @@ def ismember_from_list(a, b):
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def detect_leaf_directories(root_dir: str) -> list:
+def get_leaf_directories(root_dir: str) -> list:
     """
     Finds all folders inside the given directory that do not contain any subfolders.
 
@@ -2085,7 +2090,7 @@ def detect_leaf_directories(root_dir: str) -> list:
     How to Use:
     --------------
         >>> root_directory = "/path/to/your/folder"
-        >>> leaf_folders = detect_leaf_directories(root_directory)
+        >>> leaf_folders = get_leaf_directories(root_directory)
         >>> print("Leaf folders:", leaf_folders)
     """
 
@@ -3036,15 +3041,18 @@ def generate_container_command(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############       Section 10: Methods to print modules information and signatures      ############
+############       Section 10: Methods to print information and signatures              ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
 
 
-def format_signature(sig: inspect.Signature):
-    """Formats a function signature with ANSI colors."""
+def _format_signature(sig: inspect.Signature):
+    """
+    Formats a function signature with ANSI colors.
+
+    """
     parts = [f"{bcolors.OKWHITE}({bcolors.ENDC}"]
     params = list(sig.parameters.values())
     for i, p in enumerate(params):
@@ -3113,7 +3121,7 @@ def show_module_contents(module):
                         and method.__qualname__.startswith(obj.__name__ + ".")
                     ):
                         sig = inspect.signature(method)
-                        formatted_sig = format_signature(sig)
+                        formatted_sig = _format_signature(sig)
                         print(
                             f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}"
                         )
@@ -3134,10 +3142,353 @@ def show_module_contents(module):
             obj = getattr(module, name)
             if inspect.isfunction(obj) and obj.__module__ == module.__name__:
                 sig = inspect.signature(obj)
-                formatted_sig = format_signature(sig)
+                formatted_sig = _format_signature(sig)
                 print(f"  {bcolors.OKYELLOW}- {name}{bcolors.ENDC}{formatted_sig}")
                 doc = inspect.getdoc(obj)
                 if doc:
                     print(f"    {bcolors.OKGRAY}# {doc.splitlines()[0]}{bcolors.ENDC}")
         except Exception:
             continue
+
+
+####################################################################################################
+
+
+def print_h5_structure(
+    file_path: str,
+    max_datasets_per_group: int = 20,
+    max_attrs: int = 5,
+    show_values: bool = True,
+) -> Dict[str, Any]:
+    """
+    Print the hierarchical structure of an HDF5 file with colors and tree visualization.
+
+    This function displays HDF5 file contents in a tree-like structure with color-coded
+    elements, detailed information about datasets and groups, and limits the number of
+    datasets shown per group to avoid overwhelming output.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the HDF5 file to analyze
+    max_datasets_per_group : int, default=20
+        Maximum number of datasets to display per group before truncating.
+        Groups will show all child groups but limit datasets to this number.
+    max_attrs : int, default=5
+        Maximum number of attributes to display per item before truncating
+    show_values : bool, default=True
+        Whether to show attribute values in the output. If False, only
+        attribute names are displayed.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing file statistics with keys:
+        - 'groups': total number of groups in the file
+        - 'datasets': total number of datasets in the file
+        - 'total_size_mb': total size of all datasets in megabytes
+        - 'file_path': path to the analyzed file
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified file does not exist
+    OSError
+        If the file cannot be opened or is not a valid HDF5 file
+    Exception
+        For other HDF5 reading errors or invalid file formats
+
+    Example
+    -------
+    >>> stats = print_h5_structure("/path/to/data.h5", max_datasets_per_group=10)
+    📁 data/ (group)
+    ├── 📊 measurements [1000 × 256] float64 (2.0 MB)
+    │   └── 🏷️ @units = 'volts'
+    ├── 📁 metadata/ (group)
+    │   └── 📊 info scalar string (0.0 MB)
+    └── 📊 results [100 × 50] complex128 (0.8 MB)
+
+    >>> print(f"File contains {stats['datasets']} datasets")
+    File contains 15 datasets
+
+    Notes
+    -----
+    - Groups are displayed with 📁 (red color)
+    - Datasets are displayed with 📊 (green color)
+    - Attributes are displayed with 🏷️ (yellow color)
+    - Tree structure uses Unicode box-drawing characters
+    - Large groups show first N datasets + truncation message
+    - Requires colorama package for colored output
+    """
+
+    def _get_tree_chars(is_last: bool, depth: int) -> str:
+        """Generate tree characters for visual hierarchy."""
+        if depth == 0:
+            return ""
+
+        chars = ""
+        for i in range(depth - 1):
+            chars += "│   "
+
+        if is_last:
+            chars += "└── "
+        else:
+            chars += "├── "
+
+        return chars
+
+    def _format_dtype(dtype: np.dtype) -> str:
+        """Format numpy dtype for display."""
+        if dtype.names:  # Compound dtype
+            return f"compound({len(dtype.names)} fields)"
+        return str(dtype)
+
+    def _format_shape(shape: Tuple[int, ...]) -> str:
+        """Format array shape for display."""
+        if shape == ():
+            return "scalar"
+        return f"[{' × '.join(map(str, shape))}]"
+
+    def _format_attribute_value(value: Any) -> str:
+        """Format an attribute value for display."""
+        if isinstance(value, np.ndarray):
+            if value.size == 1:
+                return f" = {value.item()}"
+            elif value.size <= 5:
+                return f" = {value.tolist()}"
+            else:
+                return f" = [{_format_shape(value.shape)} array]"
+        elif isinstance(value, (bytes, np.bytes_)):
+            return f" = '{value.decode('utf-8', errors='ignore')}'"
+        else:
+            return f" = {value}"
+
+    def _print_attributes(obj: h5py.HLObject, depth: int, prefix: str = "") -> None:
+        """Print attributes of an HDF5 object."""
+        if not obj.attrs:
+            return
+
+        attrs = list(obj.attrs.items())
+        for i, (name, value) in enumerate(attrs[:max_attrs]):
+            is_last_attr = i == len(attrs[:max_attrs]) - 1
+            attr_prefix = _get_tree_chars(is_last_attr, depth + 1)
+
+            # Format attribute value
+            if show_values:
+                val_str = _format_attribute_value(value)
+            else:
+                val_str = ""
+
+            print(
+                f"{prefix}{attr_prefix}"
+                f"{Fore.YELLOW}@{name}{Style.RESET_ALL}"
+                f"{Fore.CYAN}{val_str}{Style.RESET_ALL}"
+            )
+
+        if len(attrs) > max_attrs:
+            more_attrs = len(attrs) - max_attrs
+            attr_prefix = _get_tree_chars(True, depth + 1)
+            print(
+                f"{prefix}{attr_prefix}"
+                f"{Style.DIM}... {more_attrs} more attributes{Style.RESET_ALL}"
+            )
+
+    def _print_item(
+        name: str,
+        obj: h5py.HLObject,
+        depth: int = 0,
+        prefix: str = "",
+        is_last: bool = True,
+    ) -> None:
+        """Recursively print HDF5 items with proper handling of dataset limits."""
+        tree_chars = _get_tree_chars(is_last, depth)
+
+        if isinstance(obj, h5py.Group):
+            # Print group
+            print(
+                f"{prefix}{tree_chars}"
+                f"{Fore.RED}📁 {name}{Style.RESET_ALL} "
+                f"{Style.DIM}(group){Style.RESET_ALL}"
+            )
+
+            stats["groups"] += 1
+
+            # Print group attributes
+            _print_attributes(obj, depth, prefix)
+
+            # Print group contents with dataset limiting
+            items = list(obj.items())
+            datasets = [(n, o) for n, o in items if isinstance(o, h5py.Dataset)]
+            groups = [(n, o) for n, o in items if isinstance(o, h5py.Group)]
+
+            # Combine groups first, then limited datasets
+            display_items = groups + datasets[:max_datasets_per_group]
+
+            for i, (child_name, child_obj) in enumerate(display_items):
+                is_last_child = (i == len(display_items) - 1) and len(
+                    datasets
+                ) <= max_datasets_per_group
+                _print_item(child_name, child_obj, depth + 1, prefix, is_last_child)
+
+            # Show truncation message if needed
+            if len(datasets) > max_datasets_per_group:
+                truncated_count = len(datasets) - max_datasets_per_group
+                truncation_prefix = _get_tree_chars(True, depth + 1)
+                print(
+                    f"{prefix}{truncation_prefix}"
+                    f"{Style.DIM}... {truncated_count} more datasets (showing first {max_datasets_per_group}){Style.RESET_ALL}"
+                )
+
+        elif isinstance(obj, h5py.Dataset):
+            # Print dataset
+            shape_str = _format_shape(obj.shape)
+            dtype_str = _format_dtype(obj.dtype)
+            size_mb = obj.nbytes / (1024 * 1024)
+
+            print(
+                f"{prefix}{tree_chars}"
+                f"{Fore.GREEN}📊 {name}{Style.RESET_ALL} "
+                f"{Fore.BLUE}{shape_str}{Style.RESET_ALL} "
+                f"{Fore.MAGENTA}{dtype_str}{Style.RESET_ALL} "
+                f"{Style.DIM}({size_mb:.1f} MB){Style.RESET_ALL}"
+            )
+
+            stats["datasets"] += 1
+            stats["total_size"] += obj.nbytes
+
+            # Print dataset attributes
+            _print_attributes(obj, depth, prefix)
+
+    def _count_all_items(obj: h5py.HLObject, counts: Dict[str, int]) -> None:
+        """Recursively count all items in the HDF5 file."""
+        if isinstance(obj, h5py.Group):
+            counts["groups"] += 1
+            for item in obj.values():
+                _count_all_items(item, counts)
+        elif isinstance(obj, h5py.Dataset):
+            counts["datasets"] += 1
+            counts["total_size"] += obj.nbytes
+
+    # Initialize statistics
+    stats = {"groups": 0, "datasets": 0, "total_size": 0}
+
+    try:
+        print(f"\n{Back.BLUE}{Fore.WHITE} HDF5 File Structure {Style.RESET_ALL}")
+        print(f"{Style.BRIGHT}File: {file_path}{Style.RESET_ALL}\n")
+
+        with h5py.File(file_path, "r") as f:
+            # Print root attributes if any
+            if f.attrs:
+                print(f"{Fore.YELLOW}Root Attributes:{Style.RESET_ALL}")
+                _print_attributes(f, -1, "")
+                print()
+
+            # Print file contents
+            items = list(f.items())
+            if not items:
+                print(f"{Style.DIM}(empty file){Style.RESET_ALL}")
+            else:
+                for i, (name, obj) in enumerate(items):
+                    is_last = i == len(items) - 1
+                    _print_item(name, obj, 0, "", is_last)
+
+            # Count all items for accurate statistics
+            total_counts = {"groups": 0, "datasets": 0, "total_size": 0}
+            _count_all_items(f, total_counts)
+
+        # Print legend
+        print(f"\n{Style.BRIGHT}Legend:{Style.RESET_ALL}")
+        print(f"📁 {Fore.RED}Groups{Style.RESET_ALL} - containers/folders")
+        print(f"📊 {Fore.GREEN}Datasets{Style.RESET_ALL} - data arrays")
+        print(f"🏷️ {Fore.YELLOW}Attributes{Style.RESET_ALL} - metadata")
+
+        # Print file statistics (use total counts, not display counts)
+        print(f"\n{Style.BRIGHT}File Statistics:{Style.RESET_ALL}")
+        print(f"📁 Total Groups: {total_counts['groups']}")
+        print(f"📊 Total Datasets: {total_counts['datasets']}")
+        print(f"💾 Total Size: {total_counts['total_size'] / (1024*1024):.1f} MB")
+
+        # Return statistics
+        return {
+            "groups": total_counts["groups"],
+            "datasets": total_counts["datasets"],
+            "total_size_mb": total_counts["total_size"] / (1024 * 1024),
+            "file_path": file_path,
+        }
+
+    except FileNotFoundError:
+        print(f"{Fore.RED}Error: File '{file_path}' not found{Style.RESET_ALL}")
+        raise
+    except OSError as e:
+        print(f"{Fore.RED}Error: Cannot open file '{file_path}' - {e}{Style.RESET_ALL}")
+        raise
+    except Exception as e:
+        print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+        raise
+
+
+def print_h5_structure_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
+    """
+    Print a simplified version of the HDF5 structure without colors (for basic terminals).
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the HDF5 file to analyze
+    max_datasets_per_group : int, default=20
+        Maximum number of datasets to display per group before truncating
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified file does not exist
+    OSError
+        If the file cannot be opened or is not a valid HDF5 file
+
+    Example
+    -------
+    >>> print_h5_structure_simple("data.h5", max_datasets_per_group=10)
+    HDF5 Structure: data.h5
+    --------------------------------------------------
+    📁 data/ (group)
+        📊 measurements [1000, 256] float64
+        📁 metadata/ (group)
+        📊 info () <U10
+        ... 5 more datasets
+    """
+
+    def _print_item_simple(name: str, obj: h5py.HLObject, depth: int = 0) -> None:
+        """Print items in simple format without colors."""
+        indent = "  " * depth
+
+        if isinstance(obj, h5py.Group):
+            print(f"{indent}📁 {name}/ (group)")
+
+            # Apply same dataset limiting logic
+            items = list(obj.items())
+            datasets = [(n, o) for n, o in items if isinstance(o, h5py.Dataset)]
+            groups = [(n, o) for n, o in items if isinstance(o, h5py.Group)]
+
+            # Show all groups, limited datasets
+            for child_name, child_obj in groups + datasets[:max_datasets_per_group]:
+                _print_item_simple(child_name, child_obj, depth + 1)
+
+            if len(datasets) > max_datasets_per_group:
+                truncated = len(datasets) - max_datasets_per_group
+                print(f"{'  ' * (depth + 1)}... {truncated} more datasets")
+
+        elif isinstance(obj, h5py.Dataset):
+            shape = obj.shape if obj.shape != () else "scalar"
+            print(f"{indent}📊 {name} {shape} {obj.dtype}")
+
+    try:
+        print(f"HDF5 Structure: {file_path}")
+        print("-" * 50)
+
+        with h5py.File(file_path, "r") as f:
+            for name, obj in f.items():
+                _print_item_simple(name, obj)
+
+    except Exception as e:
+        print(f"Error: {e}")
+        raise
