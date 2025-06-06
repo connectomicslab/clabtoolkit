@@ -486,19 +486,96 @@ def recursively_replace_entity_value(
 
     replacements = dict(zip(dict2old_list, dict2new_list))
 
-    # Walk through the directory from bottom to top (reverse)
-    for root, dirs, files in os.walk(root_dir, topdown=False):
-        # Rename files
-        for file_name in files:
+    #
+    all_files = cltmisc.get_all_files(
+        root_dir, or_filter=dict2old_list[0], and_filter=dict2old_list
+    )
+
+    if not all_files:
+        print(
+            "No files found that match the specified entities. Please check the input parameters."
+        )
+        return
+
+    else:
+        all_dirs = []
+        for file in all_files:
+            file_path = os.path.dirname(file)
+            file_name = os.path.basename(file)
+            all_dirs.append(file_path)
 
             for i, subst_x in enumerate(dict2old_list):
                 subst_y = dict2new_list[i]
                 if subst_x in file_name:
-                    old_path = os.path.join(root, file_name)
+                    old_path = os.path.join(file_path, file_name)
                     new_name = file_name.replace(subst_x, subst_y)
-                    new_path = os.path.join(root, new_name)
+                    new_path = os.path.join(file_path, new_name)
                     os.rename(old_path, new_path)
-                    file_name = new_name
+                    file_name = (
+                        new_name  # Update old_path to the new path after renaming
+                    )
+
+        all_dirs = set(all_dirs)  # Remove duplicates from the directory list
+
+        # Renaming the directories
+        cltmisc.rename_folders(all_dirs, replacements)
+
+
+####################################################################################################
+def recursively_replace_entity_key(root_dir: str, replacements: dict):
+    """
+    This method replaces the keys of certain entities in all the files and folders of a BIDs dataset.
+
+    Parameters
+    ----------
+    root_dir: str
+        Root directory of the BIDs dataset
+
+    replacements: dict
+        Dictionary containing the entities to replace and their new keys.
+        Example: {'acq': 'desc', 'run': 'runny'}
+
+    Returns
+    -------
+    None
+        The method will rename the files and folders in the BIDs dataset. All the files or folders containing the old
+        entities' names on their names will be renamed and the old entities will be replaced with the new entities.
+
+    """
+    # Detect if the BIDs directory exists
+    if not os.path.isdir(root_dir):
+        raise ValueError("The BIDs directory does not exist.")
+
+    old_keys = list(replacements.keys())
+    new_keys = list(replacements.values())
+
+    all_files = cltmisc.get_all_files(
+        root_dir, or_filter=old_keys[0], and_filter=old_keys
+    )
+
+    if not all_files:
+        print(
+            "No files found that match the specified entities. Please check the input parameters."
+        )
+        return
+
+    else:
+        all_dirs = []
+        for file in all_files:
+            file_path = os.path.dirname(file)
+            file_name = os.path.basename(file)
+            all_dirs.append(file_path)
+
+            for i, subst_x in enumerate(old_keys):
+                subst_y = new_keys[i]
+                if subst_x in file_name:
+                    old_path = os.path.join(file_path, file_name)
+                    new_name = file_name.replace(subst_x, subst_y)
+                    new_path = os.path.join(file_path, new_name)
+                    os.rename(old_path, new_path)
+                    file_name = (
+                        new_name  # Update old_path to the new path after renaming
+                    )
 
                 # the file is the tsv open the file and replace the string
                 if file_name.endswith("sessions.tsv"):
