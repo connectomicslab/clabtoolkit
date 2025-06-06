@@ -1270,6 +1270,11 @@ def copy_bids_folder(
 
     if subjects_to_copy is None:
         subjects_to_copy = get_subjects(bids_dir)
+    else:
+        # Check if the cad "sub-" is in the subjects_to_copy of not add it
+        subjects_to_copy = [
+            sub if sub.startswith("sub-") else f"sub-{sub}" for sub in subjects_to_copy
+        ]
 
     # Selecting the BIDs folders that will be copied
     if isinstance(folders_to_copy, str):
@@ -1324,6 +1329,9 @@ def copy_bids_folder(
                 "WARNING: No derivatives folders were found with the specified names."
             )
             copy_derivatives = False
+    else:
+        copy_derivatives = False
+        der_pipe_folders = []
 
     progress = Progress(
         TextColumn("[bold blue]{task.description}", justify="right"),
