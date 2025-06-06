@@ -172,8 +172,7 @@ def entity2str(entity: dict) -> str:
 
 ####################################################################################################
 def delete_entity(
-    entity: Union[dict, str], 
-    key2rem: Union[List[str], str, dict]
+    entity: Union[dict, str], ent2rem: Union[List[str], str, dict]
 ) -> Union[dict, str]:
     """
     Removes specified keys from an entity dictionary or string representation.
@@ -182,8 +181,9 @@ def delete_entity(
     ----------
     entity : dict or str
         Dictionary or string containing the entities.
-    key2rem : List[str], str or dict
-        Key(s) to remove from the entity dictionary or string. If key2rem is a dictionary,
+
+    ent2rem : List[str], str or dict
+        Entities to be removed from the entity dictionary or string. If ent2rem is a dictionary,
         only the combination key-value will be removed from the filenames.
 
     Returns
@@ -212,20 +212,22 @@ def delete_entity(
         key2rem = [ent2rem]
 
     elif isinstance(ent2rem, list):
-        key2rem = set(ent2rem)  # Convert to a set for unique keys
+        key2rem = list(set(ent2rem))  # Convert to a set for unique keys
 
     elif isinstance(ent2rem, dict):
         rem_is_dict = True
         key2rem = list(ent2rem.keys())
-        
+
     else:
-        raise ValueError("The ent2rem parameter must be a string, list of strings, or dictionary.")
+        raise ValueError(
+            "The ent2rem parameter must be a string, list of strings, or dictionary."
+        )
 
     # Remove specified keys from the entity dictionary.
     for key in key2rem:
         if rem_is_dict:
             # If `key2rem` is a dictionary, check if the key exists and has the specified value.
-            if key in entity_out and entity_out[key] in key2rem[key]:
+            if key in entity_out and entity_out[key] in ent2rem[key]:
                 entity_out.pop(key, None)
         else:
             entity_out.pop(key, None)  # `pop` with default `None` avoids KeyErrors.
