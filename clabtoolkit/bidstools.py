@@ -208,11 +208,18 @@ def delete_entity(
         raise ValueError("The entity must be a dictionary or a string.")
 
     # Ensure `key2rem` is a list for uniform processing.
-    if isinstance(key2rem, str):
-        key2rem = [key2rem]
-    elif isinstance(key2rem, dict):
+    if isinstance(ent2rem, str):
+        key2rem = [ent2rem]
+
+    elif isinstance(ent2rem, list):
+        key2rem = set(ent2rem)  # Convert to a set for unique keys
+
+    elif isinstance(ent2rem, dict):
         rem_is_dict = True
-        key2rem = list(key2rem.keys())
+        key2rem = list(ent2rem.keys())
+        
+    else:
+        raise ValueError("The ent2rem parameter must be a string, list of strings, or dictionary.")
 
     # Remove specified keys from the entity dictionary.
     for key in key2rem:
@@ -475,7 +482,7 @@ def recursively_replace_entity_value(
     dict2old_list = [f"{key}-{value}" for key, value in dict2old.items()]
     dict2new_list = [f"{key}-{value}" for key, value in dict2new.items()]
 
-    # Find all the files and folders that contain a certain string any of the key values in the dictionary dict2old
+    replacements = dict(zip(dict2old_list, dict2new_list))
 
     # Walk through the directory from bottom to top (reverse)
     for root, dirs, files in os.walk(root_dir, topdown=False):
