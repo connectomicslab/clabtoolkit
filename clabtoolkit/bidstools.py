@@ -134,7 +134,8 @@ def entity2str(entity: dict) -> str:
 
 ####################################################################################################
 def delete_entity(
-    entity: Union[dict, str], key2rem: Union[List[str], str]
+    entity: Union[dict, str], 
+    key2rem: Union[List[str], str, dict]
 ) -> Union[dict, str]:
     """
     Removes specified keys from an entity dictionary or string representation.
@@ -143,8 +144,9 @@ def delete_entity(
     ----------
     entity : dict or str
         Dictionary or string containing the entities.
-    key2rem : list or str
-        Key(s) to remove from the entity dictionary or string.
+    key2rem : List[str], str or dict
+        Key(s) to remove from the entity dictionary or string. If key2rem is a dictionary,
+        only the combination key-value will be removed from the filenames.
 
     Returns
     -------
@@ -159,6 +161,7 @@ def delete_entity(
     """
     # Determine if `entity` is a string and convert if necessary.
     is_string = isinstance(entity, str)
+    rem_is_dict = False  # Boolean variable in case you want to delete an entity with a certain value and the key2remis a dictionary
     if is_string:
         entity_out = str2entity(entity)
     elif isinstance(entity, dict):
@@ -169,10 +172,18 @@ def delete_entity(
     # Ensure `key2rem` is a list for uniform processing.
     if isinstance(key2rem, str):
         key2rem = [key2rem]
+    elif isinstance(key2rem, dict):
+        rem_is_dict = True
+        key2rem = list(key2rem.keys())
 
     # Remove specified keys from the entity dictionary.
     for key in key2rem:
-        entity_out.pop(key, None)  # `pop` with default `None` avoids KeyErrors.
+        if rem_is_dict:
+            # If `key2rem` is a dictionary, check if the key exists and has the specified value.
+            if key in entity_out and entity_out[key] in key2rem[key]:
+                entity_out.pop(key, None)
+        else:
+            entity_out.pop(key, None)  # `pop` with default `None` avoids KeyErrors.
 
     # Convert back to string format if original input was a string.
     if is_string:
