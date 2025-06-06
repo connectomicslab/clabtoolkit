@@ -28,6 +28,44 @@ from rich.panel import Panel
 from . import misctools as cltmisc
 
 
+# Loading the JSON file containing the BIDs configuration file. It includes the entities and suffixes
+# of the BIDs dataset.
+def load_bids_json(bids_json: str = None):
+    """
+    Load the JSON file containing the BIDs configuration file.
+
+    Parameters:
+    ----------
+    bids_json : str
+        JSON file containing the BIDs configuration.
+
+    Returns:
+    --------
+    config_dict : dict
+        Dictionary containing the default .
+
+    """
+
+    # Get the absolute of this file
+    if bids_json is None:
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        bids_json = os.path.join(cwd, "config", "bids.json")
+    else:
+        if not os.path.isfile(bids_json):
+            raise ValueError(
+                "Please, provide a valid JSON file containing the BIDs configuration dictionary."
+            )
+    try:
+        with open(bids_json) as f:
+            config_dict = json.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Default configuration file not found at: {bids_json}")
+    except json.JSONDecodeError:
+        raise ValueError(f"Error parsing the default configuration file: {bids_json}")
+
+    return config_dict
+
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
