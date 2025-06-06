@@ -6,7 +6,7 @@ import queue
 import threading
 import numpy as np
 
-from typing import Union, Dict, Set, List, Optional
+from typing import Union, Dict, Set, Tuple, List, Optional
 from pathlib import Path
 
 import re
