@@ -1379,7 +1379,7 @@ def copy_bids_folder(
             subj_id = subj_entity["sub"]
 
             subj_dir = os.path.join(bids_dir, f"sub-{subj_id}")
-            all_subj_subfold = cltmisc.detect_leaf_directories(subj_dir)
+            all_subj_subfold = cltmisc.get_leaf_directories(subj_dir)
 
             # Upgrade the progress bar and include the subject id on the text
             progress.update(
@@ -1405,7 +1405,7 @@ def copy_bids_folder(
             raw_files_to_copy = []
             # Loop along all the folders to copy
             for fc in all_subj_subfold:
-                all_subj_raw_files = cltmisc.detect_recursive_files(fc)
+                all_subj_raw_files = cltmisc.get_all_files(fc)
 
                 raw_files_to_copy = raw_files_to_copy + all_subj_raw_files
 
@@ -1462,9 +1462,7 @@ def copy_bids_folder(
                                         else:
                                             deriv_files_to_copy.append(tmp)
                                 else:
-                                    all_subj_deriv_files = (
-                                        cltmisc.detect_recursive_files(deriv)
-                                    )
+                                    all_subj_deriv_files = cltmisc.get_all_files(deriv)
 
                                     # Filtering the files to copy according to the full
                                     all_subj_deriv_files = cltmisc.filter_by_substring(
