@@ -376,6 +376,7 @@ def insert_entity(
 
     entity2add : dict
         Dictionary containing the entities to add.
+        IMPORTANT: If the `entity2add` contains keys that already exist in the `entity`, they will not be added.
 
     prev_entity : str, optional
         Key in `entity` after which to insert the new entities.
@@ -415,30 +416,43 @@ def insert_entity(
     suffix = entity.pop("suffix", None)
     extension = entity.pop("extension", None)
 
-    # Build `ent_out` by adding items from `entity`, and insert `entity2add` after `prev_entity` if specified
-    ent_out = {}
-    for key, value in entity.items():
-        ent_out[key] = value
-        if key == prev_entity:
-            ent_out.update(
-                entity2add
-            )  # Insert new entities immediately after `prev_entity`
+    # Check if there are some entities already on the name and removing those items from
+    # the dictionary
+    if len(cltmisc.list_intercept(list(entity2add.keys()), list(entity.keys()))) > 0:
+        # Removes the items from `entity2add` that already exist in `entity`
+        entity2add = {k: v for k, v in entity2add.items() if k not in entity}
 
-    # If no `prev_entity` is specified or if `prev_entity` is "suffix", append `entity2add` at the end
-    if prev_entity is None or prev_entity == "suffix":
-        ent_out.update(entity2add)
+    # If `entity2add` is empty after filtering, return the original entity
+    if not entity2add:
+        if is_string:
+            return entity2str(entity)
+        return entity
 
-    # Restore `suffix` and `extension` if they were removed
-    if suffix:
-        ent_out["suffix"] = suffix
-    if extension:
-        ent_out["extension"] = extension
+    else:
+        # Build `ent_out` by adding items from `entity`, and insert `entity2add` after `prev_entity` if specified
+        ent_out = {}
+        for key, value in entity.items():
+            ent_out[key] = value
+            if key == prev_entity:
+                ent_out.update(
+                    entity2add
+                )  # Insert new entities immediately after `prev_entity`
 
-    # Convert back to string format if the original input was a string
-    if is_string:
-        return entity2str(ent_out)
+        # If no `prev_entity` is specified or if `prev_entity` is "suffix", append `entity2add` at the end
+        if prev_entity is None or prev_entity == "suffix":
+            ent_out.update(entity2add)
 
-    return ent_out
+        # Restore `suffix` and `extension` if they were removed
+        if suffix:
+            ent_out["suffix"] = suffix
+        if extension:
+            ent_out["extension"] = extension
+
+        # Convert back to string format if the original input was a string
+        if is_string:
+            return entity2str(ent_out)
+
+        return ent_out
 
 
 ####################################################################################################
