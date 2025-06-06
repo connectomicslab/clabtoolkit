@@ -591,30 +591,142 @@ def recursively_replace_entity_key(root_dir: str, replacements: dict):
                         new_name  # Update old_path to the new path after renaming
                     )
 
-                # the file is the tsv open the file and replace the string
-                if file_name.endswith("sessions.tsv"):
-                    tsv_file = os.path.join(root, file_name)
-                    # Read line by line and replace the string
-                    # Load the TSV file
-                    df = pd.read_csv(tsv_file, sep="\t")
+        all_dirs = set(all_dirs)  # Remove duplicates from the directory list
 
-                    # Replace subst_x with subst_y in all string columns
-                    df = df.applymap(
-                        lambda x: (
-                            x.replace(subst_x, subst_y) if isinstance(x, str) else x
-                        )
-                    )
+        # Renaming the directories
+        cltmisc.rename_folders(all_dirs, replacements)
 
-                    # Save the modified DataFrame as a TSV file
-                    df.to_csv(tsv_file, sep="\t", index=False)
 
-        # Rename directories
-        for dir_name in dirs:
-            if subst_x in dir_name:
-                old_path = os.path.join(root, dir_name)
-                new_name = dir_name.replace(subst_x, subst_y)
-                new_path = os.path.join(root, new_name)
-                os.rename(old_path, new_path)
+def recursively_delete_entity(root_dir: str, key2rem: Union[List[str], str, dict]):
+    """
+    This method deletes entities in all the files and folders of a BIDs dataset.
+
+    Parameters
+    ----------
+    root_dir: str
+        Root directory of the BIDs dataset
+
+    key2rem: list or str
+        Key(s) of the entities that will be removed from the files and folders.
+
+    Returns
+    -------
+    None
+        The method will rename the files and folders in the BIDs dataset, removing from file names and folder names the entities containing the specified keys.
+
+
+    """
+
+    # Detect if the BIDs directory exists
+    root_dir = os.path.abspath(root_dir)
+    if not os.path.isdir(root_dir):
+        raise ValueError("The BIDs directory does not exist.")
+
+    # Convert the strings to lists
+    if isinstance(key2rem, str):
+        key2rem = [key2rem]
+
+    if isinstance(key2rem, dict):
+        tmp_keys = list(key2rem.keys())
+        all_files = cltmisc.get_all_files(
+            root_dir, or_filter=tmp_keys[0], and_filter=tmp_keys
+        )
+    else:
+
+        all_files = cltmisc.get_all_files(
+            root_dir, or_filter=key2rem[0], and_filter=key2rem
+        )
+
+    if not all_files:
+        print(
+            "No files found that match the specified entities. Please check the input parameters."
+        )
+        return
+
+    else:
+        all_dirs = []
+        for file in all_files:
+            file_path = os.path.dirname(file)
+            file_name = os.path.basename(file)
+            all_dirs.append(file_path)
+
+            new_entity = delete_entity(file_name, key2rem)
+
+            old_path = os.path.join(file_path, file_name)
+            new_path = os.path.join(file_path, new_entity)
+            os.rename(old_path, new_path)
+
+        all_dirs = set(all_dirs)  # Remove duplicates from the directory list
+
+        # Renaming the directories
+        key2rem_dict = {key: "" for key in key2rem}  # Create a dict with empty values
+        cltmisc.rename_folders(all_dirs, key2rem_dict)
+
+
+def recursively_insert_entity(
+    root_dir: str, entity2add: Dict[str, str], prev_entity: str = None
+) -> None:
+    """
+    This method inserts entities in all the files and folders of a BIDs dataset.
+
+    Parameters
+    ----------
+    root_dir: str
+        Root directory of the BIDs dataset
+
+    entity2add: dict
+        Dictionary containing the entities to add.
+        Example: {'task': 'rest', 'run': '01'}
+
+    prev_entity: str, optional
+        Key in `entity` after which to insert the new entities. Otherwise it will be added at the end of the file name, just before the suffix.
+
+    Returns
+    -------
+    None
+        The method will rename the files and folders in the BIDs dataset. All the files or folders containing the old
+        entities' names on their names will be renamed and the old entities will be replaced with the new entities.
+
+    """
+
+    # Detect if the BIDs directory exists
+    root_dir = os.path.abspath(root_dir)
+    if not os.path.isdir(root_dir):
+        raise ValueError("The BIDs directory does not exist.")
+
+    # Convert the strings to dictionaries
+    if isinstance(entity2add, str):
+        entity2add = str2entity(entity2add)
+
+    # Order the dictionaries alphabetically by key
+    entity2add = dict(sorted(entity2add.items()))
+
+    # Creating the list of strings
+    entity2add_list = [f"{key}-{value}" for key, value in entity2add.items()]
+
+    if prev_entity is not None:
+        all_files = cltmisc.get_all_files(root_dir, or_filter=prev_entity)
+    else:
+        all_files = cltmisc.get_all_files(root_dir, or_filter="sub-")
+
+    if not all_files:
+        print(
+            "No files found that match the specified entities. Please check the input parameters."
+        )
+        return
+
+    else:
+        all_dirs = []
+        for file in all_files:
+            file_path = os.path.dirname(file)
+            file_name = os.path.basename(file)
+            all_dirs.append(file_path)
+
+            new_entity = insert_entity(file_name, entity2add, prev_entity=prev_entity)
+
+            old_path = os.path.join(file_path, file_name)
+            new_path = os.path.join(file_path, new_entity)
+            os.rename(old_path, new_path)
 
 
 ####################################################################################################
