@@ -527,6 +527,263 @@ def recursively_replace_entity_value(
 
 
 ####################################################################################################
+def get_all_entities(root_dir: str) -> Tuple[Dict[str, Set[str]], List[str]]:
+    """
+    Returns a set of all unique entities found in the BIDS dataset.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory of the BIDS dataset.
+
+    Returns
+    -------
+    all_entities: Set[str]
+        A set of unique entity names found in the dataset.
+
+    all_suffixes: List[str]
+        A list of unique suffixes found in the dataset.
+
+    Raises
+    ------
+    ValueError
+        If the specified root directory does not exist.
+    FileNotFoundError
+        If the default configuration file is not found.
+    ValueError
+        If the default configuration JSON does not have the expected structure.
+
+    Examples
+    --------
+    >>> get_all_entities('/path/to/bids/dataset')
+    {'sub', 'ses', 'task', 'run', ...}
+    >>> get_all_entities('/path/to/bids/dataset')
+    {'sub', 'ses', 'task', 'run', ...}, ['T1w', 'bold', ...]
+
+    """
+
+    # Check if the root directory exists
+    if not os.path.isdir(root_dir):
+        raise ValueError(f"The specified root directory does not exist: {root_dir}")
+
+    # Load the config bids.json file
+    cwd = os.path.dirname(os.path.abspath(__file__))
+
+    try:
+        config_data = load_bids_json()
+
+        # Merge raw and derivatives entities
+        if (
+            "bids_entities" in config_data
+            and "raw_entities" in config_data["bids_entities"]
+            and "derivatives_entities" in config_data["bids_entities"]
+        ):
+            entities = {
+                **config_data["bids_entities"]["raw_entities"],
+                **config_data["bids_entities"]["derivatives_entities"],
+            }
+        else:
+            raise ValueError(
+                "Default config JSON does not have the expected structure."
+            )
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"Default configuration file not found at: {os.path.join(cwd, 'config', 'bids.json')}"
+        )
+
+    # Get all the leaf directories in the BIDS dataset
+    bids_folders = cltmisc.get_leaf_directories(root_dir)
+
+    # Get all the files in the folder
+    # Leave only the files that have a correct BIDs suffix
+    suffixes = config_data["bids_entities"]["raw_suffix"]
+    extensions = config_data["bids_entities"]["extensions"]
+
+    # Multiply the suffixes and extensions to get all the possible combinations
+    suffixes = [f"_{s}{e}" for s in suffixes for e in extensions]
+
+    bids_files = cltmisc.get_all_files(root_dir, or_filter=suffixes)
+
+    # Leave only the directories that are BIDs folders
+    bids_folders = cltmisc.filter_by_substring(
+        bids_folders, config_data["bids_entities"]["bids_folders"]
+    )
+
+    # Leave only the files that are BIDs files
+    bids_files = cltmisc.filter_by_substring(bids_files, bids_folders)
+
+    # Initialize a set to store all unique entities
+    all_entities = []
+    all_suffixes = []
+    for file in bids_files:
+
+        filename = os.path.basename(file)
+        ent_dict = str2entity(filename)
+
+        # Remove suffix and extension from the entity dictionary
+        if "suffix" in ent_dict:
+            suffix = ent_dict["suffix"]
+            all_suffixes.append(suffix)
+            del ent_dict["suffix"]
+
+        if "extension" in ent_dict:
+            del ent_dict["extension"]
+
+        if "run" in ent_dict:
+            del ent_dict["run"]
+
+        file_ent_keys = list(ent_dict.keys())
+
+        all_entities.extend(file_ent_keys)
+
+    # Unique entities
+    all_entities = sorted(set(all_entities))
+    all_suffixes = sorted(set(all_suffixes))
+
+    selected_ent_dict = entities4table(selected_entities=all_entities)
+
+    return selected_ent_dict, all_suffixes
+
+
+####################################################################################################
+def entities4table(
+    entities_json: str = None, selected_entities: Union[str, Dict, List] = None
+) -> Dict:
+    """
+    Returns the BIDS entities that will be included in the morphometric table.
+
+    This function loads BIDS entities from a JSON configuration file and filters
+    them based on optional selected entities.
+
+    Parameters
+    ----------
+    entities_json : str, optional
+        Path to the JSON file with entity definitions.
+        If None, the method uses the default config JSON file.
+    selected_entities : Union[str, Dict, List], optional
+        Entities to select from the loaded entities. Can be:
+        - A string with comma-separated entity names
+        - A dictionary with entity names as keys
+        - A list of entity names
+        If None, all entities are included.
+
+    Returns
+    -------
+    Dict
+        Dictionary of entity names and their values.
+
+    Raises
+    ------
+    ValueError
+        If the provided JSON file path is invalid or the JSON format is incorrect.
+    FileNotFoundError
+        If the specified JSON file does not exist.
+
+    Examples
+    --------
+    >>> # Using default config file (returns all entities)
+    >>> entities4table()
+    {'sub': {'...'}, 'ses': {'...'}, ... 'scale': {'...'}}
+
+    >>> # Using a custom JSON file
+    >>> entities4table('path/to/custom/entities.json')
+    {'sub': {'...'}, 'ses': {'...'}, ... 'scale': {'...'}}
+
+    >>> # Selecting specific entities
+    >>> entities4table(selected_entities='sub,ses,run')
+    {'sub': {'...'}, 'ses': {'...'}, 'run': {'...'}}
+
+    >>> # Using a dictionary to select entities
+    >>> entities4table(selected_entities={'sub': None, 'ses': None})
+    {'sub': {'...'}, 'ses': {'...'}}
+
+    >>> # Using a list to select entities
+    >>> entities4table(selected_entities=['sub', 'ses'])
+    {'sub': {'...'}, 'ses': {'...'}}
+    """
+    import os
+    import json
+    from typing import Dict, Union, List
+
+    # Load entities from JSON
+    if entities_json is None:
+        # Define path to default config JSON
+        default_config_path = os.path.join(
+            os.path.dirname(__file__), "config", "bids.json"
+        )
+        try:
+            config_data = load_bids_json(default_config_path)
+
+            # Merge raw and derivatives entities
+            if (
+                "bids_entities" in config_data
+                and "raw_entities" in config_data["bids_entities"]
+                and "derivatives_entities" in config_data["bids_entities"]
+            ):
+                ent_out_dict = {
+                    **config_data["bids_entities"]["raw_entities"],
+                    **config_data["bids_entities"]["derivatives_entities"],
+                }
+            else:
+                raise ValueError(
+                    "Default config JSON does not have the expected structure."
+                )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Default configuration file not found at: {default_config_path}"
+            )
+
+    elif isinstance(entities_json, str):
+        # Load from provided JSON file path
+        if not os.path.isfile(entities_json):
+            raise FileNotFoundError(f"JSON file not found: {entities_json}")
+
+        try:
+
+            ent_out_dict = cltmisc.extract_string_values(entities_json)
+        except json.JSONDecodeError:
+            raise ValueError(f"Error parsing the JSON file: {entities_json}")
+    else:
+        raise TypeError("entities_json must be None or a string path to a JSON file.")
+
+    # Filter entities based on selected_entities
+    if selected_entities is not None:
+        selected_entity_keys = []
+
+        # Handle string input (convert to list of keys)
+        if isinstance(selected_entities, str):
+            try:
+                # Assume it's a comma-separated string
+                if "," in selected_entities:
+                    selected_entity_keys = [
+                        e.strip() for e in selected_entities.split(",")
+                    ]
+                elif is_bids_filename(selected_entities):
+                    selected_entities = str2entity(selected_entities)
+                    selected_entity_keys = list(selected_entities.keys())
+
+            except (ImportError, AttributeError):
+                raise ValueError(
+                    "Cannot parse selected_entities string. Provide a comma-separated list or a BIDs-like string (e.g. sub-XXX_ses-SSS_run-01 )."
+                )
+
+        # Handle dictionary input
+        elif isinstance(selected_entities, dict):
+            selected_entity_keys = list(selected_entities.keys())
+
+        # Handle list input
+        elif isinstance(selected_entities, list):
+            selected_entity_keys = selected_entities
+
+        # Filter the output dictionary to include only selected entities
+        ent_out_dict = {
+            k: v for k, v in ent_out_dict.items() if k in selected_entity_keys
+        }
+
+    return ent_out_dict
+
+
+####################################################################################################
 def entities_to_table(
     filepath: str,
     entities_to_extract: Optional[Union[str, List[str], Dict[str, str]]] = None,
