@@ -1737,7 +1737,7 @@ def get_individual_files_and_folders(
     # Set count to 0 if no directory found
     if len(ind_der_dir) > 0:
         # Count files for this subject in this pipeline
-        all_files = cltmisc.detect_recursive_files(ind_der_dir[0])
+        all_files = cltmisc.get_all_files(ind_der_dir[0])
         all_files = cltmisc.filter_by_substring(
             all_files, or_filter=clean_id_dict["sub"], and_filter=cad4query
         )
@@ -1747,38 +1747,41 @@ def get_individual_files_and_folders(
 
     return all_files
 
+
 ####################################################################################################
-def generate_bids_tree(bids_root: str, 
-                      max_depth: Optional[int] = None,
-                      show_hidden: bool = False,
-                      exclude_patterns: Optional[Set[str]] = None,
-                      save_to_file: Optional[str] = None) -> str:
+def generate_bids_tree(
+    bids_root: str,
+    max_depth: Optional[int] = None,
+    show_hidden: bool = False,
+    exclude_patterns: Optional[Set[str]] = None,
+    save_to_file: Optional[str] = None,
+) -> str:
     """
     Generate an MS-DOS tree-style visualization of a BIDS folder structure.
-    
+
     Parameters
     ----------
     bids_root : str
         Path to the BIDS root directory.
     max_depth : int, optional
-        Maximum depth to traverse. If None (default), traverses entire directory 
+        Maximum depth to traverse. If None (default), traverses entire directory
         structure without depth limitation.
     show_hidden : bool, optional
-        Whether to show hidden files and folders (starting with '.'). 
+        Whether to show hidden files and folders (starting with '.').
         Default is False.
     exclude_patterns : set of str, optional
         Set of file/folder name patterns to exclude from the tree. If None,
         defaults to {'.git', '__pycache__', '.DS_Store', 'Thumbs.db'}.
     save_to_file : str, optional
-        Path to save the tree output as a text file. If None, only returns 
+        Path to save the tree output as a text file. If None, only returns
         the string without saving.
-    
+
     Returns
     -------
     str
-        MS-DOS tree representation of the BIDS structure with proper tree 
+        MS-DOS tree representation of the BIDS structure with proper tree
         symbols (├──, └──, │) and directory indicators (/).
-    
+
     Raises
     ------
     FileNotFoundError
@@ -1789,9 +1792,9 @@ def generate_bids_tree(bids_root: str,
         If there are insufficient permissions to read certain directories.
         Individual permission errors are handled gracefully and noted in output.
     OSError
-        If there are file system related errors during tree generation or 
+        If there are file system related errors during tree generation or
         file saving operations.
-    
+
     Notes
     -----
     - Directories are displayed with a trailing '/' to distinguish from files
@@ -1800,11 +1803,11 @@ def generate_bids_tree(bids_root: str,
     - Permission errors for individual subdirectories are handled gracefully
     - The tree uses standard MS-DOS tree symbols for proper visualization
     - When max_depth is None, the entire directory structure is traversed
-    
+
     Examples
     --------
     Basic usage with unlimited depth:
-    
+
     >>> tree = generate_bids_tree('/path/to/bids/dataset')
     >>> print(tree)
     my-bids-dataset/
@@ -1819,58 +1822,58 @@ def generate_bids_tree(bids_root: str,
     └── derivatives/
         └── preprocessing/
             └── sub-01/
-    
+
     Limited depth with file saving:
-    
-    >>> tree = generate_bids_tree('/path/to/bids/dataset', 
-    ...                          max_depth=2, 
+
+    >>> tree = generate_bids_tree('/path/to/bids/dataset',
+    ...                          max_depth=2,
     ...                          save_to_file='bids_tree.txt')
     >>> print("Tree saved to bids_tree.txt")
-    
+
     Include hidden files and custom exclusions:
-    
+
     >>> tree = generate_bids_tree('/path/to/bids/dataset',
     ...                          show_hidden=True,
     ...                          exclude_patterns={'temp', 'backup'})
     """
-    
+
     if exclude_patterns is None:
-        exclude_patterns = {'.git', '__pycache__', '.DS_Store', 'Thumbs.db'}
-    
+        exclude_patterns = {".git", "__pycache__", ".DS_Store", "Thumbs.db"}
+
     bids_path = Path(bids_root)
-    
+
     if not bids_path.exists():
         raise FileNotFoundError(f"The specified path does not exist: {bids_root}")
-    
+
     if not bids_path.is_dir():
         raise NotADirectoryError(f"The specified path is not a directory: {bids_root}")
-    
+
     tree_lines = [f"{bids_path.name}/"]
-    
+
     def _build_tree(current_path: Path, prefix: str = "", depth: int = 0) -> None:
         """Recursively build the tree structure."""
-        
+
         if max_depth is not None and depth >= max_depth:
             return
-        
+
         try:
             # Get all items in current directory
             items = []
             for item in current_path.iterdir():
                 # Skip hidden files if not requested
-                if not show_hidden and item.name.startswith('.'):
+                if not show_hidden and item.name.startswith("."):
                     continue
                 # Skip excluded patterns
                 if item.name in exclude_patterns:
                     continue
                 items.append(item)
-            
+
             # Sort items: directories first, then files, both alphabetically
             items.sort(key=lambda x: (x.is_file(), x.name.lower()))
-            
+
             for i, item in enumerate(items):
                 is_last = i == len(items) - 1
-                
+
                 # Choose the appropriate tree symbols
                 if is_last:
                     current_prefix = "└── "
@@ -1878,7 +1881,7 @@ def generate_bids_tree(bids_root: str,
                 else:
                     current_prefix = "├── "
                     next_prefix = prefix + "│   "
-                
+
                 # Add item to tree
                 if item.is_dir():
                     tree_lines.append(f"{prefix}{current_prefix}{item.name}/")
@@ -1886,33 +1889,33 @@ def generate_bids_tree(bids_root: str,
                     _build_tree(item, next_prefix, depth + 1)
                 else:
                     tree_lines.append(f"{prefix}{current_prefix}{item.name}")
-                    
+
         except PermissionError:
             tree_lines.append(f"{prefix}├── [Permission Denied]")
         except Exception as e:
             tree_lines.append(f"{prefix}├── [Error: {str(e)}]")
-    
+
     # Build the tree starting from the root
     _build_tree(bids_path)
-    
+
     # Join all tree lines
     tree_output = "\n".join(tree_lines)
-    
+
     # Save to file if requested
     if save_to_file:
         try:
-            with open(save_to_file, 'w', encoding='utf-8') as f:
+            with open(save_to_file, "w", encoding="utf-8") as f:
                 f.write(tree_output)
         except OSError as e:
             raise OSError(f"Failed to save tree to file '{save_to_file}': {str(e)}")
-    
+
     return tree_output
 
 
 def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     """
     Generate a BIDS tree with additional statistics.
-    
+
     Parameters
     ----------
     bids_root : str
@@ -1920,12 +1923,12 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     **kwargs
         Additional keyword arguments passed to generate_bids_tree().
         See generate_bids_tree() documentation for available parameters.
-    
+
     Returns
     -------
     str
         Tree representation with file and folder count statistics appended.
-    
+
     Raises
     ------
     FileNotFoundError
@@ -1936,13 +1939,13 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
         If there are insufficient permissions to read directories.
     OSError
         If there are file system related errors.
-    
+
     Notes
     -----
     Statistics are calculated by recursively counting all files and directories
-    in the BIDS structure, regardless of the max_depth parameter used for 
+    in the BIDS structure, regardless of the max_depth parameter used for
     tree visualization.
-    
+
     Examples
     --------
     >>> tree_with_stats = generate_bids_tree_with_stats('/path/to/bids/dataset')
@@ -1952,65 +1955,65 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     └── sub-01/
         └── anat/
             └── sub-01_T1w.nii.gz
-    
+
     Statistics:
     ├── Directories: 2
     └── Files: 2
     """
-    
+
     tree = generate_bids_tree(bids_root, **kwargs)
-    
+
     # Count files and directories
     bids_path = Path(bids_root)
     file_count = 0
     dir_count = 0
-    
+
     try:
-        for item in bids_path.rglob('*'):
+        for item in bids_path.rglob("*"):
             if item.is_file():
                 file_count += 1
             elif item.is_dir():
                 dir_count += 1
     except Exception:
         pass
-    
+
     stats = f"\n\nStatistics:\n├── Directories: {dir_count}\n└── Files: {file_count}"
-    
+
     return tree + stats
 
 
 def validate_bids_structure(bids_root: str) -> List[str]:
     """
     Basic validation of BIDS structure and return warnings.
-    
+
     Parameters
     ----------
     bids_root : str
         Path to the BIDS root directory.
-    
+
     Returns
     -------
     list of str
         List of validation warnings and notes about the BIDS structure.
         Empty list indicates no issues found.
-    
+
     Raises
     ------
     FileNotFoundError
         If the specified bids_root path does not exist.
     NotADirectoryError
         If the specified bids_root path is not a directory.
-    
+
     Notes
     -----
     This function performs basic BIDS validation including:
     - Checking for required files (dataset_description.json)
     - Verifying presence of subject directories (sub-*)
     - Noting presence of derivatives directory
-    
-    For comprehensive BIDS validation, consider using the official 
+
+    For comprehensive BIDS validation, consider using the official
     BIDS validator tool.
-    
+
     Examples
     --------
     >>> warnings = validate_bids_structure('/path/to/bids/dataset')
@@ -2020,31 +2023,31 @@ def validate_bids_structure(bids_root: str) -> List[str]:
     >>> else:
     ...     print("✅ Basic BIDS structure looks good!")
     """
-    
+
     warnings = []
     bids_path = Path(bids_root)
-    
+
     if not bids_path.exists():
         raise FileNotFoundError(f"The specified path does not exist: {bids_root}")
-    
+
     if not bids_path.is_dir():
         raise NotADirectoryError(f"The specified path is not a directory: {bids_root}")
-    
+
     # Check for required files
-    required_files = ['dataset_description.json']
+    required_files = ["dataset_description.json"]
     for req_file in required_files:
         if not (bids_path / req_file).exists():
             warnings.append(f"Missing required file: {req_file}")
-    
+
     # Check for common BIDS directories
-    common_dirs = ['sub-*']  # Using glob pattern
-    subject_dirs = list(bids_path.glob('sub-*'))
+    common_dirs = ["sub-*"]  # Using glob pattern
+    subject_dirs = list(bids_path.glob("sub-*"))
     if not subject_dirs:
         warnings.append("No subject directories found (sub-*)")
-    
+
     # Check for derivatives directory
-    derivatives_dir = bids_path / 'derivatives'
+    derivatives_dir = bids_path / "derivatives"
     if derivatives_dir.exists():
         warnings.append("Derivatives directory found")
-    
+
     return warnings
