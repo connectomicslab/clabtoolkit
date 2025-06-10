@@ -1,6 +1,5 @@
 import os
 from glob import glob
-import subprocess
 import tarfile
 import shutil
 import pandas as pd
@@ -227,7 +226,7 @@ def org_conv_dicoms(
                         date_times.append(date_time)
                 try:
                     if booldic:
-                        dicom_files = cltmisc.detect_recursive_files(subj_dir)
+                        dicom_files = cltmisc.get_all_files(subj_dir)
                         ses_idprev = []
                         ser_idprev = []
 
