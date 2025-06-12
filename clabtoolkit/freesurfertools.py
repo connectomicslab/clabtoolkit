@@ -2855,6 +2855,38 @@ def remove_fsaverage_links(linkavg_folder: str):
     ):
         os.remove(linkavg_folder)
 
+def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
+    """
+    Create per-vertex colors based on region labels and color table.
+    
+    Parameters
+    ----------
+    labels : np.ndarray
+        Array of region labels for each vertex.
+        
+    reg_ctable : np.ndarray
+        Color table with shape (N, 5) where N is the number of regions.
+        Each row contains RGB values and a region label in the last column.
+        
+    Returns
+    -------
+    vertex_colors : np.ndarray
+        Array of shape (num_vertices, 3) containing RGB colors for each vertex.
+        Default color is white (240, 240, 240) if no label matches.
+    
+    """
+    
+    vertex_colors = np.ones((len(labels), 3), dtype=np.uint8) * 240  # Default gray
+    
+    for i, region_info in enumerate(reg_ctable):
+        # Find vertices with this label
+        indices = np.where(labels == region_info[4])[0]
+        
+        # Assign the region color (RGB from first 3 columns)
+        if len(indices) > 0:
+            vertex_colors[indices, :3] = region_info[:3]
+            
+    return vertex_colors
 
 def colors2colortable(colors: Union[list, np.ndarray]):
     """
