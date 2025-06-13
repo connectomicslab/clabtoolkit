@@ -383,6 +383,108 @@ class AnnotParcellation:
                 tsv_f.write(tsv_df.to_csv(sep="\t", index=False))
 
         return tsv_df, tsv_file
+    
+    def map_values(self, regional_values: Union[str, pd.DataFrame, np.ndarray], is_dataframe: bool = False) -> Union[np.ndarray, pd.DataFrame]:
+        """
+        Map the regional values to the vertex wise values using the parcellation codes and region table.
+        The regional values can be  a txt file, a pandas dataframe or a numpy array.
+        The txt file should contain the regional values in a single column or be a csv file with multiple columns. 
+        The number of rows should match the number of regions in the parcellation.
+        It will be read as a pandas dataframe with no column names. If the txt file is a csv file, it will be read as a 
+        pandas dataframe with column names only if the boolean variable is_dataframe is set to True.
+
+        The pandas dataframe should have the same number of rows as the number of regions in the parcellation and the columns should be the regional values.
+
+        IMPORTANT NOTE:
+        The pandas dataframe should cointain columns with numeric values and column names.
+
+        If the regional values are a pandas dataframe, it will be converted to a numpy array.
+
+        The numpy array should have the same number of rows as the number of regions in the parcellation and the columns should be the regional values.
+        If the regional values are a numpy array, it will be used as is.
+        
+        Parameters
+        ----------
+        regional_values - Required  : Regional values to map to the vertex wise values. It can be a pandas dataframe or a numpy array:
+
+        is_dataframe    - Optional  : If the this variable is set to True, the regional values will be read as a pandas dataframe with column names. Default is False:
+
+        Returns
+        -------
+        vertex_wise_values: numpy array : Vertex wise values mapped from the regional values
+
+        Raises
+        ------
+        ValueError
+        If the regional values are not a pandas dataframe or a numpy array or if the number of rows does not match the number of regions in the parcellation.
+
+        """
+        
+        # Check if the regional values are a string (txt file)
+        if isinstance(regional_values, str):
+            # Check if the file exists
+            if not os.path.exists(regional_values):
+                raise ValueError("The regional values file does not exist")
+            # Read the regional values as a pandas dataframe
+            if is_dataframe:
+                regional_values = pd.read_csv(
+                    regional_values,
+                    header=0,
+                )
+                col_names = regional_values.columns.tolist()
+            else:
+                regional_values = pd.read_csv(
+                    regional_values,
+                    header=None,
+                )
+                col_names = None
+            regional_values = regional_values.to_numpy()
+
+        elif isinstance(regional_values, pd.DataFrame):
+            # Check if the number of rows matches the number of regions in the parcellation
+            if regional_values.shape[0] != len(self.regtable):
+                raise ValueError(
+                    "The number of rows in the regional values does not match the number of regions in the parcellation"
+                )
+            else:
+                # Check if the columns are numeric
+                if not np.issubdtype(regional_values.dtypes[0], np.number):
+                    raise ValueError(
+                        "The regional values should be numeric"
+                    )
+                else:
+                    # Convert the pandas dataframe to a numpy array
+                    col_names = regional_values.columns.tolist()
+                    regional_values = regional_values.to_numpy()
+                    is_df = True
+
+        elif isinstance(regional_values, np.ndarray):
+            col_names = None
+            # Check if the number of rows matches the number of regions in the parcellation
+            if regional_values.shape[0] != len(self.regtable):
+                raise ValueError(
+                    "The number of rows in the regional values does not match the number of regions in the parcellation"
+                )
+        else:
+            raise ValueError(
+                "The regional values should be a pandas dataframe, a numpy array or a txt file"
+            )
+                
+
+        vertex_wise_values = create_vertex_values(regional_values, self.codes, self.regtable) 
+
+        if  col_names is not None:
+            # If the regional values are a pandas dataframe, then create a dictionary with the column names and the vertex wise values
+            vertex_wise_values = pd.DataFrame(
+                vertex_wise_values, columns=col_names
+            )
+        else:
+            # If the regional values are a numpy array, then create a numpy array with the vertex wise values
+            vertex_wise_values = np.array(vertex_wise_values) 
+
+
+        return vertex_wise_values
+
 
     @staticmethod
     def gii2annot(
