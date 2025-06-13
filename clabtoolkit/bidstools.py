@@ -1516,8 +1516,247 @@ def copy_bids_folder(
 
 
 ####################################################################################################
+def get_bids_database_table(
+    root_dir: str,
+    output_table: Optional[str] = None
+) -> pd.DataFrame:
+    """
+    Generate a comprehensive summary table of all neuroimaging files in a BIDS dataset.
+    
+    This function scans a BIDS dataset directory structure and creates a detailed table
+    containing all BIDS entities (subject, session, acquisition, etc.) and file counts.
+    The output table provides an overview of the dataset composition, making it easy to
+    identify data availability, missing files, and dataset structure.
+    
+    Parameters
+    ----------
+    root_dir : str
+        Path to the BIDS dataset root directory. This should be the top-level directory
+        containing subject folders (sub-*) and optionally a dataset_description.json file.
+        
+    output_table : str, optional
+        Path where the resulting CSV table should be saved. If None, the table is not 
+        saved to disk but still returned as a DataFrame. Default is None.
+        
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns for each detected BIDS entity (Subject, Session, 
+        Acquisition, etc.), plus 'suffix' (image type like T1w, FLAIR) and 'N' 
+        (number of files for each unique combination). Each row represents a unique 
+        combination of BIDS entities and their file count.
+        
+    Raises
+    ------
+    FileNotFoundError
+        If the specified root_dir does not exist.
+    NotADirectoryError
+        If root_dir exists but is not a directory.
+    ValueError
+        If no subjects are found in the BIDS dataset (no sub-* folders).
+        
+    Examples
+    --------
+    Basic usage - analyze dataset and return summary table:
+    
+    >>> import pandas as pd
+    >>> bids_table = get_bids_table('/path/to/bids/dataset')
+    >>> print(f"Dataset contains {len(bids_table)} unique file combinations")
+    >>> print(f"Total files: {bids_table['N'].sum()}")
+    
+    Save summary table to CSV file:
+    
+    >>> bids_table = get_bids_table(
+    ...     root_dir='/data/my_study', 
+    ...     output_table='/data/my_study/bids_summary.csv'
+    ... )
+    
+    Analyze specific aspects of the dataset:
+    
+    >>> # Count files by image type
+    >>> suffix_counts = bids_table.groupby('suffix')['N'].sum()
+    >>> print("Files by image type:")
+    >>> print(suffix_counts)
+    
+    >>> # Check data availability per subject
+    >>> subject_counts = bids_table.groupby('Subject')['N'].sum()
+    >>> print("Files per subject:")
+    >>> print(subject_counts)
+    
+    >>> # Find subjects with specific image types
+    >>> t1w_subjects = bids_table[bids_table['suffix'] == 'T1w']['Subject'].unique()
+    >>> print(f"Subjects with T1w images: {len(t1w_subjects)}")
+    
+    Example output table structure:
+    
+    >>> print(bids_table.head())
+        Subject Session Acquisition  suffix  N
+    0    sub-01     ses-01        acq-mprage    T1w  1
+    1    sub-01     ses-01        acq-space    T2w  1
+    2    sub-01     ses-01           None   FLAIR  1
+    3    sub-02     ses-01        acq-mprage    T1w  1
+    4    sub-02     ses-02        acq-mprage    T1w  1
+    
+    Notes
+    -----
+    - Only processes .nii.gz files (NIfTI compressed format)
+    - Automatically detects all BIDS entities present in the dataset
+    - Groups identical combinations and sums file counts
+    - Results are sorted by Subject, Session, and suffix for readability
+    - Progress is displayed using Rich progress bar during processing
+    - Column names are converted to human-readable format (e.g., 'sub' -> 'Subject')
+    
+    See Also
+    --------
+    clabtoolkit.bidstools.get_subjects : Get list of subjects in BIDS dataset
+    clabtoolkit.bidstools.get_all_entities : Extract all BIDS entities from dataset
+    clabtoolkit.bidstools.str2entity : Parse BIDS filename to extract entities
+    """
+    
+    # Check if the root directory exists
+    if not os.path.exists(root_dir):
+        raise FileNotFoundError(f"BIDS root directory not found: {root_dir}")
+    
+    if not os.path.isdir(root_dir):
+        raise NotADirectoryError(f"Provided path is not a directory: {root_dir}")
+    
+    # Initialize console
+    console = Console()
+    
+    # Get all the subjects in the BIDs dataset
+    subj_ids = get_subjects(root_dir)   
+    
+    if not subj_ids:
+        raise ValueError(f"No subjects found in the BIDS dataset at {root_dir}")
+    
+    # Get all entities in the BIDs dataset
+    all_dataset_entities, all_dataset_suffixes = get_all_entities(root_dir)
+    
+    console.print(f"[green]Detected entities: {list(all_dataset_entities.keys())}")
+    
+    n_subj = len(subj_ids)
+    
+    # Create column names
+    column_names = list(all_dataset_entities.keys())
+    column_names.extend(['suffix', 'N'])
+    
+    # List to store all rows
+    all_rows = []
+    
+    # Create Progress with explicit configuration
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        "[progress.percentage]{task.percentage:>3.1f}%",
+        "•",
+        MofNCompleteColumn(),
+        "•",
+        TimeRemainingColumn(),
+        console=console,
+        auto_refresh=True,
+        refresh_per_second=10,
+    )
+    
+    # Use the progress bar
+    with progress:
+        # Add the task
+        task_id = progress.add_task(
+            description="Starting BIDS processing...", 
+            total=n_subj
+        )
+        
+        # Process each subject
+        for i, subj_id in enumerate(subj_ids):
+            # Update task description at the start of processing
+            progress.update(
+                task_id,
+                description=f"Processing subject {subj_id}...",
+                completed=i
+            )
+            
+            subj_dir = os.path.join(root_dir, subj_id)
+            all_files = cltmisc.get_all_files(subj_dir, recursive=True, or_filter=['.nii.gz'])
+            
+            files_processed = 0
+            for file_path in all_files:
+                file_name = os.path.basename(file_path)
+                
+                # Parse the BIDS filename to get entities
+                ent_dict = str2entity(file_name)
+                
+                # Create a row dictionary with all possible entity columns initialized to None
+                row_dict = {col: None for col in column_names}
+                
+                # Fill in the entities that are present in this file
+                for entity, value in ent_dict.items():
+                    if entity in row_dict:
+                        row_dict[entity] = value
+                
+                # Extract suffix from filename
+                if '_' in file_name:
+                    suffix = file_name.split('_')[-1].replace('.nii.gz', '')
+                    row_dict['suffix'] = suffix
+                
+                # Set N to 1 for individual files (we'll aggregate later)
+                row_dict['N'] = 1
+                
+                all_rows.append(row_dict)
+                files_processed += 1
+            
+            # Update progress AFTER processing each subject (this is the key fix!)
+            progress.update(
+                task_id,
+                description=f"Completed {subj_id} ({files_processed} files)",
+                completed=i + 1  # i+1 because we just finished this subject
+            )
+            
+            # Force refresh to ensure display updates
+            progress.refresh()
+            
+            # Small delay to see the progress update
+            time.sleep(0.1)
+        
+        # Final update
+        progress.update(
+            task_id,
+            description="Processing complete!",
+            completed=n_subj
+        )
+        
+        # Brief pause to show completion
+        time.sleep(0.5)
+    
+    # Create DataFrame from all rows
+    df_table = pd.DataFrame(all_rows)
+    
+    if df_table.empty:
+        return df_table
+    
+    # Group by all columns except 'N' and sum the counts
+    groupby_cols = [col for col in df_table.columns if col != 'N']
+    df_grouped = df_table.groupby(groupby_cols, dropna=False).agg({'N': 'sum'}).reset_index()
+    
+    # Sort the DataFrame for better readability
+    if not df_grouped.empty:
+        sort_cols = []
+        if 'sub' in df_grouped.columns:
+            sort_cols.append('sub')
+        if 'ses' in df_grouped.columns:
+            sort_cols.append('ses')
+        if 'suffix' in df_grouped.columns:
+            sort_cols.append('suffix')
+        
+        if sort_cols:
+            df_grouped = df_grouped.sort_values(sort_cols).reset_index(drop=True)
+    
+    # Save the table if output path is provided
+    if output_table:
+        df_grouped.to_csv(output_table, index=False)
+    
+    return df_grouped
 
-
+####################################################################################################
 # def is_bids_filename(filename: str, json_file: str = None) -> bool:
 #     """
 #     Check if a given filename follows the Brain Imaging Data Structure (BIDS) format.
