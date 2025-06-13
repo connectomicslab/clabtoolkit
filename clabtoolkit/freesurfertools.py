@@ -2957,6 +2957,54 @@ def remove_fsaverage_links(linkavg_folder: str):
     ):
         os.remove(linkavg_folder)
 
+def create_vertex_values(reg_values: np.ndarray, labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
+    """
+    Create per-vertex values based on region labels and color table.
+    
+    Parameters
+    ----------
+    reg_values : np.ndarray
+        Array of values for each region.
+
+    labels : np.ndarray
+        Array of region labels for each vertex.
+        
+    reg_ctable : np.ndarray
+        Color table with shape (N, 5) where N is the number of regions.
+        Each row contains RGB values and a region label in the last column.
+        
+    Returns
+    -------
+    vertex_values : np.ndarray
+        Array of shape (num_vertices, 1) containing values for each vertex.
+        Default value is 0 if no label matches.
+    
+    """
+    
+    # check that the number of rows of reg_values matches the number of regions in reg_ctable
+    if  reg_values.shape[0] != reg_ctable.shape[0]:
+        raise ValueError("The number of rows in reg_values must match the number of regions in reg_ctable")
+    # Ensure reg_values is a 2D array
+    if reg_values.ndim == 1:
+        reg_values = reg_values.reshape(-1, 1)
+    elif reg_values.ndim > 2:
+        raise ValueError("reg_values must be a 1D or 2D array")
+
+    n_cols = reg_values.shape[1]
+
+    vertex_values = np.zeros((len(labels), n_cols), dtype=np.float32) # Default value is 0
+    
+    for i, region_info in enumerate(reg_ctable):
+        # Find vertices with this label
+        indices = np.where(labels == region_info[4])[0]
+        
+        # Assign the region color (RGB from first 3 columns)
+        if len(indices) > 0:
+            vertex_values[indices,:] = reg_values[i,:]
+            
+    return vertex_values
+
+
 def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
     """
     Create per-vertex colors based on region labels and color table.
