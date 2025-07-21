@@ -176,74 +176,75 @@ class Parcellation:
                 print("The names were not found in the parcellation")
 
     def keep_by_code(
-        self, codes2look: Union[list, np.ndarray], rearrange: bool = False
+        self, codes2keep: Union[list, np.ndarray], rearrange: bool = False
     ):
         """
         Filter the parcellation by a list of codes. It will keep only the structures with codes specified in the list.
-        @params:
-            codes2look     - Required  : List of codes to look for:
-            rearrange      - Required  : If True, the parcellation will be rearranged starting from 1. Default = False
+
+        Parameters
+        ----------
+        codes2keep : list or np.ndarray
+            List of codes to look for. Only structures with these codes will be retained.
+
+        rearrange : bool, optional
+            If True, the parcellation will be rearranged starting from 1.
+            Default is False.
+
+        Returns
+        -------
+        self or new_instance
+            Returns the filtered parcellation object with only the specified codes retained.
+
+        Raises
+        ------
+        ValueError
+            If codes2keep is empty or contains invalid codes.
+        TypeError
+            If codes2keep is not a list or numpy array.
+
+        Examples
+        --------
+        >>> # Keep only specific brain regions
+        >>> parcellation.keep_by_code([1, 2, 5, 10])
+
+        >>> # Keep regions and rearrange codes starting from 1
+        >>> parcellation.keep_by_code([100, 200, 300], rearrange=True)
+
+        >>> # Using numpy array of codes
+        >>> import numpy as np
+        >>> codes = np.array([1, 3, 7, 12, 15])
+        >>> parcellation.keep_by_code(codes, rearrange=False)
         """
 
-        # Convert the codes2look to a numpy array
-        if isinstance(codes2look, list):
-            codes2look = cltmisc.build_indices(codes2look)
-            codes2look = np.array(codes2look)
-
-        # Create
-        dims = np.shape(self.data)
-        out_atlas = np.zeros((dims[0], dims[1], dims[2]), dtype="int32")
-
-        array_3d = self.data
+        # Convert the codes2keep to a numpy array
+        if isinstance(codes2keep, list):
+            codes2keep = cltmisc.build_indices(codes2keep)
+            codes2keep = np.array(codes2keep)
 
         # Create a boolean mask where elements are True if they are in the retain list
-        mask = np.isin(array_3d, codes2look)
+        mask = np.isin(self.data, codes2keep)
 
         # Set elements to zero if they are not in the retain list
-        array_3d[~mask] = 0
+        self.data[~mask] = 0
 
         # Remove the elements from retain_list that are not present in the data
-        img_tmp_codes = np.unique(array_3d)
+        img_tmp_codes = np.unique(self.data)
 
-        maskc = np.isin(codes2look, img_tmp_codes)
+        # Codes to look is img_tmp_codes without the 0
+        codes2keep = img_tmp_codes[img_tmp_codes != 0]
 
-        # Set elements to zero if they are not in the retain list
-        codes2look[~maskc] = 0
-
-        if hasattr(self, "index"):
+        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+            sts = np.unique(self.data)
+            sts = sts[sts != 0]
             temp_index = np.array(self.index)
-            index_new = []
-            indexes = []
+            mask = np.isin(temp_index, sts)
+            self.index = temp_index[mask].tolist()
+            self.name = np.array(self.name)[mask].tolist()
+            self.color = np.array(self.color)[mask].tolist()
 
-        # Rearrange the array_3d of the data to start from 1
-        for i, code in enumerate(codes2look):
-            out_atlas[array_3d == code] = i + 1
-
-            if hasattr(self, "index"):
-                # Find the element in self.index that is equal to v
-                ind = np.where(temp_index == code)[0]
-
-                if len(ind) > 0:
-                    indexes.append(ind[0])
-                    if rearrange:
-                        index_new.append(i + 1)
-                    else:
-                        index_new.append(self.index[ind[0]])
+        # If rearrange is True, the parcellation will be rearranged starting from 1
         if rearrange:
-            self.data = out_atlas
-        else:
-            self.data = array_3d
-
-        if hasattr(self, "index"):
-            self.index = index_new
-
-        # If name is an attribute of self
-        if hasattr(self, "name"):
-            self.name = [self.name[i] for i in indexes]
-
-        # If color is an attribute of self
-        if hasattr(self, "color"):
-            self.color = [self.color[i] for i in indexes]
+            self.rearrange_parc()
 
         # Detect minimum and maximum labels
         self.parc_range()
