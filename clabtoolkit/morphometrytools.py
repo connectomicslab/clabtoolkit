@@ -1290,6 +1290,8 @@ def compute_reg_volume_fromparcellation(
     table_type: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
+    include_by_code: Union[list, np.ndarray] = None,
+    include_by_name: Union[list, str] = None,
     add_bids_entities: bool = True,
     region_prefix: str = "supra-side",
     include_global: bool = True,
@@ -1318,6 +1320,18 @@ def compute_reg_volume_fromparcellation(
     exclude_by_name : list or str, optional
         Region names to exclude from the analysis. If None, no regions are excluded by name.
         Example: ["Ventricles", "White-Matter"] to focus only on gray matter regions.
+    include_by_code : list or np.ndarray, optional
+        Region codes to include in the analysis. If None, all regions are included.
+        Useful for focusing on specific regions of interest.
+    include_by_name : list or str, optional
+        Region names to include in the analysis. If None, all regions are included.
+        Example: ["Cortex", "Hippocampus"] to focus on specific structures.
+    include_by_code : list or np.ndarray, optional
+        Region codes to include in the analysis. If None, all regions are included.
+        Useful for focusing on specific regions of interest.
+    include_by_name : list or str, optional
+        Region names to include in the analysis. If None, all regions are included.
+        Example: ["Cortex", "Hippocampus"] to focus on specific structures.
     add_bids_entities : bool, default=True
         Whether to include BIDS entities as columns in the resulting DataFrame.
         This extracts subject, session, and other metadata from the filename.
@@ -1446,6 +1460,13 @@ def compute_reg_volume_fromparcellation(
 
     if exclude_by_name is not None:
         vparc_data.remove_by_name(names2remove=exclude_by_name)
+
+    # Apply inclusion if specified
+    if include_by_code is not None:
+        vparc_data.keep_by_code(codes2keep=exclude_by_code)
+
+    if include_by_name is not None:
+        vparc_data.keep_by_name(names2look=exclude_by_name)
 
     # Computing the voxel volume (in cubic mm)
     vox_size = np.linalg.norm(affine[:3, :3], axis=1)
