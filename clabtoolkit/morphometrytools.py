@@ -1292,6 +1292,7 @@ def compute_reg_volume_fromparcellation(
     exclude_by_name: Union[list, str] = None,
     add_bids_entities: bool = True,
     region_prefix: str = "supra-side",
+    include_global: bool = True,
 ) -> Tuple[pd.DataFrame, Optional[str]]:
     """
     Compute volume for all regions in a parcellation.
@@ -1323,6 +1324,9 @@ def compute_reg_volume_fromparcellation(
     region_prefix : str, default="supra-side"
         Prefix to use for region names when they cannot be determined from the parcellation object.
         The prefix will be combined with the region index number.
+    include_global : bool, default=True
+        Whether to include a the total volume in the output table.
+        If True, adds a row for the total volume calculated from the parcellation.
 
     Returns
     -------
@@ -1451,13 +1455,14 @@ def compute_reg_volume_fromparcellation(
     dict_of_cols = {}
 
     # Compute global volume for the entire brain (convert to ml by dividing by 1000)
-    brain_mask = vparc_data.data != 0
-    if np.any(brain_mask):  # Check if there are any non-zero values
-        global_volume_ml = np.sum(brain_mask) * vox_vol / 1000
-        dict_of_cols["brain-brain-wholebrain"] = [global_volume_ml]
-    else:
-        # Handle empty/invalid parcellation
-        dict_of_cols["brain-brain-wholebrain"] = [0]
+    if include_global:
+        brain_mask = vparc_data.data != 0
+        if np.any(brain_mask):  # Check if there are any non-zero values
+            global_volume_ml = np.sum(brain_mask) * vox_vol / 1000
+            dict_of_cols["brain-brain-wholebrain"] = [global_volume_ml]
+        else:
+            # Handle empty/invalid parcellation
+            dict_of_cols["brain-brain-wholebrain"] = [0]
 
     # Compute volume for each region
     # Use unique region indices from the data itself
