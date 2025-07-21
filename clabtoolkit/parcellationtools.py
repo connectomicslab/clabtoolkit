@@ -822,22 +822,54 @@ class Parcellation:
         # Detect minimum and maximum labels
         self.parc_range()
 
-    def rearange_parc(self, offset: int = 0):
+    def rearrange_parc(self, offset: int = 0):
         """
-        Rearrange the parcellation starting from 1
-        @params:
-            offset     - Optional  : Offset to start the rearrangement. Default = 0
+        Rearrange parcellation labels to consecutive integers starting from offset + 1.
+
+        This method remaps all non-zero parcellation codes to consecutive integers
+        starting from the specified offset, eliminating gaps in the labeling scheme.
+        Zero values (background) are preserved unchanged.
+
+        Parameters
+        ----------
+        offset : int, optional
+            Starting value for the rearranged parcellation labels. Default is 1.
+
+        Notes
+        -----
+        - Modifies self.data in-place
+        - Zero values are treated as background and remain unchanged
+        - Original parcellation codes are sorted before reassignment
+        - If index, name, and color attributes exist, the index attribute is updated
+        to reflect the new consecutive labeling scheme
+        - Calls self.parc_range() after rearrangement
+
+        Examples
+        --------
+        Original parcellation with codes [5, 10, 15]:
+        - With offset=1: becomes [2, 3, 4]
+        - With offset=10: becomes [11, 12, 13]
+
+        Returns
+        -------
+        None
+            Method modifies the object in-place.
         """
 
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
         self.keep_by_code(codes2look=st_codes, rearrange=True)
 
-        ind = np.where(self.data != 0)
-        self.data[ind] = self.data[ind] + offset
+        # Parcellation with values starting from 1 or starting from the offset
+        new_parc = np.zeros_like(self.data, dtype="int16")
+        for i, code in enumerate(st_codes):
+            new_parc[self.data == code] = i + 1 + offset
+        self.data = new_parc
 
-        if offset != 0:
-            self.index = [x + offset for x in self.index]
+        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+            temp_index = np.unique(self.data)
+            temp_index = temp_index[temp_index != 0]
+            self.index = temp_index.tolist()
 
         self.parc_range()
 
