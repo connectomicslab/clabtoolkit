@@ -637,11 +637,15 @@ class DefineLayout:
         all_values: List,
     ) -> None:
         """Add a single surface to the current subplot."""
-        if "values" in surf.mesh.array_names and hasattr(surf, "colors"):
+        if "vertex_colors" in surf.mesh.point_data:
             # Surface with scalar data
-            pl.add_mesh(surf.mesh, scalars="values", cmap=surf.colors, **render_params)
-            all_colors.append(surf.colors)
-            all_values.extend(surf.mesh["values"])
+            if np.shape(surf.mesh.point_data["vertex_colors"])[1] == 3:
+                # RGB colors
+                pl.add_mesh(
+                    surf.mesh, scalars="vertex_colors", rgb=True, **render_params
+                )
+                all_colors.append(surf.mesh.point_data["vertex_colors"])
+            # all_values.extend(surf.mesh["values"])
         else:
             # Plain surface without scalar data
             pl.add_mesh(surf.mesh, **render_params)
