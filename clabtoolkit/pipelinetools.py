@@ -27,6 +27,7 @@ from rich.panel import Panel
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -139,8 +140,10 @@ def create_processing_status_table(
             subject = id_dict["sub"]
 
             # Get entity information for this subject
-            ent_list = cltmorpho.entities4morphotable(selected_entities=full_id)
-            df_add = cltbids.entities_to_table(filepath=full_id, entities_to_extract=ent_list)
+            ent_list = cltbids.entities4table(selected_entities=full_id)
+            df_add = cltbids.entities_to_table(
+                filepath=full_id, entities_to_extract=ent_list
+            )
 
             # Create a new DataFrame for this subject's processing status
             proc_table = pd.DataFrame(
@@ -180,7 +183,7 @@ def create_processing_status_table(
                     continue
 
                 # Count files for this subject in this pipeline
-                all_pip_files = cltmisc.detect_recursive_files(ind_der_dir[0])
+                all_pip_files = cltmisc.get_all_files(ind_der_dir[0])
                 subj_pipe_files = cltmisc.filter_by_substring(
                     all_pip_files, or_filter=clean_id_dict["sub"], and_filter=subj_ent
                 )
@@ -293,6 +296,7 @@ def create_processing_status_table(
 
     return proc_status_df, output_table
 
+
 ####################################################################################################
 def get_processing_status_details_json(
     proc_status_df: Union[str, dict],
@@ -326,7 +330,7 @@ def get_processing_status_details_json(
 
     only_ids : bool, optional
         If True, only the IDs of the subjects with mismatches will be returned, without the file details.
-        
+
     Returns:
     -------
     dict
@@ -387,7 +391,7 @@ def get_processing_status_details_json(
         pipe_dirs = all_pipe_dirs
 
     # All entities
-    ent_list = cltmorpho.entities4morphotable()
+    ent_list = cltmorpho.entities4table()
 
     # Get all the columns names
     col_names = proc_status_df.columns.tolist()
@@ -404,35 +408,32 @@ def get_processing_status_details_json(
     for i in pipe_dirs:
         proc_status_df[i] = proc_status_df[i].astype(int)
         pipe_dir_fold = os.path.join(deriv_dir, i)
-        
+
         # Initialize consistent structure
-        missmatch_pipe = {
-            "ref_fullid": "",
-            "missmatch_fullid": {}
-        }
+        missmatch_pipe = {"ref_fullid": "", "missmatch_fullid": {}}
 
         # Get the mode for the column to determine the reference value
         mode_value = proc_status_df[i].mode()[0]
-        
+
         # Find rows that match the mode (will be used as reference)
         agreement_rows = proc_status_df[proc_status_df[i] == mode_value].index
-        
+
         # Get reference subject details (using the first row that matches the mode)
         ref_ids = subj_ids_df.loc[agreement_rows].iloc[0, :]
-        
+
         # Create identifiers for the reference subject
         cad2look_ref = [
             f"{key}-{ref_ids[value]}"
             for key, value in ent_list.items()
             if value in subj_columns
         ]
-        
+
         # Get files for the reference subject
         ref_files = cltbids.get_individual_files_and_folders(
             pipe_dir_fold,
             cad2look_ref,
         )
-        
+
         # Find the full ID of the reference subject
         try:
             ref_full_id = cltmisc.filter_by_substring(
@@ -441,39 +442,39 @@ def get_processing_status_details_json(
         except IndexError:
             # Handle case where reference ID is not found
             ref_full_id = "unknown_reference"
-            
+
         missmatch_pipe["ref_fullid"] = ref_full_id
-        
+
         # Find rows that don't match the mode (disagreement rows)
         disagreement_rows = proc_status_df[proc_status_df[i] != mode_value].index
-        
+
         # Only process mismatches if reference files exist and there are disagreements
         if ref_files and len(disagreement_rows) > 0:
             # Process reference files to remove path prefixes for comparison
             cad2look_ref.append(pipe_dir_fold)
             tmp_ref_files = cltmisc.remove_substrings(ref_files, cad2look_ref)
-            
+
             # Get the ids of the subjects with disagreement
             subtable_ids = subj_ids_df.loc[disagreement_rows]
-            
+
             # Loop through all subjects with disagreement
             for j in range(len(disagreement_rows)):
                 # Get the subject ID
                 sub_row = subtable_ids.iloc[j, :]
-                
+
                 # Create identifiers for this subject
                 cad2look_ind = [
                     f"{key}-{sub_row[value]}"
                     for key, value in ent_list.items()
                     if value in subj_columns
                 ]
-                
+
                 # Get files for this subject
                 indiv_files = cltbids.get_individual_files_and_folders(
                     pipe_dir_fold,
                     cad2look_ind,
                 )
-                
+
                 try:
                     # Find the full ID of this subject
                     indiv_full_id = cltmisc.filter_by_substring(
@@ -484,31 +485,34 @@ def get_processing_status_details_json(
                 except IndexError:
                     # Handle case where subject ID is not found
                     indiv_full_id = f"unknown_subject_{j}"
-                
+
                 # Initialize results for this subject
-                missmatch_subject = {
-                    "missing_files": [],
-                    "extra_files": []
-                }
-                
+                missmatch_subject = {"missing_files": [], "extra_files": []}
+
                 if indiv_files:
                     # Process individual files to remove path prefixes for comparison
                     cad2look_ind.append(pipe_dir_fold)
-                    tmp_indiv_files = cltmisc.remove_substrings(indiv_files, cad2look_ind)
-                    
+                    tmp_indiv_files = cltmisc.remove_substrings(
+                        indiv_files, cad2look_ind
+                    )
+
                     # Find missing files (in reference but not in this subject)
                     tmp_miss = list(set(tmp_ref_files) - set(tmp_indiv_files))
                     if tmp_miss:
-                        miss_indices = cltmisc.get_indexes_by_substring(tmp_ref_files, tmp_miss)
+                        miss_indices = cltmisc.get_indexes_by_substring(
+                            tmp_ref_files, tmp_miss
+                        )
                         selected_files_ref = [ref_files[i] for i in miss_indices]
                         missmatch_subject["missing_files"] = cltmisc.replace_substrings(
                             selected_files_ref, cad2look_ref, cad2look_ind
                         )
-                    
+
                     # Find extra files (in this subject but not in reference)
                     tmp_extra = list(set(tmp_indiv_files) - set(tmp_ref_files))
                     if tmp_extra:
-                        extra_indices = cltmisc.get_indexes_by_substring(tmp_indiv_files, tmp_extra)
+                        extra_indices = cltmisc.get_indexes_by_substring(
+                            tmp_indiv_files, tmp_extra
+                        )
                         selected_files_indiv = [indiv_files[i] for i in extra_indices]
                         missmatch_subject["extra_files"] = cltmisc.replace_substrings(
                             selected_files_indiv, cad2look_ind, cad2look_ref
@@ -518,10 +522,10 @@ def get_processing_status_details_json(
                     missmatch_subject["missing_files"] = cltmisc.replace_substrings(
                         ref_files, cad2look_ref, cad2look_ind
                     )
-                
+
                 # Add this subject's details to the results
                 missmatch_pipe["missmatch_fullid"][indiv_full_id] = missmatch_subject
-        
+
         # Add this pipeline's results to the summary
         missmatch_summary[i] = missmatch_pipe
 
@@ -542,6 +546,7 @@ def get_processing_status_details_json(
         cltmisc.save_dictionary_to_json(missmatch_summary, out_json)
 
     return missmatch_summary, out_json
+
 
 ####################################################################################################
 def get_processing_status_details_sqlite3(
@@ -580,7 +585,7 @@ def get_processing_status_details_sqlite3(
 
     only_ids : bool, optional
         If True, only the IDs of the subjects with mismatches will be returned, without the file details.
-        
+
     Returns:
     -------
     dict
@@ -640,7 +645,7 @@ def get_processing_status_details_sqlite3(
         pipe_dirs = all_pipe_dirs
 
     # All entities
-    ent_list = cltmorpho.entities4morphotable()
+    ent_list = cltbids.entities4table()
 
     # Get all the columns names
     col_names = proc_status_df.columns.tolist()
@@ -657,32 +662,38 @@ def get_processing_status_details_sqlite3(
     if db_path:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        
+
         # Create tables
-        cursor.execute('''
+        cursor.execute(
+            """
         CREATE TABLE IF NOT EXISTS pipelines (
             pipeline_id TEXT PRIMARY KEY,
             ref_fullid TEXT
-        )''')
-        
-        cursor.execute('''
+        )"""
+        )
+
+        cursor.execute(
+            """
         CREATE TABLE IF NOT EXISTS mismatches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pipeline_id TEXT,
             subject_id TEXT,
             FOREIGN KEY (pipeline_id) REFERENCES pipelines(pipeline_id),
             UNIQUE (pipeline_id, subject_id)
-        )''')
-        
-        cursor.execute('''
+        )"""
+        )
+
+        cursor.execute(
+            """
         CREATE TABLE IF NOT EXISTS file_details (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mismatch_id INTEGER,
             file_path TEXT,
             status TEXT,
             FOREIGN KEY (mismatch_id) REFERENCES mismatches(id)
-        )''')
-        
+        )"""
+        )
+
         # Clear existing data if needed
         cursor.execute("DELETE FROM file_details")
         cursor.execute("DELETE FROM mismatches")
@@ -692,35 +703,32 @@ def get_processing_status_details_sqlite3(
     for i in pipe_dirs:
         proc_status_df[i] = proc_status_df[i].astype(int)
         pipe_dir_fold = os.path.join(deriv_dir, i)
-        
+
         # Initialize consistent structure
-        missmatch_pipe = {
-            "ref_fullid": "",
-            "missmatch_fullid": {}
-        }
+        missmatch_pipe = {"ref_fullid": "", "missmatch_fullid": {}}
 
         # Get the mode for the column to determine the reference value
         mode_value = proc_status_df[i].mode()[0]
-        
+
         # Find rows that match the mode (will be used as reference)
         agreement_rows = proc_status_df[proc_status_df[i] == mode_value].index
-        
+
         # Get reference subject details (using the first row that matches the mode)
         ref_ids = subj_ids_df.loc[agreement_rows].iloc[0, :]
-        
+
         # Create identifiers for the reference subject
         cad2look_ref = [
             f"{key}-{ref_ids[value]}"
             for key, value in ent_list.items()
             if value in subj_columns
         ]
-        
+
         # Get files for the reference subject
         ref_files = cltbids.get_individual_files_and_folders(
             pipe_dir_fold,
             cad2look_ref,
         )
-        
+
         # Find the full ID of the reference subject
         try:
             ref_full_id = cltmisc.filter_by_substring(
@@ -729,44 +737,45 @@ def get_processing_status_details_sqlite3(
         except IndexError:
             # Handle case where reference ID is not found
             ref_full_id = "unknown_reference"
-            
+
         missmatch_pipe["ref_fullid"] = ref_full_id
-        
+
         # If using SQLite, insert pipeline info
         if db_path:
-            cursor.execute("INSERT OR REPLACE INTO pipelines VALUES (?, ?)", 
-                            (i, ref_full_id))
-        
+            cursor.execute(
+                "INSERT OR REPLACE INTO pipelines VALUES (?, ?)", (i, ref_full_id)
+            )
+
         # Find rows that don't match the mode (disagreement rows)
         disagreement_rows = proc_status_df[proc_status_df[i] != mode_value].index
-        
+
         # Only process mismatches if reference files exist and there are disagreements
         if ref_files and len(disagreement_rows) > 0:
             # Process reference files to remove path prefixes for comparison
             cad2look_ref.append(pipe_dir_fold)
             tmp_ref_files = cltmisc.remove_substrings(ref_files, cad2look_ref)
-            
+
             # Get the ids of the subjects with disagreement
             subtable_ids = subj_ids_df.loc[disagreement_rows]
-            
+
             # Loop through all subjects with disagreement
             for j in range(len(disagreement_rows)):
                 # Get the subject ID
                 sub_row = subtable_ids.iloc[j, :]
-                
+
                 # Create identifiers for this subject
                 cad2look_ind = [
                     f"{key}-{sub_row[value]}"
                     for key, value in ent_list.items()
                     if value in subj_columns
                 ]
-                
+
                 # Get files for this subject
                 indiv_files = cltbids.get_individual_files_and_folders(
                     pipe_dir_fold,
                     cad2look_ind,
                 )
-                
+
                 try:
                     # Find the full ID of this subject
                     indiv_full_id = cltmisc.filter_by_substring(
@@ -777,60 +786,63 @@ def get_processing_status_details_sqlite3(
                 except IndexError:
                     # Handle case where subject ID is not found
                     indiv_full_id = f"unknown_subject_{j}"
-                
+
                 # Initialize results for this subject
-                missmatch_subject = {
-                    "missing_files": [],
-                    "extra_files": []
-                }
-                
+                missmatch_subject = {"missing_files": [], "extra_files": []}
+
                 # Insert subject into mismatches table if using SQLite
                 if db_path:
                     cursor.execute(
                         "INSERT OR REPLACE INTO mismatches (pipeline_id, subject_id) VALUES (?, ?)",
-                        (i, indiv_full_id)
+                        (i, indiv_full_id),
                     )
                     mismatch_id = cursor.lastrowid
-                
+
                 if indiv_files:
                     # Process individual files to remove path prefixes for comparison
                     cad2look_ind.append(pipe_dir_fold)
-                    tmp_indiv_files = cltmisc.remove_substrings(indiv_files, cad2look_ind)
-                    
+                    tmp_indiv_files = cltmisc.remove_substrings(
+                        indiv_files, cad2look_ind
+                    )
+
                     # Find missing files (in reference but not in this subject)
                     tmp_miss = list(set(tmp_ref_files) - set(tmp_indiv_files))
                     if tmp_miss:
-                        miss_indices = cltmisc.get_indexes_by_substring(tmp_ref_files, tmp_miss)
+                        miss_indices = cltmisc.get_indexes_by_substring(
+                            tmp_ref_files, tmp_miss
+                        )
                         selected_files_ref = [ref_files[i] for i in miss_indices]
                         missing_files = cltmisc.replace_substrings(
                             selected_files_ref, cad2look_ref, cad2look_ind
                         )
                         missmatch_subject["missing_files"] = missing_files
-                        
+
                         # Insert missing files into database if using SQLite
                         if db_path:
                             for file_path in missing_files:
                                 cursor.execute(
                                     "INSERT INTO file_details (mismatch_id, file_path, status) VALUES (?, ?, ?)",
-                                    (mismatch_id, file_path, "missing")
+                                    (mismatch_id, file_path, "missing"),
                                 )
-                    
+
                     # Find extra files (in this subject but not in reference)
                     tmp_extra = list(set(tmp_indiv_files) - set(tmp_ref_files))
                     if tmp_extra:
-                        extra_indices = cltmisc.get_indexes_by_substring(tmp_indiv_files, tmp_extra)
+                        extra_indices = cltmisc.get_indexes_by_substring(
+                            tmp_indiv_files, tmp_extra
+                        )
                         selected_files_indiv = [indiv_files[i] for i in extra_indices]
                         extra_files = cltmisc.replace_substrings(
                             selected_files_indiv, cad2look_ind, cad2look_ref
                         )
                         missmatch_subject["extra_files"] = extra_files
-                        
+
                         # Insert extra files into database if using SQLite
                         if db_path:
                             for file_path in extra_files:
                                 cursor.execute(
                                     "INSERT INTO file_details (mismatch_id, file_path, status) VALUES (?, ?, ?)",
-                                    (mismatch_id, file_path, "extra")
+                                    (mismatch_id, file_path, "extra"),
                                 )
                 else:
                     # If no files found for this subject, all reference files are missing
@@ -838,18 +850,18 @@ def get_processing_status_details_sqlite3(
                         ref_files, cad2look_ref, cad2look_ind
                     )
                     missmatch_subject["missing_files"] = missing_files
-                    
+
                     # Insert missing files into database if using SQLite
                     if db_path:
                         for file_path in missing_files:
                             cursor.execute(
                                 "INSERT INTO file_details (mismatch_id, file_path, status) VALUES (?, ?, ?)",
-                                (mismatch_id, file_path, "missing")
+                                (mismatch_id, file_path, "missing"),
                             )
-                
+
                 # Add this subject's details to the results
                 missmatch_pipe["missmatch_fullid"][indiv_full_id] = missmatch_subject
-        
+
         # Add this pipeline's results to the summary
         missmatch_summary[i] = missmatch_pipe
 
@@ -876,26 +888,29 @@ def get_processing_status_details_sqlite3(
 
     return missmatch_summary, out_json
 
+
 ####################################################################################################
-def query_processing_status_db(db_path, query_type="subjects_with_mismatches", pipeline=None):
+def query_processing_status_db(
+    db_path, query_type="subjects_with_mismatches", pipeline=None
+):
     """
     Query the processing status database to extract useful information.
-    
+
     Parameters:
     ----------
     db_path : str
         Path to the SQLite database file.
-    
+
     query_type : str, optional
         Type of query to run. Options:
         - "subjects_with_mismatches": Get all subjects with mismatches
         - "pipelines_with_mismatches": Get all pipelines with mismatches and count
         - "missing_files_count": Get number of missing files per subject
         - "extra_files_count": Get number of extra files per subject
-        
+
     pipeline : str, optional
         Name of the pipeline to filter by. Used only with certain query types.
-        
+
     Returns:
     -------
     pd.DataFrame
@@ -903,9 +918,9 @@ def query_processing_status_db(db_path, query_type="subjects_with_mismatches", p
     """
     import sqlite3
     import pandas as pd
-    
+
     conn = sqlite3.connect(db_path)
-    
+
     if query_type == "subjects_with_mismatches":
         if pipeline:
             query = """
@@ -923,7 +938,7 @@ def query_processing_status_db(db_path, query_type="subjects_with_mismatches", p
             ORDER BY subject_id
             """
             df = pd.read_sql_query(query, conn)
-            
+
     elif query_type == "pipelines_with_mismatches":
         query = """
         SELECT pipeline_id, COUNT(DISTINCT subject_id) as subject_count
@@ -932,7 +947,7 @@ def query_processing_status_db(db_path, query_type="subjects_with_mismatches", p
         ORDER BY subject_count DESC
         """
         df = pd.read_sql_query(query, conn)
-        
+
     elif query_type == "missing_files_count":
         if pipeline:
             query = """
@@ -954,7 +969,7 @@ def query_processing_status_db(db_path, query_type="subjects_with_mismatches", p
             ORDER BY missing_count DESC
             """
             df = pd.read_sql_query(query, conn)
-            
+
     elif query_type == "extra_files_count":
         if pipeline:
             query = """
@@ -976,27 +991,28 @@ def query_processing_status_db(db_path, query_type="subjects_with_mismatches", p
             ORDER BY extra_count DESC
             """
             df = pd.read_sql_query(query, conn)
-    
+
     else:
         raise ValueError(f"Unknown query type: {query_type}")
-    
+
     conn.close()
     return df
+
 
 ####################################################################################################
 def export_db_to_json(db_path, out_json):
     """
     Export the processing status database to a JSON file in the same format
     as returned by get_processing_status_details.
-    
+
     Parameters:
     ----------
     db_path : str
         Path to the SQLite database file.
-    
+
     out_json : str
         Path to save the output JSON file.
-        
+
     Returns:
     -------
     dict
@@ -1005,62 +1021,68 @@ def export_db_to_json(db_path, out_json):
     import sqlite3
     import json
     import os
-    
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Get all pipelines
     cursor.execute("SELECT pipeline_id, ref_fullid FROM pipelines")
     pipelines = cursor.fetchall()
-    
+
     # Create the output dictionary
     output_dict = {}
-    
+
     for pipe_id, ref_fullid in pipelines:
         # Initialize pipeline entry
-        pipe_entry = {
-            "ref_fullid": ref_fullid,
-            "missmatch_fullid": {}
-        }
-        
+        pipe_entry = {"ref_fullid": ref_fullid, "missmatch_fullid": {}}
+
         # Get all mismatches for this pipeline
-        cursor.execute("""
+        cursor.execute(
+            """
         SELECT id, subject_id 
         FROM mismatches 
         WHERE pipeline_id = ?
-        """, (pipe_id,))
+        """,
+            (pipe_id,),
+        )
         mismatches = cursor.fetchall()
-        
+
         for mismatch_id, subject_id in mismatches:
             # Get missing files
-            cursor.execute("""
+            cursor.execute(
+                """
             SELECT file_path 
             FROM file_details 
             WHERE mismatch_id = ? AND status = 'missing'
-            """, (mismatch_id,))
+            """,
+                (mismatch_id,),
+            )
             missing_files = [row[0] for row in cursor.fetchall()]
-            
+
             # Get extra files
-            cursor.execute("""
+            cursor.execute(
+                """
             SELECT file_path 
             FROM file_details 
             WHERE mismatch_id = ? AND status = 'extra'
-            """, (mismatch_id,))
+            """,
+                (mismatch_id,),
+            )
             extra_files = [row[0] for row in cursor.fetchall()]
-            
+
             # Add to dictionary
             pipe_entry["missmatch_fullid"][subject_id] = {
                 "missing_files": missing_files,
-                "extra_files": extra_files
+                "extra_files": extra_files,
             }
-        
+
         # Add pipeline to output
         output_dict[pipe_id] = pipe_entry
-    
+
     conn.close()
-    
+
     # Save to JSON
-    with open(out_json, 'w') as f:
+    with open(out_json, "w") as f:
         json.dump(output_dict, f, indent=2)
-    
+
     return output_dict
