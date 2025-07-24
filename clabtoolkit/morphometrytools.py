@@ -221,7 +221,7 @@ def compute_reg_val_fromannot(
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
         df.insert(0, "Supraregion", reg_names[0])
-        df.insert(1, "Side", reg_names[1])
+        df.insert(1, "Hemisphere", reg_names[1])
 
     # Add metadata columns
     nrows = df.shape[0]
@@ -467,7 +467,7 @@ def compute_reg_area_fromsurf(
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
         df.insert(0, "Supraregion", reg_names[0])
-        df.insert(1, "Side", reg_names[1])
+        df.insert(1, "Hemisphere", reg_names[1])
 
     # Add metadata columns
     nrows = df.shape[0]
@@ -642,7 +642,7 @@ def compute_euler_fromsurf(
         # Split region names into components
         reg_names = df["Region"].str.split("-", expand=True)
         df.insert(0, "Supraregion", reg_names[0])
-        df.insert(1, "Side", reg_names[1])
+        df.insert(1, "Hemisphere", reg_names[1])
 
     # Add metadata columns
     nrows = df.shape[0]
@@ -1232,13 +1232,13 @@ def compute_reg_val_fromparcellation(
         # Safely handle region names that might not have 3 components
         if reg_names.shape[1] >= 3:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", reg_names[1])
+            df.insert(1, "Hemisphere", reg_names[1])
         elif reg_names.shape[1] == 2:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
         else:
             df.insert(0, "Supraregion", "unknown")
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
 
     # Add metadata columns
     nrows = df.shape[0]
@@ -1320,12 +1320,6 @@ def compute_reg_volume_fromparcellation(
     exclude_by_name : list or str, optional
         Region names to exclude from the analysis. If None, no regions are excluded by name.
         Example: ["Ventricles", "White-Matter"] to focus only on gray matter regions.
-    include_by_code : list or np.ndarray, optional
-        Region codes to include in the analysis. If None, all regions are included.
-        Useful for focusing on specific regions of interest.
-    include_by_name : list or str, optional
-        Region names to include in the analysis. If None, all regions are included.
-        Example: ["Cortex", "Hippocampus"] to focus on specific structures.
     include_by_code : list or np.ndarray, optional
         Region codes to include in the analysis. If None, all regions are included.
         Useful for focusing on specific regions of interest.
@@ -1535,13 +1529,13 @@ def compute_reg_volume_fromparcellation(
         # Safely handle region names that might not have 3 components
         if reg_names.shape[1] >= 3:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", reg_names[1])
+            df.insert(1, "Hemisphere", reg_names[1])
         elif reg_names.shape[1] == 2:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
         else:
             df.insert(0, "Supraregion", "unknown")
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
 
     # Add metadata columns
     nrows = df.shape[0]
@@ -1825,13 +1819,13 @@ def parse_freesurfer_global_fromaseg(
         # Safely handle region names that might not have 3 components
         if reg_names.shape[1] >= 3:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", reg_names[1])
+            df.insert(1, "Hemisphere", reg_names[1])
         elif reg_names.shape[1] == 2:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
         else:
             df.insert(0, "Supraregion", "unknown")
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
 
     # Add metadata columns
     nrows = df.shape[0]
@@ -2119,13 +2113,13 @@ def parse_freesurfer_stats_fromaseg(
         # Safely handle region names that might not have 3 components
         if reg_names.shape[1] >= 3:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", reg_names[1])
+            df.insert(1, "Hemisphere", reg_names[1])
         elif reg_names.shape[1] == 2:
             df.insert(0, "Supraregion", reg_names[0])
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
         else:
             df.insert(0, "Supraregion", "unknown")
-            df.insert(1, "Side", "unknown")
+            df.insert(1, "Hemisphere", "unknown")
 
     # Add metadata columns
     nrows = df.shape[0]
@@ -2558,7 +2552,7 @@ def parse_freesurfer_cortex_stats(
         df = pd.DataFrame(regions_data)
 
         # Split region names into components
-        df["Side"] = hemi
+        df["Hemisphere"] = hemi
         df["Supraregion"] = "ctx"
 
         # Add metadata column for the source file
@@ -2571,7 +2565,7 @@ def parse_freesurfer_cortex_stats(
             "Units",
             "MetricFile",
             "Supraregion",
-            "Side",
+            "Hemisphere",
             "Region",
             "Value",
         ]
@@ -2600,7 +2594,7 @@ def parse_freesurfer_cortex_stats(
                     "Units",
                     "MetricFile",
                     "Supraregion",
-                    "Side",
+                    "Hemisphere",
                 ],
                 columns="Region",
             )
@@ -2838,149 +2832,6 @@ def stats_from_vector(metric_vect, stats_list):
 
     # Compute all requested statistics and convert to native Python float
     return [float(stats_map[stat](metric_vect)) for stat in lowercase_stats]
-
-
-####################################################################################################
-def entities4morphotable(
-    entities_json: str = None, selected_entities: Union[str, Dict, List] = None
-) -> Dict:
-    """
-    Returns the BIDS entities that will be included in the morphometric table.
-
-    This function loads BIDS entities from a JSON configuration file and filters
-    them based on optional selected entities.
-
-    Parameters
-    ----------
-    entities_json : str, optional
-        Path to the JSON file with entity definitions.
-        If None, the method uses the default config JSON file.
-    selected_entities : Union[str, Dict, List], optional
-        Entities to select from the loaded entities. Can be:
-        - A string with comma-separated entity names
-        - A dictionary with entity names as keys
-        - A list of entity names
-        If None, all entities are included.
-
-    Returns
-    -------
-    Dict
-        Dictionary of entity names and their values.
-
-    Raises
-    ------
-    ValueError
-        If the provided JSON file path is invalid or the JSON format is incorrect.
-    FileNotFoundError
-        If the specified JSON file does not exist.
-
-    Examples
-    --------
-    >>> # Using default config file (returns all entities)
-    >>> entities4morphotable()
-    {'sub': {'...'}, 'ses': {'...'}, ... 'scale': {'...'}}
-
-    >>> # Using a custom JSON file
-    >>> entities4morphotable('path/to/custom/entities.json')
-    {'sub': {'...'}, 'ses': {'...'}, ... 'scale': {'...'}}
-
-    >>> # Selecting specific entities
-    >>> entities4morphotable(selected_entities='sub,ses,run')
-    {'sub': {'...'}, 'ses': {'...'}, 'run': {'...'}}
-
-    >>> # Using a dictionary to select entities
-    >>> entities4morphotable(selected_entities={'sub': None, 'ses': None})
-    {'sub': {'...'}, 'ses': {'...'}}
-
-    >>> # Using a list to select entities
-    >>> entities4morphotable(selected_entities=['sub', 'ses'])
-    {'sub': {'...'}, 'ses': {'...'}}
-    """
-    import os
-    import json
-    from typing import Dict, Union, List
-
-    # Load entities from JSON
-    if entities_json is None:
-        # Define path to default config JSON
-        default_config_path = os.path.join(
-            os.path.dirname(__file__), "config", "bids.json"
-        )
-        try:
-            with open(default_config_path, "r") as f:
-                config_data = json.load(f)
-
-            # Merge raw and derivatives entities
-            if (
-                "bids_entities" in config_data
-                and "raw_entities" in config_data["bids_entities"]
-                and "derivatives_entities" in config_data["bids_entities"]
-            ):
-                ent_out_dict = {
-                    **config_data["bids_entities"]["raw_entities"],
-                    **config_data["bids_entities"]["derivatives_entities"],
-                }
-            else:
-                raise ValueError(
-                    "Default config JSON does not have the expected structure."
-                )
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                f"Default configuration file not found at: {default_config_path}"
-            )
-        except json.JSONDecodeError:
-            raise ValueError(
-                f"Error parsing the default configuration file: {default_config_path}"
-            )
-
-    elif isinstance(entities_json, str):
-        # Load from provided JSON file path
-        if not os.path.isfile(entities_json):
-            raise FileNotFoundError(f"JSON file not found: {entities_json}")
-
-        try:
-
-            ent_out_dict = cltmisc.extract_string_values(entities_json)
-        except json.JSONDecodeError:
-            raise ValueError(f"Error parsing the JSON file: {entities_json}")
-    else:
-        raise TypeError("entities_json must be None or a string path to a JSON file.")
-
-    # Filter entities based on selected_entities
-    if selected_entities is not None:
-        selected_entity_keys = []
-
-        # Handle string input (convert to list of keys)
-        if isinstance(selected_entities, str):
-            try:
-                # Assume it's a comma-separated string
-                if "," in selected_entities:
-                    selected_entity_keys = [
-                        e.strip() for e in selected_entities.split(",")
-                    ]
-                elif cltbids.is_bids_filename(selected_entities):
-                    selected_entities = cltbids.str2entity(selected_entities)
-                    selected_entity_keys = list(selected_entities.keys())
-
-            except (ImportError, AttributeError):
-                raise ValueError(
-                    "Cannot parse selected_entities string. Provide a comma-separated list or a BIDs-like string (e.g. sub-XXX_ses-SSS_run-01 )."
-                )
-
-        # Handle dictionary input
-        elif isinstance(selected_entities, dict):
-            selected_entity_keys = list(selected_entities.keys())
-
-        # Handle list input
-        elif isinstance(selected_entities, list):
-            selected_entity_keys = selected_entities
-
-        # Filter the output dictionary to include only selected entities
-        ent_out_dict = {
-            k: v for k, v in ent_out_dict.items() if k in selected_entity_keys
-        }
-
-    return ent_out_dict
 
 
 ####################################################################################################
