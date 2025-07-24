@@ -1338,22 +1338,13 @@ class Parcellation:
 
         # Optionally convert codes using cltmisc.build_indices if available
         for i, group in enumerate(codes2rep):
-            try:
-                import cltmisc
-
-                codes2rep[i] = cltmisc.build_indices(group, nonzeros=False)
-            except (ImportError, NameError):
-                codes2rep[i] = group
+            codes2rep[i] = cltmisc.build_indices(group, nonzeros=False)
 
         # Process new_codes
         if isinstance(new_codes, list):
-            try:
-                import cltmisc
-
-                new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
-            except (ImportError, NameError):
-                pass
+            new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
             new_codes = np.array(new_codes, dtype=np.int32)
+            
         elif isinstance(new_codes, (int, np.integer)):
             new_codes = np.array([new_codes], dtype=np.int32)
         else:
