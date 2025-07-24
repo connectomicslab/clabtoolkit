@@ -859,7 +859,6 @@ class Parcellation:
 
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
-        self.keep_by_code(codes2look=st_codes, rearrange=True)
 
         # Parcellation with values starting from 1 or starting from the offset
         new_parc = np.zeros_like(self.data, dtype="int16")
