@@ -171,7 +171,7 @@ class Parcellation:
 
             if len(indexes) > 0:
                 sel_st_codes = [self.index[i] for i in indexes]
-                self.keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
+                self.keep_by_code(codes2keep=sel_st_codes, rearrange=rearrange)
             else:
                 print("The names were not found in the parcellation")
 
@@ -263,21 +263,16 @@ class Parcellation:
             codes2remove = cltmisc.build_indices(codes2remove)
             codes2remove = np.array(codes2remove)
 
-        for i, v in enumerate(codes2remove):
-            # Find the elements in the data that are equal to v
-            result = np.where(self.data == v)
-
-            if len(result[0]) > 0:
-                self.data[result[0], result[1], result[2]] = 0
+        self.data[np.isin(self.data, codes2remove)] = 0
 
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
 
         # If rearrange is True, the parcellation will be rearranged starting from 1
         if rearrange:
-            self.keep_by_code(codes2look=st_codes, rearrange=True)
+            self.keep_by_code(codes2keep=st_codes, rearrange=True)
         else:
-            self.keep_by_code(codes2look=st_codes, rearrange=False)
+            self.keep_by_code(codes2keep=st_codes, rearrange=False)
 
         # Detect minimum and maximum labels
         self.parc_range()
@@ -331,7 +326,7 @@ class Parcellation:
 
             if len(indexes) > 0:
                 sel_st_codes = [self.index[i] for i in indexes]
-                self.keep_by_code(codes2look=sel_st_codes, rearrange=rearrange)
+                self.keep_by_code(codes2keep=sel_st_codes, rearrange=rearrange)
 
             else:
                 print("The names were not found in the parcellation")
