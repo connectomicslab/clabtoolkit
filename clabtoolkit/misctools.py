@@ -19,6 +19,7 @@ import types
 
 from pathlib import Path
 from colorama import init, Fore, Style, Back
+
 init(autoreset=True)
 
 import matplotlib.pyplot as plt
@@ -3085,7 +3086,7 @@ def show_module_contents(module):
                         and method.__qualname__.startswith(obj.__name__ + ".")
                     ):
                         sig = inspect.signature(method)
-                        formatted_sig = _format_signature(sig)
+                        formatted_sig = format_signature(sig)
                         print(
                             f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}"
                         )
@@ -3106,7 +3107,7 @@ def show_module_contents(module):
             obj = getattr(module, name)
             if inspect.isfunction(obj) and obj.__module__ == module.__name__:
                 sig = inspect.signature(obj)
-                formatted_sig = _format_signature(sig)
+                formatted_sig = format_signature(sig)
                 print(f"  {bcolors.OKYELLOW}- {name}{bcolors.ENDC}{formatted_sig}")
                 doc = inspect.getdoc(obj)
                 if doc:
@@ -3455,18 +3456,19 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
         print(f"Error: {e}")
         raise
 
+
 def show_object_content(obj, show_private=False, show_dunder=False):
     """
     Print object properties and methods with ANSI colors, similar to inspect.help().
-    
+
     Parameters:
         obj: The object to inspect
         show_private (bool): Whether to show private methods/attributes (starting with _)
         show_dunder (bool): Whether to show dunder methods (starting with __)
-    
+
     Returns:
         None: Prints the colorized help information to stdout
-    
+
     Examples:
         >>> show_object_content(str)
         >>> show_object_content(my_object, show_private=True)
@@ -3474,163 +3476,192 @@ def show_object_content(obj, show_private=False, show_dunder=False):
     """
     # Get object info
     obj_type = type(obj)
-    obj_name = getattr(obj, '__name__', str(obj))
-    module_name = getattr(obj_type, '__module__', 'unknown')
-    
+    obj_name = getattr(obj, "__name__", str(obj))
+    module_name = getattr(obj_type, "__module__", "unknown")
+
     # Print header
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
     print(f"{bcolors.BOLD}{bcolors.HEADER}✅ INSPECTION COMPLETE{bcolors.ENDC}")
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
     print(f"{bcolors.BOLD}{bcolors.HEADER}🔍 OBJECT INSPECTOR{bcolors.ENDC}")
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
-    
+
     # Object information
-    print(f"{bcolors.BOLD}{bcolors.OKCYAN}📦 Object:{bcolors.ENDC} {bcolors.OKWHITE}{obj_name}{bcolors.ENDC}")
-    print(f"{bcolors.BOLD}{bcolors.OKCYAN}🏷️  Type:{bcolors.ENDC} {bcolors.OKWHITE}{obj_type.__name__}{bcolors.ENDC}")
-    print(f"{bcolors.BOLD}{bcolors.OKCYAN}📁 Module:{bcolors.ENDC} {bcolors.OKWHITE}{module_name}{bcolors.ENDC}")
-    
+    print(
+        f"{bcolors.BOLD}{bcolors.OKCYAN}📦 Object:{bcolors.ENDC} {bcolors.OKWHITE}{obj_name}{bcolors.ENDC}"
+    )
+    print(
+        f"{bcolors.BOLD}{bcolors.OKCYAN}🏷️  Type:{bcolors.ENDC} {bcolors.OKWHITE}{obj_type.__name__}{bcolors.ENDC}"
+    )
+    print(
+        f"{bcolors.BOLD}{bcolors.OKCYAN}📁 Module:{bcolors.ENDC} {bcolors.OKWHITE}{module_name}{bcolors.ENDC}"
+    )
+
     # Class docstring
     doc = inspect.getdoc(obj)
     if doc:
         print(f"\n{bcolors.BOLD}{bcolors.OKGREEN}📝 Description:{bcolors.ENDC}")
         print(f"{bcolors.ITALIC}{bcolors.OKGRAY}{doc}{bcolors.ENDC}")
-    
+
     # Get all members
     members = inspect.getmembers(obj)
-    
+
     # Categorize members
     methods = []
     properties = []
     attributes = []
-    
+
     for name, value in members:
         # Filter based on visibility preferences
-        if not show_dunder and name.startswith('__') and name.endswith('__'):
+        if not show_dunder and name.startswith("__") and name.endswith("__"):
             continue
-        if not show_private and name.startswith('_') and not name.startswith('__'):
+        if not show_private and name.startswith("_") and not name.startswith("__"):
             continue
-            
+
         if inspect.ismethod(value) or inspect.isfunction(value):
             methods.append((name, value))
         elif inspect.isdatadescriptor(value) or isinstance(value, property):
             properties.append((name, value))
         else:
             attributes.append((name, value))
-    
+
     # Print Methods
     if methods:
-        print(f"\n{bcolors.BOLD}{bcolors.OKBLUE}{'─'*15} ⚙️  METHODS {'─'*15}{bcolors.ENDC}")
+        print(
+            f"\n{bcolors.BOLD}{bcolors.OKBLUE}{'─'*15} ⚙️  METHODS {'─'*15}{bcolors.ENDC}"
+        )
         for name, method in sorted(methods):
             try:
                 sig = inspect.signature(method)
-                print(f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{bcolors.OKWHITE}{sig}{bcolors.ENDC}")
-                
+                print(
+                    f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{bcolors.OKWHITE}{sig}{bcolors.ENDC}"
+                )
+
                 # Method docstring
                 method_doc = inspect.getdoc(method)
                 if method_doc:
                     # Show first line of docstring
-                    first_line = method_doc.split('\n')[0]
-                    print(f"    {bcolors.ITALIC}{bcolors.OKGRAY}{first_line}{bcolors.ENDC}")
+                    first_line = method_doc.split("\n")[0]
+                    print(
+                        f"    {bcolors.ITALIC}{bcolors.OKGRAY}{first_line}{bcolors.ENDC}"
+                    )
             except (ValueError, TypeError):
-                print(f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{bcolors.OKGRAY}(signature unavailable){bcolors.ENDC}")
+                print(
+                    f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{bcolors.OKGRAY}(signature unavailable){bcolors.ENDC}"
+                )
             print()
-    
+
     # Print Properties
     if properties:
-        print(f"{bcolors.BOLD}{bcolors.OKMAGENTA}{'─'*15} 🏠 PROPERTIES {'─'*12}{bcolors.ENDC}")
+        print(
+            f"{bcolors.BOLD}{bcolors.OKMAGENTA}{'─'*15} 🏠 PROPERTIES {'─'*12}{bcolors.ENDC}"
+        )
         for name, prop in sorted(properties):
             print(f"{bcolors.BOLD}{bcolors.PURPLE}🔑 {name}{bcolors.ENDC}")
-            
+
             # Property docstring
             prop_doc = inspect.getdoc(prop)
             if prop_doc:
-                first_line = prop_doc.split('\n')[0]
+                first_line = prop_doc.split("\n")[0]
                 print(f"    {bcolors.ITALIC}{bcolors.OKGRAY}{first_line}{bcolors.ENDC}")
             print()
-    
+
     # Print Attributes
     if attributes:
-        print(f"{bcolors.BOLD}{bcolors.DARKCYAN}{'─'*15} 📊 ATTRIBUTES {'─'*12}{bcolors.ENDC}")
+        print(
+            f"{bcolors.BOLD}{bcolors.DARKCYAN}{'─'*15} 📊 ATTRIBUTES {'─'*12}{bcolors.ENDC}"
+        )
         for name, attr in sorted(attributes):
             attr_type = type(attr).__name__
             attr_repr = repr(attr)
-            
+
             # Truncate long representations
             if len(attr_repr) > 50:
                 attr_repr = attr_repr[:47] + "..."
-            
-            print(f"{bcolors.BOLD}{bcolors.OKCYAN}📌 {name}{bcolors.ENDC} "
+
+            print(
+                f"{bcolors.BOLD}{bcolors.OKCYAN}📌 {name}{bcolors.ENDC} "
                 f"{bcolors.OKGRAY}({attr_type}){bcolors.ENDC}: "
-                f"{bcolors.DARKWHITE}{attr_repr}{bcolors.ENDC}")
-    
+                f"{bcolors.DARKWHITE}{attr_repr}{bcolors.ENDC}"
+            )
+
     # MRO (Method Resolution Order) for classes
     if inspect.isclass(obj):
         mro = inspect.getmro(obj)
         if len(mro) > 1:
-            print(f"\n{bcolors.BOLD}{bcolors.WARNING}{'─'*10} 🏗️  METHOD RESOLUTION ORDER {'─'*10}{bcolors.ENDC}")
+            print(
+                f"\n{bcolors.BOLD}{bcolors.WARNING}{'─'*10} 🏗️  METHOD RESOLUTION ORDER {'─'*10}{bcolors.ENDC}"
+            )
             for i, cls in enumerate(mro):
-                print(f"{bcolors.OKYELLOW}🔗 {i+1}.{bcolors.ENDC} {bcolors.OKWHITE}{cls.__name__}{bcolors.ENDC} "
-                    f"{bcolors.OKGRAY}({cls.__module__}){bcolors.ENDC}")
-    
+                print(
+                    f"{bcolors.OKYELLOW}🔗 {i+1}.{bcolors.ENDC} {bcolors.OKWHITE}{cls.__name__}{bcolors.ENDC} "
+                    f"{bcolors.OKGRAY}({cls.__module__}){bcolors.ENDC}"
+                )
+
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
+
 
 def search_methods(obj, keyword, case_sensitive=False):
     """
     Search for methods/attributes containing a keyword in name or docstring.
-    
+
     Parameters:
         obj: The object to search in
         keyword (str): The keyword to search for
         case_sensitive (bool): Whether the search should be case sensitive
-    
+
     Returns:
         None: Prints the search results to stdout
-    
+
     Examples:
         >>> search_methods(str, "find")
         >>> search_methods(my_toolkit, "config", case_sensitive=True)
         >>> search_methods(pandas.DataFrame, "drop")
-    
+
     Note:
         Searches both method names and their docstrings for the keyword.
         Results are displayed with colorized output showing matches.
     """
     if not case_sensitive:
         keyword = keyword.lower()
-    
-    print(f"{bcolors.BOLD}{bcolors.HEADER}🔍 SEARCH RESULTS for '{keyword}'{bcolors.ENDC}")
+
+    print(
+        f"{bcolors.BOLD}{bcolors.HEADER}🔍 SEARCH RESULTS for '{keyword}'{bcolors.ENDC}"
+    )
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*40}{bcolors.ENDC}")
-    
+
     members = inspect.getmembers(obj)
     found = False
-    
+
     for name, value in members:
         name_match = keyword in (name.lower() if not case_sensitive else name)
         doc_match = False
-        
+
         # Check docstring
         doc = inspect.getdoc(value)
         if doc:
             doc_match = keyword in (doc.lower() if not case_sensitive else doc)
-        
+
         if name_match or doc_match:
             found = True
             print(f"{bcolors.BOLD}{bcolors.OKYELLOW}✨ {name}{bcolors.ENDC}")
-            
+
             if inspect.ismethod(value) or inspect.isfunction(value):
                 try:
                     sig = inspect.signature(value)
-                    print(f"  {bcolors.OKGRAY}📋 Signature:{bcolors.ENDC} {bcolors.OKWHITE}{sig}{bcolors.ENDC}")
+                    print(
+                        f"  {bcolors.OKGRAY}📋 Signature:{bcolors.ENDC} {bcolors.OKWHITE}{sig}{bcolors.ENDC}"
+                    )
                 except:
                     pass
-            
+
             if doc:
-                first_line = doc.split('\n')[0]
+                first_line = doc.split("\n")[0]
                 if len(first_line) > 80:
                     first_line = first_line[:77] + "..."
                 print(f"  {bcolors.ITALIC}{bcolors.OKGRAY}{first_line}{bcolors.ENDC}")
-            
+
             print()
-    
+
     if not found:
         print(f"{bcolors.WARNING}❌ No matches found for '{keyword}'{bcolors.ENDC}")
