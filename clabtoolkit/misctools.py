@@ -774,11 +774,6 @@ def values2colors(
         Numerical values to map to colors. Can be integers or floats.
     cmap : str, default "viridis"
         Name of matplotlib colormap to use for color generation.
-        Popular options include:
-        - "viridis", "plasma", "inferno", "magma" (perceptually uniform)
-        - "PiYG", "RdYlBu", "Spectral" (diverging)
-        - "Set1", "Set2", "tab10" (qualitative)
-        - "Blues", "Reds", "Greens" (sequential)
     output_format : str, default "hex"
         Format of the output colors. Supported formats:
         - "hex": Hexadecimal color strings (e.g., "#FF5733")
@@ -786,10 +781,8 @@ def values2colors(
         - "rgbnorm": RGB values as floats in range [0.0, 1.0]
     invert_cl : bool, default False
         If True, return the complementary colors instead of the original ones.
-        This inverts each individual color after mapping from the colormap.
     invert_clmap : bool, default False
         If True, invert the gradient of the colormap before mapping values.
-        This reverses the order of colors in the colormap.
     vmin : float or None, default None
         Minimum value for colormap normalization. If None, uses min(values).
     vmax : float or None, default None
@@ -798,66 +791,21 @@ def values2colors(
     Returns
     -------
     colors : list of str or numpy.ndarray
-        Mapped colors in the specified format:
-        - If output_format is "hex": list of hex color strings
-        - If output_format is "rgb" or "rgbnorm": numpy array of shape (n, 3)
+        Mapped colors in the specified format.
 
     Raises
     ------
     ValueError
-        If output_format is not one of the supported formats.
-        If cmap is not a valid matplotlib colormap name.
-        If values array is empty.
+        If output_format is not supported or cmap is invalid.
     TypeError
         If values is not a list or numpy array.
-
-    Examples
-    --------
-    Basic usage with default parameters:
-
-    >>> values = [1, 2, 3, 4, 5]
-    >>> colors = values2colors(values)
-    >>> print(colors)  # ['#440154', '#3b528b', '#21908c', '#5dc863', '#fde725']
-
-    Using RGB output format:
-
-    >>> colors = values2colors(values, output_format="rgb")
-    >>> print(colors)  # [[68, 1, 84], [59, 82, 139], [33, 144, 140], [93, 200, 99], [253, 231, 37]]
-
-    Inverting the colormap gradient:
-
-    >>> colors = values2colors(values, invert_clmap=True)
-    >>> print(colors)  # ['#fde725', '#5dc863', '#21908c', '#3b528b', '#440154']
-
-    Inverting the colors to their complements:
-
-    >>> colors = values2colors(values, invert_colors=True)
-    >>> print(colors)  # Complementary colors of the original mapping
-
-    Using a different colormap with custom range:
-
-    >>> colors = values2colors([10, 20, 30], cmap="coolwarm", vmin=0, vmax=40)
-    >>> print(colors)  # Colors mapped with custom normalization range
-
-    Both inversions applied:
-
-    >>> colors = values2colors(values, invert_cl=True, invert_clmap=True)
-    >>> print(colors)  # Complementary colors of the inverted colormap
-
-    Notes
-    -----
-    - Values are normalized to [0, 1] range for colormap mapping
-    - invert_cl reverses the colormap before mapping values
-    - invert_colors applies complementary color transformation after mapping
-    - The two inversion options can be used independently or together
-    - Custom vmin/vmax allows for consistent color mapping across datasets
     """
 
     # Input validation
     if not isinstance(values, (list, np.ndarray)):
         raise TypeError("values must be a list or numpy array")
 
-    values = np.array(values)
+    values = np.array(values, dtype=float)
     if values.size == 0:
         raise ValueError("values array cannot be empty")
 
@@ -865,13 +813,9 @@ def values2colors(
     if output_format not in ["hex", "rgb", "rgbnorm"]:
         raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
-    # Validate colormap
+    # Get the matplotlib colormap
     try:
-        # Generate N distinct colors from the colormap
-        unique_vals, inverse_indices = np.unique(values, return_inverse=True)
-        n = len(unique_vals)
-        colormap = create_random_colors(n, output_format="rgbnorm", cmap=cmap)
-
+        colormap = plt.get_cmap(cmap)
     except ValueError:
         raise ValueError(
             f"'{cmap}' is not a valid matplotlib colormap name. "
@@ -880,25 +824,39 @@ def values2colors(
 
     # Invert colormap if requested
     if invert_clmap:
-        colormap = colormap[::-1]  # Reverse the colormap order
+        colormap = colormap.reversed()
 
-    # Normalize values to [0, 1] range for colormap mapping
+    # Set vmin and vmax
     if vmin is None:
-        vmin = np.min(values)
+        vmin = np.nanmin(values)
     if vmax is None:
-        vmax = np.max(values)
+        vmax = np.nanmax(values)
 
-    # Handle case where all values are the same
+    # Handle edge cases
+    if not np.isfinite(vmin):
+        vmin = 0.0
+    if not np.isfinite(vmax):
+        vmax = 1.0
     if vmax == vmin:
+        # All values are the same, map to middle of colormap
         normalized_values = np.full_like(values, 0.5, dtype=float)
     else:
+        # Normalize values to [0, 1] range using vmin/vmax
         normalized_values = (values - vmin) / (vmax - vmin)
 
-    # Clip values to [0, 1] range in case of outliers
+    # Clip values to [0, 1] range
     normalized_values = np.clip(normalized_values, 0, 1)
 
-    # Map values to colors using the colormap
-    mapped_colors = np.array([colormap[i, :] for i in inverse_indices])
+    # Handle NaN values - map to a neutral color (middle of colormap)
+    nan_mask = ~np.isfinite(values)
+    normalized_values[nan_mask] = 0.5
+
+    # Map normalized values to colors using the continuous colormap
+    mapped_colors = colormap(normalized_values)  # This returns RGBA values in [0,1]
+
+    # Remove alpha channel if present (take only RGB)
+    if mapped_colors.shape[-1] == 4:
+        mapped_colors = mapped_colors[..., :3]
 
     # Convert to the desired output format
     if output_format == "rgbnorm":
@@ -907,27 +865,30 @@ def values2colors(
         result_colors = (mapped_colors * 255).astype(np.uint8)
     else:  # hex
         result_colors = [
-            rgb2hex(color[0], color[1], color[2]) for color in mapped_colors
+            f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
+            for r, g, b in mapped_colors
         ]
 
     # Apply color inversion if requested
     if invert_cl:
         if output_format == "hex":
-            # For hex format, we need to convert to a format that invert_colors can handle
-            result_colors = invert_colors(result_colors)
+            # For hex format, convert to RGB, invert, then back to hex
+            rgb_colors = np.array(
+                [
+                    [int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)]
+                    for color in result_colors
+                ]
+            )
+            inverted_rgb = 255 - rgb_colors
+            result_colors = [f"#{r:02x}{g:02x}{b:02x}" for r, g, b in inverted_rgb]
         else:
-            # For rgb and rgbnorm formats, convert to list format for invert_colors
-            color_list = [color for color in result_colors]
-            inverted_list = invert_colors(color_list)
-            result_colors = np.array(inverted_list)
+            # For rgb and rgbnorm formats
+            if output_format == "rgb":
+                result_colors = 255 - result_colors
+            else:  # rgbnorm
+                result_colors = 1.0 - result_colors
 
-    # Return appropriate format
-    if output_format == "hex":
-        return (
-            result_colors if isinstance(result_colors, list) else result_colors.tolist()
-        )
-    else:
-        return result_colors
+    return result_colors
 
 
 ###################################################################################################
