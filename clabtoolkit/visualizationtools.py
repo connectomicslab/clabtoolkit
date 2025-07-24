@@ -136,7 +136,7 @@ class DefineLayout:
         from . import surfacetools as cltsurf
 
         if isinstance(meshes, str):
-            meshes = cltsurf.Surface(surface_file=meshes)
+            meshes = [cltsurf.Surface(surface_file=meshes)]
 
         if isinstance(meshes, cltsurf.Surface):
             meshes = [meshes]
@@ -468,6 +468,7 @@ class DefineLayout:
         window_size: Tuple[int, int] = (1400, 900),
         background_color: str = "white",
         title: Optional[str] = None,
+        show_borders: bool = False,  # Add this parameter
         **kwargs,
     ) -> pv.Plotter:
         """
@@ -519,6 +520,7 @@ class DefineLayout:
             groups=self.groups,
             notebook=False,
             window_size=window_size,
+            border=show_borders,  # Use the parameter
         )
 
         # Set background
