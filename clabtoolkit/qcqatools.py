@@ -509,7 +509,7 @@ def recursively_generate_slices(
         raise FileNotFoundError(f"Input folder not found: {input_folder}")
     
     # Get all neuroimaging files using the provided filter function
-    all_files = cltmisc.detect_recursive_files(input_folder)
+    all_files = cltmisc.get_all_files(input_folder)
     all_files = cltmisc.filter_by_substring(
         all_files,
         and_filter=and_filter,
