@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clabtoolkit"
-version = "0.3.1"
+version = "0.3.2-dev"
 description = "A comprehensive toolkit for neuroimaging data processing and analysis"
 authors = [
     {name = "Yasser Alemán-Gómez", email = "yasseraleman@protonmail.com"}
