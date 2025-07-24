@@ -3012,7 +3012,7 @@ def generate_container_command(
 ####################################################################################################
 
 
-def _format_signature(sig: inspect.Signature):
+def format_signature(sig: inspect.Signature):
     """
     Formats a function signature with ANSI colors.
 
@@ -3116,9 +3116,7 @@ def show_module_contents(module):
 
 
 ####################################################################################################
-
-
-def print_h5_structure(
+def h5explorer(
     file_path: str,
     max_datasets_per_group: int = 20,
     max_attrs: int = 5,
@@ -3325,13 +3323,13 @@ def print_h5_structure(
 
     def _count_all_items(obj: h5py.HLObject, counts: Dict[str, int]) -> None:
         """Recursively count all items in the HDF5 file."""
-        if isinstance(obj, h5py.Group):
-            counts["groups"] += 1
-            for item in obj.values():
+        for item in obj.values():
+            if isinstance(item, h5py.Group):
+                counts["groups"] += 1
                 _count_all_items(item, counts)
-        elif isinstance(obj, h5py.Dataset):
-            counts["datasets"] += 1
-            counts["total_size"] += obj.nbytes
+            elif isinstance(item, h5py.Dataset):
+                counts["datasets"] += 1
+                counts["total_size"] += item.nbytes
 
     # Initialize statistics
     stats = {"groups": 0, "datasets": 0, "total_size": 0}
@@ -3391,7 +3389,7 @@ def print_h5_structure(
         raise
 
 
-def print_h5_structure_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
+def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
     """
     Print a simplified version of the HDF5 structure without colors (for basic terminals).
 
@@ -3415,10 +3413,10 @@ def print_h5_structure_simple(file_path: str, max_datasets_per_group: int = 20) 
     HDF5 Structure: data.h5
     --------------------------------------------------
     📁 data/ (group)
-        📊 measurements [1000, 256] float64
-        📁 metadata/ (group)
+    📊 measurements [1000, 256] float64
+    📁 metadata/ (group)
         📊 info () <U10
-        ... 5 more datasets
+    ... 5 more datasets
     """
 
     def _print_item_simple(name: str, obj: h5py.HLObject, depth: int = 0) -> None:
