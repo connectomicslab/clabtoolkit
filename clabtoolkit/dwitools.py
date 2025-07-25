@@ -449,7 +449,7 @@ def get_b0s(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############                 Methods to work with streamlines                           ############
+############                 Section 2: Methods to work with streamlines                           ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -584,9 +584,9 @@ def concatenate_tractograms(
 
     Parameters
     ----------
-    trks : list of str
+    in_tracts : list of str
         List of file paths to the tractograms to concatenate.
-    concat_trk : str, optional
+    concat_tract : str, optional
         File path for the output concatenated tractogram.
     show_progress : bool, optional
         Whether to show a progress bar during processing.
