@@ -1151,16 +1151,22 @@ def create_trackvis_colored_trk(clustered_trk_path, output_path, color_by='clust
     
     return output_path
 
-def extract_cluster_by_id(clustered_trk_path, cluster_id, output_path=None):
+def extract_cluster_by_id(clustered_trk_path: str, 
+                        cluster_ids: Union[List[int], int], 
+                        output_path=None):
     """
-    Extract all streamlines belonging to a specific cluster.
+    Extract all streamlines belonging to specific clusters.
     
     Parameters
     ----------
     clustered_trk_path : str
         Path to the clustered streamlines TRK file
-    cluster_id : int
-        ID of the cluster to extract
+
+    cluster_ids : int or list of int
+        Cluster ID or list of cluster IDs to extract.
+        If a single integer is provided, extracts that cluster.
+        If a list is provided, extracts all specified clusters.
+
     output_path : str, optional
         Path to save the extracted cluster. If None, returns the data.
         
@@ -1169,19 +1175,35 @@ def extract_cluster_by_id(clustered_trk_path, cluster_id, output_path=None):
     dict or None
         If output_path is None, returns dictionary with streamlines and metadata
     """
+
+    # Check if the input file exists
+    if not os.path.isfile(clustered_trk_path):
+        raise FileNotFoundError(f"Input file {clustered_trk_path} does not exist.")
+    
+    # Check if output directory exists, if not raise an error
+    if output_path is not None:
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            raise FileNotFoundError(f"Output directory {output_dir} does not exist. Please create it before saving the extracted cluster.")
+
     # Load the tractogram
     tractogram = nib.streamlines.load(clustered_trk_path)
     
     if not hasattr(tractogram.tractogram, 'data_per_streamline') or 'cluster_id' not in tractogram.tractogram.data_per_streamline:
         raise ValueError("No cluster_id metadata found in the file.")
     
-    cluster_ids = tractogram.tractogram.data_per_streamline['cluster_id']
+    streamline_cluster_ids = tractogram.tractogram.data_per_streamline['cluster_id']
     
     # Find indices of streamlines belonging to the specified cluster
-    cluster_indices = [i for i, cid in enumerate(cluster_ids) if cid == cluster_id]
+    if isinstance(cluster_ids, (int, np.integer)):
+        # Handle single integer
+        cluster_indices = [i for i, cid in enumerate(streamline_cluster_ids) if cid == cluster_ids]
+    else:
+        # Handle list of integers  
+        cluster_indices = [i for i, cid in enumerate(streamline_cluster_ids) if cid in cluster_ids]
     
-    if not cluster_indices:
-        raise ValueError(f"No streamlines found for cluster_id {cluster_id}")
+    if len(cluster_indices) == 0:
+        raise ValueError(f"No streamlines found for cluster(s): {cluster_ids}")
     
     # Extract streamlines
     cluster_streamlines = [tractogram.streamlines[i] for i in cluster_indices]
@@ -1196,7 +1218,7 @@ def extract_cluster_by_id(clustered_trk_path, cluster_id, output_path=None):
         else:  # for distance_to_centroid and other float values
             cluster_metadata[key] = np.array(cluster_values, dtype=np.float32)
     
-    print(f"Extracted {len(cluster_streamlines)} streamlines from cluster {cluster_id}")
+    print(f"Extracted {len(cluster_streamlines)} streamlines from cluster(s): {cluster_ids}")
     
     if output_path:
         # Create new tractogram
@@ -1214,13 +1236,13 @@ def extract_cluster_by_id(clustered_trk_path, cluster_id, output_path=None):
         new_trk.header['nb_streamlines'] = len(cluster_streamlines)
         
         nib.streamlines.save(new_trk, output_path)
-        print(f"Cluster {cluster_id} saved to: {output_path}")
+
         return None
     else:
         return {
             'streamlines': cluster_streamlines,
             'metadata': cluster_metadata,
-            'cluster_id': cluster_id,
+            'cluster_ids': cluster_ids if isinstance(cluster_ids, list) else [cluster_ids],
             'n_streamlines': len(cluster_streamlines)
         }
     
