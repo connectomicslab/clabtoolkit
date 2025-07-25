@@ -1223,3 +1223,238 @@ def extract_cluster_by_id(clustered_trk_path, cluster_id, output_path=None):
             'cluster_id': cluster_id,
             'n_streamlines': len(cluster_streamlines)
         }
+    
+
+class TRKExplorer:
+    """
+    A class to explore and summarize TRK (TrackVis) format tractogram files using nibabel.
+    """
+    
+    def __init__(self, filepath: str):
+        """
+        Initialize the TRK explorer with a file path.
+        
+        Args:
+            filepath (str): Path to the TRK file
+        """
+        self.filepath = Path(filepath)
+        self.trk_file = None
+        self.header = {}
+        self.streamlines_info = {}
+        self.data_properties = {}
+        
+        if not self.filepath.exists():
+            raise FileNotFoundError(f"TRK file not found: {filepath}")
+        
+        self._load_trk_file()
+    
+    def _load_trk_file(self):
+        """Load the TRK file using nibabel."""
+        self.trk_file = nib.streamlines.load(str(self.filepath))
+        self.header = self.trk_file.header
+    
+    def _analyze_streamlines(self, max_sample: int = 5):
+        """
+        Analyze streamlines using nibabel.
+        
+        Args:
+            max_sample (int): Maximum number of streamlines to sample for detailed info
+        """
+        streamlines = self.trk_file.streamlines
+        n_streamlines = len(streamlines)
+        
+        streamlines_info = {
+            'total_count': n_streamlines,
+            'samples': [],
+            'statistics': {
+                'lengths': [],
+                'total_points': 0,
+                'min_length': float('inf'),
+                'max_length': 0,
+                'avg_length': 0
+            }
+        }
+        
+        if n_streamlines == 0:
+            self.streamlines_info = streamlines_info
+            return
+        
+        lengths = []
+        total_points = 0
+        sample_count = 0
+        
+        # Analyze streamlines
+        for i, streamline in enumerate(streamlines):
+            n_points = len(streamline)
+            lengths.append(n_points)
+            total_points += n_points
+            
+            # Store sample information
+            if sample_count < max_sample:
+                streamline_size_kb = (n_points * 3 * 4) / 1024  # xyz coords in float32
+                streamlines_info['samples'].append({
+                    'index': i,
+                    'n_points': n_points,
+                    'size_kb': streamline_size_kb,
+                    'data_type': 'float32'
+                })
+                sample_count += 1
+        
+        # Calculate statistics
+        streamlines_info['statistics'] = {
+            'lengths': lengths,
+            'total_points': total_points,
+            'min_length': min(lengths) if lengths else 0,
+            'max_length': max(lengths) if lengths else 0,
+            'avg_length': sum(lengths) / len(lengths) if lengths else 0
+        }
+        
+        self.streamlines_info = streamlines_info
+    
+    def _analyze_data_properties(self):
+        """Analyze data properties using nibabel."""
+        properties = {}
+        
+        # Get scalar names from header
+        scalar_names = []
+        if 'scalar_name' in self.header:
+            scalar_names = [name.decode('utf-8') if isinstance(name, bytes) else name 
+                            for name in self.header['scalar_name'] if name and name.strip()]
+        
+        # Get property names from header  
+        property_names = []
+        if 'property_name' in self.header:
+            property_names = [name.decode('utf-8') if isinstance(name, bytes) else name 
+                            for name in self.header['property_name'] if name and name.strip()]
+        
+        # Check for per-point data (scalars)
+        n_scalars = self.header.get('nb_scalars_per_point', 0)
+        if n_scalars > 0:
+            for i in range(n_scalars):
+                if i < len(scalar_names) and scalar_names[i]:
+                    name = scalar_names[i]
+                else:
+                    name = f"scalar_{i}"
+                
+                properties[name] = {
+                    'type': 'per_point',
+                    'data_type': 'float32',
+                    'index': i
+                }
+        
+        # Check for per-streamline data (properties)
+        n_properties = self.header.get('nb_properties_per_streamline', 0)
+        if n_properties > 0:
+            for i in range(n_properties):
+                if i < len(property_names) and property_names[i]:
+                    name = property_names[i]
+                else:
+                    name = f"property_{i}"
+                
+                properties[name] = {
+                    'type': 'per_streamline',
+                    'data_type': 'float32',
+                    'index': i
+                }
+        
+        self.data_properties = properties
+    
+    def explore(self, max_streamline_samples: int = 5) -> str:
+        """
+        Generate a comprehensive summary of the TRK file.
+        
+        Args:
+            max_streamline_samples (int): Maximum number of streamlines to show as samples
+            
+        Returns:
+            str: Formatted summary string
+        """
+        self._analyze_streamlines(max_streamline_samples)
+        self._analyze_data_properties()
+        
+        # Get file size
+        file_size_mb = self.filepath.stat().st_size / (1024 * 1024)
+        
+        # Build summary
+        summary_lines = []
+        
+        # File header
+        summary_lines.append(f"📁 {self.filepath.name} (TrackVis format, {file_size_mb:.1f} MB)")
+        
+        # Header section
+        summary_lines.append("├── 📋 Header")
+        summary_lines.append(f"│   ├── 🔢 dimensions {list(self.header['dimensions'])}")
+        summary_lines.append(f"│   ├── 🔢 voxel_sizes {[round(x, 2) for x in self.header['voxel_sizes']]}")
+        summary_lines.append(f"│   ├── 📝 n_streamlines = {self.streamlines_info['total_count']:,}")
+        summary_lines.append(f"│   ├── 📊 n_scalars = {self.header.get('nb_scalars_per_point', 0)}")
+        summary_lines.append(f"│   ├── 🏷️ n_properties = {self.header.get('nb_properties_per_streamline', 0)}")
+        summary_lines.append(f"│   └── 📌 version = {self.header.get('version', 'unknown')}")
+        
+        # Streamlines section
+        if self.streamlines_info['total_count'] > 0:
+            stats = self.streamlines_info['statistics']
+            summary_lines.append(f"├── 🧵 Streamlines ({self.streamlines_info['total_count']:,} total)")
+            summary_lines.append(f"│   ├── 📏 length range: {stats['min_length']}-{stats['max_length']} points")
+            summary_lines.append(f"│   ├── 📊 average length: {stats['avg_length']:.1f} points")
+            summary_lines.append(f"│   ├── 🔢 total points: {stats['total_points']:,}")
+            
+            # Sample streamlines
+            for i, sample in enumerate(self.streamlines_info['samples']):
+                prefix = "│   ├──" if i < len(self.streamlines_info['samples']) - 1 else "│   └──"
+                summary_lines.append(
+                    f"{prefix} 📊 streamline_{sample['index']} "
+                    f"[{sample['n_points']} × 3] {sample['data_type']} "
+                    f"({sample['size_kb']:.1f} KB)"
+                )
+            
+            if len(self.streamlines_info['samples']) < self.streamlines_info['total_count']:
+                remaining = self.streamlines_info['total_count'] - len(self.streamlines_info['samples'])
+                summary_lines.append(f"│       📝 ... {remaining:,} more streamlines")
+        else:
+            summary_lines.append("├── 🧵 Streamlines (0 total)")
+        
+        # Data properties section
+        if self.data_properties:
+            summary_lines.append("└── 🏷️ Data Properties")
+            prop_items = list(self.data_properties.items())
+            for i, (name, info) in enumerate(prop_items):
+                prefix = "    ├──" if i < len(prop_items) - 1 else "    └──"
+                summary_lines.append(
+                    f"{prefix} 📊 {name} ({info['type']}, {info['data_type']})"
+                )
+        else:
+            summary_lines.append("└── 🏷️ Data Properties (none)")
+        
+        return '\n'.join(summary_lines)
+    
+    def get_header_info(self) -> Dict[str, Any]:
+        """Return header information as a dictionary."""
+        return dict(self.header)
+    
+    def get_streamlines_summary(self) -> Dict[str, Any]:
+        """Return streamlines summary information."""
+        return self.streamlines_info.copy()
+    
+    def get_data_properties(self) -> Dict[str, Any]:
+        """Return data properties information."""
+        return self.data_properties.copy()
+    
+    def get_streamlines(self):
+        """Return the actual streamlines data."""
+        return self.trk_file.streamlines
+
+
+# Convenience function for quick exploration
+def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
+    """
+    Quick function to explore a TRK file and return a summary.
+    
+    Args:
+        filepath (str): Path to the TRK file
+        max_streamline_samples (int): Maximum number of streamlines to show as samples
+        
+    Returns:
+        str: Formatted summary string
+    """
+    explorer = TRKExplorer(filepath)
+    return explorer.explore(max_streamline_samples)
