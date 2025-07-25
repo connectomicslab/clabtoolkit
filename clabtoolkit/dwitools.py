@@ -574,8 +574,8 @@ def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
 
 # Alternative version with more flexible error handling
 def concatenate_tractograms(
-    trks: list,
-    concat_trk: str = None,
+    in_tracts: list,
+    concat_tract: str = None,
     show_progress: bool = False,
     skip_missing: bool = False,
 ):
@@ -599,17 +599,23 @@ def concatenate_tractograms(
         The concatenated tractogram or output file path.
     """
     # Input validation
-    if not isinstance(trks, list):
+    if not isinstance(in_tracts, list):
         raise ValueError("trks must be a list of file paths.")
 
-    if len(trks) < 2:
+    if len(in_tracts) < 2:
         raise ValueError("At least two tractograms are required.")
+
+    if concat_tract is not None:
+        output_dir = os.path.dirname(concat_tract)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            warnings.warn(f"Created output directory: {output_dir}")
 
     # Filter existing files
     existing_files = []
     missing_files = []
 
-    for trk in trks:
+    for trk in in_tracts:
         if os.path.exists(trk):
             existing_files.append(trk)
         else:
@@ -658,8 +664,6 @@ def concatenate_tractograms(
             cont += 1
 
         else:
-            if os.path.exists(trk_file):
-
             if show_progress:
                 progress.update(task, advance=1)
 
@@ -668,14 +672,9 @@ def concatenate_tractograms(
             progress.stop()
 
     # Save or return
-    if concat_trk is not None:
-        output_dir = os.path.dirname(concat_trk)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
-            warnings.warn(f"Created output directory: {output_dir}")
-
-        nib.streamlines.save(trkall, concat_trk)
-        return concat_trk
+    if concat_tract is not None:
+        nib.streamlines.save(trkall, concat_tract)
+        return concat_tract
 
     return trkall
 
