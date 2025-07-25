@@ -629,7 +629,7 @@ def concatenate_tractograms(
     # Process files
     trkall = None
     files_to_process = existing_files
-
+    cont = 0
     if show_progress:
         progress = Progress(
             TextColumn("[progress.description]{task.description}"),
