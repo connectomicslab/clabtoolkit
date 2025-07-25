@@ -1,12 +1,21 @@
 import os
 import numpy as np
 import warnings
+from pathlib import Path
+from typing import Dict, List, Tuple, Any, Optional
 
 import nibabel as nib
-from nibabel.streamlines import Field
+from nibabel.streamlines import Field, ArraySequence
+from nibabel.streamlines.trk import TrkFile
 from nibabel.orientations import aff2axcodes
+
 from skimage import measure
 from typing import Union, Dict, List
+from dipy.segment.clustering import QuickBundlesX,  QuickBundles
+from dipy.tracking.streamline import set_number_of_points
+from dipy.io.streamline import save_trk
+from dipy.io.stateful_tractogram import StatefulTractogram, Space
+
 
 # add progress bar using rich progress bar
 from rich.progress import Progress, TextColumn, BarColumn, SpinnerColumn
@@ -917,11 +926,13 @@ def compute_tractogram_centroids(in_tract: str,
             raise ValueError("Thresholds must be a non-empty list for QuickBundlesX")
         qbx = QuickBundlesX(thresholds)
         clusters = qbx.cluster(streamlines)
+        
     elif method == 'qb':
         # Use the first threshold if provided, otherwise default to 10
         threshold = thresholds[0] if thresholds else 10
         qb = QuickBundles(threshold=threshold)
         clusters = qb.cluster(streamlines)
+
     else:
         raise ValueError(f"Unknown clustering method: {method}. Use 'qb' or 'qbx'.")
     
@@ -1042,28 +1053,8 @@ def compute_tractogram_centroids(in_tract: str,
     
     if clustered_tract is not None:
         nib.streamlines.save(clustered_trk, clustered_tract)
-    
-    # Return clustering information
-    clustering_info = {
-        'n_clusters': len(clusters),
-        'n_streamlines_original': len(original_streamlines),
-        'n_streamlines_clustered': len(clustered_streamlines_list),
-        'n_centroids': len(centroids_list),
-        'cluster_sizes': [len(cluster.indices) for cluster in clusters],
-        'method': method,
-        'thresholds': thresholds if method == 'qbx' else [threshold],
-        'nb_points': nb_points
-    }
-    
-    print(f"Clustering completed successfully!")
-    print(f"Number of clusters: {clustering_info['n_clusters']}")
-    print(f"Original streamlines: {clustering_info['n_streamlines_original']}")
-    print(f"Centroids saved to: {centroid_tract}")
-    print(f"Clustered streamlines saved to: {clustered_tract}")
-    
-    return clustering_info
 
-def create_trackvis_colored_trk(clustered_trk_path, output_path, color_by='cluster_id'):
+def create_trackvis_colored_trk(clustered_trk_path: str, output_path: str, color_by='cluster_id'):
     """
     Create a TrackVis-compatible TRK file with scalar coloring.
     
@@ -1081,7 +1072,29 @@ def create_trackvis_colored_trk(clustered_trk_path, output_path, color_by='clust
     -------
     str
         Path to the created file
+
+    Raises
+    ------
+    ValueError
+        If the input file does not contain the specified color_by metadata,
+        or if the input file does not contain any metadata.
+    FileNotFoundError
+        If the input clustered_trk_path does not exist.
+
+    How to use:
+    -----------
+    >>> create_trackvis_colored_trk('clustered.trk', 'colored_output.trk', color_by='cluster_id')
     """
+
+    # Check if the input file exists
+    if not os.path.isfile(clustered_trk_path):
+        raise FileNotFoundError(f"Input file {clustered_trk_path} does not exist.")
+    
+    # Check if the output directory exists, if not raise an error
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        raise FileNotFoundError(f"Output directory {output_dir} does not exist. Please create it before saving the colored TRK file.")
+    
     # Load the tractogram
     tractogram = nib.streamlines.load(clustered_trk_path)
     
