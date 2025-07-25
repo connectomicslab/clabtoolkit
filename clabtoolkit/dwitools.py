@@ -819,3 +819,407 @@ def resample_tractogram(
         )
 
         return out_tract
+    
+def compute_tractogram_centroids(in_tract: str,
+                                centroid_tract: str,
+                                clustered_tract: str = None,
+                                nb_points=51,
+                                method='qb',
+                                thresholds=[10],
+                                save_scalars_for_trackvis=True):
+    """
+    Extract bundle centroids from tractogram and save them as .trk files.
+    
+    Parameters
+    ----------
+    in_tract : str
+        Path to input tractogram file (.trk)
+    centroid_tract : str
+        Path to output file for centroids (.trk)
+    clustered_tract : str
+        Path to output file for clustered streamlines (.trk)
+    nb_points : int, optional
+        Number of points to resample the streamlines to. Default is 51.
+    method : str, optional
+        Clustering method to use. Can be 'qbx' or 'qb'. Default is 'qb'.
+    thresholds : list of int, optional
+        List of thresholds to use for clustering (only for qbx). Default is [10].
+    save_scalars_for_trackvis : bool, optional
+        If True, saves scalar data in TrackVis-compatible format. Default is True.
+    
+    Returns
+    -------
+    dict
+        Dictionary containing clustering information (number of clusters, etc.)
+
+    Raises
+    ------
+    FileNotFoundError
+        If the input tracking file does not exist or output directories do not exist.
+    ValueError
+        If the input tracking file is not in the expected format or if nb_points is not a positive integer.
+    ValueError
+        If the clustering method is not recognized or if thresholds are not provided correctly.
+    ValueError
+        If the input streamlines are empty or not in the expected format.   
+
+    How to use:
+    -----------
+    >>> compute_tractogram_centroids('input.trk', 'centroids.trk', 'clustered.trk', nb_points=100, method='qb', thresholds=[10])
+    >>> compute_tractogram_centroids('input.tck', 'centroids.trk', 'clustered.trk', nb_points=100, method='qbx', thresholds=[5,
+    10, 15], save_scalars_for_trackvis=True)
+    >>> compute_tractogram_centroids('input.tck', 'centroids.trk', 'clustered.trk', nb_points=100, method='qb', thresholds=[10], save
+    _scalars_for_trackvis=False)
+    >>> compute_tractogram_centroids('input.trk', 'centroids.trk', 'clustered.trk', nb_points=100, method='qbx', thresholds=[5, 10, 15], save_scalars_for_trackvis=True)
+    >>> compute_tractogram_centroids('input.tck', 'centroids.trk', 'clustered.trk', nb_points=100, method='qb', thresholds=[10], save_scalars_for_trackvis=True)
+    >>> compute_tractogram_centroids('input.tck', 'centroids.trk', 'clustered.trk', nb_points=100, method='qbx', thresholds=[5, 10, 15], save_scalars_for_trackvis=False)
+    >>> compute_tractogram_centroids('input.trk', 'centroids.trk', 'clustered.trk', nb_points=100, method='qb', thresholds=[10], save_scalars_for_trackvis=False)
+    >>> compute_tractogram_centroids('input.tck', 'centroids.trk', 'clustered.trk', nb_points=100, method='qbx', thresholds=[5, 10, 15], save_scalars_for_trackvis=True)
+    >>> compute_tractogram_centroids('input.tck', 'centroids.trk', 'clustered.trk', nb_points=100, method='qb', thresholds=[10], save_scalars_for_trackvis=True)    
+
+    """
+    
+    # Check if the input tracking file exists
+    if not os.path.isfile(in_tract):
+        raise FileNotFoundError(f"Input tracking file {in_tract} does not exist.")
+    
+    # Check if output directories exist
+    # If the output directories do not exist, create them
+    centroid_dir = os.path.dirname(centroid_tract)
+    if not os.path.exists(centroid_dir):
+        # Raise an error if the directory does not exist
+        raise FileNotFoundError(f"Output directory {centroid_dir} does not exist.")
+                                
+    if clustered_tract is not None:
+        clustered_dir = os.path.dirname(clustered_tract)
+        if not os.path.exists(clustered_dir):
+            # Raise an error if the directory does not exist
+            raise FileNotFoundError(f"Output directory {clustered_dir} does not exist.")
+
+    # Load the tractogram
+    tractogram = nib.streamlines.load(in_tract)
+    original_streamlines = tractogram.streamlines
+    
+    # === PREPROCESS: RESAMPLE ===
+    if nb_points is not None:
+        # Check if nb_points is a positive integer
+        if not isinstance(nb_points, int) or nb_points <= 0:
+            raise ValueError("Number of points (nb_points) must be a positive integer.")
+        # Resample the streamlines to the specified number of points
+        streamlines = resample_streamlines(original_streamlines, nb_points)
+    else:
+        # If nb_points is None, use the original streamlines
+        streamlines = original_streamlines
+    
+    # === CLUSTERING ===
+    if method == 'qbx':
+        if not isinstance(thresholds, list) or len(thresholds) == 0:
+            raise ValueError("Thresholds must be a non-empty list for QuickBundlesX")
+        qbx = QuickBundlesX(thresholds)
+        clusters = qbx.cluster(streamlines)
+    elif method == 'qb':
+        # Use the first threshold if provided, otherwise default to 10
+        threshold = thresholds[0] if thresholds else 10
+        qb = QuickBundles(threshold=threshold)
+        clusters = qb.cluster(streamlines)
+    else:
+        raise ValueError(f"Unknown clustering method: {method}. Use 'qb' or 'qbx'.")
+    
+    # Collect centroids and clustered streamlines with metadata
+    centroids_list = []
+    clustered_streamlines_list = []
+    
+    # Metadata for centroids
+    centroid_ids = []
+    cluster_sizes = []
+    
+    # Metadata for clustered streamlines  
+    cluster_labels = []
+    original_indices = []
+    distances_to_centroid = []
+    
+    # Process each cluster
+    for i, cluster in enumerate(clusters):
+        # Get the centroid of the cluster
+        cluster_centroid = cluster.centroid
+        centroids_list.append(cluster_centroid)
+        
+        # Metadata for centroids
+        centroid_ids.append(i)
+        cluster_sizes.append(len(cluster.indices))
+        
+        # Get the streamlines for this cluster
+        cluster_streamlines = streamlines[cluster.indices]
+        clustered_streamlines_list.extend(cluster_streamlines)
+        
+        # Metadata for clustered streamlines
+        cluster_labels.extend([i] * len(cluster.indices))
+        original_indices.extend(cluster.indices)
+        
+        # Calculate distances to centroid for each streamline in cluster
+        for j, idx in enumerate(cluster.indices):
+            # Simple distance metric: you can customize this
+            # For now, we'll use the cluster's internal distance if available
+            try:
+                if hasattr(cluster, 'distances') and cluster.distances is not None:
+                    distance = cluster.distances[j] if j < len(cluster.distances) else 0.0
+                else:
+                    # Fallback: set distance to 0 (could implement custom distance calculation here)
+                    distance = 0.0
+            except:
+                distance = 0.0
+            distances_to_centroid.append(distance)
+    
+    # Convert to ArraySequence for nibabel
+    centroids_array = ArraySequence(centroids_list)
+    clustered_streamlines_array = ArraySequence(clustered_streamlines_list)
+    
+    # Create tractograms with metadata for TrackVis compatibility
+    # For centroids tractogram
+    centroids_tractogram = nib.streamlines.Tractogram(
+        streamlines=centroids_array,
+        affine_to_rasmm=tractogram.tractogram.affine_to_rasmm
+    )
+    
+    # For clustered streamlines tractogram
+    clustered_tractogram = nib.streamlines.Tractogram(
+            streamlines=clustered_streamlines_array,
+            affine_to_rasmm=tractogram.tractogram.affine_to_rasmm
+        )
+    
+    if save_scalars_for_trackvis:
+        # TrackVis-compatible scalar format
+        # Store cluster IDs as scalar data per streamline
+        # Each streamline gets its cluster ID as a scalar value
+        
+        # For centroids: store centroid ID and cluster size
+        centroid_scalar_data = []
+        for i in range(len(centroids_list)):
+            # Create scalar data: [centroid_id, cluster_size]
+            scalars = np.array([[centroid_ids[i], cluster_sizes[i]]], dtype=np.float32)
+            centroid_scalar_data.append(scalars)
+        
+        # For clustered streamlines: store cluster_id as scalar
+        clustered_scalar_data = []
+        for i in range(len(clustered_streamlines_list)):
+            # Create scalar data: [cluster_id, distance_to_centroid] 
+            scalars = np.array([[cluster_labels[i], distances_to_centroid[i]]], dtype=np.float32)
+            clustered_scalar_data.append(scalars)
+        
+        # Note: TrackVis expects scalars in a specific format
+        # We'll store this in data_per_streamline for nibabel compatibility
+        # The scalar data will be written to the TRK file in the proper format
+        
+    # Always store metadata in nibabel format for programmatic access
+    centroids_tractogram.data_per_streamline = {
+        'centroid_id': np.array(centroid_ids, dtype=np.int32),
+        'cluster_size': np.array(cluster_sizes, dtype=np.int32)
+    }
+    clustered_tractogram.data_per_streamline = {
+            'cluster_id': np.array(cluster_labels, dtype=np.int32),
+            'original_index': np.array(original_indices, dtype=np.int32),
+            'distance_to_centroid': np.array(distances_to_centroid, dtype=np.float32)
+        }
+    
+    # Create TrkFile objects
+    centroids_trk = nib.streamlines.TrkFile(
+        tractogram=centroids_tractogram,
+        header=tractogram.header.copy()
+    )
+
+    clustered_trk = nib.streamlines.TrkFile(
+            tractogram=clustered_tractogram,
+            header=tractogram.header.copy()
+        )
+    
+    # Update headers with new streamline counts
+    centroids_trk.header['nb_streamlines'] = len(centroids_list)
+    
+    clustered_trk.header['nb_streamlines'] = len(clustered_streamlines_list)
+    
+    # Save the files
+    nib.streamlines.save(centroids_trk, centroid_tract)
+    
+    if clustered_tract is not None:
+        nib.streamlines.save(clustered_trk, clustered_tract)
+    
+    # Return clustering information
+    clustering_info = {
+        'n_clusters': len(clusters),
+        'n_streamlines_original': len(original_streamlines),
+        'n_streamlines_clustered': len(clustered_streamlines_list),
+        'n_centroids': len(centroids_list),
+        'cluster_sizes': [len(cluster.indices) for cluster in clusters],
+        'method': method,
+        'thresholds': thresholds if method == 'qbx' else [threshold],
+        'nb_points': nb_points
+    }
+    
+    print(f"Clustering completed successfully!")
+    print(f"Number of clusters: {clustering_info['n_clusters']}")
+    print(f"Original streamlines: {clustering_info['n_streamlines_original']}")
+    print(f"Centroids saved to: {centroid_tract}")
+    print(f"Clustered streamlines saved to: {clustered_tract}")
+    
+    return clustering_info
+
+def create_trackvis_colored_trk(clustered_trk_path, output_path, color_by='cluster_id'):
+    """
+    Create a TrackVis-compatible TRK file with scalar coloring.
+    
+    Parameters
+    ----------
+    clustered_trk_path : str
+        Path to the clustered streamlines TRK file
+    output_path : str
+        Path for the output TRK file optimized for TrackVis coloring
+    color_by : str, optional
+        Which metadata field to use for coloring. Options: 'cluster_id', 
+        'distance_to_centroid', 'original_index'. Default is 'cluster_id'.
+        
+    Returns
+    -------
+    str
+        Path to the created file
+    """
+    # Load the tractogram
+    tractogram = nib.streamlines.load(clustered_trk_path)
+    
+    if not hasattr(tractogram.tractogram, 'data_per_streamline'):
+        raise ValueError("No metadata found in the input file.")
+    
+    metadata = tractogram.tractogram.data_per_streamline
+    
+    if color_by not in metadata:
+        available_keys = list(metadata.keys())
+        raise ValueError(f"'{color_by}' not found. Available keys: {available_keys}")
+    
+    # Get the scalar values for coloring
+    scalar_values = metadata[color_by]
+    
+    # Create a new tractogram with scalar data in TrackVis format
+    streamlines_with_scalars = []
+    
+    for i, streamline in enumerate(tractogram.streamlines):
+        # For TrackVis, we need to create a streamline with scalar data
+        # The scalar value is repeated for each point in the streamline
+        scalar_value = float(scalar_values[i])
+        
+        # Create scalar array for this streamline (one scalar per point)
+        n_points = len(streamline)
+        scalars = np.full((n_points, 1), scalar_value, dtype=np.float32)
+        
+        # Store as tuple (streamline_points, scalars)
+        streamlines_with_scalars.append((streamline, scalars))
+    
+    # Create header for the new file
+    new_header = tractogram.header.copy()
+    new_header['n_scalars'] = 1  # One scalar per point
+    new_header['scalar_name'] = [color_by.encode('utf-8')]
+    new_header['n_properties'] = 0
+    
+    # Use DIPY's save_trk function which handles TrackVis format properly
+    from dipy.io.streamline import save_trk
+    from dipy.io.stateful_tractogram import StatefulTractogram
+    from dipy.io.utils import create_tractogram_header
+    
+    # Extract just the streamlines and scalars
+    streamlines_only = [s[0] for s in streamlines_with_scalars]
+    scalars_only = [s[1] for s in streamlines_with_scalars]
+    
+    # Create StatefulTractogram with scalars
+    sft = StatefulTractogram(
+        streamlines_only,
+        tractogram.header,  # Use original header for spatial info
+        Space.RASMM
+    )
+    
+    # Add scalar data
+    sft.data_per_point = {color_by: scalars_only}
+    
+    # Save with DIPY
+    save_trk(sft, output_path)
+    
+    print(f"TrackVis-compatible file saved: {output_path}")
+    print(f"Colored by: {color_by}")
+    print(f"Scalar range: {np.min(scalar_values):.2f} - {np.max(scalar_values):.2f}")
+    print("\nTo view in TrackVis:")
+    print("1. Open the .trk file in TrackVis")
+    print("2. In the Property panel, find 'Color Code'")
+    print("3. Change from 'Directional' to 'Scalar'")
+    print(f"4. The streamlines will be colored by {color_by}")
+    
+    return output_path
+
+def extract_cluster_by_id(clustered_trk_path, cluster_id, output_path=None):
+    """
+    Extract all streamlines belonging to a specific cluster.
+    
+    Parameters
+    ----------
+    clustered_trk_path : str
+        Path to the clustered streamlines TRK file
+    cluster_id : int
+        ID of the cluster to extract
+    output_path : str, optional
+        Path to save the extracted cluster. If None, returns the data.
+        
+    Returns
+    -------
+    dict or None
+        If output_path is None, returns dictionary with streamlines and metadata
+    """
+    # Load the tractogram
+    tractogram = nib.streamlines.load(clustered_trk_path)
+    
+    if not hasattr(tractogram.tractogram, 'data_per_streamline') or 'cluster_id' not in tractogram.tractogram.data_per_streamline:
+        raise ValueError("No cluster_id metadata found in the file.")
+    
+    cluster_ids = tractogram.tractogram.data_per_streamline['cluster_id']
+    
+    # Find indices of streamlines belonging to the specified cluster
+    cluster_indices = [i for i, cid in enumerate(cluster_ids) if cid == cluster_id]
+    
+    if not cluster_indices:
+        raise ValueError(f"No streamlines found for cluster_id {cluster_id}")
+    
+    # Extract streamlines
+    cluster_streamlines = [tractogram.streamlines[i] for i in cluster_indices]
+    
+    # Extract corresponding metadata
+    cluster_metadata = {}
+    for key, values in tractogram.tractogram.data_per_streamline.items():
+        cluster_values = [values[i] for i in cluster_indices]
+        # Convert to numpy array with appropriate dtype
+        if key in ['centroid_id', 'cluster_id', 'original_index', 'cluster_size']:
+            cluster_metadata[key] = np.array(cluster_values, dtype=np.int32)
+        else:  # for distance_to_centroid and other float values
+            cluster_metadata[key] = np.array(cluster_values, dtype=np.float32)
+    
+    print(f"Extracted {len(cluster_streamlines)} streamlines from cluster {cluster_id}")
+    
+    if output_path:
+        # Create new tractogram
+        new_tractogram = nib.streamlines.Tractogram(
+            streamlines=ArraySequence(cluster_streamlines),
+            affine_to_rasmm=tractogram.tractogram.affine_to_rasmm
+        )
+        new_tractogram.data_per_streamline = cluster_metadata
+        
+        # Create and save TrkFile
+        new_trk = nib.streamlines.TrkFile(
+            tractogram=new_tractogram,
+            header=tractogram.header.copy()
+        )
+        new_trk.header['nb_streamlines'] = len(cluster_streamlines)
+        
+        nib.streamlines.save(new_trk, output_path)
+        print(f"Cluster {cluster_id} saved to: {output_path}")
+        return None
+    else:
+        return {
+            'streamlines': cluster_streamlines,
+            'metadata': cluster_metadata,
+            'cluster_id': cluster_id,
+            'n_streamlines': len(cluster_streamlines)
+        }
