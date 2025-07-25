@@ -651,13 +651,11 @@ def concatenate_tractograms(
 
             trk = nib.streamlines.load(trk_file, lazy_load=False)
 
-                    if cont == 0:
-                        trkall = trk
-                    else:
-                        trkall.tractogram.streamlines.extend(trk.tractogram.streamlines)
-                    cont += 1
-                else:
-                    print(f"File {trk_file} does not exist. Skipping.")
+            if cont == 0:
+                trkall = trk
+            else:
+                trkall.tractogram.streamlines.extend(trk.tractogram.streamlines)
+            cont += 1
 
         else:
             if os.path.exists(trk_file):
