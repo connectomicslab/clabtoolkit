@@ -678,3 +678,145 @@ def concatenate_tractograms(
         return concat_trk
 
     return trkall
+
+def resample_streamlines(
+    in_streamlines: nib.streamlines.array_sequence.ArraySequence,
+    nb_points: int = 51
+) -> nib.streamlines.array_sequence.ArraySequence:
+    """
+    Resample streamlines to a specified number of points.
+    
+    Parameters
+    ----------
+    in_streamlines : nib.streamlines.array_sequence.ArraySequence
+        Input streamlines to be resampled.
+    nb_points : int, optional
+        Number of points to resample each streamline to. Default is 51.
+    
+    Returns
+    -------
+    resampled_streamlines : nib.streamlines.array_sequence.ArraySequence
+        Resampled streamlines.
+    
+    Raises
+    ------
+    ValueError
+        If the input streamlines are not in the expected format.
+    ValueError
+        If the input streamlines are empty.
+    ValueError
+        If nb_points is not a positive integer.
+    
+    Examples
+    --------
+    >>> in_streamlines = nib.streamlines.load('input.trk').streamlines
+    >>> nb_points = 100
+    >>> resampled_streamlines = resample_streamlines(in_streamlines, nb_points)
+    """
+    # Check if input is an ArraySequence
+    if not isinstance(in_streamlines, nib.streamlines.array_sequence.ArraySequence):
+        raise ValueError("Input streamlines must be in the format of nibabel ArraySequence.")
+    
+    # Check if the input streamlines are empty
+    if len(in_streamlines) == 0:
+        raise ValueError("Input streamlines are empty. Please provide valid streamlines.")
+    
+    # Check if nb_points is a positive integer
+    if not isinstance(nb_points, int) or nb_points <= 0:
+        raise ValueError("Number of points (nb_points) must be a positive integer.")
+    
+    # Check if individual streamlines are valid numpy arrays
+    for i, streamline in enumerate(in_streamlines):
+        if not isinstance(streamline, np.ndarray):
+            raise ValueError(f"Streamline {i} is not a valid numpy array.")
+        if streamline.ndim != 2 or streamline.shape[1] != 3:
+            raise ValueError(f"Streamline {i} must be a 2D array with shape (n_points, 3).")
+    
+    # Resample each streamline to the specified number of points
+    resampled_streamlines = set_number_of_points(in_streamlines, nb_points)
+    
+    return resampled_streamlines
+
+def resample_tractogram(
+    in_tract: str,
+    out_tract: str = None,
+    nb_points: int = 51,
+    force: bool = False,
+) -> str:
+    """
+    Resample a tractogram to a specified number of points.
+
+    Parameters
+    ----------
+    in_tract : str
+        Path to the input tractogram file (TRK or TCK format).
+    out_tract : str, optional
+        Path for the output resampled tractogram file. If None, it will replace the input file extension with .trk or .tck.
+    nb_points : int, optional
+        Number of points to resample each streamline to. Default is 51.
+    force : bool, optional
+        If True, overwrite the output file if it exists. Default is False.
+
+    Returns
+    -------
+    str
+        Path to the output resampled tractogram file.
+
+    Raises
+    ------
+    ValueError
+        If the input file format is not supported.
+    FileExistsError
+        If the output file exists and force is False.
+
+    How to use:
+    -----------
+    >>> resample_tractogram('input.trk', nb_points=100)  # Saves as 'input_resampled.trk'
+    >>> resample_tractogram('input.tck', out_tract='output.tck', nb_points=100)  # Saves as 'output.tck'
+    >>> resample_tractogram('input.trk', force=True)  # Overwrites 'input_resampled.trk' if it exists
+
+    """
+    
+    # Validate input file format
+    if nib.streamlines.detect_format(in_tract) not in [nib.streamlines.TrkFile, nib.streamlines.TckFile]:
+        raise ValueError(f"Invalid input file format: {in_tract}. Must be TRK or TCK.")
+
+    # Define output filename
+    if out_tract is not None and os.path.exists(out_tract) and not force:
+        raise FileExistsError(f"Output file '{out_tract}' already exists. Use 'force=True' to overwrite.")
+
+    # Load the tractogram
+    trk = nib.streamlines.load(in_tract)
+
+    # Resample each streamline to the specified number of points
+    resampled_streamlines = resample_streamlines(trk.streamlines, nb_points)
+
+    # Create a new tractogram with the resampled streamlines
+    resampled_tractogram = nib.streamlines.Tractogram(
+        resampled_streamlines,
+        affine_to_rasmm=trk.tractogram.affine_to_rasmm
+    )
+    # Create a header (copy from original)
+    header = trk.header.copy()
+
+    # Update count in header
+    header['nb_streamlines'] = len(resampled_streamlines)
+
+    if out_tract is None:
+        return resampled_streamlines
+    else:
+        # Check if the output directory exists, if not raise an error
+        out_dir = os.path.dirname(out_tract)
+        if out_dir and not os.path.exists(out_dir):
+            raise FileNotFoundError(f"Output directory '{out_dir}' does not exist. Please create it before saving the resampled tractogram.")
+        # If the output directory exists, create it if it doesn't exist
+        os.makedirs(out_dir, exist_ok=True)
+
+        # Save the resampled tractogram
+        nib.streamlines.save(
+            resampled_tractogram,
+            out_tract,
+            header=header
+        )
+
+        return out_tract
