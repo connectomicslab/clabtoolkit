@@ -41,6 +41,6 @@ setup(
     test_suite="tests",
     tests_require=test_requirements,
     url="https://github.com/connectomicslab/clabtoolkit",
-    version="0.3.2-dev",
+    version="0.3.2a1",
     zip_safe=False,
 )
