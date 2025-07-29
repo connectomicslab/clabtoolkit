@@ -3,6 +3,7 @@ import numpy as np
 import warnings
 from pathlib import Path
 from typing import Dict, List, Tuple, Any, Optional
+from scipy.interpolate import RegularGridInterpolator
 
 import nibabel as nib
 from nibabel.streamlines import Field, ArraySequence
@@ -1493,3 +1494,260 @@ def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
     """
     explorer = TRKExplorer(filepath)
     return explorer.explore(max_streamline_samples)
+
+def interpolate_on_tractogram(in_tract: str, scal_map: str, out_tract: str,
+                            interp_method: str='linear',
+                            storage_mode:str='data_per_point',
+                            map_name: str='fa',
+                            reduction:str='mean',
+                            preserve_both_storage_modes: bool=False):
+    """
+    Interpolate scalar values (e.g., FA) from a NIfTI image onto a tractogram.
+
+    This function loads a tractogram and a scalar map, then interpolates the scalar
+    values at each streamline point or aggregates them per streamline. The resulting
+    tractogram is saved with the interpolated values attached as metadata.
+
+    Parameters
+    ----------
+    in_tract : str or Path
+        Path to input .trk tractogram file. Must exist and be readable.
+    scal_map : str or Path  
+        Path to scalar image (e.g., FA map in NIfTI format). Must exist and be readable.
+    out_tract : str or Path
+        Path to save the new tractogram with interpolated values. The parent directory
+        must exist and be writable.
+    interp_method : {'linear', 'nearest'}, default='linear'
+        Interpolation method used for RegularGridInterpolator.
+        - 'linear': Trilinear interpolation
+        - 'nearest': Nearest neighbor interpolation
+    storage_mode : {'data_per_point', 'data_per_streamline'}, default='data_per_point'
+        Storage format for the interpolated values:
+        - 'data_per_point': Store scalar value for each streamline point
+        - 'data_per_streamline': Store aggregated scalar value per streamline
+    map_name : str, default='fa'
+        Name used for the scalar map in the output tractogram metadata.
+        This will be the key in data_per_point or data_per_streamline.
+    reduction : {'mean', 'median', 'min', 'max'}, default='mean'
+        Aggregation method used when storage_mode='data_per_streamline'.
+        Applied to all scalar values along each streamline to produce a single value.
+    preserve_both_storage_modes : bool, default=False
+        If True, preserve existing data in both data_per_point and data_per_streamline.
+        **Warning**: This may cause visualization conflicts in some tools (FSLeyes, etc.)
+        that have trouble rendering tractograms with both storage modes present.
+        Use only when you specifically need both storage modes for different applications.
+
+    Returns
+    -------
+    new_tractogram : nibabel.streamlines.Tractogram
+        The tractogram object with interpolated scalar values attached.
+    scalar_values_per_streamline : list of numpy.ndarray
+        List containing the interpolated scalar values for each streamline.
+        Each array has shape (n_points,) where n_points is the number of points
+        in the corresponding streamline. Contains NaN for points outside the scalar map.
+
+    Raises
+    ------
+    FileNotFoundError
+        If input tractogram file or scalar map file does not exist.
+    NotADirectoryError
+        If the parent directory of the output path does not exist.
+    PermissionError
+        If the output directory is not writable.
+    ValueError
+        If interp_method is not 'linear' or 'nearest', if storage_mode is not
+        'data_per_point' or 'data_per_streamline', or if reduction method is
+        not one of 'mean', 'median', 'min', 'max'.
+    IOError
+        If there are issues reading the input files or writing the output file.
+
+    Notes
+    -----
+    - Points outside the scalar map boundaries will have NaN values
+    - Empty streamlines are handled gracefully with empty arrays
+    - The function preserves the original tractogram's affine transformation
+    - When using 'data_per_streamline' mode, the map name will be suffixed 
+    with the reduction method (e.g., 'fa_mean')
+    - **Important**: By default, the function only populates the requested 
+    storage_mode and clears the other to prevent visualization conflicts.
+    Many tools (FSLeyes, etc.) have trouble rendering tractograms with both
+    data_per_point and data_per_streamline present simultaneously.
+    - Set preserve_both_storage_modes=True only if you specifically need both
+    storage modes for different applications, but be aware of potential
+    visualization issues.
+
+    Examples
+    --------
+    Basic usage with FA map:
+    
+    >>> new_tract, values = interpolate_on_tractogram(
+    ...     'input.trk', 'fa_map.nii.gz', 'output_with_fa.trk',
+    ...     map_name='fractional_anisotropy'
+    ... )
+    
+    Using median aggregation per streamline:
+    
+    >>> new_tract, values = interpolate_on_tractogram(
+    ...     'input.trk', 'md_map.nii.gz', 'output_with_md.trk',
+    ...     storage_mode='data_per_streamline',
+    ...     reduction='median',
+    ...     map_name='mean_diffusivity'
+    ... )
+    
+    Preserving both storage modes (use with caution):
+    
+    >>> new_tract, values = interpolate_on_tractogram(
+    ...     'input.trk', 'fa_map.nii.gz', 'output_with_fa.trk',
+    ...     preserve_both_storage_modes=True
+    ... )
+    # Warning: May cause visualization issues in FSLeyes and other tools
+    """
+    
+    # --- Input validation ---
+    in_tract = Path(in_tract)
+    scal_map = Path(scal_map)
+    out_tract = Path(out_tract)
+    
+    # Check if input files exist
+    if not in_tract.exists():
+        raise FileNotFoundError(f"Input tractogram file not found: {in_tract}")
+    
+    if not scal_map.exists():
+        raise FileNotFoundError(f"Scalar map file not found: {scal_map}")
+    
+    # Check if output directory exists
+    out_dir = out_tract.parent
+    if not out_dir.exists():
+        raise NotADirectoryError(f"Output directory does not exist: {out_dir}")
+    
+    # Check if output directory is writable
+    if not os.access(out_dir, os.W_OK):
+        raise PermissionError(f"Output directory is not writable: {out_dir}")
+    
+    # Validate parameters
+    valid_interp_methods = ['linear', 'nearest']
+    if interp_method not in valid_interp_methods:
+        raise ValueError(f"Invalid interpolation method '{interp_method}'. "
+                        f"Choose from {valid_interp_methods}")
+    
+    valid_storage_modes = ['data_per_point', 'data_per_streamline']
+    if storage_mode not in valid_storage_modes:
+        raise ValueError(f"Invalid storage mode '{storage_mode}'. "
+                        f"Choose from {valid_storage_modes}")
+    
+    valid_reductions = ['mean', 'median', 'min', 'max']
+    if reduction not in valid_reductions:
+        raise ValueError(f"Invalid reduction method '{reduction}'. "
+                        f"Choose from {valid_reductions}")
+
+    # --- Load tractogram ---
+    try:
+        trk_file = nib.streamlines.load(str(in_tract))
+    except Exception as e:
+        raise IOError(f"Failed to load tractogram file '{in_tract}': {e}")
+    
+    tractogram = trk_file.tractogram
+    streamlines = tractogram.streamlines
+
+    if tractogram.affine_to_rasmm is not None:
+        original_affine = tractogram.affine_to_rasmm
+    else:
+        original_affine = trk_file.affine
+
+    # --- Load scalar image ---
+    try:
+        scalar_img = nib.load(str(scal_map))
+    except Exception as e:
+        raise IOError(f"Failed to load scalar map '{scal_map}': {e}")
+    
+    scalar_data = scalar_img.get_fdata()
+    inv_affine = np.linalg.inv(scalar_img.affine)
+
+    # Creating interpolation function
+    x = np.arange(scalar_data.shape[0])
+    y = np.arange(scalar_data.shape[1])
+    z = np.arange(scalar_data.shape[2])
+    my_interpolating_scalmap = RegularGridInterpolator((x, y, z), scalar_data, method=interp_method)
+
+    # --- Interpolate scalar values per streamline point ---
+    scalar_values_per_streamline = []
+    for sl in streamlines:
+        if len(sl) == 0:
+            scalar_values_per_streamline.append(np.array([]))
+            continue
+
+        ones = np.ones((len(sl), 1))
+        coords_hom = np.hstack([sl, ones])
+        voxel_coords = (inv_affine @ coords_hom.T).T[:, :3].T
+
+        mask = (
+            (voxel_coords[0] >= 0) & (voxel_coords[0] < scalar_data.shape[0]) &
+            (voxel_coords[1] >= 0) & (voxel_coords[1] < scalar_data.shape[1]) &
+            (voxel_coords[2] >= 0) & (voxel_coords[2] < scalar_data.shape[2])
+        )
+
+        values = np.full(voxel_coords.shape[1], np.nan)
+        if np.any(mask):
+            values[mask] = my_interpolating_scalmap(voxel_coords[:, mask].T)
+
+        scalar_values_per_streamline.append(values)
+
+    # --- Store scalar values ---
+    # Handle storage mode conflicts - clear the other mode unless user explicitly wants both
+    if preserve_both_storage_modes:
+        # Preserve both storage modes (may cause visualization conflicts)
+        data_per_point = tractogram.data_per_point.copy() if tractogram.data_per_point else {}
+        data_per_streamline = tractogram.data_per_streamline.copy() if tractogram.data_per_streamline else {}
+        print("⚠️  Warning: Preserving both storage modes may cause visualization conflicts in some tools")
+    else:
+        # Only use the requested storage mode to avoid visualization conflicts
+        if storage_mode == 'data_per_point':
+            data_per_point = tractogram.data_per_point.copy() if tractogram.data_per_point else {}
+            data_per_streamline = {}  # Clear to avoid conflicts
+        else:  # storage_mode == 'data_per_streamline'
+            data_per_point = {}  # Clear to avoid conflicts
+            data_per_streamline = tractogram.data_per_streamline.copy() if tractogram.data_per_streamline else {}
+
+    if storage_mode == 'data_per_point':
+        formatted = [
+            val.reshape(-1, 1) if len(val) > 0 else np.empty((0, 1))
+            for val in scalar_values_per_streamline
+        ]
+        data_per_point[map_name] = formatted
+
+    elif storage_mode == 'data_per_streamline':
+        reducer = {
+            'mean': np.nanmean,
+            'median': np.nanmedian,
+            'min': np.nanmin,
+            'max': np.nanmax
+        }[reduction]
+
+        values = [
+            reducer(v) if len(v) > 0 and not np.all(np.isnan(v)) else np.nan
+            for v in scalar_values_per_streamline
+        ]
+        data_per_streamline[f"{map_name}_{reduction}"] = np.array(values).reshape(-1, 1)
+
+    # --- Save new tractogram ---
+    new_tractogram = nib.streamlines.Tractogram(
+        streamlines=streamlines,
+        data_per_point=data_per_point,
+        data_per_streamline=data_per_streamline,
+        affine_to_rasmm=original_affine
+    )
+
+    header = trk_file.header.copy()
+    trk_with_header = TrkFile(new_tractogram, header=header)
+    
+    try:
+        nib.streamlines.save(trk_with_header, str(out_tract))
+    except Exception as e:
+        raise IOError(f"Failed to save output tractogram '{out_tract}': {e}")
+
+    print(f"✅ Saved tractogram with interpolated '{map_name}' ({reduction}) values to:\n  {out_tract}")
+    if preserve_both_storage_modes:
+        print("📊 Storage mode: Both data_per_point and data_per_streamline preserved")
+    else:
+        print(f"📊 Storage mode: {storage_mode} (other storage mode cleared to prevent visualization conflicts)")
+    return new_tractogram, scalar_values_per_streamline
