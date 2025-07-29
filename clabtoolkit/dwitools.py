@@ -1510,8 +1510,16 @@ def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
     Returns:
         str: Formatted summary string
     """
+
+    # Check if the file exists
+    if not os.path.isfile(filepath):
+        raise FileNotFoundError(f"TRK file not found: {filepath}")
+    
+
     explorer = TRKExplorer(filepath)
-    return explorer.explore(max_streamline_samples)
+
+    return print(explorer.explore(max_streamline_samples))
+
 
 ##########################################################################################################
 def interpolate_on_tractogram(in_tract: str, 
