@@ -1277,7 +1277,6 @@ def extract_cluster_by_id(clustered_trk_path: str,
             'cluster_ids': cluster_ids if isinstance(cluster_ids, list) else [cluster_ids],
             'n_streamlines': len(cluster_streamlines)
         }
-    
 #####################################################################################################
 class TRKExplorer:
     """
@@ -1435,10 +1434,13 @@ class TRKExplorer:
         # File header
         summary_lines.append(f"📁 {self.filepath.name} (TrackVis format, {file_size_mb:.1f} MB)")
         
-        # Header section
+        # Header section - FIXED: Convert numpy types to Python native types
         summary_lines.append("├── 📋 Header")
-        summary_lines.append(f"│   ├── 🔢 dimensions {list(self.header['dimensions'])}")
-        summary_lines.append(f"│   ├── 🔢 voxel_sizes {[round(x, 2) for x in self.header['voxel_sizes']]}")
+        dimensions = [int(x) for x in self.header['dimensions']]  # Convert numpy types to int
+        voxel_sizes = [round(float(x), 2) for x in self.header['voxel_sizes']]  # Convert to float first
+        
+        summary_lines.append(f"│   ├── 🔢 dimensions {dimensions}")
+        summary_lines.append(f"│   ├── 🔢 voxel_sizes {voxel_sizes}")
         summary_lines.append(f"│   ├── 📝 n_streamlines = {self.streamlines_info['total_count']:,}")
         summary_lines.append(f"│   ├── 📊 n_scalars = {self.header.get('nb_scalars_per_point', 0)}")
         summary_lines.append(f"│   ├── 🏷️ n_properties = {self.header.get('nb_properties_per_streamline', 0)}")
