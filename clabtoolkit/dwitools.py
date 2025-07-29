@@ -34,8 +34,6 @@ from . import misctools as cltmisc
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def delete_volumes(
     in_image: str,
     bvec_file: str = None,
@@ -530,7 +528,7 @@ def tck2trk(
 
     return out_tract
 
-
+####################################################################################################
 def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
     """
     Convert a TRK file to a TCK file.
@@ -582,7 +580,7 @@ def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
 
     return out_tract
 
-# Alternative version with more flexible error handling
+####################################################################################################
 def concatenate_tractograms(
     in_tracts: list,
     concat_tract: str = None,
@@ -607,6 +605,21 @@ def concatenate_tractograms(
     -------
     result : nibabel.streamlines.Tractogram or str
         The concatenated tractogram or output file path.
+    Raises
+    ------
+    ValueError
+        If the input tractograms are not a list or if less than two tractograms are provided.
+    FileNotFoundError
+        If any of the specified tractogram files are missing and `skip_missing` is False.
+    FileExistsError
+        If the output file already exists and `concat_tract` is specified without `skip_missing
+
+    Examples
+    --------
+    >>> in_tracts = ['tract1.trk', 'tract2.trk', 'tract3.trk']
+    >>> concat_tract = 'concatenated.trk'
+    >>> result = concatenate_tractograms(in_tracts, concat_tract, show_progress=True, skip_missing=True)
+    >>> print(f"Concatenated tractogram saved at: {result}")
     """
     # Input validation
     if not isinstance(in_tracts, list):
@@ -688,6 +701,7 @@ def concatenate_tractograms(
 
     return trkall
 
+####################################################################################################
 def resample_streamlines(
     in_streamlines: nib.streamlines.array_sequence.ArraySequence,
     nb_points: int = 51
@@ -746,6 +760,7 @@ def resample_streamlines(
     
     return resampled_streamlines
 
+####################################################################################################
 def resample_tractogram(
     in_tract: str,
     out_tract: str = None,
@@ -829,7 +844,8 @@ def resample_tractogram(
         )
 
         return out_tract
-    
+
+####################################################################################################
 def compute_tractogram_centroids(in_tract: str,
                                 centroid_tract: str,
                                 clustered_tract: str = None,
@@ -1055,6 +1071,7 @@ def compute_tractogram_centroids(in_tract: str,
     if clustered_tract is not None:
         nib.streamlines.save(clustered_trk, clustered_tract)
 
+########################################################################################################
 def create_trackvis_colored_trk(clustered_trk_path: str, output_path: str, color_by='cluster_id'):
     """
     Create a TrackVis-compatible TRK file with scalar coloring.
@@ -1165,6 +1182,7 @@ def create_trackvis_colored_trk(clustered_trk_path: str, output_path: str, color
     
     return output_path
 
+#####################################################################################################
 def extract_cluster_by_id(clustered_trk_path: str, 
                         cluster_ids: Union[List[int], int], 
                         output_path=None):
@@ -1260,7 +1278,7 @@ def extract_cluster_by_id(clustered_trk_path: str,
             'n_streamlines': len(cluster_streamlines)
         }
     
-
+#####################################################################################################
 class TRKExplorer:
     """
     A class to explore and summarize TRK (TrackVis) format tractogram files using nibabel.
@@ -1480,7 +1498,7 @@ class TRKExplorer:
         return self.trk_file.streamlines
 
 
-# Convenience function for quick exploration
+#########################################################################################################
 def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
     """
     Quick function to explore a TRK file and return a summary.
@@ -1495,7 +1513,10 @@ def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
     explorer = TRKExplorer(filepath)
     return explorer.explore(max_streamline_samples)
 
-def interpolate_on_tractogram(in_tract: str, scal_map: str, out_tract: str,
+##########################################################################################################
+def interpolate_on_tractogram(in_tract: str, 
+                            scal_map: str, 
+                            out_tract: str = None,
                             interp_method: str='linear',
                             storage_mode:str='data_per_point',
                             map_name: str='fa',
@@ -1606,7 +1627,7 @@ def interpolate_on_tractogram(in_tract: str, scal_map: str, out_tract: str,
     # --- Input validation ---
     in_tract = Path(in_tract)
     scal_map = Path(scal_map)
-    out_tract = Path(out_tract)
+  
     
     # Check if input files exist
     if not in_tract.exists():
@@ -1616,13 +1637,15 @@ def interpolate_on_tractogram(in_tract: str, scal_map: str, out_tract: str,
         raise FileNotFoundError(f"Scalar map file not found: {scal_map}")
     
     # Check if output directory exists
-    out_dir = out_tract.parent
-    if not out_dir.exists():
-        raise NotADirectoryError(f"Output directory does not exist: {out_dir}")
+    if out_tract is not None:
+        out_tract = Path(out_tract)
+        out_dir = out_tract.parent
+        if not out_dir.exists():
+            raise NotADirectoryError(f"Output directory does not exist: {out_dir}")
     
-    # Check if output directory is writable
-    if not os.access(out_dir, os.W_OK):
-        raise PermissionError(f"Output directory is not writable: {out_dir}")
+        # Check if output directory is writable
+        if not os.access(out_dir, os.W_OK):
+            raise PermissionError(f"Output directory is not writable: {out_dir}")
     
     # Validate parameters
     valid_interp_methods = ['linear', 'nearest']
@@ -1737,17 +1760,14 @@ def interpolate_on_tractogram(in_tract: str, scal_map: str, out_tract: str,
         affine_to_rasmm=original_affine
     )
 
+
     header = trk_file.header.copy()
     trk_with_header = TrkFile(new_tractogram, header=header)
     
-    try:
-        nib.streamlines.save(trk_with_header, str(out_tract))
-    except Exception as e:
-        raise IOError(f"Failed to save output tractogram '{out_tract}': {e}")
-
-    print(f"✅ Saved tractogram with interpolated '{map_name}' ({reduction}) values to:\n  {out_tract}")
-    if preserve_both_storage_modes:
-        print("📊 Storage mode: Both data_per_point and data_per_streamline preserved")
-    else:
-        print(f"📊 Storage mode: {storage_mode} (other storage mode cleared to prevent visualization conflicts)")
+    if out_tract is not None:
+        try:
+            nib.streamlines.save(trk_with_header, str(out_tract))
+        except Exception as e:
+            raise IOError(f"Failed to save output tractogram '{out_tract}': {e}")
+        
     return new_tractogram, scalar_values_per_streamline
