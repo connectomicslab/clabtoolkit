@@ -20,6 +20,8 @@ import pyvista as pv
 
 # Importing local modules
 from . import freesurfertools as cltfree
+from . import misctools as cltmisc
+
 
 # Use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
