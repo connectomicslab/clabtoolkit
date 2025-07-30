@@ -1225,3 +1225,60 @@ class Surface:
             background_color=background_color,
             title=title,
         )
+
+    def plot(
+        self,
+        overlay_name: str = None,
+        cmap: str = None,
+        vmin: np.float64 = None,
+        vmax: np.float64 = None,
+        views: Union[str, List[str]] = "lateral",
+        hemi: str = "lh",
+        colorbar_title: str = None,
+        colorbar_position: str = "bottom",
+        title: str = None,
+        window_size: Tuple[int, int] = (1400, 900),
+        background_color: str = "white",
+        ambient: float = 0.2,
+        diffuse: float = 0.5,
+        specular: float = 0.5,
+        specular_power: int = 50,
+        opacity: float = 1.0,
+        style: str = "surface",
+        smooth_shading: bool = True,
+    ):
+        """
+        Alias for show method to maintain compatibility with previous versions.
+        
+        Parameters are the same as in the show method.
+        
+        Returns
+        -------
+        Plotter object
+            PyVista plotter object for further customization or interaction
+        """
+        self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
+
+        dict_ctables = self.colortables
+        if cmap is None:
+            if overlay_name in dict_ctables.keys():
+                show_colorbar = False
+
+            else:
+                show_colorbar = True
+
+        else:
+            show_colorbar = True
+
+        from . import visualizationtools as cltvis
+
+        plotter = cltvis.SurfacePlotter()
+        plotter.plot_surface(self, 
+                            hemi=hemi, 
+                            map_name=overlay_name, 
+                            views="8_views_1x8",
+                            colormap= cmap, 
+                            colorbar=show_colorbar, 
+                            colorbar_title=colorbar_title,
+                            colorbar_position = colorbar_position,
+                        )
