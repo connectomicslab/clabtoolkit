@@ -874,6 +874,34 @@ class Surface:
 
         return overlays
 
+    def set_active_overlay(self, overlay_name: str) -> None:
+        """
+        Set the active overlay for visualization.
+
+        Parameters
+        ----------
+        overlay_name : str
+            Name of the overlay to set as active
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If the specified overlay is not found in mesh point data
+
+        Examples
+        --------
+        >>> surface.set_active_overlay("thickness")
+        >>> surface.set_active_overlay("aparc")
+        """
+        if overlay_name not in self.mesh.point_data:
+            raise ValueError(f"Overlay '{overlay_name}' not found in mesh point data")
+
+        self.mesh.set_active_scalars(overlay_name)
+
     def remove_overlay(self, overlay_name: str) -> None:
         """
         Remove an overlay and its associated data.
