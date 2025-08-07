@@ -47,9 +47,80 @@ class Surface:
     >>> surface.show(overlay_name="thickness", cmap="hot")
     """
 
-    def __init__(self, surface_file: str, hemi: str = None) -> None:
+    def __init__(
+        self, 
+        surface_file: str = None, 
+        vertices: np.ndarray = None, 
+        faces: np.ndarray = None, 
+        hemi: str = None
+    ) -> None:
         """
-        Initialize a Surface object from a surface file.
+        Initialize a Surface object from a surface file, vertex/face arrays, or empty.
+
+        Parameters
+        ----------
+        surface_file : str, optional
+            Path to the surface file (e.g., FreeSurfer .pial, .white, .inflated files)
+        vertices : np.ndarray, optional
+            Array of vertices with shape (n_vertices, 3)
+        faces : np.ndarray, optional
+            Array of faces with shape (n_faces, 3)
+        hemi : str, optional
+            Hemisphere designation ('lh' or 'rh'). If None, attempts to auto-detect
+            from the filename or defaults to 'lh'
+
+        Raises
+        ------
+        ValueError
+            If both surface_file and (vertices/faces) are provided,
+            or if only one of vertices/faces is provided when the other is not None
+        FileNotFoundError
+            If the surface file does not exist
+        ValueError
+            If the surface file cannot be loaded or parsed
+
+        Examples
+        --------
+        >>> # Create empty instance
+        >>> surface = Surface()
+        >>>
+        >>> # Load with auto-detection of hemisphere
+        >>> surface = Surface(surface_file="path/to/lh.pial")
+        >>>
+        >>> # Load with explicit hemisphere specification
+        >>> surface = Surface(surface_file="path/to/surface.pial", hemi="rh")
+        >>>
+        >>> # Create from vertex and face arrays
+        >>> vertices = np.random.rand(100, 3)
+        >>> faces = np.array([[0, 1, 2], [1, 2, 3]])
+        >>> surface = Surface(vertices=vertices, faces=faces, hemi="lh")
+        """
+        
+        # Initialize attributes to None (empty instance)
+        self.surf = None
+        self.mesh = None
+        self.hemi = None
+        self.colortables: Dict[str, Dict] = {}
+        
+        # Validate input parameters
+        if surface_file is not None and (vertices is not None or faces is not None):
+            raise ValueError("Cannot specify both surface_file and vertices/faces")
+        
+        if vertices is not None and faces is None:
+            raise ValueError("If vertices are provided, faces must also be provided")
+        
+        if faces is not None and vertices is None:
+            raise ValueError("If faces are provided, vertices must also be provided")
+        
+        # Load data if provided
+        if surface_file is not None:
+            self.load_from_file(surface_file, hemi)
+        elif vertices is not None and faces is not None:
+            self.load_from_arrays(vertices, faces, hemi=hemi)
+
+    def load_from_file(self, surface_file: str, hemi: str = None) -> None:
+        """
+        Load surface geometry from file.
 
         Parameters
         ----------
@@ -62,25 +133,125 @@ class Surface:
         Raises
         ------
         FileNotFoundError
-            If the surface file does not exist
+            If the surface file cannot be found
         ValueError
-            If the surface file cannot be loaded or parsed
+            If the surface file format is not supported or corrupted
 
         Examples
         --------
-        >>> # Load with auto-detection of hemisphere
-        >>> surface = Surface("path/to/lh.pial")
-        >>>
-        >>> # Load with explicit hemisphere specification
-        >>> surface = Surface("path/to/surface.pial", hemi="rh")
+        >>> surface = Surface()
+        >>> surface.load_from_file("path/to/lh.pial")
+        >>> print(f"Number of vertices: {surface.mesh.n_points}")
         """
         self.surf = surface_file
         self.mesh = self.load_surf()
+        
+        # Hemisphere detection from filename
+        if hemi is not None:
+            self.hemi = hemi
+        else:
+            self.hemi = cltfree.detect_hemi(self.surf)
+            
+        # Fallback hemisphere detection from BIDS organization
+        surf_name = os.path.basename(self.surf)
+        detected_hemi = cltfree.detect_hemi(surf_name)
+        
+        if detected_hemi is None:
+            self.hemi = "lh"  # Default to left hemisphere
 
-        # Initialize color table storage BEFORE calling _store_parcellation_data
-        self.colortables: Dict[str, Dict] = {}
+        # Create default parcellation data
+        self._create_default_parcellation()
 
-        # Now create the temporary color table and store parcellation data
+    def load_from_arrays(
+        self, 
+        vertices: np.ndarray, 
+        faces: np.ndarray, 
+        normals: np.ndarray = None,
+        hemi: str = None
+    ) -> None:
+        """
+        Load surface geometry from vertex and face arrays.
+
+        Parameters
+        ----------
+        vertices : np.ndarray
+            Array of vertices with shape (n_vertices, 3)
+        faces : np.ndarray
+            Array of faces with shape (n_faces, 3)
+        normals : np.ndarray, optional
+            Array of vertex normals with shape (n_vertices, 3)
+        hemi : str, optional
+            Hemisphere designation ('lh' or 'rh'). Defaults to 'lh'
+
+        Raises
+        ------
+        ValueError
+            If vertices or faces arrays have incorrect shapes
+
+        Examples
+        --------
+        >>> surface = Surface()
+        >>> vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        >>> faces = np.array([[0, 1, 2]])
+        >>> surface.load_from_arrays(vertices, faces, hemi="lh")
+        """
+        self.surf = None
+        self.mesh = self.create_mesh_from_arrays(vertices, faces, normals)
+        self.hemi = hemi if hemi is not None else "lh"  # Default to left hemisphere
+
+        # Create default parcellation data
+        self._create_default_parcellation()
+
+    def load_from_mesh(self, mesh: pv.PolyData, hemi: str = None) -> None:
+        """
+        Load surface geometry from an existing PyVista mesh.
+
+        Parameters
+        ----------
+        mesh : pv.PolyData
+            PyVista mesh object containing surface geometry
+        hemi : str, optional
+            Hemisphere designation ('lh' or 'rh'). Defaults to 'lh'
+
+        Examples
+        --------
+        >>> surface = Surface()
+        >>> existing_mesh = pv.PolyData(vertices, faces)
+        >>> surface.load_from_mesh(existing_mesh, hemi="rh")
+        """
+        self.surf = None
+        self.mesh = mesh.copy()  # Make a copy to avoid modifying the original
+        self.hemi = hemi if hemi is not None else "lh"  # Default to left hemisphere
+
+        # Ensure mesh has default surface colors if not present
+        if "surface" not in self.mesh.point_data:
+            self.mesh.point_data["surface"] = (
+                np.ones((self.mesh.n_points, 3), dtype=np.float32) * 240
+            )  # Default colors
+
+        # Create default parcellation data
+        self._create_default_parcellation()
+
+    def is_loaded(self) -> bool:
+        """
+        Check if surface data has been loaded.
+
+        Returns
+        -------
+        bool
+            True if surface data is loaded, False otherwise
+
+        Examples
+        --------
+        >>> surface = Surface()
+        >>> print(surface.is_loaded())  # False
+        >>> surface.load_from_file("path/to/lh.pial")
+        >>> print(surface.is_loaded())  # True
+        """
+        return self.mesh is not None
+
+    def _create_default_parcellation(self) -> None:
+        """Create default parcellation data for the surface."""
         tmp_ctable = cltfree.colors2colortable(
             np.array([[240, 240, 240]], dtype=np.uint8)
         )
@@ -90,23 +261,24 @@ class Surface:
             ["surface"],
             "surface",
         )
-
-        # Hemisphere detection
-        if hemi is not None:
-            self.hemi = hemi
-        else:
-            self.hemi = cltfree.detect_hemi(self.surf)
-
-        # Fallback hemisphere detection from BIDS organization
-        surf_name = os.path.basename(self.surf)
-        detected_hemi = cltfree.detect_hemi(surf_name)
-
-        if detected_hemi is None:
-            self.hemi = "lh"  # Default to left hemisphere
-
-    def load_surf(self) -> pv.PolyData:
+    
+    def create_mesh_from_arrays(
+        self, 
+        vertices: np.ndarray, 
+        faces: np.ndarray,
+        normals: np.ndarray = None
+    ) -> pv.PolyData:
         """
-        Load surface geometry and create PyVista mesh.
+        Create PyVista mesh from vertex and face arrays.
+
+        Parameters
+        ----------
+        vertices : np.ndarray
+            Array of vertices with shape (n_vertices, 3)
+        faces : np.ndarray
+            Array of faces with shape (n_faces, 3)
+        normals : np.ndarray, optional
+            Array of vertex normals with shape (n_vertices, 3)
 
         Returns
         -------
@@ -115,24 +287,59 @@ class Surface:
 
         Raises
         ------
-        FileNotFoundError
-            If the surface file cannot be found
         ValueError
-            If the surface file format is not supported or corrupted
+            If vertices or faces arrays have incorrect shapes
 
         Examples
         --------
-        >>> surface = Surface("path/to/lh.pial")
-        >>> mesh = surface.load_surf()
+        >>> vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        >>> faces = np.array([[0, 1, 2]])
+        >>> surface = Surface()
+        >>> mesh = surface.create_mesh_from_arrays(vertices, faces)
         >>> print(f"Number of vertices: {mesh.n_points}")
-        >>> print(f"Number of faces: {mesh.n_cells}")
         """
-        vertices, faces = nib.freesurfer.read_geometry(self.surf)
+        # Validate array shapes
+        if vertices.ndim != 2 or vertices.shape[1] != 3:
+            raise ValueError("Vertices array must have shape (n_vertices, 3)")
+        
+        if faces.ndim != 2 or faces.shape[1] != 3:
+            raise ValueError("Faces array must have shape (n_faces, 3)")
+        
+        if normals is not None and (normals.ndim != 2 or normals.shape[1] != 3 or normals.shape[0] != vertices.shape[0]):
+            raise ValueError("Normals array must have shape (n_vertices, 3)")
+        
+        # Check that face indices are valid
+        if np.any(faces >= len(vertices)) or np.any(faces < 0):
+            raise ValueError("Face indices must be valid indices into the vertices array")
+        
+        mesh = self._create_pyvista_mesh(vertices, faces)
+        
+        # Add normals if provided
+        if normals is not None:
+            mesh.point_data["Normals"] = normals
+        
+        return mesh
+    
+    def _create_pyvista_mesh(self, vertices: np.ndarray, faces: np.ndarray) -> pv.PolyData:
+        """
+        Internal method to create PyVista mesh from vertices and faces.
 
+        Parameters
+        ----------
+        vertices : np.ndarray
+            Array of vertices with shape (n_vertices, 3)
+        faces : np.ndarray
+            Array of faces with shape (n_faces, 3)
+
+        Returns
+        -------
+        pv.PolyData
+            PyVista mesh object
+        """
         # Add column with 3's to faces array for PyVista
-        faces = np.c_[np.full(len(faces), 3), faces]
+        faces_pv = np.c_[np.full(len(faces), 3), faces]
 
-        mesh = pv.PolyData(vertices, faces)
+        mesh = pv.PolyData(vertices, faces_pv)
         mesh.point_data["surface"] = (
             np.ones((len(vertices), 3), dtype=np.float32) * 240
         )  # Default colors
