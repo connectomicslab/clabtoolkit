@@ -10,6 +10,61 @@ from typing import Union
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 
+def get_voxel_size(affine: np.ndarray):
+    """
+    This method will compute the voxel size from an affine matrix.
+    
+    Parameters
+    ----------
+    affine: 4x4 affine transformation matrix from NIfTI header
+    
+    Returns
+    -------
+    tuple: (voxel_x, voxel_y, voxel_z) sizes in mm
+
+
+    """
+    # Extract voxel sizes as the magnitude of each column vector
+    voxel_x = np.linalg.norm(affine[:3, 0])
+    voxel_y = np.linalg.norm(affine[:3, 1])
+    voxel_z = np.linalg.norm(affine[:3, 2])
+    return (voxel_x, voxel_y, voxel_z)
+
+def get_center(affine: np.ndarray):
+    """
+    Extract the center/origin from the affine matrix.
+
+    Parameters
+    ----------
+    affine: 4x4 affine transformation matrix from NIfTI header
+
+    Returns
+    -------
+    tuple: (center_x, center_y, center_z) translation from 4th column
+
+    """
+    return (affine[0, 3], affine[1, 3], affine[2, 3])
+
+def get_rotation_matrix(affine: np.ndarray):
+    """
+    Extract the rotation matrix from the affine matrix.
+
+    Parameters
+    ----------
+    affine: 4x4 affine transformation matrix from NIfTI header
+
+    Returns
+    -------
+    np.ndarray: 3x3 rotation matrix (normalized, without scaling)
+    
+    """
+    # Extract 3x3 rotation/scaling matrix
+    rot_scale = affine[:3, :3]
+    # Normalize each column to remove scaling and keep only rotation
+    rotation = np.zeros_like(rot_scale)
+    for i in range(3):
+        rotation[:, i] = rot_scale[:, i] / np.linalg.norm(rot_scale[:, i])
+    return rotation
 
 def crop_image_from_mask(
     in_image: str,
