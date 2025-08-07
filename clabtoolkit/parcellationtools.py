@@ -9,6 +9,7 @@ from typing import Union, List
 
 # Importing local modules
 from . import misctools as cltmisc
+from . import imagetools as cltimg
 from . import segmentationtools as cltseg
 
 
@@ -543,6 +544,259 @@ class Parcellation:
             img_data[ind2rem] = 0
 
             return img_data
+
+    def compute_centroids(self,
+                        include_by_code: Union[List[int], np.ndarray] = None,
+                        include_by_name: Union[List[str], str] = None,
+                        centroid_table: str = None):
+        """
+        Compute centroids, number of voxels, and volume for each region in a 3D image.
+        
+        Parameters:
+        -----------
+        include_by_code : List[int] or np.ndarray, optional
+            Specific region codes to include
+        include_by_name : List[str] or str, optional  
+            Specific region names to include
+        centroid_table : str, optional
+            Path to save the centroid table as TSV file. If None, no file is saved.
+            
+        Returns:
+        --------
+        pd.DataFrame
+            DataFrame with columns ['index', 'name', 'color', 'X', 'Y', 'Z', 'nvoxels', 'volume']
+        """
+        
+        # Check if include_by_code and include_by_name are different from None at the same time
+        if include_by_code is not None and include_by_name is not None:
+            raise ValueError("You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them.")
+        
+        temp_parc = copy.deepcopy(self) 
+
+        # Apply inclusion if specified
+        if include_by_code is not None:
+            temp_parc.keep_by_code(codes2keep=include_by_code)
+
+        if include_by_name is not None:
+            temp_parc.keep_by_name(names2look=include_by_name)
+        
+        # Get unique region values
+        unique_regions = np.array(temp_parc.index)
+        
+        # Lists to store results
+        codes = []
+        names = []
+        colors = []
+        x_coords = []
+        y_coords = []
+        z_coords = []
+        num_voxels = []
+        volumes = []
+        
+        # Get voxel size
+        voxel_volume = cltimg.get_voxel_volume(temp_parc.affine)
+        
+        # Fixed loop - iterate over regions and find their index
+        for region_label in unique_regions:
+            # Find the index of this region in parc.index
+            region_idx = np.where(np.array(temp_parc.index) == region_label)[0]
+            if len(region_idx) == 0:
+                continue
+            region_idx = region_idx[0]  # Get the first (should be only) match
+            
+            # Create mask for current region
+            region_x, region_y, region_z = np.where(temp_parc.data == region_label)
+            
+            # Skip if region doesn't exist in the data
+            if len(region_x) == 0:
+                continue
+            
+            # Compute centroid
+            centroid_x = np.mean(region_x)
+            centroid_y = np.mean(region_y) 
+            centroid_z = np.mean(region_z)
+            
+            # Count voxels and compute volume
+            voxel_count = len(region_x)
+            total_volume = voxel_count * voxel_volume
+            
+            # Store results
+            codes.append(int(region_label))
+            names.append(temp_parc.name[region_idx])
+            colors.append(temp_parc.color[region_idx])
+            x_coords.append(centroid_x)
+            y_coords.append(centroid_y)
+            z_coords.append(centroid_z)
+            num_voxels.append(voxel_count)
+            volumes.append(total_volume)
+        
+        # Convert coordinates to mm
+        coords_vox =np.stack((np.array(x_coords), 
+                            np.array(y_coords), 
+                            np.array(z_coords)), axis=-1)
+        coords_mm = cltimg.vox2mm(coords_vox, self.affine)
+
+        x_coords_mm = coords_mm[:, 0]
+        y_coords_mm = coords_mm[:, 1]
+        z_coords_mm = coords_mm[:, 2]
+
+        # Convert to list
+        x_coords_mm = x_coords_mm.tolist()
+        y_coords_mm = y_coords_mm.tolist()
+        z_coords_mm = z_coords_mm.tolist()
+
+        # Create DataFrame
+        df = pd.DataFrame({
+            'index': codes,
+            'name': names,
+            'color': colors,
+            'Xvox': x_coords,
+            'Yvox': y_coords,
+            'Zvox': z_coords,
+            'Xmin': x_coords_mm,
+            'Ymin': y_coords_mm,
+            'Zmin': z_coords_mm,
+            'nvoxels': num_voxels,
+            'volume': volumes
+        })
+        
+        # Save to TSV file if path is provided
+        if centroid_table is not None:
+            try:
+                # Check if the directory exists
+                directory = os.path.dirname(centroid_table)
+                if directory and not os.path.exists(directory):
+                    print(f"Warning: Directory '{directory}' does not exist. Cannot save file.")
+                else:
+                    # Save as TSV file
+                    df.to_csv(centroid_table, sep='\t', index=False)
+                    print(f"Centroid table saved to: {centroid_table}")
+            except Exception as e:
+                print(f"Error saving centroid table: {e}")
+        
+        return df
+
+    def surface_extraction(self, 
+                            codes_list: Union[List[int], np.ndarray] = None,
+                            smooth_iterations: int = 50,
+                            fill_holes: bool = True,
+                            gaussian_smooth: bool = True,
+                            sigma: float = 1.0):
+        """
+        Extracts surfaces from the parcellation data for specified codes. It uses marching cubes to extract the surface mesh
+        and applies various processing steps such as Gaussian smoothing, filling holes, and Taubin smoothing.
+        
+        Parameters
+        ----------
+        codes_list : list
+            List of codes to extract surfaces for
+        smooth_iterations : int, optional
+            Number of smoothing iterations (default: 50)
+        fill_holes : bool, optional
+            Whether to fill holes in the mesh (default: True)
+        gaussian_smooth : bool, optional
+            Whether to apply Gaussian smoothing to volume data (default: True)
+        sigma : float, optional
+            
+        
+        Returns
+        -------
+        dict
+            Dictionary with codes as keys and extracted meshes as values
+        """
+        
+        
+        
+
+        # Remove the codes from the list that are not present in the parcellation
+        codes_list = [code for code in codes_list if code in self.data]
+
+        # Get the indices of codes_list on parc.index
+        index_list = [self.index.index(code) for code in codes_list if code in self.index]
+        name_list = [self.name[i] for i in index_list ]
+        color_list = [self.color[i] for i in index_list ]  
+
+        color_table = cltfree.colors2colortable(color_list)
+
+        table_dict = {
+            'struct_names': name_list,
+            'color_table': color_table,
+            'lookup_table': None
+        }
+        color_tables = {
+            'surface': table_dict,
+        }
+        # Get affine transformations
+        vox_size = get_voxel_size(parc.affine)
+        parc_center = get_center(parc.affine)
+        rotation_matrix = get_rotation_matrix(parc.affine)
+        
+        surfaces_list = []
+        for i, code in enumerate(codes_list):
+            print(f"Processing code {code}...")
+            # Create binary mask for current code
+            parc_temp = copy.deepcopy(parc)
+            parc_temp.keep_by_code(codes2keep=[code], rearrange=True)
+
+            # Apply Gaussian smoothing to reduce noise and fill small gaps
+            volume_data = parc_temp.data.astype(float)
+            if gaussian_smooth:
+                volume_data = gaussian_filter(volume_data, sigma=sigma)
+                # Re-threshold after smoothing
+                volume_data = (volume_data > 0.5).astype(int)
+                if volume_data.max() == 0:
+                    volume_data = parc_temp.data.astype(float)
+
+            # Check if the code exists in the data
+            # Extract surface using marching cubes
+            vertices, faces, normals, values = measure.marching_cubes(
+                volume_data, 
+                level=0.5, 
+                gradient_direction='ascent'
+            )
+
+            # Move vertices to mm space and the apply affine transformation
+            vertices = cltimg.vox2mm(vertices, parc.affine) 
+
+            # Add column with 3's to faces array for PyVista
+            faces = np.c_[np.full(len(faces), 3), faces]
+
+            mesh = pv.PolyData(vertices, faces)
+            mesh.point_data["surface"] = (
+                np.ones((len(vertices), 1), dtype=np.float32) * color_table[i, 4]
+            )
+
+            # Mesh processing pipeline for better quality
+            # 1. Clean the mesh (remove duplicate points, unused points, degenerate cells)
+            mesh = mesh.clean()
+            
+            # 2. Fill holes if requested
+            if fill_holes:
+                mesh = mesh.fill_holes(1000)  # Fill holes with max 1000 triangles
+            
+            # 3. Apply Taubin smoothing (preserves features better than Laplacian)
+            if smooth_iterations > 0:
+                mesh = mesh.smooth_taubin(n_iter=smooth_iterations, 
+                                        pass_band=0.1)
+            
+            # 4. Clean again after smoothing
+            mesh = mesh.clean()
+            
+            # 5. Compute normals for better shading
+            mesh = mesh.compute_normals(split_vertices=True)
+
+
+            surf_temp = cltsurf.Surface()
+            surf_temp.load_from_mesh(mesh, hemi='lh')
+            if i != 0:
+                surfaces_list.append(surf_temp)
+            else:
+                surf_orig = copy.deepcopy(surf_temp)    
+        
+        surf_orig.merge_surfaces(surfaces_list)
+
+        surf_orig.colortables = color_tables
+
 
     def adjust_values(self):
         """
