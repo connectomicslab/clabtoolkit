@@ -30,6 +30,22 @@ def get_voxel_size(affine: np.ndarray):
     voxel_z = np.linalg.norm(affine[:3, 2])
     return (voxel_x, voxel_y, voxel_z)
 
+def get_voxel_volume(affine: np.ndarray):
+    """
+    This method will compute the voxel volume from an affine matrix.
+    
+    Parameters
+    ----------
+    affine: 4x4 affine transformation matrix from NIfTI header
+    
+    Returns
+    -------
+    float: voxel volume in mm^3
+
+    """
+    voxel_x, voxel_y, voxel_z = get_voxel_size(affine)
+    return voxel_x * voxel_y * voxel_z
+
 def get_center(affine: np.ndarray):
     """
     Extract the center/origin from the affine matrix.
