@@ -500,7 +500,10 @@ class Surface:
                 if not os.path.isfile(annot_file):
                     raise FileNotFoundError(f"Annotation file not found: {annot_file}")
                 else:
-                    parc = cltfree.AnnotParcellation(annot_file)
+                    # Create AnnotParcellation object to benefit from its processing and cleaning
+                    parc = cltfree.AnnotParcellation()
+                    parc.load_from_file(parc_file=annot_file)
+
             elif isinstance(annot_file, cltfree.AnnotParcellation):
                 parc = copy.deepcopy(
                     annot_file
@@ -624,7 +627,9 @@ class Surface:
                 if not os.path.isfile(annot_file):
                     raise FileNotFoundError(f"Annotation file not found: {annot_file}")
                 else:
-                    parc = cltfree.AnnotParcellation(annot_file)
+                    parc = cltfree.AnnotParcellation()
+                    parc.load_from_file(parc_file=annot_file)
+
             elif isinstance(annot_file, cltfree.AnnotParcellation):
                 parc = copy.deepcopy(annot_file)
 
@@ -737,7 +742,8 @@ class Surface:
                 raise FileNotFoundError(f"Annotation file not found: {annot_input}")
 
             # Create AnnotParcellation object to benefit from its processing and cleaning
-            annot_parc = cltfree.AnnotParcellation(annot_input)
+            annot_parc = cltfree.AnnotParcellation()
+            annot_parc.load_from_file(parc_file=annot_input)
 
         elif (
             hasattr(annot_input, "codes")
