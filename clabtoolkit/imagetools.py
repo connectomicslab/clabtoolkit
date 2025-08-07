@@ -626,14 +626,11 @@ def vox2mm(vox_coords, affine):
         vox_coords = np.transpose(vox_coords)
 
     if np.shape(vox_coords)[1] == 3:
-        vox_coords = np.concatenate(
-            (vox_coords, np.ones((np.shape(vox_coords)[0], 1))), axis=1
-        )
-
         npoints = np.shape(vox_coords)
-        tones = np.ones((npoints[0], 1))
-        A = np.transpose(np.concatenate((vox_coords, tones), axis=1))
-        mm_coords = np.matmul(affine, A)
+        vox_coords = np.c_[ vox_coords, np.full(npoints[0], 1)]
+
+        
+        mm_coords = np.matmul(affine, vox_coords.T)
         mm_coords = np.transpose(mm_coords)
         mm_coords = mm_coords[:, :3]
 
