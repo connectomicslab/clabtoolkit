@@ -346,6 +346,81 @@ class Surface:
 
         return mesh
 
+    def get_vertices(self) -> np.ndarray:
+        """
+        Get the vertices of the surface mesh.
+
+        Returns
+        -------
+        np.ndarray
+            Array of vertices with shape (n_vertices, 3)
+
+        Raises
+        ------
+        RuntimeError
+            If no surface data has been loaded
+
+        Examples
+        --------
+        >>> surface = Surface("path/to/lh.pial")
+        >>> vertices = surface.get_vertices()
+        >>> print(f"Vertex shape: {vertices.shape}")
+        """
+        if not self.is_loaded():
+            raise RuntimeError("No surface data loaded. Load data first.")
+        return self.mesh.points
+
+    def get_faces(self) -> np.ndarray:
+        """
+        Get the faces of the surface mesh.
+
+        Returns
+        -------
+        np.ndarray
+            Array of faces with shape (n_faces, 3)
+
+        Raises
+        ------
+        RuntimeError
+            If no surface data has been loaded
+
+        Examples
+        --------
+        >>> surface = Surface("path/to/lh.pial")
+        >>> faces = surface.get_faces()
+        >>> print(f"Face shape: {faces.shape}")
+        """
+        if not self.is_loaded():
+            raise RuntimeError("No surface data loaded. Load data first.")
+        
+        # PyVista stores faces as [n_vertices, vertex_id1, vertex_id2, ...]
+        # We need to extract just the vertex indices
+        faces_raw = self.mesh.faces
+        n_faces = self.mesh.n_cells
+        faces = faces_raw.reshape(n_faces, 4)[:, 1:4]  # Skip the first column (n_vertices)
+        return faces
+
+    def get_normals(self) -> Optional[np.ndarray]:
+        """
+        Get the vertex normals of the surface mesh if available.
+
+        Returns
+        -------
+        np.ndarray or None
+            Array of normals with shape (n_vertices, 3) if available, None otherwise
+
+        Examples
+        --------
+        >>> surface = Surface("path/to/lh.pial")
+        >>> normals = surface.get_normals()
+        >>> if normals is not None:
+        ...     print(f"Normal shape: {normals.shape}")
+        """
+        if not self.is_loaded():
+            return None
+        
+        return self.mesh.point_data.get("Normals", None)
+
     def load_maps_from_csv(
         self,
         map_file: str,
