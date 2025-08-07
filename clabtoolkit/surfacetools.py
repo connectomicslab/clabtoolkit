@@ -1355,6 +1355,369 @@ class Surface:
         merged_surface.colortables = merged_colortables
 
         return merged_surface
+    def save_surface(
+        self,
+        filename: str,
+        format: str = "freesurfer",
+        save_annotation: str = None,
+        map_name: str = None,
+        overwrite: bool = False
+    ) -> None:
+        """
+        Save the surface mesh to a file in the specified format.
+
+        Parameters
+        ----------
+        filename : str
+            Output filename (with extension, e.g., 'lh.pial.vtk')
+        overwrite : bool, default False
+            Whether to overwrite existing files
+        file_format : str, default "vtk"
+            Format to save the surface in ('vtk', 'ply', 'stl', 'obj', 'freesurfer'.)
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If the filename is not a string or is empty
+        ValueError
+            If the file already exists and overwrite is False
+
+        Examples
+        --------
+        >>> surface.save_surface("lh.pial.vtk")
+        >>> surface.save_surface("rh.white.ply", overwrite=True, file_format="ply")
+        """
+        if not isinstance(filename, str):
+            raise ValueError("filename must be a string")
+        if not filename:
+            raise ValueError("filename cannot be empty")
+
+        # Check if the filename exists as a valid path
+        if os.path.exists(filename) and not overwrite:
+            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
+
+        # Ensure the directory exists
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            raise FileNotFoundError(f"Directory '{directory}' does not exist")
+
+        # Save the mesh using PyVista's built-in methods
+        if format.lower() == "freesurfer":
+            self.export_freesurfer(filename, save_annotation, map_name, overwrite)
+
+        elif format.lower() in ["vtk", "ply", "stl"]:
+
+            # Substitute the file extension to match the format
+            file_ext = os.path.splitext(filename)[1].lower()
+            if file_ext not in [".vtk", ".ply", ".stl"]:
+                if format.lower() == "vtk":
+                    filename += ".vtk"
+                elif format.lower() == "ply":
+                    filename += ".ply"
+                elif format.lower() == "stl":
+                    filename += ".stl"
+                else:
+                    raise ValueError(f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl'.")
+                
+            self.export_pyvista(filename, save_annotation, map_name, overwrite)
+            # Print a message indicating the file was saved
+            print(f"Surface saved to {filename}")
+
+        else:
+            raise ValueError(f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl', 'obj', and 'freesurfer'.")
+
+    def export_to_obj(self, filename: str, 
+                save_annotation: str = None,
+                map_name: str = None,
+                overwrite: bool = False) -> None:
+        """
+        Export the surface mesh to an OBJ file.
+
+        Parameters
+        ----------
+        filename : str
+            Output filename (should end with .obj)
+        save_annotation : str, optional
+            Path to save annotation file
+        map_name : str, optional
+            Name of the texture/color map to save
+        overwrite : bool, default False
+            Whether to overwrite existing files
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If the filename is not a string or is empty
+        ValueError
+            If the file already exists and overwrite is False
+
+        Examples
+        --------
+        >>> surface.export_to_obj("lh.pial.obj")
+        >>> surface.export_to_obj("rh.white.obj", overwrite=True)
+        """
+
+        # Validate filename
+        if not isinstance(filename, str):
+            raise ValueError("filename must be a string")
+        if not filename:
+            raise ValueError("filename cannot be empty")
+        
+        # Check if the filename exists as a valid path
+        if os.path.exists(filename) and not overwrite:
+            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
+        
+        # Ensure the directory exists
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            raise FileNotFoundError(f"Directory '{directory}' does not exist")
+        
+        # If save_annotation is provided, save the annotation data
+        if save_annotation is not None:
+            self.export_annotation(
+                filename=save_annotation,
+                parc_name=map_name,
+                overwrite=overwrite
+            )
+
+        vertices = self.mesh.points
+        faces = self.mesh.regular_faces
+
+        with open(filename, 'w') as f:
+            f.write(f"# OBJ file exported from Surface class\n")
+            f.write(f"# Vertices: {len(vertices)}\n")
+            f.write(f"# Faces: {len(faces)}\n\n")
+            
+            # Write vertices
+            for vertex in vertices:
+                f.write(f"v {vertex[0]:.6f} {vertex[1]:.6f} {vertex[2]:.6f}\n")
+
+            # Write faces (OBJ uses 1-based indexing)
+            f.write("\n")
+            for face in faces:
+                f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
+        
+        print(f"Surface exported to {filename}")
+
+    def export_to_pyvista(self,
+                filename: str,
+                save_annotation: str = None,
+                map_name: str = None,
+                overwrite: bool = False) -> None:
+        """
+        Export surface to VTK, STL or PLY format.
+        
+        Parameters
+        ----------
+        filename : str
+            Output filename. The extension determines the format:
+            - .vtk: VTK format
+            - .ply: PLY format
+            - .stl: STL format
+        save_annotation : str, optional
+            Path to save annotation file
+        map_name : str, optional
+            Name of the texture/color map to save
+        overwrite : bool, default False
+            Whether to overwrite existing files
+            
+        Notes
+        -----
+        These formats store vertices, faces, and optionally normals.
+        The VTK format can also store additional data like scalars and colors.
+        
+        Examples
+        --------
+        >>> surface.export_pyvista("lh.pial.vtk")
+        >>> surface.export_pyvista("rh.white.ply", overwrite=True)
+        >>> surface.export_pyvista("lh.smooth.stl", save_annotation="lh.aparc.annot", map_name="aparc", overwrite=True)
+        """
+        
+        # Validate filename
+        if not isinstance(filename, str):
+            raise ValueError("filename must be a string")
+        if not filename:
+            raise ValueError("filename cannot be empty")
+        
+        # Check if the filename exists as a valid path
+        if os.path.exists(filename) and not overwrite:
+            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
+        
+        # Ensure the directory exists
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            raise FileNotFoundError(f"Directory '{directory}' does not exist")
+        
+        # If save_annotation is provided, save the annotation data
+        if save_annotation is not None:
+            self.export_annotation(
+                filename=save_annotation,
+                parc_name=map_name,
+                overwrite=overwrite
+            )
+        
+        if map_name is not None:
+            # Ensure the map_name is valid
+            if not isinstance(map_name, str):
+                raise ValueError("map_name must be a string")
+            if not map_name:
+                raise ValueError("map_name cannot be empty")
+            
+            # Ensure the map_name exists in the mesh point data
+            if map_name not in self.mesh.point_data:
+                raise ValueError(f"Map '{map_name}' not found in mesh point data")
+            
+            # Set the active scalars to the specified map_name
+            self.mesh.set_active_scalars(map_name)
+            
+            # Prepare colors
+            self.prepare_colors(
+                overlay_name=map_name,
+                cmap=None,  # Use the colortable for this map
+                vmin=None,
+                vmax=None
+            )
+            
+            # Save the mesh (no texture parameter needed for vertex colors)
+            self.mesh.save(filename)
+
+        else:
+            # Use PyVista's built-in save method for VTK format
+            self.mesh.save(filename)
+
+    def export_to_freesurfer(self, 
+                        filename: str, 
+                        save_annotation: str = None,
+                        map_name: str = None,
+                        overwrite: bool = False
+    ) -> None:
+        """
+        Export surface to FreeSurfer format.
+
+        Parameters
+        ----------
+        filename : str
+            Output filename (typically without extension, e.g., 'lh.pial')
+
+        Notes
+        -----
+        FreeSurfer format stores vertices and faces but not normals.
+        The format is binary and specific to FreeSurfer.
+
+        Examples
+        --------
+        >>> surface.export_freesurfer("lh.pial")
+        >>> surface.export_freesurfer("rh.white")
+        """
+        if not isinstance(filename, str):
+            raise ValueError("filename must be a string")
+        if not filename:
+            raise ValueError("filename cannot be empty")
+        
+        # Check if the filename exist as a valid path
+        if os.path.exists(filename) and not overwrite:
+            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
+        
+        # Ensure the directory exists
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            raise FileNotFoundError(f"Directory '{directory}' does not exist")
+        
+        # If save_annotation is provided, save the annotation data
+        if save_annotation is not None:
+            self.export_annotation(
+                filename=save_annotation,
+                parc_name=map_name,
+                overwrite=overwrite
+            )
+
+        # Separating vertices and faces
+        vertices = self.mesh.points
+        faces = self.mesh.regular_faces
+        
+        # Use nibabel to write FreeSurfer geometry
+        nib.freesurfer.write_geometry(filename, vertices, faces)
+
+    def export_annotation(
+        self,
+        filename: str,
+        parc_name: str,
+        overwrite: bool = False,
+    ) -> None:
+        """
+        Export the annotation data to a FreeSurfer .annot file.
+
+        Parameters
+        ----------
+        filename : str
+            Output filename for the annotation file (e.g., 'lh.aparc.annot')
+        parc_name : str
+            Name of the parcellation to export
+        overwrite : bool, default False
+            Whether to overwrite existing files
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If the specified parcellation is not found in colortables
+
+        Examples
+        --------
+        >>> surface.export_annotation("lh.aparc.annot", "aparc")
+        >>> surface.export_annotation("rh.destrieux.annot", "destrieux", overwrite=True)
+        """
+
+        # If save_annotation is provided, save the annotation data
+        if not isinstance(filename, str):
+            raise ValueError("The annotation filename must be a string")
+            
+        if not filename:
+            raise ValueError("The annotation filename cannot be empty")
+
+        # Check if the annotation file exists
+        if os.path.isfile(filename) and not overwrite:
+            raise ValueError(f"Annotation file '{filename}' already exists. Please set overwrite to True or choose a different name.")
+
+        # Check if the directory exists
+        annot_directory = os.path.dirname(filename)
+        if annot_directory and not os.path.exists(annot_directory):
+            raise FileNotFoundError(f"Directory '{annot_directory}' does not exist")
+        
+        if not isinstance(parc_name, str):
+            raise ValueError("parc_name must be a string")
+        if not parc_name:
+            raise ValueError("parc_name cannot be empty")
+                
+        # Ensure the parc_name exists in the mesh point data
+        if parc_name not in self.mesh.point_data:
+            raise ValueError(f"Map '{parc_name}' not found in mesh point data")
+                
+        # Extract the annotation data
+        maps_array = self.mesh.point_data[parc_name]
+
+        # If there is a colortable for this map, use it
+        if parc_name in self.colortables:
+            ctable = self.colortables[parc_name]["color_table"]
+            struct_names = self.colortables[parc_name]["struct_names"]
+
+            # Saving the annotation data in FreeSurfer format
+            annot_obj = cltfree.AnnotParcellation()
+            annot_obj.create_from_data(maps_array, ctable, struct_names)
+            annot_obj.save_annotation(filename, force=overwrite)
+        else:
+            print(f"Warning: No colortable found for map '{parc_name}'. Annotation file will not be saved.") 
 
     def show(
         self,
