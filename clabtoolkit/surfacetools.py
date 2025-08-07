@@ -18,13 +18,14 @@ class Surface:
     color table management and integration with AnnotParcellation.
 
     This class provides a comprehensive interface for working with brain surface
-    data, including loading geometries, applying scalar maps, managing parcellations,
-    and creating visualizations using PyVista.
+    data, including loading geometries from files or direct vertex/face arrays,
+    applying scalar maps, managing parcellations, and creating visualizations 
+    using PyVista.
 
     Attributes
     ----------
-    surf : str
-        Path to the surface file
+    surf : str or None
+        Path to the surface file (if loaded from file)
     mesh : pv.PolyData
         PyVista mesh object containing the surface geometry and data
     hemi : str
@@ -34,8 +35,19 @@ class Surface:
 
     Examples
     --------
-    >>> # Load a surface file
-    >>> surface = Surface("path/to/lh.pial")
+    >>> # Create empty instance
+    >>> surface = Surface()
+    >>> 
+    >>> # Load from a surface file later
+    >>> surface.load_from_file("path/to/lh.pial")
+    >>>
+    >>> # Or create from vertices and faces arrays
+    >>> vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+    >>> faces = np.array([[0, 1, 2]])
+    >>> surface = Surface(vertices=vertices, faces=faces, hemi="lh")
+    >>>
+    >>> # Or load from existing PyVista mesh
+    >>> surface.load_from_mesh(existing_mesh, hemi="lh")
     >>>
     >>> # Load an annotation
     >>> surface.load_annotation("path/to/lh.aparc.annot", "aparc")
@@ -824,34 +836,6 @@ class Surface:
         # based on how you want to create the PyVista LookupTable
         pass
 
-    def set_active_overlay(self, overlay_name: str) -> None:
-        """
-        Set the active overlay for visualization.
-
-        Parameters
-        ----------
-        overlay_name : str
-            Name of the overlay to set as active
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If the specified overlay is not found in mesh point data
-
-        Examples
-        --------
-        >>> surface.set_active_overlay("thickness")
-        >>> surface.set_active_overlay("aparc")
-        """
-        if overlay_name not in self.mesh.point_data:
-            raise ValueError(f"Overlay '{overlay_name}' not found in mesh point data")
-
-        self.mesh.set_active_scalars(overlay_name)
-
     def list_overlays(self) -> Dict[str, str]:
         """
         List all available overlays and their types.
@@ -1246,7 +1230,7 @@ class Surface:
 
     def merge_surfaces(self, surfaces: List["Surface"]) -> "Surface":
         """
-        Merge this surface with other surfaces into a single surface.
+        Merge this surface with others into a single surface.
 
         This method merges multiple Surface objects by combining their geometries
         and point data. Only point_data fields that are present in ALL surfaces
