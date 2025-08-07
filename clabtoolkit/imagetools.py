@@ -616,7 +616,6 @@ def vox2mm(vox_coords, affine):
     >>> vox2mm(np.array([[1,2,3]]), np.eye(4))
     array([[1, 2, 3]])
 
-
     """
 
     # Detect if the number of rows is bigger than the number of columns. If not, transpose the matrix
