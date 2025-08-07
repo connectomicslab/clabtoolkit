@@ -1157,7 +1157,7 @@ class Surface:
     def prepare_colors(
         self,
         overlay_name: str = None,
-        cmap: str = None,
+        cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
     ) -> None:
@@ -1190,7 +1190,7 @@ class Surface:
         Notes
         -----
         This method sets the vertex colors in the mesh based on the specified overlay.
-        The colors are stored in the mesh's point_data under the key "vertex_colors"
+        The colors are stored in the mesh's point_data under the key "RGB"
         and set as the active scalars for visualization.
 
         Examples
@@ -1226,29 +1226,23 @@ class Surface:
         dict_ctables = self.colortables
         # Check if the overlay is a color or scalar type
 
-        if cmap is None:
-            if overlay_name in dict_ctables.keys():
-                # Use the colortable associated with the parcellation
-                vertex_colors = cltfree.create_vertex_colors(
-                    vertex_values, self.colortables[overlay_name]["color_table"]
-                )
-
-            else:
-                vertex_colors = cltmisc.values2colors(
-                    vertex_values,
-                    cmap="viridis",
-                    output_format="rgb",
-                    vmin=vmin,
-                    vmax=vmax,
-                )
+        if overlay_name in dict_ctables.keys():
+            # Use the colortable associated with the parcellation
+            vertex_colors = cltfree.create_vertex_colors(
+                vertex_values, self.colortables[overlay_name]["color_table"]
+            )
 
         else:
             vertex_colors = cltmisc.values2colors(
-                vertex_values, cmap=cmap, output_format="rgb", vmin=vmin, vmax=vmax
+                vertex_values,
+                cmap=cmap,
+                output_format="rgb",
+                vmin=vmin,
+                vmax=vmax,
             )
 
-        self.mesh.point_data["vertex_colors"] = vertex_colors
-        self.mesh.set_active_scalars("vertex_colors")
+        self.mesh.point_data["RGB"] = vertex_colors
+        self.mesh.set_active_scalars("RGB")
 
     def merge_surfaces(self, surfaces: List["Surface"]) -> "Surface":
         """
