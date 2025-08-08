@@ -764,7 +764,8 @@ class Parcellation:
         # Get unique region values
         unique_regions = np.array(temp_parc.index)
 
-        color_table = cltfree.colors2colortable(color_list)
+        color_table = cltfree.colors2colortable(temp_parc.color)
+        color_table, log, corresp_dict = cltfree.resolve_colortable_duplicates(color_table)
 
         table_dict = {
             'struct_names': name_list,
