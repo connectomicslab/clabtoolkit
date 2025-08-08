@@ -112,13 +112,13 @@ def delete_volumes(
     vols2rem : list
         List of volumes removed.
 
-    Notes:
+    Notes
     -----
     IMPORTANT: The function will overwrite the original DWI file if the output file is not specified.
     IMPORTANT: The function will overwrite the original bvec and bval files if the output file is not specified.
     IMPORTANT: The function will remove the last B0s of the DWI image if no volumes are specified.
 
-    Examples:
+    Examples
     -----------
 
     >>> delete_volumes('dwi.nii.gz') # will remove the last B0s. The original file will be overwritten.
@@ -366,7 +366,7 @@ def get_b0s(
     ValueError
         If the output path for the B0 image file does not exist.
 
-    Examples:
+    Examples
     -----------
 
     >>> dwi_img = 'path/to/dwi_image.nii.gz'
@@ -499,7 +499,7 @@ def tck2trk(
     FileNotFoundError
         If the reference image does not exist.
 
-    Examples:
+    Examples
     -----------
     >>> tck2trk('input.tck', 'reference.nii.gz')  # Saves as 'input.trk'
     >>> tck2trk('input.tck', 'reference.nii.gz', 'output.trk')  # Saves as 'output.trk'
@@ -556,7 +556,7 @@ def trk2tck(in_tract: str, out_tract: str = None, force: bool = False) -> str:
     out_tract : str
         Output TCK file.
 
-    Examples:
+    Examples
     ---------
     >>> trk2tck('input.trk')  # Saves as 'input.tck'
     >>> trk2tck('input.trk', 'output.tck')  # Saves as 'output.tck'
@@ -808,7 +808,7 @@ def resample_tractogram(
     FileExistsError
         If the output file exists and force is False.
 
-    Examples:
+    Examples
     -----------
     >>> resample_tractogram('input.trk', nb_points=100)  # Saves as 'input_resampled.trk'
     >>> resample_tractogram('input.tck', out_tract='output.tck', nb_points=100)  # Saves as 'output.tck'
@@ -909,7 +909,7 @@ def compute_tractogram_centroids(
     ValueError
         If the input streamlines are empty or not in the expected format.
 
-    Examples:
+    Examples
     -----------
     >>> compute_tractogram_centroids('input.trk', 'centroids.trk', 'clustered.trk', nb_points=100, method='qb', thresholds=[10])
     >>> compute_tractogram_centroids('input.tck', 'centroids.trk', 'clustered.trk', nb_points=100, method='qbx', thresholds=[5,
@@ -1124,7 +1124,7 @@ def create_trackvis_colored_trk(
     FileNotFoundError
         If the input clustered_trk_path does not exist.
 
-    Examples:
+    Examples
     -----------
     >>> create_trackvis_colored_trk('clustered.trk', 'colored_output.trk', color_by='cluster_id')
     """
@@ -1339,7 +1339,7 @@ class TRKExplorer:
         FileNotFoundError
             If the specified TRK file does not exist.
 
-        Examples:
+        Examples
         -----------
         >>> explorer = TRKExplorer('path/to/your/file.trk')
         >>> summary = explorer.explore(max_streamline_samples=10)
@@ -1485,18 +1485,18 @@ class TRKExplorer:
         """
         Generate a comprehensive summary of the TRK file.
 
-        Parameters:
+        Parameters
         ----------
             max_streamline_samples (int):
                 Maximum number of streamlines to sample for detailed info
 
-        Returns:
+        Returns
             str: Formatted summary string
 
-        Raises:
+        Raises
             FileNotFoundError: If the TRK file does not exist.
             ValueError: If the TRK file is not in the expected format.
-        Examples:
+        Examples
         ----------
         >>> explorer = TRKExplorer('path/to/your/file.trk')
         >>> summary = explorer.explore(max_streamline_samples=10)
@@ -1626,7 +1626,7 @@ def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
         filepath (str): Path to the TRK file
         max_streamline_samples (int): Maximum number of streamlines to show as samples
 
-    Returns:
+    Returns
         str: Formatted summary string
     """
 

@@ -421,7 +421,7 @@ def recursively_replace_entity_value(
     """
     This method replaces the values of certain entities in all the files and folders of a BIDs dataset.
 
-    Parameters:
+    Parameters
     ----------
     root_dir: str
         Root directory of the BIDs dataset
@@ -1781,7 +1781,7 @@ def is_bids_filename(filename: str) -> bool:
     Args:
         filename (str): The filename to validate.
 
-    Returns:
+    Returns
         bool: True if valid BIDS filename, False otherwise.
     """
     # Remove extension if present
@@ -1813,7 +1813,7 @@ def get_individual_files_and_folders(
     """
     This function detects all the files or folders inside a folder and its subfolders containing the strings supplied by the variable cad4query.
 
-    Parameters:
+    Parameters
     ----------
     input_folder : str
         Path to the input folder.
@@ -1821,12 +1821,12 @@ def get_individual_files_and_folders(
     cad4query : str, list, or dict
         String or list of strings to filter the files and folders. If a dictionary is provided, it should contain key-value pairs where the key is the string before '-' and the value is the string after '-'.
 
-    Returns:
+    Returns
     -------
     list
         List of files or folders that match the query.
 
-    Raises:
+    Raises
     ------
     ValueError
         If the input folder does not exist.
@@ -1834,7 +1834,7 @@ def get_individual_files_and_folders(
     TypeError
         If the input folder is not a string.
 
-    Examples:
+    Examples
     --------
     >>> input_folder = "/path/to/input/folder"
     >>> cad4query = "sub-01"
@@ -2221,12 +2221,12 @@ def load_bids_json(bids_json: str = None):
     """
     Load the JSON file containing the BIDs configuration file.
 
-    Parameters:
+    Parameters
     ----------
     bids_json : str
         JSON file containing the BIDs configuration.
 
-    Returns:
+    Returns
     --------
     config_dict : dict
         Dictionary containing the default .

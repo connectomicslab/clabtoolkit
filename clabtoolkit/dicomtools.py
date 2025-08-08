@@ -374,7 +374,7 @@ def copy_dicom_file(
     """
     Function to copy the DICOM files to the output directory.
 
-    Parameters:
+    Parameters
     -----------
     dic_file: str
         Path to the DICOM file.
@@ -401,7 +401,7 @@ def copy_dicom_file(
     force: bool
         Boolean variable to force the copy of the DICOM file.
 
-    Returns:
+    Returns
     --------
     dest_dic_dir: str
         Destination directory where the DICOM file was copied.

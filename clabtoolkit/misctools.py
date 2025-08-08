@@ -198,7 +198,7 @@ def is_color_like(color) -> bool:
     bool
         True if the color is valid, False otherwise.
 
-    Examples:
+    Examples
     --------------
         >>> is_color_like("#FF5733")  # Hex string
         True
@@ -317,7 +317,7 @@ def multi_rgb2hex(
     hexcodes: list
         List of hexadecimal codes for the colors
 
-    Examples:
+    Examples
     --------------
         >>> colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
         >>> hexcodes = multi_rgb2hex(colors)
@@ -346,7 +346,7 @@ def hex2rgb(hexcode: str) -> tuple:
     tuple
         Tuple with the rgb values
 
-    Examples:
+    Examples
     --------------
         >>> hexcode = "#FF5733"
         >>> rgb = hex2rgb(hexcode)
@@ -373,7 +373,7 @@ def multi_hex2rgb(hexcodes: Union[str, List[str]]) -> np.ndarray:
     rgb_list: np.array
         Array of rgb values
 
-    Examples:
+    Examples
     --------------
         >>> hexcodes = ["#FF5733", "#33FF57", "#3357FF"]
         >>> rgb_list = multi_hex2rgb(hexcodes)
@@ -591,7 +591,7 @@ def readjust_colors(
     out_colors: list or numpy array
         List of colors in the desired format
 
-    Examples:
+    Examples
     --------------
         >>> colors = ["#FF5733", [255, 87, 51], np.array([51, 87, 255])]
         >>> out_colors = readjust_colors(colors, output_format='hex')
@@ -1079,7 +1079,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
         Time difference in days between the target date and the closest date in the list.
         If the target date is not in the list, it will return the time difference in days.
 
-    Examples:
+    Examples
     --------------
         >>> dates_list = ["20230101", "20230201", "20230301"]
         >>> target_date = "20230215"
@@ -1563,7 +1563,7 @@ def remove_duplicates(input_list: list):
     unique_list: list
         List of unique elements
 
-    Examples:
+    Examples
     --------------
         >>> input_list = [1, 2, 2, 3, 4, 4, 5]
         >>> unique_list = remove_duplicates(input_list)
@@ -1600,7 +1600,7 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]) -> list:
     out_ids: list
         List of ids that are in the file.
 
-    Examples:
+    Examples
     --------------
         >>> subj_ids = ["sub-01", "sub-02", "sub-03"]
         >>> ids_file = "ids.txt" # Column-wise text file with the ids to select (i.e. "sub-01", "sub-03")
@@ -1656,7 +1656,7 @@ def filter_by_substring(
     filtered_list: list
         List of elements that contain the substring
 
-    Examples:
+    Examples
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> or_filter = ["app", "ch"]
@@ -1763,7 +1763,7 @@ def get_indexes_by_substring(
     indexes: list
         List of indexes that contain any of the substring
 
-    Examples:
+    Examples
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["ap", "ch"]
@@ -1965,7 +1965,7 @@ def list_intercept(list1: list, list2: list):
     int_list: list
         List of elements that are in both lists
 
-    Examples:
+    Examples
     --------------
         >>> list1 = [1, 2, 3, 4, 5]
         >>> list2 = [3, 4, 5, 6, 7]
@@ -2006,7 +2006,7 @@ def ismember_from_list(a, b):
     idx: list
         List of indices of elements in a that are in b
 
-    Examples:
+    Examples
     --------------
         >>> a = [1, 2, 3, 4, 5]
         >>> b = [3, 4, 5, 6, 7]
@@ -2036,17 +2036,17 @@ def get_leaf_directories(root_dir: str) -> list:
     """
     Finds all folders inside the given directory that do not contain any subfolders.
 
-    Parameters:.
+    Parameters.
     ----------
     root_dir :str
         The path to the root directory where the search will be performed.
 
-    Returns:
+    Returns
     -------
     leaf_folders: list
         A list of absolute paths to folders that do not contain any subfolders.
 
-    Examples:
+    Examples
     --------------
         >>> root_directory = "/path/to/your/folder"
         >>> leaf_folders = get_leaf_directories(root_directory)
@@ -2125,7 +2125,7 @@ def get_all_files(
     files: list
         List of files in the directory and its subdirectories
 
-    Examples:
+    Examples
     ----------------
         >>> in_dir = "/path/to/directory"
         >>> files = get_all_files(in_dir)
@@ -2326,7 +2326,7 @@ def remove_empty_folders(start_path, deleted_folders=None):
     Recursively removes empty directories starting from start_path.
     Returns a list of all directories that were deleted.
 
-    Parameters:
+    Parameters
     ----------
         start_path : str
             The directory path to start searching from
@@ -2334,12 +2334,12 @@ def remove_empty_folders(start_path, deleted_folders=None):
         deleted_folders : list
             A list to store the paths of deleted directories. If None, a new list will be created.
 
-    Returns:
+    Returns
     -------
         deleted_folders : list
             A list of all directories that were deleted.
 
-    Examples:
+    Examples
     --------------
         >>> deleted_folders = remove_empty_folders("/path/to/start")
         >>> print("Deleted folders:", deleted_folders)
@@ -2513,7 +2513,7 @@ def correct_names(
     regnames: list
         List of corrected region names
 
-    Examples:
+    Examples
     --------------
         >>> regnames = ["ctx-lh-1", "ctx-rh-2", "ctx-lh-3"]
         >>> prefix = "ctx-"
@@ -2581,19 +2581,19 @@ def remove_empty_keys_or_values(d: dict) -> dict:
     """
     Remove dictionary entries with empty keys, keys with only spaces, or empty values.
 
-    Parameters:
+    Parameters
     ----------
 
     d : dict
         The dictionary to remove entries from.
 
-    Returns:
+    Returns
     --------
 
     d : dict
         The dictionary with the empty entries removed.
 
-    Examples:
+    Examples
     --------------
         >>> my_dict = {'key1': 'value1', 'key2': '', '': 'value3', 'key4': None}
         >>> cleaned_dict = remove_empty_keys_or_values(my_dict)
@@ -2800,17 +2800,17 @@ def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> di
     Recursively extracts all keys with string values from a nested dictionary. It will avoid keys
     that are lists or other types. The keys can be either the leaf key name or the full path.
 
-    Parameters:
+    Parameters
     -----------
         data_dict: A nested dictionary to search through
         only_last_key: If True, uses only the leaf key name; if False, uses the full path
 
-    Returns:
+    Returns
     --------
         A dictionary where keys are either leaf keys or paths to string values,
         and values are the corresponding strings
 
-    Examples:
+    Examples
         >>> data = {
         ...     "a": {
         ...         "b": "value1",
@@ -2867,7 +2867,7 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
     """
     Expands df_add to match the number of rows in df and concatenates them along columns.
 
-    Parameters:
+    Parameters
     -----------
         df_add : pd.DataFrame
             DataFrame with a single row to be replicated.
@@ -2875,7 +2875,7 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
         df : pd.DataFrame
             DataFrame to which df_add will be concatenated.
 
-    Returns:
+    Returns
     --------
         pd.DataFrame: Concatenated DataFrame with df_add repeated and merged with df.
 
@@ -2928,7 +2928,7 @@ def generate_container_command(
     container_cmd: list
         List with the command to run the bash command locally or inside the container
 
-    Examples:
+    Examples
     --------------
         >>> bash_args = ["bash", "-c", "echo Hello World"]
         >>> container_cmd = generate_container_command(bash_args, technology="docker", image_path="/path/to/image")
@@ -3455,15 +3455,15 @@ def show_object_content(obj, show_private=False, show_dunder=False):
     """
     Print object properties and methods with ANSI colors, similar to inspect.help().
 
-    Parameters:
+    Parameters
         obj: The object to inspect
         show_private (bool): Whether to show private methods/attributes (starting with _)
         show_dunder (bool): Whether to show dunder methods (starting with __)
 
-    Returns:
+    Returns
         None: Prints the colorized help information to stdout
 
-    Examples:
+    Examples
         >>> show_object_content(str)
         >>> show_object_content(my_object, show_private=True)
         >>> show_object_content(MyClass, show_dunder=True)
@@ -3600,15 +3600,15 @@ def search_methods(obj, keyword, case_sensitive=False):
     """
     Search for methods/attributes containing a keyword in name or docstring.
 
-    Parameters:
+    Parameters
         obj: The object to search in
         keyword (str): The keyword to search for
         case_sensitive (bool): Whether the search should be case sensitive
 
-    Returns:
+    Returns
         None: Prints the search results to stdout
 
-    Examples:
+    Examples
         >>> search_methods(str, "find")
         >>> search_methods(my_toolkit, "config", case_sensitive=True)
         >>> search_methods(pandas.DataFrame, "drop")

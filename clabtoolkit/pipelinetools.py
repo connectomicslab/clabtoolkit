@@ -310,7 +310,7 @@ def get_processing_status_details_json(
     This function creates a dictionary with the details of the processing status of the subjects in the BIDs derivatives directory.
     It provides the IDs of the subjects with incomplete or mismatched number of files.
 
-    Parameters:
+    Parameters
     ----------
     proc_status_df : str or dict
         Path to the processing status DataFrame or a DataFrame itself. This DataFrame can be
@@ -331,7 +331,7 @@ def get_processing_status_details_json(
     only_ids : bool, optional
         If True, only the IDs of the subjects with mismatches will be returned, without the file details.
 
-    Returns:
+    Returns
     -------
     dict
         Dictionary containing the details of the processing status of the subjects.
@@ -562,7 +562,7 @@ def get_processing_status_details_sqlite3(
     This function creates a dictionary with the details of the processing status of the subjects in the BIDs derivatives directory.
     It provides the IDs of the subjects with incomplete or mismatched number of files.
 
-    Parameters:
+    Parameters
     ----------
     proc_status_df : str or dict
         Path to the processing status DataFrame or a DataFrame itself. This DataFrame can be
@@ -586,7 +586,7 @@ def get_processing_status_details_sqlite3(
     only_ids : bool, optional
         If True, only the IDs of the subjects with mismatches will be returned, without the file details.
 
-    Returns:
+    Returns
     -------
     dict
         Dictionary containing the details of the processing status of the subjects.
@@ -897,7 +897,7 @@ def query_processing_status_db(
     """
     Query the processing status database to extract useful information.
 
-    Parameters:
+    Parameters
     ----------
     db_path : str
         Path to the SQLite database file.
@@ -912,7 +912,7 @@ def query_processing_status_db(
     pipeline : str, optional
         Name of the pipeline to filter by. Used only with certain query types.
 
-    Returns:
+    Returns
     -------
     pd.DataFrame
         Result of the query as a DataFrame.
@@ -1006,7 +1006,7 @@ def export_db_to_json(db_path, out_json):
     Export the processing status database to a JSON file in the same format
     as returned by get_processing_status_details.
 
-    Parameters:
+    Parameters
     ----------
     db_path : str
         Path to the SQLite database file.
@@ -1014,7 +1014,7 @@ def export_db_to_json(db_path, out_json):
     out_json : str
         Path to save the output JSON file.
 
-    Returns:
+    Returns
     -------
     dict
         Dictionary containing the details of the processing status of the subjects.
