@@ -17,6 +17,7 @@ import nibabel as nib
 from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
 from nilearn import plotting
 import pyvista as pv
+import tkinter as tk
 
 # Importing local modules
 from . import freesurfertools as cltfree
