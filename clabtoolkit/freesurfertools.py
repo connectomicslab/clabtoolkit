@@ -2367,6 +2367,7 @@ class FreeSurferSubject:
             Verbose mode. Default is False.
 
         """
+        from . import parcellationtools as cltparc
 
         FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
 
