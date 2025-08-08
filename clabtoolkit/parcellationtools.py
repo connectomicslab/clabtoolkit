@@ -688,11 +688,18 @@ class Parcellation:
         return df
 
     def surface_extraction(self, 
-                            codes_list: Union[List[int], np.ndarray] = None,
-                            smooth_iterations: int = 50,
-                            fill_holes: bool = True,
-                            gaussian_smooth: bool = True,
-                            sigma: float = 1.0):
+                        struct_codes: Union[List[int], np.ndarray] = None,
+                        struct_names: Union[List[str], str] = None,
+                        gaussian_smooth: bool = True,
+                        smooth_iterations: int = 10,
+                        fill_holes: bool = True,
+                        sigma: float = 1.0,
+                        closing_iterations: int = 1,
+                        out_filename: str = None,
+                        out_format: str = 'freesurfer',
+                        save_annotation: bool = True,
+                        overwrite: bool = False,
+                        ):
         """
         Extracts surfaces from the parcellation data for specified codes. It uses marching cubes to extract the surface mesh
         and applies various processing steps such as Gaussian smoothing, filling holes, and Taubin smoothing.
@@ -701,6 +708,14 @@ class Parcellation:
         ----------
         codes_list : list
             List of codes to extract surfaces for
+            
+        struct_codes : list, optional
+            List of structure codes to include in the extraction (default: None, which means all codes will be included)
+
+        struct_names : list, optional
+            List of structure names to include in the extraction (default: None, which means all names
+            will be included)
+
         smooth_iterations : int, optional
             Number of smoothing iterations (default: 50)
         fill_holes : bool, optional
@@ -708,6 +723,23 @@ class Parcellation:
         gaussian_smooth : bool, optional
             Whether to apply Gaussian smoothing to volume data (default: True)
         sigma : float, optional
+            Standard deviation for Gaussian smoothing (default: 1.0)
+
+        closing_iterations : int, optional
+            Number of iterations for morphological closing operation to fill small gaps in the binary mask (default:
+            1)
+
+        out_filename : str, optional
+            Output filename to save the extracted surface mesh (default: None, which means no file will be saved)
+
+        out_format : str, optional
+            Format to save the output mesh (default: 'freesurfer'). 
+            Supported formats are 'vtk', 'ply', 'stl', 'obj' and 'freesurfer'
+
+        save_annotation : bool, optional
+            Whether to save the annotation file alongside the surface mesh (default: True)
+        overwrite : bool, optional
+            Whether to overwrite the output file if it already exists (default: False)
             
         
         Returns
