@@ -5,6 +5,8 @@ import copy
 import numpy as np
 import pandas as pd
 import nibabel as nib
+import pyvista as pv
+
 from typing import Union, List
 from scipy.ndimage import gaussian_filter
 from skimage import measure
@@ -22,6 +24,8 @@ from rich.progress import (
 from . import misctools as cltmisc
 from . import imagetools as cltimg
 from . import segmentationtools as cltseg
+from . import freesurfertools as cltfree
+from . import surfacetools as cltsurf
 
 
 class Parcellation:
@@ -557,17 +561,17 @@ class Parcellation:
             return img_data
 
     def compute_centroids(self,
-                        include_by_code: Union[List[int], np.ndarray] = None,
-                        include_by_name: Union[List[str], str] = None,
+                        struct_codes: Union[List[int], np.ndarray] = None,
+                        struct_names: Union[List[str], str] = None,
                         centroid_table: str = None):
         """
         Compute centroids, number of voxels, and volume for each region in a 3D image.
         
         Parameters:
         -----------
-        include_by_code : List[int] or np.ndarray, optional
+        struct_codes : List[int] or np.ndarray, optional
             Specific region codes to include
-        include_by_name : List[str] or str, optional  
+        struct_names : List[str] or str, optional  
             Specific region names to include
         centroid_table : str, optional
             Path to save the centroid table as TSV file. If None, no file is saved.
@@ -579,17 +583,17 @@ class Parcellation:
         """
         
         # Check if include_by_code and include_by_name are different from None at the same time
-        if include_by_code is not None and include_by_name is not None:
+        if struct_codes is not None and struct_names is not None:
             raise ValueError("You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them.")
         
         temp_parc = copy.deepcopy(self) 
 
         # Apply inclusion if specified
-        if include_by_code is not None:
-            temp_parc.keep_by_code(codes2keep=include_by_code)
+        if struct_codes is not None:
+            temp_parc.keep_by_code(codes2keep=struct_codes)
 
-        if include_by_name is not None:
-            temp_parc.keep_by_name(names2look=include_by_name)
+        if struct_names is not None:
+            temp_parc.keep_by_name(names2look=struct_names)
         
         # Get unique region values
         unique_regions = np.array(temp_parc.index)
@@ -718,10 +722,13 @@ class Parcellation:
 
         smooth_iterations : int, optional
             Number of smoothing iterations (default: 50)
+
         fill_holes : bool, optional
             Whether to fill holes in the mesh (default: True)
+
         gaussian_smooth : bool, optional
             Whether to apply Gaussian smoothing to volume data (default: True)
+
         sigma : float, optional
             Standard deviation for Gaussian smoothing (default: 1.0)
 
@@ -768,7 +775,7 @@ class Parcellation:
         color_table, log, corresp_dict = cltfree.resolve_colortable_duplicates(color_table)
 
         table_dict = {
-            'struct_names': name_list,
+            'struct_names': temp_parc.name,
             'color_table': color_table,
             'lookup_table': None
         }
@@ -795,8 +802,9 @@ class Parcellation:
                 struct_name = temp_parc.name[i]
                 progress.update(task, description=f"Mesh extraction (Code {code}: {struct_name})", completed=i+1)
 
-            # Move vertices to mm space and the apply affine transformation
-            vertices = cltimg.vox2mm(vertices, parc.affine) 
+                # Create binary mask for current code
+                st_parc_temp = copy.deepcopy(self)
+                st_parc_temp.keep_by_code(codes2keep=[code], rearrange=True)
 
                 mesh = cltimg.extract_mesh_from_volume(st_parc_temp.data, 
                                     gaussian_smooth=gaussian_smooth, 
@@ -807,26 +815,28 @@ class Parcellation:
                                     closing_iterations=closing_iterations,
                                     vertex_value=color_table[i,4]
 
-            mesh = pv.PolyData(vertices, faces)
-            mesh.point_data["surface"] = (
-                np.ones((len(vertices), 1), dtype=np.float32) * color_table[i, 4]
-            )
+        )
 
-            # Mesh processing pipeline for better quality
-            # 1. Clean the mesh (remove duplicate points, unused points, degenerate cells)
-            mesh = mesh.clean()
-            
-            # 2. Fill holes if requested
-            if fill_holes:
-                mesh = mesh.fill_holes(1000)  # Fill holes with max 1000 triangles
-            
-            # 3. Apply Taubin smoothing (preserves features better than Laplacian)
-            if smooth_iterations > 0:
-                mesh = mesh.smooth_taubin(n_iter=smooth_iterations, 
-                                        pass_band=0.1)
-            
-            # 4. Clean again after smoothing
-            mesh = mesh.clean()
+                surf_temp = cltsurf.Surface()
+                surf_temp.load_from_mesh(mesh, hemi='lh')
+                surfaces_list.append(surf_temp)
+                a = 1
+                # Update progress to show completion of this region
+
+        # surf_orig.merge_surfaces(surfaces_list)
+        merged_surf = cltsurf.merge_surface_list(surfaces_list)
+        merged_surf.colortables = color_tables
+
+        if out_filename is not None:
+            # Check if the directory exists, if not, gives an error
+            path_dir = os.path.dirname(out_filename)
+
+            if not os.path.exists(path_dir):
+                raise FileNotFoundError(f"The directory {path_dir} does not exist. Please create it before saving the surface.")
+
+            # Check if the file exists, if it does check if overwrite is True
+            if os.path.exists(out_filename) and not overwrite:
+                raise FileExistsError(f"The file {out_filename} already exists. Please set overwrite=True to overwrite it.")
             
             if save_annotation:
                 save_path = os.path.dirname(out_filename)
@@ -851,7 +861,7 @@ class Parcellation:
                     overwrite=overwrite
                 )
 
-        surf_orig.colortables = color_tables
+        return merged_surf
 
 
     def adjust_values(self):
