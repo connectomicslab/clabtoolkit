@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Union
 import pyvista as pv
 
-from scipy.ndimage import binary_erosion, binary_dilation, binary_opening
+from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, convolve
 from scipy.ndimage import binary_fill_holes, label, binary_closing, gaussian_filter
+from scipy.spatial import distance
+
 from skimage import measure
 
 # Importing local modules
@@ -1394,3 +1396,253 @@ def extract_mesh_from_volume(volume_array: np.ndarray,
     )
 
     return mesh
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############    Section 6: Methods to perform operations from 3D or 4D arrays           ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def spams2maxprob(
+    spam_image: str,
+    prob_thresh: float = 0.05,
+    vol_indexes: np.array = None,
+    maxp_name: str = None,
+):
+    """
+    Convert SPAM probability maps to maximum probability parcellation.
+    
+    Transforms 4D spatial probability maps into discrete 3D parcellation by
+    selecting the most probable label at each voxel, with optional thresholding
+    and volume selection.
+    
+    Parameters
+    ----------
+    spam_image : str
+        Path to 4D SPAM image file with probability maps for each region.
+        
+    prob_thresh : float, optional
+        Minimum probability threshold. Values below this are set to zero.
+        Default is 0.05.
+        
+    vol_indexes : np.ndarray, optional
+        Indices of volumes (regions) to include. If None, uses all volumes.
+        Default is None.
+        
+    maxp_name : str, optional
+        Output file path for maximum probability image. If None, returns
+        array without saving. Default is None.
+    
+    Returns
+    -------
+    str or np.ndarray
+        Output file path if maxp_name provided, otherwise numpy array
+        with maximum probability labels.
+    
+    Notes
+    -----
+    The conversion process:
+    1. Applies probability threshold to remove low-confidence voxels
+    2. Optionally filters to specific volume indices
+    3. Finds maximum probability across volumes for each voxel
+    4. Assigns winner-take-all labels (1-indexed)
+    5. Sets background where no probabilities exceed threshold
+    
+    Useful for converting probabilistic atlases to discrete parcellations
+    for analysis requiring discrete labels.
+    
+    Examples
+    --------
+    >>> # Convert SPAM to discrete parcellation
+    >>> maxprob_file = spams2maxprob(
+    ...     'AAL_SPAM.nii.gz',
+    ...     prob_thresh=0.1,
+    ...     maxp_name='AAL_discrete.nii.gz'
+    ... )
+    >>> 
+    >>> # Get array without saving, specific regions only
+    >>> selected_regions = np.array([0, 1, 2, 5, 6])  # Volume indices
+    >>> maxprob_array = spams2maxprob(
+    ...     'probabilistic_atlas.nii.gz',
+    ...     vol_indexes=selected_regions,
+    ...     prob_thresh=0.2
+    ... )
+    >>> print(f"Max label: {maxprob_array.max()}")
+    """
+
+    spam_img = nib.load(spam_image)
+    affine = spam_img.affine
+    spam_vol = spam_img.get_fdata()
+
+    spam_vol[spam_vol < prob_thresh] = 0
+    spam_vol[spam_vol > 1] = 1
+
+    if vol_indexes is not None:
+        # Creating the maxprob
+
+        # I want to find the complementary indexes to vol_indexes
+        all_indexes = np.arange(0, spam_vol.shape[3])
+        set1 = set(all_indexes)
+        set2 = set(vol_indexes)
+
+        # Find the symmetric difference
+        diff_elements = set1.symmetric_difference(set2)
+
+        # Convert the result back to a NumPy array if needed
+        diff_array = np.array(list(diff_elements))
+        spam_vol[:, :, :, diff_array] = 0
+        # array_data = np.delete(spam_vol, diff_array, 3)
+
+    ind = np.where(np.sum(spam_vol, axis=3) == 0)
+    maxprob_thl = spam_vol.argmax(axis=3) + 1
+    maxprob_thl[ind] = 0
+
+    if maxp_name is not None:
+        # Save the image
+        imgcoll = nib.Nifti1Image(maxprob_thl.astype("int16"), affine)
+        nib.save(imgcoll, maxp_name)
+    else:
+        maxp_name = maxprob_thl
+
+    return maxp_name
+
+#####################################################################################################
+def region_growing(
+    iparc: np.ndarray, mask: Union[np.ndarray, np.bool_], neighborhood="26"
+):
+    """
+    Fill gaps in parcellation using region growing algorithm.
+    
+    Labels unlabeled voxels within the mask by assigning the most frequent
+    label among their labeled neighbors, iteratively until convergence or
+    no more voxels can be labeled.
+    
+    Parameters
+    ----------
+    iparc : np.ndarray
+        3D parcellation array with labeled (>0) and unlabeled (0) voxels.
+        
+    mask : np.ndarray or np.bool_
+        3D binary mask defining the region where growing should occur.
+        
+    neighborhood : str, optional
+        Neighborhood connectivity: '6', '18', or '26' for 3D. Default is '26'.
+    
+    Returns
+    -------
+    np.ndarray
+        Updated parcellation array with gaps filled, masked to input mask.
+    
+    Notes
+    -----
+    The algorithm works iteratively:
+    1. Identifies unlabeled voxels with at least one labeled neighbor
+    2. For each candidate voxel, finds most frequent label among neighbors
+    3. In case of ties, selects label from spatially closest neighbor
+    4. Repeats until no more voxels can be labeled or convergence
+    
+    Particularly useful for:
+    - Filling gaps in atlas-based parcellations
+    - Completing partial segmentations
+    - Correcting registration artifacts
+    
+    Examples
+    --------
+    >>> # Fill gaps in parcellation
+    >>> filled_parc = region_growing(parcellation_array, brain_mask)
+    >>> print(f"Filled {np.sum(filled_parc > 0) - np.sum(parcellation_array > 0)} voxels")
+    >>> 
+    >>> # Use 6-connectivity for more conservative growing
+    >>> conservative_fill = region_growing(
+    ...     incomplete_labels, 
+    ...     region_mask, 
+    ...     neighborhood='6'
+    ... )
+    """
+
+    # Create a binary array where labeled voxels are marked as 1
+    binary_labels = (iparc > 0).astype(int)
+
+    # Convolve with the kernel to count labeled neighbors for each voxel
+    kernel = np.array(
+        [
+            [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+            [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
+            [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+        ]
+    )
+    labeled_neighbor_count = convolve(binary_labels, kernel, mode="constant", cval=0)
+
+    # Mask for voxels that have at least one labeled neighbor
+    mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
+    ind = np.argwhere(
+        (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
+    )
+    ind_orig = ind.copy() * 0
+
+    # Loop until no more voxels could be labeled or all the voxels are labeled
+    while (len(ind) > 0) & (np.array_equal(ind, ind_orig) == False):
+        ind_orig = ind.copy()
+        # Process each unlabeled voxel
+        for coord in ind:
+            x, y, z = coord
+
+            # Detecting the neighbors
+            neighbors = get_vox_neighbors(
+                coord=coord, neighborhood="26", dims="3"
+            )
+            # Remove from motion the coordinates out of the bounding box
+            neighbors = neighbors[
+                (neighbors[:, 0] >= 0)
+                & (neighbors[:, 0] < iparc.shape[0])
+                & (neighbors[:, 1] >= 0)
+                & (neighbors[:, 1] < iparc.shape[1])
+                & (neighbors[:, 2] >= 0)
+                & (neighbors[:, 2] < iparc.shape[2])
+            ]
+
+            # Labels of the neighbors
+            neigh_lab = iparc[neighbors[:, 0], neighbors[:, 1], neighbors[:, 2]]
+
+            if len(np.argwhere(neigh_lab > 0)) > 2:
+
+                # Remove the neighbors that are not labeled
+                neighbors = neighbors[neigh_lab > 0]
+                neigh_lab = neigh_lab[neigh_lab > 0]
+
+                unique_labels, counts = np.unique(neigh_lab, return_counts=True)
+                max_count = counts.max()
+                max_labels = unique_labels[counts == max_count]
+
+                if len(max_labels) == 1:
+                    iparc[x, y, z] = max_labels[0]
+
+                else:
+                    # In case of tie, choose the label of the closest neighbor
+                    distances = [
+                        distance.euclidean(coord, (dx, dy, dz))
+                        for (dx, dy, dz), lbl in zip(neighbors, neigh_lab)
+                        if lbl in max_labels
+                    ]
+                    closest_label = max_labels[np.argmin(distances)]
+                    iparc[x, y, z] = closest_label
+                # most_frequent_label = np.bincount(neigh_lab[neigh_lab != 0]).argmax()
+
+        # Create a binary array where labeled voxels are marked as 1
+        binary_labels = (iparc > 0).astype(int)
+
+        # Convolve with the kernel to count labeled neighbors for each voxel
+        labeled_neighbor_count = convolve(
+            binary_labels, kernel, mode="constant", cval=0
+        )
+
+        # Mask for voxels that have at least one labeled neighbor
+        mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
+        ind = np.argwhere(
+            (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
+        )
+
+    return iparc * mask
