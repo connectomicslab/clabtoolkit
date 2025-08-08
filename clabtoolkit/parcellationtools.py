@@ -27,24 +27,67 @@ from . import segmentationtools as cltseg
 from . import freesurfertools as cltfree
 from . import surfacetools as cltsurf
 
-
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############      Section 1: Class dedicated to work with parcellation images           ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 class Parcellation:
     """
-    The `Parcellation` class provides comprehensive tools for working with brain parcellation data.
-    It enables loading, manipulating, and analyzing parcellation files (typically in NIfTI format)
-    along with their associated lookup tables. This class supports various operations including
-    filtering regions by name or code, applying masks, grouping regions, calculating volumes, and
-    exporting results. It handles both the volumetric data and the associated metadata (region
-    indices, names, and colors), making it a complete solution for neuroimaging parcellation analysis
-    workflows. The class is designed to work seamlessly with annotation files that define brain
-    regions and supports various common file formats in neuroimaging research.
-
+    Comprehensive class for working with brain parcellation data.
+    
+    Provides tools for loading, manipulating, and analyzing brain parcellation 
+    files with associated lookup tables. Supports filtering, masking, grouping,
+    volume calculations, and various export formats for neuroimaging workflows.
     """
 
+    ####################################################################################################
     def __init__(
         self, parc_file: Union[str, np.uint] = None, affine: np.float64 = None
     ):
+        """
+        Initialize Parcellation object from file or array.
+        
+        Parameters
+        ----------
+        parc_file : str or np.ndarray, optional
+            Path to parcellation file or numpy array. If string, loads from file
+            and attempts to find associated TSV/LUT files. Default is None.
+            
+        affine : np.ndarray, optional
+            4x4 affine transformation matrix. If None and parc_file is array,
+            creates identity matrix. Default is None.
+        
+        Attributes
+        ----------
+        data : np.ndarray
+            3D parcellation data array.
 
+        affine : np.ndarray
+            4x4 affine transformation matrix.
+
+        index : list
+            List of region codes present in parcellation.
+
+        name : list
+            List of region names corresponding to codes.
+
+        color : list
+            List of colors (hex format) for each region.
+        
+        Examples
+        --------
+        >>> # Load from file
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> 
+        >>> # Create from array
+        >>> parc = Parcellation(label_array, affine=img.affine)
+        """
+    
         if parc_file is not None:
             if isinstance(parc_file, str):
                 if os.path.exists(parc_file):
@@ -137,12 +180,20 @@ class Parcellation:
 
             # Detect minimum and maximum labels
             self.parc_range()
-
+    
+    ####################################################################################################
     def prepare_for_tracking(self):
         """
-        Prepare the parcellation for fibre tracking. It will add the parcellated wm voxels to its
-        corresponding gm label. It also puts to zero the voxels that are not in the gm.
-
+        Prepare parcellation for fiber tracking by merging cortical white matter labels
+        to their corresponding cortical gray matter values.
+        
+        Converts white matter labels (>=3000) to corresponding gray matter labels
+        by subtracting 3000, and removes other structures labels (>=5000).
+        
+        Examples
+        --------
+        >>> parc.prepare_for_tracking()
+        >>> print(f"Max label after prep: {parc.data.max()}")
         """
 
         # Unique of non-zero values
@@ -167,13 +218,26 @@ class Parcellation:
         # Adjust the values
         self.adjust_values()
 
+    ####################################################################################################
     def keep_by_name(self, names2look: Union[list, str], rearrange: bool = False):
         """
-        Filter the parcellation by a list of names or just a a substring that could be included in the name.
-        It will keep only the structures with names containing the strings specified in the list.
-        @params:
-            names2look     - Required  : List or string of names to look for. It can be a list of strings or just a string.
-            rearrange      - Required  : If True, the parcellation will be rearranged starting from 1. Default = False
+        Filter parcellation to keep only regions with specified names.
+        
+        Parameters
+        ----------
+        names2look : str or list
+            Name substring(s) to search for in region names.
+            
+        rearrange : bool, optional
+            Whether to rearrange labels starting from 1. Default is False.
+        
+        Examples
+        --------
+        >>> # Keep only hippocampal regions
+        >>> parc.keep_by_name('hippocampus')
+        >>> 
+        >>> # Keep multiple regions and rearrange
+        >>> parc.keep_by_name(['frontal', 'parietal'], rearrange=True)
         """
 
         if isinstance(names2look, str):
@@ -191,45 +255,33 @@ class Parcellation:
             else:
                 print("The names were not found in the parcellation")
 
+    #####################################################################################################
     def keep_by_code(
         self, codes2keep: Union[list, np.ndarray], rearrange: bool = False
     ):
         """
-        Filter the parcellation by a list of codes. It will keep only the structures with codes specified in the list.
-
+        Filter parcellation to keep only specified region codes.
+        
         Parameters
         ----------
         codes2keep : list or np.ndarray
-            List of codes to look for. Only structures with these codes will be retained.
-
+            Region codes to retain in parcellation.
+            
         rearrange : bool, optional
-            If True, the parcellation will be rearranged starting from 1.
-            Default is False.
-
-        Returns
-        -------
-        self or new_instance
-            Returns the filtered parcellation object with only the specified codes retained.
-
+            Whether to rearrange labels consecutively from 1. Default is False.
+        
         Raises
         ------
         ValueError
             If codes2keep is empty or contains invalid codes.
-        TypeError
-            If codes2keep is not a list or numpy array.
-
+        
         Examples
         --------
-        >>> # Keep only specific brain regions
-        >>> parcellation.keep_by_code([1, 2, 5, 10])
-
-        >>> # Keep regions and rearrange codes starting from 1
-        >>> parcellation.keep_by_code([100, 200, 300], rearrange=True)
-
-        >>> # Using numpy array of codes
-        >>> import numpy as np
-        >>> codes = np.array([1, 3, 7, 12, 15])
-        >>> parcellation.keep_by_code(codes, rearrange=False)
+        >>> # Keep specific regions
+        >>> parc.keep_by_code([1, 2, 5, 10])
+        >>> 
+        >>> # Keep and rearrange
+        >>> parc.keep_by_code([100, 200, 300], rearrange=True)
         """
 
         # Convert the codes2keep to a numpy array
@@ -265,14 +317,28 @@ class Parcellation:
         # Detect minimum and maximum labels
         self.parc_range()
 
+    #####################################################################################################
     def remove_by_code(
         self, codes2remove: Union[list, np.ndarray], rearrange: bool = False
     ):
         """
-        Remove the structures with the codes specified in the list.
-        @params:
-            codes2remove     - Required  : List of codes to remove:
-            rearrange        - Required  : If True, the parcellation will be rearranged starting from 1. Default = False
+        Remove regions with specified codes from parcellation.
+        
+        Parameters
+        ----------
+        codes2remove : list or np.ndarray
+            Region codes to remove from parcellation.
+            
+        rearrange : bool, optional
+            Whether to rearrange remaining labels from 1. Default is False.
+        
+        Examples
+        --------
+        >>> # Remove specific regions
+        >>> parc.remove_by_code([1, 5, 10])
+        >>> 
+        >>> # Remove and rearrange
+        >>> parc.remove_by_code([100, 200], rearrange=True)
         """
 
         if isinstance(codes2remove, list):
@@ -293,42 +359,26 @@ class Parcellation:
         # Detect minimum and maximum labels
         self.parc_range()
 
+    #####################################################################################################
     def remove_by_name(self, names2remove: Union[list, str], rearrange: bool = False):
         """
-        Remove the structures with the names specified in the list.
-
+        Remove regions with specified names from parcellation.
+        
         Parameters
         ----------
-        names2remove : list, str
-            List of names to remove. It can be a list of strings or just a string.
-
-        rearrange : bool
-            If True, the parcellation will be rearranged starting from 1. Default = False.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If the names were not found in the parcellation.
-        ValueError
-            If the parcellation does not contain the attributes name, index and color.
-        ValueError
-            If the names2remove is not a list or string.
-        ValueError
-            If the names2remove is a list of strings and the parcellation does not contain the attributes name, index and color.
-
+        names2remove : str or list
+            Name substring(s) to search for removal.
+            
+        rearrange : bool, optional
+            Whether to rearrange remaining labels from 1. Default is False.
+        
         Examples
         --------
-        >>> parcellation = Parcellation("parc_file.nii")
-        >>> parcellation.remove_by_name(["name1", "name2"], rearrange=True)
-        This will produce a new object with the parcellation data, index, name and color without the regions with names equal to name1 or name2.
-        The new labels will go now from 1 to N-2, where N is the original number of regions in that parcellation
-
-        >>> parcellation.remove_by_name("name3", rearrange=False)
-        This will produce a new object with the parcellation data, index, name and color without the regions with names equal to name3
+        >>> # Remove ventricles
+        >>> parc.remove_by_name('ventricle')
+        >>> 
+        >>> # Remove multiple structures
+        >>> parc.remove_by_name(['csf', 'unknown'], rearrange=True)
         """
 
         if isinstance(names2remove, str):
@@ -354,6 +404,7 @@ class Parcellation:
         # Detect minimum and maximum labels
         self.parc_range()
 
+    #####################################################################################################
     def apply_mask(
         self,
         image_mask,
@@ -362,51 +413,29 @@ class Parcellation:
         fill: bool = False,
     ):
         """
-        Applies a mask to the parcellation data, restricting the spatial extension of the
-        parcellation with values equal codes2mask only to the voxels included in the image_mask.
-
-        This method modifies the 3D parcellation data (`self.data`) by applying a given
-        3D mask array. All voxels where the mask has a value of zero will be set to
-        zero in the parcellation data, effectively excluding those regions
-        from further analysis.
-
+        Apply spatial mask to restrict parcellation to specific regions.
+        
         Parameters
         ----------
-        image_mask : np.ndarray, Parcellation or str
-            A 3D numpy array with the same shape as `self.data`. The mask indicates
-            which voxels should be retained (non-zero values) and which should be set
-            to `mask_value` (zero values).
-
-        codes2mask : int, list, np.ndarray
-            The codes of the regions that will be masked. If None, all regions with
-            non-zero values will be masked. Default is None.
-
-        mask_type : str
-            The type of mask to apply. If 'upright', the mask will be applied to the
-            regions with the codes specified in `codes2mask`. If 'inverted', the mask
-            will be applied to the regions with codes different from those specified
-            in `codes2mask`. Default is 'upright'.
-
-        fill : bool
-            If True, the regions will grow until the fill the provided mask. Default is False.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If the mask shape does not match the shape of `self.data`.
-
-        Example
-        -------
-        >>> parcellation = Parcellation("parc_file.nii")
-        >>> mask = np.array([...])  # A 3D mask array of the same shape as `data`
-        >>> parcellation.apply_mask(mask, codes2mask=[1, 2, 3], mask_type='upright')
-
-        This will apply the mask to the regions with codes 1, 2, and 3 in the parcellation.
-
+        image_mask : np.ndarray, Parcellation, or str
+            3D mask array, parcellation object, or path to mask file.
+            
+        codes2mask : list or np.ndarray, optional
+            Specific region codes to mask. If None, masks all regions. Default is None.
+            
+        mask_type : str, optional
+            'upright' to keep masked regions, 'inverted' to remove them. Default is 'upright'.
+            
+        fill : bool, optional
+            Whether to grow regions to fill mask using region growing. Default is False.
+        
+        Examples
+        --------
+        >>> # Apply cortical mask
+        >>> parc.apply_mask(cortex_mask, mask_type='upright')
+        >>> 
+        >>> # Mask specific regions with filling
+        >>> parc.apply_mask(roi_mask, codes2mask=[1, 2, 3], fill=True)
         """
 
         if isinstance(image_mask, str):
@@ -461,51 +490,29 @@ class Parcellation:
         mask_type: str = "upright",
     ):
         """
-        Masks the images specified in `image_2mask` with a binary mask created from the parcellation data.
-        It will use the regions with the codes specified in `codes2mask` to create a binary mask. The mask can
-        be created with all the regions in the parcellation if `codes2mask` is None. The mask can be applied
-        to the regions with the codes specified in `codes2mask` or to the regions with codes different from
-        those specified in `codes2mask`. The masked images will be saved in the paths specified in `masked_image`.
-
+        Mask external images using parcellation as binary mask.
+        
         Parameters
         ----------
-        image_2mask: str, list, np.ndarray
-            The path to the image file or a list of paths to the images that will be masked. It can also be a
-            3D numpy array with the same shape as `self.data`.
-
-        masked_image: str, list
-            The path to the image file or a list of paths to the images where the masked images will be saved.
-            If None, the masked images will not be saved. Default is None.
-
-        codes2mask: int, list, np.ndarray
-            The codes of the regions that will be masked. If None, all regions with non-zero values will be masked.
-            Default is None.
-
-        mask_type: str
-            The type of mask to apply. If 'upright', the mask will use the regions with the codes specified in
-            `codes2mask` to create the binary mask. If 'inverted', the mask will use the regions with codes different
-            from those specified in `codes2mask` to create the binary mask. Default is 'upright'.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If the number of images to mask is different from the number of images to be saved.
-
-        Example
-        -------
-        >>> parcellation = Parcellation("parc_file.nii")
-        >>> image = "image.nii"
-        >>> masked_image = "masked_image.nii"
-        >>> parcellation.mask_image(image_2mask=image, masked_image=masked_image, codes2mask=[1, 2, 3], mask_type='upright')
-
-        This will mask the image with the parcellation, using the regions with codes 1, 2, and 3 to create the binary mask.
-        The masked image will be saved in the path specified in `masked_image`.
-
-
+        image_2mask : str, list, or np.ndarray
+            Image(s) to mask using parcellation.
+            
+        masked_image : str or list, optional
+            Output path(s) for masked images. Default is None.
+            
+        codes2mask : list or np.ndarray, optional
+            Region codes to use for masking. Default is None (all regions).
+            
+        mask_type : str, optional
+            'upright' uses specified codes, 'inverted' uses other codes. Default is 'upright'.
+        
+        Examples
+        --------
+        >>> # Mask T1 image with parcellation
+        >>> parc.mask_image('T1w.nii.gz', 'T1w_masked.nii.gz')
+        >>> 
+        >>> # Mask with specific regions
+        >>> parc.mask_image('fmri.nii.gz', codes2mask=[1, 2, 3])
         """
 
         if isinstance(image_2mask, str):
@@ -560,26 +567,45 @@ class Parcellation:
 
             return img_data
 
+    ######################################################################################################
     def compute_centroids(self,
                         struct_codes: Union[List[int], np.ndarray] = None,
                         struct_names: Union[List[str], str] = None,
                         centroid_table: str = None):
         """
-        Compute centroids, number of voxels, and volume for each region in a 3D image.
+        Compute region centroids, voxel counts, and volumes.
         
-        Parameters:
-        -----------
-        struct_codes : List[int] or np.ndarray, optional
-            Specific region codes to include
-        struct_names : List[str] or str, optional  
-            Specific region names to include
-        centroid_table : str, optional
-            Path to save the centroid table as TSV file. If None, no file is saved.
+        Parameters
+        ----------
+        struct_codes : list or np.ndarray, optional
+            Specific region codes to include. Default is None (all regions).
             
-        Returns:
-        --------
+        struct_names : list or str, optional
+            Specific region names to include. Default is None.
+            
+        centroid_table : str, optional
+            Path to save results as TSV file. Default is None.
+        
+        Returns
+        -------
         pd.DataFrame
-            DataFrame with columns ['index', 'name', 'color', 'X', 'Y', 'Z', 'nvoxels', 'volume']
+            DataFrame with columns: index, name, color, X, Y, Z (mm), nvoxels, volume.
+        
+        Raises
+        ------
+        ValueError
+            If both struct_codes and struct_names are specified.
+        
+        Examples
+        --------
+        >>> # Compute all centroids
+        >>> centroids_df = parc.compute_centroids()
+        >>> 
+        >>> # Specific regions with file output
+        >>> df = parc.compute_centroids(
+        ...     struct_codes=[1, 2, 3],
+        ...     centroid_table='centroids.tsv'
+        ... )
         """
         
         # Check if include_by_code and include_by_name are different from None at the same time
@@ -691,6 +717,7 @@ class Parcellation:
         
         return df
 
+    ######################################################################################################
     def surface_extraction(self, 
                         struct_codes: Union[List[int], np.ndarray] = None,
                         struct_names: Union[List[str], str] = None,
@@ -705,54 +732,71 @@ class Parcellation:
                         overwrite: bool = False,
                         ):
         """
-        Extracts surfaces from the parcellation data for specified codes. It uses marching cubes to extract the surface mesh
-        and applies various processing steps such as Gaussian smoothing, filling holes, and Taubin smoothing.
+        Extract 3D surface meshes from parcellation regions.
+        
+        Uses marching cubes algorithm with optional smoothing and hole filling
+        to create high-quality surface meshes for visualization or analysis.
         
         Parameters
         ----------
-        codes_list : list
-            List of codes to extract surfaces for
+        struct_codes : list or np.ndarray, optional
+            Region codes to extract surfaces for. Default is None (all regions).
             
-        struct_codes : list, optional
-            List of structure codes to include in the extraction (default: None, which means all codes will be included)
-
-        struct_names : list, optional
-            List of structure names to include in the extraction (default: None, which means all names
-            will be included)
-
-        smooth_iterations : int, optional
-            Number of smoothing iterations (default: 50)
-
-        fill_holes : bool, optional
-            Whether to fill holes in the mesh (default: True)
-
+        struct_names : list or str, optional
+            Region names to extract surfaces for. Default is None.
+            
         gaussian_smooth : bool, optional
-            Whether to apply Gaussian smoothing to volume data (default: True)
-
-        sigma : float, optional
-            Standard deviation for Gaussian smoothing (default: 1.0)
-
-        closing_iterations : int, optional
-            Number of iterations for morphological closing operation to fill small gaps in the binary mask (default:
-            1)
-
-        out_filename : str, optional
-            Output filename to save the extracted surface mesh (default: None, which means no file will be saved)
-
-        out_format : str, optional
-            Format to save the output mesh (default: 'freesurfer'). 
-            Supported formats are 'vtk', 'ply', 'stl', 'obj' and 'freesurfer'
-
-        save_annotation : bool, optional
-            Whether to save the annotation file alongside the surface mesh (default: True)
-        overwrite : bool, optional
-            Whether to overwrite the output file if it already exists (default: False)
+            Whether to apply Gaussian smoothing to volume. Default is True.
             
+        smooth_iterations : int, optional
+            Number of Taubin smoothing iterations. Default is 10.
+            
+        fill_holes : bool, optional
+            Whether to fill holes in extracted meshes. Default is True.
+            
+        sigma : float, optional
+            Standard deviation for Gaussian smoothing. Default is 1.0.
+            
+        closing_iterations : int, optional
+            Morphological closing iterations before extraction. Default is 1.
+            
+        out_filename : str, optional
+            Output file path for merged surface. Default is None.
+            
+        out_format : str, optional
+            Output format: 'freesurfer', 'vtk', 'ply', 'stl', 'obj'. Default is 'freesurfer'.
+            
+        save_annotation : bool, optional
+            Whether to save annotation file with surface. Default is True.
+            
+        overwrite : bool, optional
+            Whether to overwrite existing files. Default is False.
         
         Returns
         -------
-        dict
-            Dictionary with codes as keys and extracted meshes as values
+        Surface
+            Merged surface object containing all extracted regions.
+        
+        Raises
+        ------
+        ValueError
+            If both struct_codes and struct_names are specified.
+        FileNotFoundError
+            If output directory doesn't exist.
+        FileExistsError
+            If output file exists and overwrite=False.
+        
+        Examples
+        --------
+        >>> # Extract all surfaces
+        >>> surface = parc.surface_extraction()
+        >>> 
+        >>> # Extract specific regions with high quality
+        >>> surface = parc.surface_extraction(
+        ...     struct_codes=[1, 2, 3],
+        ...     smooth_iterations=20,
+        ...     out_filename='regions.surf'
+        ... )
         """
         
         # Check if include_by_code and include_by_name are different from None at the same time
@@ -863,11 +907,18 @@ class Parcellation:
 
         return merged_surf
 
-
+    ######################################################################################################
     def adjust_values(self):
         """
-        Adjust the codes, indexes, names and colors to the values present on the parcellation
-
+        Synchronize index, name, and color attributes with data contents.
+        
+        Removes entries for codes not present in data and updates
+        min/max label range.
+        
+        Examples
+        --------
+        >>> parc.adjust_values()
+        >>> print(f"Regions in data: {len(parc.index)}")
         """
 
         st_codes = np.unique(self.data)
@@ -892,6 +943,7 @@ class Parcellation:
 
         self.parc_range()
 
+    ######################################################################################################
     def group_by_code(
         self,
         codes2group: Union[list, np.ndarray],
@@ -900,14 +952,29 @@ class Parcellation:
         new_colors: Union[list, np.ndarray] = None,
     ):
         """
-        Group the structures with the codes specified in the list or array codes2group.
-        @params:
-            codes2group      - Required  : List, numpy array or list of list of codes to group:
-            new_codes        - Optional  : New codes for the groups. It can assign new codes
-                                            otherwise it will assign the codes from 1 to number of groups:
-            new_names        - Optional  : New names for the groups:
-            new_colors       - Optional  : New colors for the groups:
-
+        Group regions by combining specified codes into new regions.
+        
+        Parameters
+        ----------
+        codes2group : list or np.ndarray
+            List of codes or list of code lists to group.
+            
+        new_codes : list or np.ndarray, optional
+            New codes for groups. If None, uses sequential numbering. Default is None.
+            
+        new_names : list or str, optional
+            New names for groups. Default is None.
+            
+        new_colors : list or np.ndarray, optional
+            New colors for groups. Default is None.
+        
+        Examples
+        --------
+        >>> # Group bilateral regions
+        >>> parc.group_by_code(
+        ...     [[1, 2], [3, 4]],  # Left/right pairs
+        ...     new_names=['region1', 'region2']
+        ... )
         """
 
         # if all the  elements in codes2group are numeric then convert codes2group to a numpy array
@@ -1017,6 +1084,7 @@ class Parcellation:
         # Detect minimum and maximum labels
         self.parc_range()
 
+    ######################################################################################################
     def group_by_name(
         self,
         names2group: Union[List[list], List[str]],
@@ -1025,14 +1093,29 @@ class Parcellation:
         new_colors: Union[list, np.ndarray] = None,
     ):
         """
-        Group the structures with the names specified in the list or array names2group.
-        @params:
-            names2group      - Required  : List or list of list of names to group:
-            new_codes        - Optional  : New codes for the groups. It can assign new codes
-                                            otherwise it will assign the codes from 1 to number of groups:
-            new_names        - Optional  : New names for the groups:
-            new_colors       - Optional  : New colors for the groups:
-
+        Group regions by combining regions with specified name patterns.
+        
+        Parameters
+        ----------
+        names2group : list
+            List of name patterns or list of pattern lists to group.
+            
+        new_codes : list or np.ndarray, optional
+            New codes for groups. Default is None.
+            
+        new_names : list or str, optional
+            New names for groups. Default is None.
+            
+        new_colors : list or np.ndarray, optional
+            New colors for groups. Default is None.
+        
+        Examples
+        --------
+        >>> # Group by anatomical regions
+        >>> parc.group_by_name(
+        ...     [['frontal'], ['parietal'], ['temporal']],
+        ...     new_names=['frontal_lobe', 'parietal_lobe', 'temporal_lobe']
+        ... )
         """
 
         # Detect thecodes2group is a list of list
@@ -1138,38 +1221,23 @@ class Parcellation:
         # Detect minimum and maximum labels
         self.parc_range()
 
+    ######################################################################################################
     def rearrange_parc(self, offset: int = 0):
         """
-        Rearrange parcellation labels to consecutive integers starting from offset + 1.
-
-        This method remaps all non-zero parcellation codes to consecutive integers
-        starting from the specified offset, eliminating gaps in the labeling scheme.
-        Zero values (background) are preserved unchanged.
-
+        Rearrange parcellation labels to consecutive integers.
+        
         Parameters
         ----------
         offset : int, optional
-            Starting value for the rearranged parcellation labels. Default is 1.
-
-        Notes
-        -----
-        - Modifies self.data in-place
-        - Zero values are treated as background and remain unchanged
-        - Original parcellation codes are sorted before reassignment
-        - If index, name, and color attributes exist, the index attribute is updated
-        to reflect the new consecutive labeling scheme
-        - Calls self.parc_range() after rearrangement
-
+            Starting value for rearranged labels. Default is 0 (starts from 1).
+        
         Examples
         --------
-        Original parcellation with codes [5, 10, 15]:
-        - With offset=1: becomes [2, 3, 4]
-        - With offset=10: becomes [11, 12, 13]
-
-        Returns
-        -------
-        None
-            Method modifies the object in-place.
+        >>> # Rearrange to 1, 2, 3, ...
+        >>> parc.rearrange_parc()
+        >>> 
+        >>> # Start from 100
+        >>> parc.rearrange_parc(offset=99)
         """
 
         st_codes = np.unique(self.data)
@@ -1188,45 +1256,28 @@ class Parcellation:
 
         self.parc_range()
 
+    ######################################################################################################
     def add_parcellation(self, parc2add, append: bool = False):
         """
-        Combines another parcellation object into the current parcellation.
-
-        This method appends the regions of another parcellation into the
-        current object. The behavior of the combination depends on the `append`:
-
-        - "True": Adds the new regions with new labels by adding the maximum label of the
-        current parcellation to the data of the other parcellation.
-
-        - "False": Integrates the data of the other parcellation, keeping the labels of the
-        current parcellation.
-
+        Combine another parcellation into current object.
+        
         Parameters
         ----------
-        parc2add : Parcellation
-                Another instance of the `Parcellation` class to be combined with the current
-                parcellation.
-        append : bool
-                If True, the new regions will be added with new labels. If False, the labels
-                of the current parcellation will be kept.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If `other` is not an instance of the `Parcellation` class.
-        ValueError
-            If `merge_method` is not one of the supported values ("append" or "merge").
-
-        Example
-        -------
-        >>> parcellation1 = Parcellation(parc1.nii.gz)
-        >>> parcellation2 = Parcellation(parc2.nii.gz)
-        >>> parcellation1.add_parcellation(parcellation2, append=False)
+        parc2add : Parcellation or list
+            Parcellation object(s) to add.
+            
+        append : bool, optional
+            If True, adds new labels by offsetting. If False, overlays directly. Default is False.
+        
+        Examples
+        --------
+        >>> # Overlay parcellations
+        >>> parc1.add_parcellation(parc2, append=False)
+        >>> 
+        >>> # Append with new labels
+        >>> parc1.add_parcellation(parc2, append=True)
         """
+
         if isinstance(parc2add, Parcellation):
             parc2add = [parc2add]
 
@@ -1333,6 +1384,7 @@ class Parcellation:
         # Detect minimum and maximum labels
         self.parc_range()
 
+    ######################################################################################################
     def save_parcellation(
         self,
         out_file: str,
@@ -1342,10 +1394,29 @@ class Parcellation:
         save_tsv: bool = False,
     ):
         """
-        Save the parcellation to a file
-        @params:
-            out_file     - Required  : Output file:
-            affine       - Optional  : Affine matrix. Default = None
+        Save parcellation to NIfTI file with optional lookup tables.
+        
+        Parameters
+        ----------
+        out_file : str
+            Output file path.
+            
+        affine : np.ndarray, optional
+            Affine matrix. If None, uses object's affine. Default is None.
+            
+        headerlines : list or str, optional
+            Header lines for LUT file. Default is None.
+            
+        save_lut : bool, optional
+            Whether to save FreeSurfer LUT file. Default is False.
+            
+        save_tsv : bool, optional
+            Whether to save TSV lookup table. Default is False.
+        
+        Examples
+        --------
+        >>> # Save with lookup tables
+        >>> parc.save_parcellation('output.nii.gz', save_lut=True, save_tsv=True)
         """
 
         if affine is None:
@@ -1388,13 +1459,26 @@ class Parcellation:
                     "Warning: The parcellation does not contain a color table. The tsv file will not be saved"
                 )
 
+    ######################################################################################################
     def load_colortable(self, lut_file: Union[str, dict] = None, lut_type: str = "lut"):
         """
-        Add a lookup table to the parcellation
-        @params:
-            lut_file     - Required  : Lookup table file. It can be a string with the path to the
-                                        file or a dictionary containing the keys 'index', 'color' and 'name':
-            lut_type     - Optional  : Type of the lut file: 'lut' or 'tsv'. Default = 'lut'
+        Load lookup table to associate codes with names and colors.
+        
+        Parameters
+        ----------
+        lut_file : str or dict, optional
+            Path to LUT file or dictionary with index/name/color keys. Default is None.
+            
+        lut_type : str, optional
+            File format: 'lut' or 'tsv'. Default is 'lut'.
+        
+        Examples
+        --------
+        >>> # Load FreeSurfer LUT
+        >>> parc.load_colortable('FreeSurferColorLUT.txt', lut_type='lut')
+        >>> 
+        >>> # Load TSV table
+        >>> parc.load_colortable('regions.tsv', lut_type='tsv')
         """
 
         if lut_file is None:
@@ -1454,9 +1538,15 @@ class Parcellation:
         self.adjust_values()
         self.parc_range()
 
+    ######################################################################################################
     def sort_index(self):
         """
-        This method sorts the index, name and color attributes of the parcellation according to the index
+        Sort index, name, and color attributes by index values.
+        
+        Examples
+        --------
+        >>> parc.sort_index()
+        >>> print(f"First region: {parc.name[0]} (code: {parc.index[0]})")
         """
 
         # Sort the all_index and apply the order to all_name and all_color
@@ -1465,6 +1555,7 @@ class Parcellation:
         self.name = [self.name[i] for i in sort_index]
         self.color = [self.color[i] for i in sort_index]
 
+    ######################################################################################################
     def export_colortable(
         self,
         out_file: str,
@@ -1473,11 +1564,29 @@ class Parcellation:
         force: bool = True,
     ):
         """
-        Export the lookup table to a file
-        @params:
-            out_file     - Required  : Lookup table file:
-            lut_type     - Optional  : Type of the lut file: 'lut' or 'tsv'. Default = 'lut'
-            force        - Optional  : If True, it will overwrite the file. Default = True
+        Export lookup table to file.
+        
+        Parameters
+        ----------
+        out_file : str
+            Output file path.
+            
+        lut_type : str, optional
+            Output format: 'lut' or 'tsv'. Default is 'lut'.
+            
+        headerlines : list or str, optional
+            Header lines for LUT format. Default is None.
+            
+        force : bool, optional
+            Whether to overwrite existing files. Default is True.
+        
+        Examples
+        --------
+        >>> # Export FreeSurfer LUT
+        >>> parc.export_colortable('regions.lut', lut_type='lut')
+        >>> 
+        >>> # Export TSV
+        >>> parc.export_colortable('regions.tsv', lut_type='tsv')
         """
 
         if headerlines is not None:
@@ -1564,55 +1673,36 @@ class Parcellation:
         else:
             raise ValueError("The lut_type must be 'lut' or 'tsv'")
 
+    ######################################################################################################
     def replace_values(
         self,
         codes2rep: Union[List[Union[int, List[int]]], np.ndarray],
         new_codes: Union[int, List[int], np.ndarray],
     ) -> None:
         """
-        Replace groups of values in the 3D array/image with new codes.
-
-        This method allows for flexible replacement of pixel/voxel values, supporting
-        both single value replacements and group replacements where multiple original
-        values are mapped to a single new value.
-
+        Replace region codes with new values, supporting group replacements.
+        
         Parameters
         ----------
-        codes2rep : list, np.ndarray, or list of lists
-            Values or groups of values to be replaced. Can be:
-            - Single list: [1, 2, 3] - replace values 1, 2, 3 individually
-            - List of lists: [[1, 2], [3, 4]] - replace groups (1,2)->new_code[0], (3,4)->new_code[1]
-            - numpy array: np.array([1, 2, 3]) - replace values 1, 2, 3 individually
+        codes2rep : list or np.ndarray
+            Codes to replace. Can be flat list for individual replacement
+            or list of lists for group replacement.
+            
         new_codes : int, list, or np.ndarray
-            New values to replace with. Must match the number of groups in codes2rep.
-            - Single int: used when codes2rep is a single group
-            - List/array: length must equal number of groups in codes2rep
-
-        Returns
-        -------
-        None
-            Modifies self.data in-place
-
+            New codes to replace with. Must match number of groups.
+        
         Raises
         ------
         ValueError
-            If the number of new codes doesn't match the number of groups to replace
-        TypeError
-            If input types are not supported
-
+            If number of new codes doesn't match number of groups.
+        
         Examples
         --------
-        >>> # Single value replacement
-        >>> image.replace_values([1], [100])  # Replace all 1s with 100s
-
-        >>> # Multiple individual replacements
-        >>> image.replace_values([1, 2, 3], [10, 20, 30])  # 1->10, 2->20, 3->30
-
-        >>> # Group replacements
-        >>> image.replace_values([[1, 2], [3, 4]], [100, 200])  # (1,2)->100, (3,4)->200
-
-        >>> # Mixed usage with numpy array
-        >>> image.replace_values(np.array([5, 6]), 500)  # Replace 5s and 6s with 500
+        >>> # Replace individual codes
+        >>> parc.replace_values([1, 2, 3], [10, 20, 30])
+        >>> 
+        >>> # Group replacement
+        >>> parc.replace_values([[1, 2], [3, 4]], [100, 200])
         """
 
         # Input validation
@@ -1686,18 +1776,19 @@ class Parcellation:
         if hasattr(self, "parc_range"):
             self.parc_range()
 
+    ######################################################################################################
     def parc_range(self) -> None:
         """
-        Detect and update the range of non-zero labels in the data.
-
-        Updates the minlab and maxlab attributes based on unique non-zero values
-        in self.data.
-
-        Returns
-        -------
-        None
-            Updates self.minlab and self.maxlab attributes in-place
+        Update minimum and maximum label values in parcellation.
+        
+        Sets minlab and maxlab attributes based on non-zero values in data.
+        
+        Examples
+        --------
+        >>> parc.parc_range()
+        >>> print(f"Label range: {parc.minlab} - {parc.maxlab}")
         """
+
         # Get unique non-zero elements
         unique_codes = np.unique(self.data)
         nonzero_codes = unique_codes[unique_codes != 0]
@@ -1709,24 +1800,42 @@ class Parcellation:
             self.minlab = 0
             self.maxlab = 0
 
+    ######################################################################################################
     def compute_volume_table(self):
         """
-        Compute the volume table of the parcellation.
-        This method computes the volume of each region in the parcellation and stores it in the attribute called volumetable.
-
+        Compute volume table for all regions in parcellation.
+        
+        Sets volumetable attribute containing region volumes and statistics.
+        
+        Examples
+        --------
+        >>> parc.compute_volume_table()
+        >>> volume_df, _ = parc.volumetable
+        >>> print(volume_df.head())
         """
+
         from . import morphometrytools as cltmorpho
 
         volume_table = cltmorpho.compute_reg_volume_fromparcellation(self)
         self.volumetable = volume_table
 
+    ######################################################################################################
     @staticmethod
     def lut_to_fsllut(lut_file_fs: str, lut_file_fsl: str):
         """
-        Convert FreeSurfer lut file to FSL lut file
-        @params:
-            lut_file_fs     - Required  : FreeSurfer color lut:
-            lut_file_fsl      - Required  : FSL color lut:
+        Convert FreeSurfer LUT file to FSL format.
+        
+        Parameters
+        ----------
+        lut_file_fs : str
+            Path to FreeSurfer LUT file.
+            
+        lut_file_fsl : str
+            Path for output FSL LUT file.
+        
+        Examples
+        --------
+        >>> Parcellation.lut_to_fsllut('FreeSurferColorLUT.txt', 'fsl_colors.lut')
         """
 
         # Reading FreeSurfer color lut
@@ -1753,65 +1862,37 @@ class Parcellation:
         with open(lut_file_fsl, "w") as colorLUT_f:
             colorLUT_f.write("\n".join(lut_lines))
 
+    ######################################################################################################
     @staticmethod
     def read_luttable(
         in_file: str, filter_by_name: Union[str, List[str]] = None
     ) -> dict:
         """
-        Read and parse a FreeSurfer Color Lookup Table (LUT) file.
-
-        This method reads a FreeSurfer color lookup table file and parses its contents into
-        a structured dictionary containing region codes, names, and colors. The LUT file format
-        follows FreeSurfer's standard format where each non-comment line contains a region code,
-        name, and RGB color values.
-
+        Read FreeSurfer lookup table file.
+        
         Parameters
         ----------
         in_file : str
-            Path to the color lookup table file.
-
-        filter_by_name: Union[str, List[str]], optional
-            If provided, filter the regions by name. Only regions containing this substring will be included.
-            Can be a single string or a list of strings.
-
+            Path to LUT file.
+            
+        filter_by_name : str or list, optional
+            Filter regions by name substring(s). Default is None.
+        
         Returns
         -------
         dict
-            Dictionary with the following keys:
-            - 'index': List of integer region codes (standard Python integers)
-            - 'name': List of region name strings
-            - 'color': List of hex color codes (format: '#RRGGBB')
-
+            Dictionary with 'index', 'name', and 'color' keys.
+        
         Examples
         --------
-        # Setup common variables
-        >>> fs_dir = os.environ.get('FREESURFER_HOME')
-        >>> lut_file = os.path.join(fs_dir, 'FreeSurferColorLUT.txt')
-
-        >>> lut_dict = read_luttable(lut_file)
-        >>> lut_dict['index'][:3]  # First three region codes
-        [0, 1, 2]
-        >>> lut_dict['name'][:3]  # First three region names
-        ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter']
-        >>> lut_dict['color'][:3]  # First three colors in hex format
-        ['#000000', '#4682b4', '#f5f5f5']
-
-        >>> # Get information for a specific region (e.g., hippocampus)
-        >>> lut_dict = cltparc.Parcellation.read_luttable(lut_file, filter_by_name='hippocampus')
-        >>> print(f"Index: {lut_dict["index"]}...")
-        Index: [17, 53, 106, 115]...
-        >>> print(f"Label: {lut_dict["name"]}...")
-        Label: ['Left-Hippocampus', 'Right-Hippocampus', 'Left-hippocampus-intensity-abnormality', 'Right-hippocampus-intensity-abnormality']...
-        >>> print(f"Color: {lut_dict["color"]}...")
-        Color: ['#dcd814', '#dcd814', '#7c8fb2', '#7c8fb2']...
-
-        Notes
-        -----
-        - Comment lines (starting with '#') in the LUT file are ignored
-        - Each non-comment line should have at least 5 elements: code, name, R, G, B
-        - The returned region codes are standard Python integers, not numpy objects
-        - If the multi_rgb2hex function is not available, the color conversion will need
-        to be modified
+        >>> lut_dict = Parcellation.read_luttable('FreeSurferColorLUT.txt')
+        >>> print(f"Found {len(lut_dict['index'])} regions")
+        >>> 
+        >>> # Filter for hippocampus
+        >>> hippo_dict = Parcellation.read_luttable(
+        ...     'FreeSurferColorLUT.txt', 
+        ...     filter_by_name='hippocampus'
+        ... )
         """
 
         # Read the LUT file content
@@ -1880,62 +1961,38 @@ class Parcellation:
             "color": region_colors_hex,
         }
 
+    ######################################################################################################
     @staticmethod
     def read_tsvtable(
         in_file: str, filter_by_name: Union[str, List[str]] = None
     ) -> dict:
         """
-        Read and parse a TSV (Tab-Separated Values) lookup table file.
-
-        This method reads a TSV file containing parcellation information and returns a dictionary
-        with the data. The TSV file must contain at least 'index' and 'name' columns. If a 'color'
-        column is present, it will be included in the returned dictionary.
-
+        Read TSV lookup table file.
+        
         Parameters
         ----------
         in_file : str
-            Path to the TSV lookup table file
-
-        filter_by_name: Union[str, List[str]], optional
-            If provided, filter the regions by name. Only regions containing this substring will be included.
-            Can be a single string or a list of strings.
-
+            Path to TSV file.
+            
+        filter_by_name : str or list, optional
+            Filter regions by name substring(s). Default is None.
+        
         Returns
         -------
         dict
-            Dictionary with keys corresponding to column names in the TSV file.
-            Must include at least:
-            - 'index': List of integer region codes (standard Python integers)
-            - 'name': List of region name strings
-            May also include:
-            - 'color': List of color codes if present in the TSV file
-            - Any other columns present in the TSV file
-
-        Examples
-        --------
-        >>> tsv_dict = read_tsvtable('regions.tsv')
-        >>> tsv_dict['index'][:3]  # First three region codes
-        [0, 1, 2]
-        >>> tsv_dict['name'][:3]  # First three region names
-        ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter']
-
-        >>> # Check if color information is available
-        >>> if 'color' in tsv_dict:
-        ...     print(f"Color for region {tsv_dict['name'][0]}: {tsv_dict['color'][0]}")
-
+            Dictionary with column names as keys.
+        
         Raises
         ------
-        FileNotFoundError
-            If the specified TSV file does not exist
         ValueError
-            If the TSV file does not contain required 'index' and 'name' columns
-
-        Notes
-        -----
-        - The 'index' column values are converted to standard Python integers
-        - All other columns are preserved in their original format
-        - If the file cannot be parsed as a TSV, pandas exceptions may be raised
+            If required columns 'index' and 'name' are missing.
+        
+        Examples
+        --------
+        >>> tsv_dict = Parcellation.read_tsvtable('regions.tsv')
+        >>> print(f"Columns: {list(tsv_dict.keys())}")
         """
+
         # Check if file exists
         if not os.path.exists(in_file):
             raise FileNotFoundError(f"TSV file not found: {in_file}")
@@ -1984,6 +2041,7 @@ class Parcellation:
         except Exception as e:
             raise ValueError(f"Error reading TSV file: {str(e)}")
 
+    #######################################################################################################
     @staticmethod
     def write_luttable(
         codes: list,
@@ -1995,26 +2053,44 @@ class Parcellation:
         force: bool = True,
     ):
         """
-        Function to create a lut table for parcellation
-
+        Write FreeSurfer format lookup table file.
+        
         Parameters
         ----------
         codes : list
-            List of codes for the parcellation
+            Region codes.
+            
         names : list
-            List of names for the parcellation
-        colors : list
-            List of colors for the parcellation
-        lut_filename : str
-            Name of the lut file
-        headerlines : list or str
-            List of strings for the header lines
-
+            Region names.
+            
+        colors : list or np.ndarray
+            Region colors (RGB or hex).
+            
+        out_file : str, optional
+            Output file path. Default is None.
+            
+        headerlines : list or str, optional
+            Header lines. Default is None.
+            
+        boolappend : bool, optional
+            Whether to append to existing file. Default is False.
+            
+        force : bool, optional
+            Whether to overwrite existing files. Default is True.
+        
         Returns
         -------
-        out_file: file
-            Lut file with the table
-
+        list
+            List of formatted LUT lines.
+        
+        Examples
+        --------
+        >>> Parcellation.write_luttable(
+        ...     [1, 2, 3], 
+        ...     ['region1', 'region2', 'region3'],
+        ...     ['#FF0000', '#00FF00', '#0000FF'],
+        ...     'output.lut'
+        ... )
         """
 
         # Check if the file already exists and if the force parameter is False
@@ -2104,6 +2180,7 @@ class Parcellation:
 
         return luttable
 
+    #######################################################################################################
     @staticmethod
     def write_tsvtable(
         tsv_df: Union[pd.DataFrame, dict],
@@ -2112,24 +2189,31 @@ class Parcellation:
         force: bool = False,
     ):
         """
-        Function to create a tsv table for parcellation
-
+        Write TSV format lookup table file.
+        
         Parameters
         ----------
-        codes : list
-            List of codes for the parcellation
-        names : list
-            List of names for the parcellation
-        colors : list
-            List of colors for the parcellation
-        tsv_filename : str
-            Name of the tsv file
-
+        tsv_df : pd.DataFrame or dict
+            Data to write with index/name/color information.
+            
+        out_file : str
+            Output file path.
+            
+        boolappend : bool, optional
+            Whether to append to existing file. Default is False.
+            
+        force : bool, optional
+            Whether to overwrite existing files. Default is False.
+        
         Returns
         -------
-        tsv_file: file
-            Tsv file with the table
-
+        str
+            Output file path.
+        
+        Examples
+        --------
+        >>> data = {'index': [1, 2], 'name': ['region1', 'region2']}
+        >>> Parcellation.write_tsvtable(data, 'regions.tsv', force=True)
         """
 
         # Check if the file already exists and if the force parameter is False
@@ -2212,55 +2296,25 @@ class Parcellation:
 
         return out_file
 
-    @staticmethod
-    def tissue_seg_table(tsv_filename):
-        """
-        Function to create a tsv table for tissue segmentation
-
-        Parameters
-        ----------
-        tsv_filename : str
-            Name of the tsv file
-
-        Returns
-        -------
-        seg_df: pandas DataFrame
-            DataFrame with the tsv table
-
-        """
-
-        # Table for tissue segmentation
-        # 1. Default values for tissues segmentation table
-        seg_rgbcol = np.array([[172, 0, 0], [0, 153, 76], [0, 102, 204]])
-        seg_codes = np.array([1, 2, 3])
-        seg_names = ["cerebro_spinal_fluid", "gray_matter", "white_matter"]
-        seg_acron = ["CSF", "GM", "WM"]
-
-        # 2. Converting colors to hexidecimal string
-        seg_hexcol = []
-        nrows, ncols = seg_rgbcol.shape
-        for i in np.arange(0, nrows):
-            seg_hexcol.append(
-                cltmisc.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2])
-            )
-
-        seg_df = pd.DataFrame(
-            {
-                "index": seg_codes,
-                "name": seg_names,
-                "abbreviation": seg_acron,
-                "color": seg_hexcol,
-            }
-        )
-        # Save the tsv table
-        with open(tsv_filename, "w+") as tsv_file:
-            tsv_file.write(seg_df.to_csv(sep="\t", index=False))
-
-        return seg_df
-
+    ######################################################################################################
     def print_properties(self):
         """
-        Print the properties of the parcellation
+        Print all attributes and methods of the parcellation object.
+        
+        Displays non-private attributes and methods for object inspection.
+        
+        Examples
+        --------
+        >>> parc.print_properties()
+        Attributes:
+        data
+        affine
+        index
+        ...
+        Methods:
+        keep_by_code
+        save_parcellation
+        ...
         """
 
         # Get and print attributes and methods
