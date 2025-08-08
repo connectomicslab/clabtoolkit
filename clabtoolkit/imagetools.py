@@ -1,10 +1,17 @@
 import os
 import sys
+import copy
+
 import nibabel as nib
 import numpy as np
 import subprocess
 from pathlib import Path
 from typing import Union
+import pyvista as pv
+
+from scipy.ndimage import binary_erosion, binary_dilation, binary_opening
+from scipy.ndimage import binary_fill_holes, label, binary_closing, gaussian_filter
+from skimage import measure
 
 # Importing local modules
 from . import misctools as cltmisc
