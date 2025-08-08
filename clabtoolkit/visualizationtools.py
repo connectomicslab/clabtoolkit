@@ -17,6 +17,8 @@ import nibabel as nib
 from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
 from nilearn import plotting
 import pyvista as pv
+import tkinter as tk
+import tkinter as tk
 
 # Importing local modules
 from . import freesurfertools as cltfree
@@ -883,8 +885,9 @@ class SurfacePlotter:
 
         # Get the absolute of this file
         cwd = os.path.dirname(os.path.abspath(__file__))
+
         if config_file is None:
-            cwd = os.path.dirname(os.path.abspath(__file__))
+            # Default to the standard configuration file
             config_file = os.path.join(cwd, "config", "viz_views.json")
         else:
             # Use the provided configuration file path
