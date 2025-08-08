@@ -868,7 +868,11 @@ class Surface:
                 overlays[key] = "scalar"
             elif isinstance(tmp, np.ndarray) and tmp.ndim == 2:
                 if tmp.shape[1] == 3:
-                    overlays[key] = "color"
+                    # If there are negative values and the norm is equal to 1, it's likely normals
+                    if np.all(np.round(np.linalg.norm(tmp, axis=1)) == 1) and np.any(tmp < 0):
+                        overlays[key] = "normals"
+                    else:
+                        overlays[key] = "color"
                 else:
                     overlays[key] = "unknown"
 
