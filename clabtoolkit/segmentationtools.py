@@ -303,3 +303,54 @@ def abased_parcellation(
 
     return out_parc
 
+######################################################################################################
+@staticmethod
+def tissue_seg_table(tsv_filename):
+    """
+    Create standard tissue segmentation lookup table.
+    
+    Parameters
+    ----------
+    tsv_filename : str
+        Output TSV file path.
+    
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with tissue segmentation information (CSF, GM, WM).
+    
+    Examples
+    --------
+    >>> seg_df = Parcellation.tissue_seg_table('tissues.tsv')
+    >>> print(seg_df)
+    """
+
+    # Table for tissue segmentation
+    # 1. Default values for tissues segmentation table
+    seg_rgbcol = np.array([[172, 0, 0], [0, 153, 76], [0, 102, 204]])
+    seg_codes = np.array([1, 2, 3])
+    seg_names = ["cerebro_spinal_fluid", "gray_matter", "white_matter"]
+    seg_acron = ["CSF", "GM", "WM"]
+
+    # 2. Converting colors to hexidecimal string
+    seg_hexcol = []
+    nrows, ncols = seg_rgbcol.shape
+    for i in np.arange(0, nrows):
+        seg_hexcol.append(
+            cltmisc.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2])
+        )
+
+    seg_df = pd.DataFrame(
+        {
+            "index": seg_codes,
+            "name": seg_names,
+            "abbreviation": seg_acron,
+            "color": seg_hexcol,
+        }
+    )
+    # Save the tsv table
+    with open(tsv_filename, "w+") as tsv_file:
+        tsv_file.write(seg_df.to_csv(sep="\t", index=False))
+
+    return seg_df
+
