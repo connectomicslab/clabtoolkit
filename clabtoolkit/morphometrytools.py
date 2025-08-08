@@ -128,7 +128,9 @@ def compute_reg_val_fromannot(
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Annotation file not found: {parc_file}")
 
-        sparc_data = cltfree.AnnotParcellation(parc_file=parc_file)
+        sparc_data = cltfree.AnnotParcellation()
+        sparc_data.load_from_file(parc_file=parc_file)
+
     elif isinstance(parc_file, cltfree.AnnotParcellation):
         sparc_data = copy.deepcopy(parc_file)
     else:
@@ -350,7 +352,9 @@ def compute_reg_area_fromsurf(
         if not os.path.exists(parc_file):
             raise FileNotFoundError(f"Annotation file not found: {parc_file}")
 
-        sparc_data = cltfree.AnnotParcellation(parc_file=parc_file)
+        sparc_data = cltfree.AnnotParcellation()
+        sparc_data.load_from_file(parc_file=parc_file)
+        
     elif isinstance(parc_file, cltfree.AnnotParcellation):
         sparc_data = copy.deepcopy(parc_file)
     else:
