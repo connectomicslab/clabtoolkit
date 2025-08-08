@@ -974,3 +974,96 @@ def extract_mesh_from_volume(volume_array: np.ndarray,
 
     fill_holes : bool, optional
         Whether to fill holes in the extracted mesh (default: True).
+
+    smooth_iterations : int, optional
+        Number of smoothing iterations to apply to the mesh (default: 10).
+
+    affine : np.ndarray, optional
+        Affine transformation matrix to convert vertices from voxel space to mm space (default: None).
+
+    closing_iterations : int, optional
+        Number of iterations for morphological closing operation to fill small gaps in the binary mask (default:
+
+    vertex_value : np.float32, optional
+        Value to assign to the vertices in the mesh (default: 1.0).
+
+    Returns
+    -------
+    tuple
+        A tuple containing vertices, faces, normals, and values of the extracted mesh.
+    """
+
+    # Binary mask for the specified value
+    if not isinstance(volume_array, np.ndarray):
+        raise TypeError("The volume_array must be a numpy ndarray.")
+    
+    if volume_array.ndim != 3:
+        raise ValueError("The volume_array must be a 3D numpy ndarray.")
+    
+    # Everything that is different from 0 is set to 1
+    volume_array = (volume_array != 0).astype(np.float32)
+
+    if closing_iterations > 0:
+        volume_array = quick_morphology(volume_array, 
+                                            'closing',
+                                            iterations=closing_iterations)
+
+    # Apply Gaussian smoothing to reduce noise and fill small gaps
+    if gaussian_smooth:
+
+        # Apply Gaussian smoothing
+        tmp_volume_array = gaussian_filter(volume_array, sigma=sigma)
+        # Re-threshold after smoothing
+        tmp_volume_array = (tmp_volume_array > 0).astype(int)
+
+        if tmp_volume_array.max() == 0:
+            tmp_volume_array = copy.deepcopy(volume_array)
+    else:
+        tmp_volume_array = copy.deepcopy(volume_array)
+        
+    # Check if the code exists in the data
+    # Extract surface using marching cubes
+    vertices, faces, normals, values = measure.marching_cubes(
+        volume_array, 
+        level=0.5, 
+        gradient_direction='ascent'
+    )
+    if len(faces) == 0:
+        raise ValueError(f"No surface extracted for value. The volume may not contain sufficient data.")
+    
+    # Move vertices to mm space and the apply affine transformation if the affine is provided
+    # and it is a 4x4  numpy array
+    # If the affine is not provided, the vertices will remain in voxel space
+    # Convert vertices to mm space
+    if affine is not None and isinstance(affine, np.ndarray) and affine.shape == (4, 4):
+        vertices = vox2mm(vertices, affine=affine)
+
+    # Add column with 3's to faces array for PyVista
+    faces = np.c_[np.full(len(faces), 3), faces]
+
+    mesh = pv.PolyData(vertices, faces)
+
+    # Mesh processing pipeline for better quality
+    # 1. Clean the mesh (remove duplicate points, unused points, degenerate cells)
+    mesh = mesh.clean()
+    
+    # 2. Fill holes if requested
+    if fill_holes:
+        mesh = mesh.fill_holes(1000)  # Fill holes with max 1000 triangles
+    
+    # 3. Apply Taubin smoothing (preserves features better than Laplacian)
+    if smooth_iterations > 0:
+        mesh = mesh.smooth_taubin(n_iter=smooth_iterations, 
+                                pass_band=0.1)
+    
+    # 4. Clean again after smoothing
+    mesh = mesh.clean()
+    
+    # 5. Compute normals for better shading
+    mesh = mesh.compute_normals(split_vertices=True)
+
+    mesh.point_data["surface"] = (
+        np.ones((len(mesh.points), 1), dtype=np.float32) * vertex_value
+    )
+
+    return mesh
