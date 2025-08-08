@@ -748,16 +748,21 @@ class Parcellation:
             Dictionary with codes as keys and extracted meshes as values
         """
         
+        # Check if include_by_code and include_by_name are different from None at the same time
+        if struct_codes is not None and struct_names is not None:
+            raise ValueError("You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them.")
         
-        
+        temp_parc = copy.deepcopy(self) 
 
-        # Remove the codes from the list that are not present in the parcellation
-        codes_list = [code for code in codes_list if code in self.data]
+        # Apply inclusion if specified
+        if struct_codes is not None:
+            temp_parc.keep_by_code(codes2keep=struct_codes)
 
-        # Get the indices of codes_list on parc.index
-        index_list = [self.index.index(code) for code in codes_list if code in self.index]
-        name_list = [self.name[i] for i in index_list ]
-        color_list = [self.color[i] for i in index_list ]  
+        if struct_names is not None:
+            temp_parc.keep_by_name(names2look=struct_names)
+
+        # Get unique region values
+        unique_regions = np.array(temp_parc.index)
 
         color_table = cltfree.colors2colortable(color_list)
 
