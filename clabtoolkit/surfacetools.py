@@ -18,7 +18,7 @@ class Surface:
     color table management and integration with AnnotParcellation.
 
     This class provides a comprehensive interface for working with brain surface
-    data, including loading geometries from files or direct vertex/face arrays,
+    data, including loading geometries from files or direct vertices/face arrays,
     applying scalar maps, managing parcellations, and creating visualizations 
     using PyVista.
 
@@ -67,7 +67,7 @@ class Surface:
         hemi: str = None
     ) -> None:
         """
-        Initialize a Surface object from a surface file, vertex/face arrays, or empty.
+        Initialize a Surface object from a surface file, vertices/face arrays, or empty.
 
         Parameters
         ----------
@@ -102,7 +102,7 @@ class Surface:
         >>> # Load with explicit hemisphere specification
         >>> surface = Surface(surface_file="path/to/surface.pial", hemi="rh")
         >>>
-        >>> # Create from vertex and face arrays
+        >>> # Create from vertices and face arrays
         >>> vertices = np.random.rand(100, 3)
         >>> faces = np.array([[0, 1, 2], [1, 2, 3]])
         >>> surface = Surface(vertices=vertices, faces=faces, hemi="lh")
@@ -131,6 +131,7 @@ class Surface:
             
             self.surf = surface_file
             self.load_from_file(surface_file, hemi)
+
         elif vertices is not None and faces is not None:
             self.load_from_arrays(vertices, faces, hemi=hemi)
 
@@ -209,18 +210,24 @@ class Surface:
 
     ) -> None:
         """
-        Load surface geometry from vertex and face arrays.
+        Load surface geometry from vertices and face arrays.
 
         Parameters
         ----------
         vertices : np.ndarray
             Array of vertices with shape (n_vertices, 3)
+            
         faces : np.ndarray
             Array of faces with shape (n_faces, 3)
+
         normals : np.ndarray, optional
-            Array of vertex normals with shape (n_vertices, 3)
+            Array of vertices normals with shape (n_vertices, 3)
+
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Defaults to 'lh'
+
+        surface_file : str, optional
+            Path to the surface file (if available). Used for metadata only.
 
         Raises
         ------
@@ -234,7 +241,7 @@ class Surface:
         >>> faces = np.array([[0, 1, 2]])
         >>> surface.load_from_arrays(vertices, faces, hemi="lh")
         """
-        self.surf = None
+        self.surf = surface_file
         self.mesh = self.create_mesh_from_arrays(vertices, faces, normals)
         self.hemi = hemi if hemi is not None else "lh"  # Default to left hemisphere
 
@@ -259,7 +266,7 @@ class Surface:
         >>> surface.load_from_mesh(existing_mesh, hemi="rh")
         """
         self.surf = None
-        self.mesh = mesh.copy()  # Make a copy to avoid modifying the original
+        self.mesh = copy.deepcopy(mesh)  # Make a copy to avoid modifying the original
         self.hemi = hemi if hemi is not None else "lh"  # Default to left hemisphere
 
         # Ensure mesh has default surface colors if not present
@@ -268,8 +275,8 @@ class Surface:
                 np.ones((self.mesh.n_points, 3), dtype=np.float32) * 240
             )  # Default colors
 
-        # Create default parcellation data
-        self._create_default_parcellation()
+            # Create default parcellation data
+            self._create_default_parcellation()
 
     def is_loaded(self) -> bool:
         """
@@ -308,7 +315,7 @@ class Surface:
         normals: np.ndarray = None
     ) -> pv.PolyData:
         """
-        Create PyVista mesh from vertex and face arrays.
+        Create PyVista mesh from vertices and face arrays.
 
         Parameters
         ----------
@@ -317,7 +324,7 @@ class Surface:
         faces : np.ndarray
             Array of faces with shape (n_faces, 3)
         normals : np.ndarray, optional
-            Array of vertex normals with shape (n_vertices, 3)
+            Array of vertices normals with shape (n_vertices, 3)
 
         Returns
         -------
@@ -403,7 +410,7 @@ class Surface:
         --------
         >>> surface = Surface("path/to/lh.pial")
         >>> vertices = surface.get_vertices()
-        >>> print(f"Vertex shape: {vertices.shape}")
+        >>> print(f"vertices shape: {vertices.shape}")
         """
         if not self.is_loaded():
             raise RuntimeError("No surface data loaded. Load data first.")
@@ -433,7 +440,7 @@ class Surface:
             raise RuntimeError("No surface data loaded. Load data first.")
         
         # PyVista stores faces as [n_vertices, vertex_id1, vertex_id2, ...]
-        # We need to extract just the vertex indices
+        # We need to extract just the vertices indices
         faces_raw = self.mesh.faces
         n_faces = self.mesh.n_cells
         faces = faces_raw.reshape(n_faces, 4)[:, 1:4]  # Skip the first column (n_vertices)
@@ -474,7 +481,7 @@ class Surface:
 
     def get_normals(self) -> Optional[np.ndarray]:
         """
-        Get the vertex normals of the surface mesh if available.
+        Get the vertices normals of the surface mesh if available.
 
         Returns
         -------
@@ -577,7 +584,7 @@ class Surface:
 
     def load_arrays_of_maps(
         self,
-        maps_array: Union[np.ndarray, pd.DataFrame],
+        maps_array: Union[str, np.ndarray, pd.DataFrame],
         map_names: Union[str, List[str]] = None,
         annot_file: Union[str, cltfree.AnnotParcellation] = None,
     ) -> None:
@@ -589,17 +596,19 @@ class Surface:
 
         Parameters
         ----------
-        maps_array : np.ndarray or pd.DataFrame
-            Array or DataFrame containing scalar data. Can be:
-            - 1D array: Single map with one value per vertex
-            - 2D array: Multiple maps with shape (n_vertices, n_maps)
+        maps_array : str, np.ndarray or pd.DataFrame
+            Filename, Array or DataFrame containing scalar data. Can be:
+            - 1D array: Single map with one value per vertex or region
+            - 2D array: Multiple maps with shape (n_vertices or n_regions, n_maps)
             - DataFrame: Columns represent different maps
+
         map_names : str or List[str], optional
             Names for the scalar data. If not provided, default names will be generated.
             For DataFrame input, column names are used by default
+
         annot_file : str or AnnotParcellation, optional
             Annotation file or object for mapping region-wise data to vertices.
-            Required if maps_array length doesn't match vertex count
+            Required if maps_array length doesn't match vertices count
 
         Returns
         -------
@@ -609,12 +618,16 @@ class Surface:
         ------
         ValueError
             If maps_array is not a numpy array or pandas DataFrame
+
         ValueError
             If map_names is not a string or list of strings
+
         ValueError
             If the length of map_names does not match the number of columns in maps_array
+
         ValueError
             If annot_file is required but not provided or invalid
+
         FileNotFoundError
             If the annotation file cannot be found
 
@@ -633,7 +646,7 @@ class Surface:
         >>> surface.load_arrays_of_maps(df)
         """
 
-        if not isinstance(maps_array, np.ndarray) and not isinstance(
+        if not isinstance(maps_array, str) and not isinstance(maps_array, np.ndarray) and not isinstance(
             maps_array, pd.DataFrame
         ):
             raise ValueError("maps_array must be a filename, a numpy array or a pandas DataFrame")
@@ -856,10 +869,13 @@ class Surface:
         ----------
         labels : np.ndarray
             Array of label values for each vertex
+
         reg_ctable : np.ndarray
             Color table array with RGBA values for each region
+
         reg_names : List[str]
             List of region names corresponding to the color table
+
         parc_name : str
             Name of the parcellation
 
@@ -892,8 +908,10 @@ class Surface:
         ----------
         reg_ctable : np.ndarray
             Color table array with RGBA values for each region
+
         reg_names : List[str]
             List of region names corresponding to the color table
+
         parc_name : str
             Name of the parcellation
 
@@ -934,6 +952,7 @@ class Surface:
             tmp = self.mesh.point_data[key]
             if isinstance(tmp, np.ndarray) and tmp.ndim == 1:
                 overlays[key] = "scalar"
+
             elif isinstance(tmp, np.ndarray) and tmp.ndim == 2:
                 if tmp.shape[1] == 3:
                     # If there are negative values and the norm is equal to 1, it's likely normals
@@ -1083,7 +1102,7 @@ class Surface:
 
     def get_region_vertices(self, parc_name: str, region_name: str) -> np.ndarray:
         """
-        Get vertex indices for a specific region in a parcellation.
+        Get vertices indices for a specific region in a parcellation.
 
         Parameters
         ----------
@@ -1095,7 +1114,7 @@ class Surface:
         Returns
         -------
         np.ndarray
-            Array of vertex indices belonging to the region
+            Array of vertices indices belonging to the region
 
         Raises
         ------
@@ -1207,7 +1226,7 @@ class Surface:
         pd.DataFrame or Dict
             DataFrame with region information if AnnotParcellation object is available,
             otherwise a dictionary with basic information. Contains region names,
-            label values, vertex counts, and colors.
+            label values, vertices counts, and colors.
 
         Raises
         ------
@@ -1252,9 +1271,9 @@ class Surface:
         vmax: np.float64 = None,
     ) -> None:
         """
-        Prepare vertex colors for visualization based on the specified overlay.
+        Prepare vertices colors for visualization based on the specified overlay.
 
-        This method processes the overlay data and creates appropriate vertex colors
+        This method processes the overlay data and creates appropiate vertices colors
         for visualization, handling both scalar data (with colormaps) and
         categorical data (with discrete color tables).
 
@@ -1262,6 +1281,7 @@ class Surface:
         ----------
         overlay_name : str, optional
             Name of the overlay to visualize. If None, the first available overlay is used.
+
         cmap : str, optional
             Colormap to use for scalar overlays. If None, uses parcellation color table
             for categorical data or 'viridis' for scalar data.
@@ -1319,7 +1339,6 @@ class Surface:
             # Set the active overlay
             self.set_active_overlay(overlay_name)
         # If no colormap is provided, use the default colormap for the overlay
-
         vertex_values = self.mesh.point_data[overlay_name]
         dict_ctables = self.colortables
         # Check if the overlay is a color or scalar type
@@ -1453,6 +1472,7 @@ class Surface:
         merged_surface.colortables = merged_colortables
 
         return merged_surface
+    
     def save_surface(
         self,
         filename: str,
@@ -1505,7 +1525,10 @@ class Surface:
 
         # Save the mesh using PyVista's built-in methods
         if format.lower() == "freesurfer":
-            self.export_freesurfer(filename, save_annotation, map_name, overwrite)
+            self.export_to_freesurfer(filename, save_annotation, map_name, overwrite)
+
+        elif format.lower() == "obj":
+            self.export_to_obj(filename, save_annotation, map_name, overwrite)
 
         elif format.lower() in ["vtk", "ply", "stl"]:
 
@@ -1521,7 +1544,7 @@ class Surface:
                 else:
                     raise ValueError(f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl'.")
                 
-            self.export_pyvista(filename, save_annotation, map_name, overwrite)
+            self.export_to_pyvista(filename, save_annotation, map_name, overwrite)
             # Print a message indicating the file was saved
             print(f"Surface saved to {filename}")
 
@@ -1684,7 +1707,7 @@ class Surface:
                 vmax=None
             )
             
-            # Save the mesh (no texture parameter needed for vertex colors)
+            # Save the mesh (no texture parameter needed for vertices colors)
             self.mesh.save(filename)
 
         else:
@@ -2049,7 +2072,7 @@ class Surface:
         ...             show_colorbar=True,
         ...             colorbar_position="bottom",
         ...             save_path="curvature_plot.png")
-        
+
         """
         self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
@@ -2138,7 +2161,7 @@ def merge_surfaces_list(surface_list):
             # If result is not None, update merged
             if result is not None:
                 merged = result
-                
+
             # If result is None, assume it modified merged in place
         except Exception as e:
             print(f"Merge failed: {e}")
