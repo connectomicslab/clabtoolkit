@@ -126,6 +126,10 @@ class Surface:
         
         # Load data if provided
         if surface_file is not None:
+            if not os.path.isfile(surface_file):
+                raise FileNotFoundError(f"Surface file not found: {surface_file}")
+            
+            self.surf = surface_file
             self.load_from_file(surface_file, hemi)
         elif vertices is not None and faces is not None:
             self.load_from_arrays(vertices, faces, hemi=hemi)
@@ -156,8 +160,29 @@ class Surface:
         >>> print(f"Number of vertices: {surface.mesh.n_points}")
         """
         self.surf = surface_file
-        self.mesh = self.load_surf()
-        
+
+        # Check if the file exists
+        if not os.path.isfile(self.surf):
+            raise FileNotFoundError(f"Surface file not found: {self.surf}")
+    
+        # Load the surface geometry
+        try:
+            vertices, faces = nib.freesurfer.read_geometry(self.surf)
+
+            # Add column with 3's to faces array for PyVista
+            faces = np.c_[np.full(len(faces), 3), faces]
+
+            mesh = pv.PolyData(vertices, faces)
+            mesh.point_data["surface"] = (
+                np.ones((len(vertices), 3), dtype=np.float32) * 240
+            )  # Default colors
+
+            self.mesh = mesh
+            
+        except Exception as e:
+            raise ValueError(f"Failed to load surface file '{self.surf}': {e}")
+
+                
         # Hemisphere detection from filename
         if hemi is not None:
             self.hemi = hemi
@@ -179,7 +204,9 @@ class Surface:
         vertices: np.ndarray, 
         faces: np.ndarray, 
         normals: np.ndarray = None,
-        hemi: str = None
+        hemi: str = None,
+        surface_file: str = None
+
     ) -> None:
         """
         Load surface geometry from vertex and face arrays.
