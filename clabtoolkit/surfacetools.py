@@ -576,7 +576,15 @@ class Surface:
         if not isinstance(maps_array, np.ndarray) and not isinstance(
             maps_array, pd.DataFrame
         ):
-            raise ValueError("maps_array must be a numpy array or a pandas DataFrame")
+            raise ValueError("maps_array must be a filename, a numpy array or a pandas DataFrame")
+        
+        if isinstance(maps_array, str):
+            # If maps_array is a string, assume it's a filename
+            if not os.path.isfile(maps_array):
+                raise FileNotFoundError(f"Map file not found: {maps_array}")
+            
+            # Read the file into a DataFrame
+            maps_array = cltmisc.smart_read_table(maps_array)
 
         if isinstance(maps_array, pd.DataFrame):
             # Convert DataFrame to numpy array
