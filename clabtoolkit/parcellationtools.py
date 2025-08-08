@@ -737,10 +737,6 @@ class Parcellation:
         color_tables = {
             'surface': table_dict,
         }
-        # Get affine transformations
-        vox_size = get_voxel_size(parc.affine)
-        parc_center = get_center(parc.affine)
-        rotation_matrix = get_rotation_matrix(parc.affine)
         
         surfaces_list = []
         
