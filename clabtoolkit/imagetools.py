@@ -703,3 +703,274 @@ def mm2vox(mm_coords, affine):
         raise ValueError("The number of columns of the input matrix must be 3")
 
     return vox_coords
+class MorphologicalOperations:
+    """
+    A class to perform morphological operations on binary arrays.
+    Works with both 2D and 3D arrays using scipy.ndimage.
+    """
+    
+    def __init__(self):
+        """Initialize the morphological operations class."""
+        pass
+    
+    def create_structuring_element(self, shape='cube', size=3, dimensions=None):
+        """
+        Create a structuring element for morphological operations.
+        
+        Parameters:
+        - shape: str, 'cube'/'square' (box), 'ball'/'disk' (sphere/circle), 'cross'
+        - size: int, size of the structuring element
+        - dimensions: int, number of dimensions (auto-detected from input if None)
+        
+        Returns:
+        - numpy array representing the structuring element
+        """
+        if dimensions is None:
+            dimensions = 3  # default to 3D
+        
+        if shape in ['cube', 'square']:
+            # Create cubic/square structuring element
+            return np.ones((size,) * dimensions, dtype=bool)
+        
+        elif shape in ['ball', 'disk']:
+            # Create spherical/circular structuring element
+            radius = size // 2
+            if dimensions == 2:
+                y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
+                return x**2 + y**2 <= radius**2
+            elif dimensions == 3:
+                z, y, x = np.ogrid[-radius:radius+1, -radius:radius+1, -radius:radius+1]
+                return x**2 + y**2 + z**2 <= radius**2
+            else:
+                raise ValueError("Ball/disk only supported for 2D and 3D")
+        
+        elif shape == 'cross':
+            # Create cross-shaped structuring element
+            if dimensions == 2:
+                cross = np.array([[0, 1, 0],
+                                [1, 1, 1],
+                                [0, 1, 0]], dtype=bool)
+                return cross
+            elif dimensions == 3:
+                cross = np.zeros((3, 3, 3), dtype=bool)
+                cross[1, 1, :] = True  # x-axis
+                cross[1, :, 1] = True  # y-axis
+                cross[:, 1, 1] = True  # z-axis
+                return cross
+            else:
+                raise ValueError("Cross only supported for 2D and 3D")
+        
+        else:
+            raise ValueError("Shape must be 'cube', 'ball', 'cross', 'square', or 'disk'")
+    
+    def erode(self, binary_array, structure=None, iterations=1):
+        """
+        Perform binary erosion - shrinks objects, removes small noise.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element (None for default 3x3 or 3x3x3 cube)
+        - iterations: number of erosion iterations
+        """
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_erosion(binary_array, structure=structure, iterations=iterations)
+    
+    def dilate(self, binary_array, structure=None, iterations=1):
+        """
+        Perform binary dilation - expands objects, fills small gaps.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element (None for default 3x3 or 3x3x3 cube)
+        - iterations: number of dilation iterations
+        """
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_dilation(binary_array, structure=structure, iterations=iterations)
+    
+    def opening(self, binary_array, structure=None, iterations=1):
+        """
+        Perform morphological opening (erosion followed by dilation).
+        Removes small objects and noise while preserving larger structures.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element
+        - iterations: number of iterations
+        """
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_opening(binary_array, structure=structure, iterations=iterations)
+    
+    def closing(self, binary_array, structure=None, iterations=1):
+        """
+        Perform morphological closing (dilation followed by erosion).
+        Fills small holes and gaps while preserving object size.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element
+        - iterations: number of iterations
+        """
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_closing(binary_array, structure=structure, iterations=iterations)
+    
+    def fill_holes(self, binary_array, structure=None):
+        """
+        Fill holes in binary objects.
+        Works on both 2D and 3D arrays.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element for connectivity
+        """
+        binary_array = self._ensure_binary(binary_array)
+        return binary_fill_holes(binary_array, structure=structure)
+    
+    def remove_small_objects(self, binary_array, min_size=50):
+        """
+        Remove connected components smaller than min_size.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - min_size: minimum size of objects to keep (in voxels/pixels)
+        """
+        binary_array = self._ensure_binary(binary_array)
+        labeled_array, num_labels = label(binary_array)
+        
+        # Count voxels/pixels in each connected component
+        label_sizes = np.bincount(labeled_array.ravel())
+        
+        # Create mask for objects to keep (size >= min_size)
+        keep_labels = label_sizes >= min_size
+        keep_labels[0] = False  # Always remove background (label 0)
+        
+        # Create final result
+        result = np.zeros_like(binary_array, dtype=bool)
+        for label_idx in np.where(keep_labels)[0]:
+            result[labeled_array == label_idx] = True
+        
+        return result
+    
+    def gradient(self, binary_array, structure=None):
+        """
+        Morphological gradient (dilation - erosion).
+        Highlights object boundaries.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element
+        """
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        dilated = self.dilate(binary_array, structure)
+        eroded = self.erode(binary_array, structure)
+        
+        return (dilated & ~eroded)  # Return as boolean
+    
+    def tophat(self, binary_array, structure=None):
+        """
+        White top-hat transform (original - opening).
+        Extracts small bright structures.
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element
+        """
+        binary_array = self._ensure_binary(binary_array)
+        opened = self.opening(binary_array, structure)
+        return (binary_array & ~opened)  # Return as boolean
+    
+    def blackhat(self, binary_array, structure=None):
+        """
+        Black top-hat transform (closing - original).
+        Extracts small dark structures (holes).
+        
+        Parameters:
+        - binary_array: binary numpy array (2D or 3D)
+        - structure: structuring element
+        """
+        binary_array = self._ensure_binary(binary_array)
+        closed = self.closing(binary_array, structure)
+        return (closed & ~binary_array)  # Return as boolean
+    
+    def _ensure_binary(self, array):
+        """Ensure the array is binary (boolean type)."""
+        if array.dtype != bool:
+            return (array != 0)
+        return array
+
+
+# Convenience function for quick operations
+def quick_morphology(binary_array, operation, **kwargs):
+    """
+    Quick access to morphological operations.
+    
+    Parameters:
+    - binary_array: binary numpy array (2D or 3D)
+    - operation: str, 'erode', 'dilate', 'opening', 'closing', 'fill_holes', 
+                 'remove_small', 'gradient', 'tophat', 'blackhat'
+    - **kwargs: additional arguments for the operation
+    """
+    morph = MorphologicalOperations()
+    
+    operation_map = {
+        'erode': morph.erode,
+        'dilate': morph.dilate,
+        'opening': morph.opening,
+        'closing': morph.closing,
+        'fill_holes': morph.fill_holes,
+        'remove_small': morph.remove_small_objects,
+        'gradient': morph.gradient,
+        'tophat': morph.tophat,
+        'blackhat': morph.blackhat
+    }
+    
+    if operation not in operation_map:
+        raise ValueError(f"Operation must be one of: {list(operation_map.keys())}")
+    
+    return operation_map[operation](binary_array, **kwargs)
+
+def extract_mesh_from_volume(volume_array: np.ndarray, 
+                                gaussian_smooth:bool=True, 
+                                sigma:float=1.0,
+                                fill_holes: bool = True,
+                                smooth_iterations: int = 10,
+                                affine: np.ndarray = None,
+                                closing_iterations: int = 1,
+                                vertex_value: np.float32 = 1.0
+
+    ) -> pv.PolyData:
+
+    """    
+    Extracts a mesh from a 3D volume array using marching cubes algorithm.
+    Parameters
+    ----------
+    volume_array : np.ndarray
+        3D numpy array representing the volume data.
+
+    gaussian_smooth : bool, optional
+        Whether to apply Gaussian smoothing to the volume data before extraction (default: True).
+
+    sigma : float, optional
+        Standard deviation for Gaussian smoothing (default: 1.0).
+
+    fill_holes : bool, optional
+        Whether to fill holes in the extracted mesh (default: True).
