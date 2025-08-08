@@ -1885,34 +1885,91 @@ class Surface:
 
     def plot(
         self,
-        overlay_name: str = None,
+        overlay_name: str = "surface",
         cmap: str = None,
         vmin: np.float64 = None,
         vmax: np.float64 = None,
-        views: Union[str, List[str]] = "lateral",
+        views: Union[str, List[str]] = ["lateral"],
         hemi: str = "lh",
+        notebook: bool = False,
+        show_colorbar: bool = False,
         colorbar_title: str = None,
         colorbar_position: str = "bottom",
-        title: str = None,
-        window_size: Tuple[int, int] = (1400, 900),
-        background_color: str = "white",
-        ambient: float = 0.2,
-        diffuse: float = 0.5,
-        specular: float = 0.5,
-        specular_power: int = 50,
-        opacity: float = 1.0,
-        style: str = "surface",
-        smooth_shading: bool = True,
+        save_path: str = None,
     ):
         """
-        Alias for show method to maintain compatibility with previous versions.
+        Plot the surface with the specified overlay and visualization parameters.
         
-        Parameters are the same as in the show method.
+        Parameters
+        ----------
+        overlay_name : str, optional
+            Name of the overlay to visualize. If None, uses the first available overlay.
+
+        cmap : str, optional
+            Colormap for scalar data visualization. If None, uses parcellation colors
+            for categorical data or 'viridis' for scalar data.
+
+        vmin : float, optional
+            Minimum value for colormap scaling. If None, uses the minimum value of the overlay.
+
+        vmax : float, optional
+            Maximum value for colormap scaling. If None, uses the maximum value of the overlay.
+
+        views : str or List[str], default "lateral"
+            Camera view(s) for visualization. Can be:
+            - Single view: "lateral", "medial", "dorsal", "ventral", "anterior", "posterior"
+            - Multiple views: ["lateral", "medial"] or 
+            "8_views", "8_views_1x8", "8_views_8x1", "6_views", "6_views_1x6", "6_views_6x1"
+            "4_views", "4_views_1x4", "4_views_4x1",  for side-by-side comparison 
+
+        hemi : str, default "lh"
+            Hemisphere to visualize. Can be "lh" for left hemisphere or "rh" for right hemisphere.
+
+        notebook : bool, default True
+            Whether to display the plot in a Jupyter notebook. If False, opens an interactive window
+            in a separate window.
+
+        show_colorbar : bool, default False
+            Whether to display the colorbar for the overlay.
+
+        colorbar_title : str, optional
+            Title for the colorbar. If None, uses the overlay name for scalar data.
+
+        colorbar_position : str, default "bottom"
+            Position of the colorbar relative to the plot. Can be "bottom", "top", "left", or "right".
+
+        save_path : str, optional
+            Path to save the plot as an image file. If None, the plot is displayed interact
         
         Returns
         -------
         Plotter object
             PyVista plotter object for further customization or interaction
+        
+        Raises
+        ------
+        ValueError
+            If the specified overlay is not found
+
+        ValueError
+            If view parameter is not a string or list of strings
+
+        Examples
+        --------
+        >>> # Basic visualization with parcellation
+        >>> surface.plot(overlay_name="aparc")
+        >>> # Scalar data with custom colormap and view
+        >>> surface.plot(overlay_name="thickness", cmap="hot", views="medial")
+        >>> # Multiple views with custom title
+        >>> surface.plot(overlay_name="curvature",
+        ...             views=["lateral", "medial"],
+        ...             colorbar_title="Cortical Curvature",
+        ...             hemi="lh",
+        ...             notebook=True,
+        ...             show_colorbar=True,
+        ...             colorbar_position="bottom",
+        ...             save_path="curvature_plot.png")
+        
         """
         self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
@@ -1932,12 +1989,16 @@ class Surface:
         plotter = cltvis.SurfacePlotter()
         plotter.plot_surface(self, 
                             hemi=hemi, 
-                            map_name=overlay_name, 
-                            views="8_views_1x8",
-                            colormap= cmap, 
+                            views=views,
+                            map_name=overlay_name,
+                            colormap= cmap,
+                            vmin=vmin,
+                            vmax=vmax, 
+                            notebook=notebook,
                             colorbar=show_colorbar, 
                             colorbar_title=colorbar_title,
                             colorbar_position = colorbar_position,
+                            save_path= save_path,
                         )
 
 def merge_surfaces_list(surface_list):
