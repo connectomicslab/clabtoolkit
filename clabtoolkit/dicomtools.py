@@ -43,7 +43,15 @@ def progress_indicator(future):
             completed=n_comp,
         )
 
-
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############      Section 1: Methods dedicated to organice and copy DICOM files         ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def org_conv_dicoms(
     in_dic_dir: str,
     out_dic_dir: str,
@@ -339,7 +347,7 @@ def org_conv_dicoms(
     if boolcomp:
         compress_dicom_session(out_dic_dir)
 
-
+####################################################################################################
 def copy_dicom_file(
     dic_file: str,
     subj_id: str,
@@ -444,8 +452,7 @@ def copy_dicom_file(
 
     return dest_dic_dir
 
-
-# Extract Series Id and Sessions Id from a pydicom object
+####################################################################################################
 def create_session_series_names(dataset):
     """
     Function to create names from a DICOM object.
@@ -550,7 +557,7 @@ def create_session_series_names(dataset):
 
     return ses_id, ser_id
 
-
+####################################################################################################
 def uncompress_dicom_session(
     dic_dir: str,
     boolrmtar: bool = False,
@@ -711,7 +718,7 @@ def uncompress_dicom_session(
     print(f"\nProcessed {n_subj} subjects with {len(failed_sessions)} failures.")
     return failed_sessions
 
-
+####################################################################################################
 def compress_dicom_session(
     dic_dir: str,
     subj_ids: Optional[Union[str, List[str]]] = None,

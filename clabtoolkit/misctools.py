@@ -39,7 +39,6 @@ from typing import Union, List, Optional
 ####################################################################################################
 ####################################################################################################
 
-
 class SmartFormatter(argparse.HelpFormatter):
     """
     Class to format the help message
@@ -104,8 +103,6 @@ class SmartFormatter(argparse.HelpFormatter):
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 # Print iterations progress
 def printprogressbar(
     iteration,
@@ -483,7 +480,6 @@ def invert_colors(
     # Return same container type as input
     return np.array(result) if isinstance(colors, np.ndarray) else result
 
-
 ####################################################################################################
 def harmonize_colors(
     colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
@@ -611,7 +607,6 @@ def readjust_colors(
     out_colors = harmonize_colors(colors, output_format=output_format)
 
     return out_colors
-
 
 ####################################################################################################
 def create_random_colors(
@@ -751,7 +746,6 @@ def create_random_colors(
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
-
 ###################################################################################################
 def values2colors(
     values: Union[List[Union[int, float]], np.ndarray],
@@ -890,7 +884,6 @@ def values2colors(
                 result_colors = 1.0 - result_colors
 
     return result_colors
-
 
 ###################################################################################################
 def visualize_colors(
@@ -1053,8 +1046,6 @@ def visualize_colors(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%d"):
     """
     Function to find the closest date in a list of dates with respect to a target date.
@@ -1133,8 +1124,6 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def build_indices(
     range_vector: List[Union[int, tuple, list, str, np.ndarray]], nonzeros: bool = True
 ) -> List[int]:
@@ -1237,7 +1226,6 @@ def build_indices(
         flat = [x for x in flat if x != 0]
 
     return sorted(set(flat))
-
 
 ####################################################################################################
 def get_indices_by_condition(condition: str, **kwargs):
@@ -2909,8 +2897,6 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def generate_container_command(
     bash_args,
     technology: str = "local",
@@ -3011,7 +2997,6 @@ def generate_container_command(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
 
 def format_signature(sig: inspect.Signature):
     """
@@ -3389,7 +3374,7 @@ def h5explorer(
         print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
         raise
 
-
+#####################################################################################################
 def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
     """
     Print a simplified version of the HDF5 structure without colors (for basic terminals).
@@ -3456,7 +3441,7 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
         print(f"Error: {e}")
         raise
 
-
+#####################################################################################################
 def show_object_content(obj, show_private=False, show_dunder=False):
     """
     Print object properties and methods with ANSI colors, similar to inspect.help().
@@ -3600,7 +3585,7 @@ def show_object_content(obj, show_private=False, show_dunder=False):
 
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
 
-
+#####################################################################################################
 def search_methods(obj, keyword, case_sensitive=False):
     """
     Search for methods/attributes containing a keyword in name or docstring.

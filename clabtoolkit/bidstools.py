@@ -28,49 +28,11 @@ from rich.panel import Panel
 from . import misctools as cltmisc
 
 
-# Loading the JSON file containing the BIDs configuration file. It includes the entities and suffixes
-# of the BIDs dataset.
-def load_bids_json(bids_json: str = None):
-    """
-    Load the JSON file containing the BIDs configuration file.
-
-    Parameters:
-    ----------
-    bids_json : str
-        JSON file containing the BIDs configuration.
-
-    Returns:
-    --------
-    config_dict : dict
-        Dictionary containing the default .
-
-    """
-
-    # Get the absolute of this file
-    if bids_json is None:
-        cwd = os.path.dirname(os.path.abspath(__file__))
-        bids_json = os.path.join(cwd, "config", "bids.json")
-    else:
-        if not os.path.isfile(bids_json):
-            raise ValueError(
-                "Please, provide a valid JSON file containing the BIDs configuration dictionary."
-            )
-    try:
-        with open(bids_json) as f:
-            config_dict = json.load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Default configuration file not found at: {bids_json}")
-    except json.JSONDecodeError:
-        raise ValueError(f"Error parsing the default configuration file: {bids_json}")
-
-    return config_dict
-
-
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############           Methods dedicated to work with BIDs naming conventions           ############
+############     Section 1: Methods dedicated to work with BIDs naming conventions      ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -300,7 +262,6 @@ def replace_entity_value(
 
     return entity_out
 
-
 ####################################################################################################
 def replace_entity_key(
     entity: Union[dict, str], keys2replace: Dict[str, str], verbose: bool = False
@@ -360,7 +321,6 @@ def replace_entity_key(
         return entity2str(entity_out)
 
     return entity_out
-
 
 ####################################################################################################
 def insert_entity(
@@ -1165,13 +1125,11 @@ def entities_to_table(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############           Methods dedicated to work with BIDs file organization            ############
+############     Section 2: Methods dedicated to work with BIDs file organization       ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
 def get_subjects(bids_dir: str) -> list:
     """
     Get a list of all subjects in the BIDs directory.
@@ -1762,8 +1720,6 @@ def get_bids_database_table(
 
 
 ####################################################################################################
-
-
 def get_derivatives_folders(
     deriv_dir: str,
 ) -> list:
@@ -2093,7 +2049,7 @@ def generate_bids_tree(
 
     return tree_output
 
-
+####################################################################################################
 def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     """
     Generate a BIDS tree with additional statistics.
@@ -2163,7 +2119,7 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
 
     return tree + stats
 
-
+####################################################################################################
 def validate_bids_structure(bids_root: str) -> List[str]:
     """
     Basic validation of BIDS structure and return warnings.
@@ -2233,3 +2189,51 @@ def validate_bids_structure(bids_root: str) -> List[str]:
         warnings.append("Derivatives directory found")
 
     return warnings
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############           Section 3: Useful methods for BIDs file organization             ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+
+# Loading the JSON file containing the BIDs configuration file. It includes the entities and suffixes
+# of the BIDs dataset.
+####################################################################################################
+def load_bids_json(bids_json: str = None):
+    """
+    Load the JSON file containing the BIDs configuration file.
+
+    Parameters:
+    ----------
+    bids_json : str
+        JSON file containing the BIDs configuration.
+
+    Returns:
+    --------
+    config_dict : dict
+        Dictionary containing the default .
+
+    """
+
+    # Get the absolute of this file
+    if bids_json is None:
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        bids_json = os.path.join(cwd, "config", "bids.json")
+    else:
+        if not os.path.isfile(bids_json):
+            raise ValueError(
+                "Please, provide a valid JSON file containing the BIDs configuration dictionary."
+            )
+    try:
+        with open(bids_json) as f:
+            config_dict = json.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Default configuration file not found at: {bids_json}")
+    except json.JSONDecodeError:
+        raise ValueError(f"Error parsing the default configuration file: {bids_json}")
+
+    return config_dict

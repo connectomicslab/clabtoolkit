@@ -1287,8 +1287,26 @@ class TRKExplorer:
         """
         Initialize the TRK explorer with a file path.
         
-        Args:
-            filepath (str): Path to the TRK file
+        Parameters
+        ----------
+        filepath : str
+            Path to the TRK file to explore.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the specified TRK file does not exist.
+
+        How to use:
+        -----------
+        >>> explorer = TRKExplorer('path/to/your/file.trk')
+        >>> summary = explorer.explore(max_streamline_samples=10)
+        >>> print(summary)
+        >>> # To get detailed information about streamlines and properties
+        >>> explorer._analyze_streamlines(max_sample=5)
+        >>> explorer._analyze_data_properties()
+        >>> print(explorer.streamlines_info)
+        >>> print(explorer.data_properties)
         """
         self.filepath = Path(filepath)
         self.trk_file = None
@@ -1411,16 +1429,32 @@ class TRKExplorer:
                 }
         
         self.data_properties = properties
-    
+
+    ####################################################################################################
     def explore(self, max_streamline_samples: int = 5) -> str:
         """
         Generate a comprehensive summary of the TRK file.
         
-        Args:
-            max_streamline_samples (int): Maximum number of streamlines to show as samples
-            
+        Parameters:
+        ----------
+            max_streamline_samples (int): 
+                Maximum number of streamlines to sample for detailed info
+
         Returns:
             str: Formatted summary string
+
+        Raises:
+            FileNotFoundError: If the TRK file does not exist.
+            ValueError: If the TRK file is not in the expected format.
+        How to use:
+        ----------
+        >>> explorer = TRKExplorer('path/to/your/file.trk')
+        >>> summary = explorer.explore(max_streamline_samples=10)
+        >>> print(summary)
+        >>> # To get detailed information about streamlines and properties
+        >>> explorer._analyze_streamlines(max_sample=5)
+        >>> explorer._analyze_data_properties()
+        >>> print(explorer.streamlines_info)
         """
         self._analyze_streamlines(max_streamline_samples)
         self._analyze_data_properties()
@@ -1483,18 +1517,22 @@ class TRKExplorer:
         
         return '\n'.join(summary_lines)
     
+    ####################################################################################################
     def get_header_info(self) -> Dict[str, Any]:
         """Return header information as a dictionary."""
         return dict(self.header)
     
+    ####################################################################################################
     def get_streamlines_summary(self) -> Dict[str, Any]:
         """Return streamlines summary information."""
         return self.streamlines_info.copy()
     
+    ####################################################################################################
     def get_data_properties(self) -> Dict[str, Any]:
         """Return data properties information."""
         return self.data_properties.copy()
     
+    ####################################################################################################
     def get_streamlines(self):
         """Return the actual streamlines data."""
         return self.trk_file.streamlines
@@ -1522,7 +1560,6 @@ def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
 
     return print(explorer.explore(max_streamline_samples))
 
-
 ##########################################################################################################
 def interpolate_on_tractogram(in_tract: str, 
                             scal_map: str, 
@@ -1543,25 +1580,32 @@ def interpolate_on_tractogram(in_tract: str,
     ----------
     in_tract : str or Path
         Path to input .trk tractogram file. Must exist and be readable.
+
     scal_map : str or Path  
         Path to scalar image (e.g., FA map in NIfTI format). Must exist and be readable.
+
     out_tract : str or Path
         Path to save the new tractogram with interpolated values. The parent directory
         must exist and be writable.
+
     interp_method : {'linear', 'nearest'}, default='linear'
         Interpolation method used for RegularGridInterpolator.
         - 'linear': Trilinear interpolation
         - 'nearest': Nearest neighbor interpolation
+
     storage_mode : {'data_per_point', 'data_per_streamline'}, default='data_per_point'
         Storage format for the interpolated values:
         - 'data_per_point': Store scalar value for each streamline point
         - 'data_per_streamline': Store aggregated scalar value per streamline
+
     map_name : str, default='fa'
         Name used for the scalar map in the output tractogram metadata.
         This will be the key in data_per_point or data_per_streamline.
+
     reduction : {'mean', 'median', 'min', 'max'}, default='mean'
         Aggregation method used when storage_mode='data_per_streamline'.
         Applied to all scalar values along each streamline to produce a single value.
+
     preserve_both_storage_modes : bool, default=False
         If True, preserve existing data in both data_per_point and data_per_streamline.
         **Warning**: This may cause visualization conflicts in some tools (FSLeyes, etc.)
@@ -1572,6 +1616,7 @@ def interpolate_on_tractogram(in_tract: str,
     -------
     new_tractogram : nibabel.streamlines.Tractogram
         The tractogram object with interpolated scalar values attached.
+
     scalar_values_per_streamline : list of numpy.ndarray
         List containing the interpolated scalar values for each streamline.
         Each array has shape (n_points,) where n_points is the number of points
@@ -1581,14 +1626,18 @@ def interpolate_on_tractogram(in_tract: str,
     ------
     FileNotFoundError
         If input tractogram file or scalar map file does not exist.
+
     NotADirectoryError
         If the parent directory of the output path does not exist.
+
     PermissionError
         If the output directory is not writable.
+
     ValueError
         If interp_method is not 'linear' or 'nearest', if storage_mode is not
         'data_per_point' or 'data_per_streamline', or if reduction method is
         not one of 'mean', 'median', 'min', 'max'.
+
     IOError
         If there are issues reading the input files or writing the output file.
 
@@ -1637,7 +1686,6 @@ def interpolate_on_tractogram(in_tract: str,
     # --- Input validation ---
     in_tract = Path(in_tract)
     scal_map = Path(scal_map)
-  
     
     # Check if input files exist
     if not in_tract.exists():
@@ -1769,7 +1817,6 @@ def interpolate_on_tractogram(in_tract: str,
         data_per_streamline=data_per_streamline,
         affine_to_rasmm=original_affine
     )
-
 
     header = trk_file.header.copy()
     trk_with_header = TrkFile(new_tractogram, header=header)

@@ -17,69 +17,552 @@ from skimage import measure
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 
-def get_voxel_size(affine: np.ndarray):
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############ Section 1: Class and methods to perform morphological operations on images ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+class MorphologicalOperations:
     """
-    This method will compute the voxel size from an affine matrix.
+    A class to perform morphological operations on binary arrays.
+    
+    Provides methods for common morphological operations including erosion,
+    dilation, opening, closing, and hole filling on 2D and 3D binary images.
+    """
+    
+    def __init__(self):
+        """Initialize the morphological operations class."""
+        pass
+    
+    ########################################################################################################
+    def create_structuring_element(self, shape='cube', size=3, dimensions=None):
+        """
+        Create a structuring element for morphological operations.
+        
+        Parameters
+        ----------
+        shape : str, optional
+            Element shape: 'cube'/'square', 'ball'/'disk', or 'cross'. Default is 'cube'.
+            
+        size : int, optional
+            Size of the structuring element. Default is 3.
+            
+        dimensions : int, optional
+            Number of dimensions (2 or 3). If None, defaults to 3. Default is None.
+        
+        Returns
+        -------
+        np.ndarray
+            Boolean array representing the structuring element.
+        
+        Raises
+        ------
+        ValueError
+            If shape is not supported or dimensions are invalid.
+        
+        Examples
+        --------
+        >>> morph = MorphologicalOperations()
+        >>> cube_elem = morph.create_structuring_element('cube', size=5)
+        >>> ball_elem = morph.create_structuring_element('ball', size=7, dimensions=3)
+        """
+
+        if dimensions is None:
+            dimensions = 3  # default to 3D
+        
+        if shape in ['cube', 'square']:
+            # Create cubic/square structuring element
+            return np.ones((size,) * dimensions, dtype=bool)
+        
+        elif shape in ['ball', 'disk']:
+            # Create spherical/circular structuring element
+            radius = size // 2
+            if dimensions == 2:
+                y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
+                return x**2 + y**2 <= radius**2
+            elif dimensions == 3:
+                z, y, x = np.ogrid[-radius:radius+1, -radius:radius+1, -radius:radius+1]
+                return x**2 + y**2 + z**2 <= radius**2
+            else:
+                raise ValueError("Ball/disk only supported for 2D and 3D")
+        
+        elif shape == 'cross':
+            # Create cross-shaped structuring element
+            if dimensions == 2:
+                cross = np.array([[0, 1, 0],
+                                [1, 1, 1],
+                                [0, 1, 0]], dtype=bool)
+                return cross
+            elif dimensions == 3:
+                cross = np.zeros((3, 3, 3), dtype=bool)
+                cross[1, 1, :] = True  # x-axis
+                cross[1, :, 1] = True  # y-axis
+                cross[:, 1, 1] = True  # z-axis
+                return cross
+            else:
+                raise ValueError("Cross only supported for 2D and 3D")
+        
+        else:
+            raise ValueError("Shape must be 'cube', 'ball', 'cross', 'square', or 'disk'")
+    
+    ########################################################################################################
+    def erode(self, binary_array, structure=None, iterations=1):
+        """
+        Perform binary erosion to shrink objects and remove small noise.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element. If None, uses default 3x3 or 3x3x3 cube. Default is None.
+            
+        iterations : int, optional
+            Number of erosion iterations. Default is 1.
+        
+        Returns
+        -------
+        np.ndarray
+            Eroded binary array.
+        
+        Examples
+        --------
+        >>> eroded = morph.erode(binary_image, iterations=2)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_erosion(binary_array, structure=structure, iterations=iterations)
+    
+    ########################################################################################################
+    def dilate(self, binary_array, structure=None, iterations=1):
+        """
+        Perform binary dilation to expand objects and fill small gaps.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element. If None, uses default 3x3 or 3x3x3 cube. Default is None.
+            
+        iterations : int, optional
+            Number of dilation iterations. Default is 1.
+        
+        Returns
+        -------
+        np.ndarray
+            Dilated binary array.
+        
+        Examples
+        --------
+        >>> dilated = morph.dilate(binary_image, iterations=3)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_dilation(binary_array, structure=structure, iterations=iterations)
+    
+    ########################################################################################################
+    def opening(self, binary_array, structure=None, iterations=1):
+        """
+        Perform morphological opening (erosion followed by dilation).
+        
+        Removes small objects and noise while preserving larger structures.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element. Default is None.
+            
+        iterations : int, optional
+            Number of iterations. Default is 1.
+        
+        Returns
+        -------
+        np.ndarray
+            Opened binary array.
+        
+        Examples
+        --------
+        >>> cleaned = morph.opening(noisy_image, iterations=2)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_opening(binary_array, structure=structure, iterations=iterations)
+    
+    ########################################################################################################
+    def closing(self, binary_array, structure=None, iterations=1):
+        """
+        Perform morphological closing (dilation followed by erosion).
+        
+        Fills small holes and gaps while preserving object size.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element. Default is None.
+            
+        iterations : int, optional
+            Number of iterations. Default is 1.
+        
+        Returns
+        -------
+        np.ndarray
+            Closed binary array.
+        
+        Examples
+        --------
+        >>> filled = morph.closing(image_with_holes, iterations=1)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        return binary_closing(binary_array, structure=structure, iterations=iterations)
+    
+    ########################################################################################################
+    def fill_holes(self, binary_array, structure=None):
+        """
+        Fill holes in binary objects.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element for connectivity. Default is None.
+        
+        Returns
+        -------
+        np.ndarray
+            Binary array with filled holes.
+        
+        Examples
+        --------
+        >>> filled = morph.fill_holes(binary_mask)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        return binary_fill_holes(binary_array, structure=structure)
+    
+    ########################################################################################################
+    def remove_small_objects(self, binary_array, min_size=50):
+        """
+        Remove connected components smaller than specified size.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        min_size : int, optional
+            Minimum size of objects to keep in voxels/pixels. Default is 50.
+        
+        Returns
+        -------
+        np.ndarray
+            Binary array with small objects removed.
+        
+        Examples
+        --------
+        >>> cleaned = morph.remove_small_objects(binary_image, min_size=100)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        labeled_array, num_labels = label(binary_array)
+        
+        # Count voxels/pixels in each connected component
+        label_sizes = np.bincount(labeled_array.ravel())
+        
+        # Create mask for objects to keep (size >= min_size)
+        keep_labels = label_sizes >= min_size
+        keep_labels[0] = False  # Always remove background (label 0)
+        
+        # Create final result
+        result = np.zeros_like(binary_array, dtype=bool)
+        for label_idx in np.where(keep_labels)[0]:
+            result[labeled_array == label_idx] = True
+        
+        return result
+    
+    ########################################################################################################
+    def gradient(self, binary_array, structure=None):
+        """
+        Morphological gradient (dilation - erosion) to highlight object boundaries.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element. Default is None.
+        
+        Returns
+        -------
+        np.ndarray
+            Binary array containing object boundaries.
+        
+        Examples
+        --------
+        >>> edges = morph.gradient(binary_object)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        
+        if structure is None:
+            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
+        
+        dilated = self.dilate(binary_array, structure)
+        eroded = self.erode(binary_array, structure)
+        
+        return (dilated & ~eroded)  # Return as boolean
+    
+    ########################################################################################################
+    def tophat(self, binary_array, structure=None):
+        """
+        White top-hat transform (original - opening) to extract small bright structures.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element. Default is None.
+        
+        Returns
+        -------
+        np.ndarray
+            Binary array containing small bright structures.
+        
+        Examples
+        --------
+        >>> small_objects = morph.tophat(binary_image)
+        """
+                
+        binary_array = self._ensure_binary(binary_array)
+        opened = self.opening(binary_array, structure)
+        return (binary_array & ~opened)  # Return as boolean
+
+    ########################################################################################################    
+    def blackhat(self, binary_array, structure=None):
+        """
+        Black top-hat transform (closing - original) to extract small dark structures.
+        
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+            
+        structure : np.ndarray, optional
+            Structuring element. Default is None.
+        
+        Returns
+        -------
+        np.ndarray
+            Binary array containing small dark structures (holes).
+        
+        Examples
+        --------
+        >>> small_holes = morph.blackhat(binary_image)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+        closed = self.closing(binary_array, structure)
+        return (closed & ~binary_array)  # Return as boolean
+    
+    def _ensure_binary(self, array):
+        """Ensure the array is binary (boolean type)."""
+        if array.dtype != bool:
+            return (array != 0)
+        return array
+
+#####################################################################################################
+# Convenience function for quick operations
+def quick_morphology(binary_array, operation, **kwargs):
+    """
+    Quick access to morphological operations without creating class instance.
     
     Parameters
     ----------
-    affine: 4x4 affine transformation matrix from NIfTI header
+    binary_array : np.ndarray
+        Binary numpy array (2D or 3D).
+        
+    operation : str
+        Operation name: 'erode', 'dilate', 'opening', 'closing', 'fill_holes',
+        'remove_small', 'gradient', 'tophat', 'blackhat'.
+        
+    **kwargs
+        Additional arguments for the specific operation.
     
     Returns
     -------
-    tuple: (voxel_x, voxel_y, voxel_z) sizes in mm
-
-
+    np.ndarray
+        Result of the morphological operation.
+    
+    Raises
+    ------
+    ValueError
+        If operation is not supported.
+    
+    Examples
+    --------
+    >>> # Quick erosion
+    >>> eroded = quick_morphology(binary_image, 'erode', iterations=2)
+    >>> 
+    >>> # Quick hole filling
+    >>> filled = quick_morphology(binary_mask, 'fill_holes')
     """
+    morph = MorphologicalOperations()
+    
+    operation_map = {
+        'erode': morph.erode,
+        'dilate': morph.dilate,
+        'opening': morph.opening,
+        'closing': morph.closing,
+        'fill_holes': morph.fill_holes,
+        'remove_small': morph.remove_small_objects,
+        'gradient': morph.gradient,
+        'tophat': morph.tophat,
+        'blackhat': morph.blackhat
+    }
+    
+    if operation not in operation_map:
+        raise ValueError(f"Operation must be one of: {list(operation_map.keys())}")
+    
+    return operation_map[operation](binary_array, **kwargs)
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############          Section 2: Methods to get attributes from the images              ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def get_voxel_size(affine: np.ndarray):
+    """
+    Compute voxel dimensions from NIfTI affine matrix.
+    
+    Parameters
+    ----------
+    affine : np.ndarray
+        4x4 affine transformation matrix from NIfTI header.
+    
+    Returns
+    -------
+    tuple
+        Voxel sizes (voxel_x, voxel_y, voxel_z) in mm.
+    
+    Examples
+    --------
+    >>> img = nib.load('image.nii.gz')
+    >>> vox_x, vox_y, vox_z = get_voxel_size(img.affine)
+    >>> print(f"Voxel size: {vox_x:.2f} x {vox_y:.2f} x {vox_z:.2f} mm")
+    """
+
     # Extract voxel sizes as the magnitude of each column vector
     voxel_x = np.linalg.norm(affine[:3, 0])
     voxel_y = np.linalg.norm(affine[:3, 1])
     voxel_z = np.linalg.norm(affine[:3, 2])
     return (voxel_x, voxel_y, voxel_z)
 
-def get_voxel_volume(affine: np.ndarray):
+####################################################################################################
+def get_voxel_volume(affine: np.ndarray) -> float:
     """
-    This method will compute the voxel volume from an affine matrix.
+    Compute voxel dimensions from an affine matrix.
     
     Parameters
     ----------
-    affine: 4x4 affine transformation matrix from NIfTI header
+    affine : np.ndarray
+        4x4 affine transformation matrix from NIfTI header.
     
     Returns
     -------
-    float: voxel volume in mm^3
-
+    tuple
+        Voxel sizes (voxel_x, voxel_y, voxel_z) in mm.
+    
+    Examples
+    --------
+    >>> img = nib.load('image.nii.gz')
+    >>> vox_x, vox_y, vox_z = get_voxel_size(img.affine)
+    >>> print(f"Voxel size: {vox_x:.2f} x {vox_y:.2f} x {vox_z:.2f} mm")
     """
+
     voxel_x, voxel_y, voxel_z = get_voxel_size(affine)
     return voxel_x * voxel_y * voxel_z
 
-def get_center(affine: np.ndarray):
+####################################################################################################
+def get_center(affine: np.ndarray) -> tuple:
     """
-    Extract the center/origin from the affine matrix.
-
+    Compute voxel volume from NIfTI affine matrix.
+    
     Parameters
     ----------
-    affine: 4x4 affine transformation matrix from NIfTI header
-
+    affine : np.ndarray
+        4x4 affine transformation matrix from NIfTI header.
+    
     Returns
     -------
-    tuple: (center_x, center_y, center_z) translation from 4th column
-
+    float
+        Voxel volume in mm³.
+    
+    Examples
+    --------
+    >>> img = nib.load('image.nii.gz')
+    >>> volume = get_voxel_volume(img.affine)
+    >>> print(f"Voxel volume: {volume:.3f} mm³")
     """
     return (affine[0, 3], affine[1, 3], affine[2, 3])
 
-def get_rotation_matrix(affine: np.ndarray):
+####################################################################################################
+def get_rotation_matrix(affine: np.ndarray) -> np.ndarray:
     """
-    Extract the rotation matrix from the affine matrix.
-
+    Extract normalized rotation matrix from affine matrix.
+    
     Parameters
     ----------
-    affine: 4x4 affine transformation matrix from NIfTI header
-
+    affine : np.ndarray
+        4x4 affine transformation matrix from NIfTI header.
+    
     Returns
     -------
-    np.ndarray: 3x3 rotation matrix (normalized, without scaling)
+    np.ndarray
+        3x3 normalized rotation matrix (without scaling).
     
+    Examples
+    --------
+    >>> rotation = get_rotation_matrix(img.affine)
+    >>> print(f"Rotation matrix shape: {rotation.shape}")
     """
     # Extract 3x3 rotation/scaling matrix
     rot_scale = affine[:3, :3]
@@ -89,415 +572,43 @@ def get_rotation_matrix(affine: np.ndarray):
         rotation[:, i] = rot_scale[:, i] / np.linalg.norm(rot_scale[:, i])
     return rotation
 
-def crop_image_from_mask(
-    in_image: str,
-    mask: Union[str, np.ndarray],
-    out_image: str,
-    st_codes: Union[list, np.ndarray] = None,
-):
-    """
-    Crops an image using a mask. This mask can be a binary mask or a mask with multiple structures.
-    The function will crop the image to the minimum bounding box that contains all the structures in the mask.
-    The mask could be an image file path or a numpy array. If the mask is a numpy array, the function will use it directly.
-
-    Parameters
-    ----------
-    in_image : str
-        Image file path.
-    mask : str or np.ndarray
-        Mask file path or numpy array.
-    st_codes : list or np.ndarray
-        List of structures codes to be cropped.
-    out_image : str
-        Output image file path.
-
-    Raises
-    ------
-    ValueError
-        If the in_image is not a string.
-        If the mask file does not exist if the mask variable is a string.
-        If the mask parameter is not a string or a numpy array.
-
-
-    Returns
-    -------
-    None
-
-    Examples
-    --------
-    >>> _crop_image_from_mask(in_image='/path/to/image.nii.gz', mask='/path/to/mask.nii.gz', st_codes = ['3:6', 22, 9-10], out_image='/path/to/out_image.nii.gz')
-
-    """
-
-    if isinstance(in_image, str) == False:
-        raise ValueError("The 'image' parameter must be a string.")
-
-    if isinstance(mask, str):
-        if not os.path.exists(mask):
-            raise ValueError("The 'mask' parameter must be a string.")
-        else:
-            mask = nib.load(mask)
-            mask_data = mask.get_fdata()
-    elif isinstance(mask, np.ndarray):
-        mask_data = mask
-    else:
-        raise ValueError("The 'mask' parameter must be a string or a numpy array.")
-
-    if st_codes is None:
-        st_codes = np.unique(mask_data)
-        st_codes = st_codes[st_codes != 0]
-
-    st_codes = cltmisc.build_indices(st_codes)
-    st_codes = np.array(st_codes)
-
-    # Create the output directory if it does not exist
-    out_pth = os.path.dirname(out_image)
-    if os.path.exists(out_pth) == False:
-        Path(out_pth).mkdir(parents=True, exist_ok=True)
-
-    # Loading both images
-    img1 = nib.load(in_image)  # Original MRI image
-
-    # Get data and affine matrices
-    img1_affine = img1.affine
-
-    # Get the destination shape
-    img1_data = img1.get_fdata()
-    img1_shape = img1_data.shape
-
-    # Finding the minimum and maximum indexes for the mask
-    tmask = np.isin(mask_data, st_codes)
-    tmp_var = np.argwhere(tmask)
-
-    # Minimum and maximum indexes for X axis
-    i_start = np.min(tmp_var[:, 0])
-    i_end = np.max(tmp_var[:, 0])
-
-    # Minimum and maximum indexes for Y axis
-    j_start = np.min(tmp_var[:, 1])
-    j_end = np.max(tmp_var[:, 1])
-
-    # Minimum and maximum indexes for Z axis
-    k_start = np.min(tmp_var[:, 2])
-    k_end = np.max(tmp_var[:, 2])
-
-    # If img1_data is a 4D array we need to multiply it by the mask in the last dimension only. If not, we multiply it by the mask
-    # Applying the mask
-    if len(img1_data.shape) == 4:
-        masked_data = img1_data * tmask[..., np.newaxis]
-    else:
-        masked_data = img1_data * tmask
-
-    # Creating a new Nifti image with the same affine and header as img1
-    array_img = nib.Nifti1Image(masked_data, img1_affine)
-
-    # Cropping the masked data
-    if len(img1_data.shape) == 4:
-        cropped_img = array_img.slicer[i_start:i_end, j_start:j_end, k_start:k_end, :]
-    else:
-        cropped_img = array_img.slicer[i_start:i_end, j_start:j_end, k_start:k_end]
-
-    # Saving the cropped image
-    nib.save(cropped_img, out_image)
-
-    return out_image
-
-
-def cropped_to_native(in_image: str, native_image: str, out_image: str):
-    """
-    Restores a cropped image to the dimensions of a reference image.
-
-    Parameters
-    ----------
-    in_image : str
-        Cropped image file path.
-    native_image : str
-        Reference image file path.
-    out_image : str
-        Output image file path.
-
-    Raises
-    ------
-    ValueError
-        If the 'index' or 'name' attributes are missing when writing a TSV file.
-
-    Returns
-    -------
-    None
-
-    Examples
-    --------
-    >>> _cropped_to_native(in_image='/path/to/cropped_image.nii.gz', native_image='/path/to/native_image.nii.gz', out_image='/path/to/out_image.nii.gz')
-
-    """
-
-    if isinstance(in_image, str) == False:
-        raise ValueError("The 'in_image' parameter must be a string.")
-
-    if isinstance(native_image, str) == False:
-        raise ValueError("The 'native_image' parameter must be a string.")
-
-    # Create the output directory if it does not exist
-    out_pth = os.path.dirname(out_image)
-    if os.path.exists(out_pth) == False:
-        Path(out_pth).mkdir(parents=True, exist_ok=True)
-
-    # Loading both images
-    img1 = nib.load(native_image)  # Original MRI image
-    img2 = nib.load(in_image)  # Cropped image
-
-    # Get data and affine matrices
-    img1_affine = img1.affine
-    img2_affine = img2.affine
-
-    # Get the destination shape
-    img1_data = img1.get_fdata()
-    img1_shape = img1_data.shape
-
-    # Get data from IM2
-    img2_data = img2.get_fdata()
-    img2_shape = img2_data.shape
-
-    # Multiply the inverse of the affine matrix of img1 by the affine matrix of img2
-    affine_mult = np.linalg.inv(img1_affine) @ img2_affine
-
-    # If the img2 is a 4D add the forth dimension to the shape of the img1
-    if len(img2_shape) == 4:
-        img1_shape = (img1_shape[0], img1_shape[1], img1_shape[2], img2_shape[3])
-
-        # Create an empty array with the same dimensions as IM1
-        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
-
-        for vol in range(img2_data.shape[-1]):
-            # Find the coordinates in voxels of the voxels different from 0 on the img2
-            indices = np.argwhere(img2_data[..., vol] != 0)
-
-            # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
-            new_coords = np.round(
-                affine_mult
-                @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
-            ).astype(int)
-
-            # Fill the new image with the values of the voxels different from 0 on img2
-            new_data[new_coords[0], new_coords[1], new_coords[2], vol] = img2_data[
-                indices[:, 0], indices[:, 1], indices[:, 2], vol
-            ]
-
-    elif len(img2_shape) == 3:
-        # Create an empty array with the same dimensions as IM1
-        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
-
-        # Find the coordinates in voxels of the voxels different from 0 on the img2
-        indices = np.argwhere(img2_data != 0)
-
-        # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
-        new_coords = np.round(
-            affine_mult
-            @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
-        ).astype(int)
-
-        # Fill the new image with the values of the voxels different from 0 on img2
-        new_data[new_coords[0], new_coords[1], new_coords[2]] = img2_data[
-            indices[:, 0], indices[:, 1], indices[:, 2]
-        ]
-
-    # Create a new Nifti image with the same affine and header as IM1
-    new_img2 = nib.Nifti1Image(new_data, affine=img1_affine, header=img1.header)
-
-    # Save the new image
-    nib.save(new_img2, out_image)
-
-    return out_image
-
-
-def apply_multi_transf(
-    in_image: str,
-    out_image: str,
-    ref_image: str,
-    xfm_output,
-    interp_order: int = 0,
-    invert: bool = False,
-    cont_tech: str = "local",
-    cont_image: str = None,
-    force: bool = False,
-):
-    """
-    This function applies an ANTs transformation to an image.
-
-    Parameters
-    ----------
-    in_image : str
-        Input image file path.
-    out_image : str
-        Output image file path.
-    ref_image : str
-        Reference image file path.
-    xfm_output : str
-        Spatial transformation file path.
-    interp_order : int
-        Interpolation order. Default is 0 (NearestNeighbor). Options are: 0 (NearestNeighbor), 1 (Linear), 2 (BSpline[3]), 3 (CosineWindowedSinc), 4 (WelchWindowedSinc), 5 (HammingWindowedSinc), 6 (LanczosWindowedSinc), 7 (Welch).
-    invert : bool
-        Invert the transformation. Default is False.
-    cont_tech : str
-        Containerization technology. Default is 'local'. Options are: 'local', 'singularity', 'docker'.
-    cont_image : str
-        Container image. Default is None.
-    force : bool
-        Force the computation. Default is False.
-
-    Raises
-    ------
-    ValueError
-        If the 'interp_order' is not an integer.
-        If the 'interp_order' is not between 0 and 7.
-        If the 'invert' is not a boolean.
-        If the 'cont_tech' is not a string.
-        If the 'cont_image' is not a string.
-        If the 'force' is not a boolean.
-        If the 'in_image' is not a string.
-        If the 'in_image' does not exist.
-        If the 'out_image' is not a string.
-        If the 'ref_image' is not a string.
-        If the 'ref_image' does not exist.
-        If the 'xfm_output' is not a string.
-
-    Examples
-    --------
-    >>> apply_multi_transf(in_image='/path/to/in_image.nii.gz', out_image='/path/to/out_image.nii.gz', ref_image='/path/to/ref_image.nii.gz', xfm_output='/path/to/xfm_output.nii.gz', interp_order=0, invert=False, cont_tech='local', cont_image=None, force=False)
-
-    """
-
-    # Check if the path of out_basename exists
-    out_path = os.path.dirname(out_image)
-    if not os.path.isdir(out_path):
-        os.makedirs(out_path)
-
-    if interp_order == 0:
-        interp_cad = "NearestNeighbor"
-    elif interp_order == 1:
-        interp_cad = "Linear"
-    elif interp_order == 2:
-        interp_cad = "BSpline[3]"
-    elif interp_order == 3:
-        interp_cad = "CosineWindowedSinc"
-    elif interp_order == 4:
-        interp_cad = "WelchWindowedSinc"
-    elif interp_order == 5:
-        interp_cad = "HammingWindowedSinc"
-    elif interp_order == 6:
-        interp_cad = "LanczosWindowedSinc"
-    elif interp_order == 7:
-        interp_cad = "Welch"
-
-    ######## -- Registration to the template space  ------------ #
-    # Creating spatial transformation folder
-    stransf_dir = Path(os.path.dirname(xfm_output))
-    stransf_name = os.path.basename(xfm_output)
-
-    if stransf_name.endswith(".nii.gz"):
-        stransf_name = stransf_name[:-7]
-    elif stransf_name.endswith(".nii") or stransf_name.endswith(".mat"):
-        stransf_name = stransf_name[:-4]
-
-    if stransf_name.endswith("_xfm"):
-        stransf_name = stransf_name[:-4]
-
-    if "_desc-" in stransf_name:
-        affine_name = cltbids.replace_entity_value(stransf_name, {"desc": "affine"})
-        nl_name = cltbids.replace_entity_value(stransf_name, {"desc": "warp"})
-        invnl_name = cltbids.replace_entity_value(stransf_name, {"desc": "iwarp"})
-    else:
-        affine_name = stransf_name + "_desc-affine"
-        nl_name = stransf_name + "_desc-warp"
-        invnl_name = stransf_name + "_desc-iwarp"
-
-    affine_transf = os.path.join(stransf_dir, affine_name + "_xfm.mat")
-    nl_transf = os.path.join(stransf_dir, nl_name + "_xfm.nii.gz")
-    invnl_transf = os.path.join(stransf_dir, invnl_name + "_xfm.nii.gz")
-
-    # Check if out_image is not computed and force is True
-    if not os.path.isfile(out_image) or force:
-
-        if not os.path.isfile(affine_transf):
-            print("The spatial transformation file does not exist.")
-            sys.exit()
-
-        if os.path.isfile(invnl_transf) and os.path.isfile(nl_transf):
-            if invert:
-                bashargs_transforms = [
-                    "-t",
-                    invnl_transf,
-                    "-t",
-                    "[" + affine_transf + ",1]",
-                ]
-            else:
-                bashargs_transforms = ["-t", nl_transf, "-t", affine_transf]
-        else:
-            if invert:
-                bashargs_transforms = ["-t", "[" + affine_transf + ",1]"]
-            else:
-                bashargs_transforms = ["-t", affine_transf]
-
-        # Creating the command
-        cmd_bashargs = [
-            "antsApplyTransforms",
-            "-e",
-            "3",
-            "-i",
-            in_image,
-            "-r",
-            ref_image,
-            "-o",
-            out_image,
-            "-n",
-            interp_cad,
-        ]
-        cmd_bashargs.extend(bashargs_transforms)
-
-        # Running containerization
-        cmd_cont = cltmisc.generate_container_command(
-            cmd_bashargs, cont_tech, cont_image
-        )  # Generating container command
-        out_cmd = subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-        )
-
-
+####################################################################################################
 def get_vox_neighbors(
     coord: np.ndarray, neighborhood: str = "26", dims: str = "3", order: int = 1
-):
+) -> np.ndarray:
     """
-    Get the neighborhood of a voxel.
-
-    Parameters:
-    -----------
-
+    Get neighborhood coordinates for a voxel.
+    
+    Parameters
+    ----------
     coord : np.ndarray
-        Coordinates of the voxel.
-
-    neighborhood : str
-        Neighborhood type (e.g. 6, 18, 26).
-
-    dims : str
-        Number of dimensions (e.g. 2, 3).
-
-    Returns:
-    --------
-
-    neighbors : list
-        List of neighbors.
-
-    Raises:
+        Coordinates of the center voxel.
+        
+    neighborhood : str, optional
+        Neighborhood type: '6', '18', '26' for 3D or '4', '8' for 2D. Default is '26'.
+        
+    dims : str, optional
+        Number of dimensions: '2' or '3'. Default is '3'.
+        
+    order : int, optional
+        Order parameter (currently unused). Default is 1.
+    
+    Returns
     -------
-
+    np.ndarray
+        Array of neighbor coordinates.
+    
+    Raises
+    ------
     ValueError
-        If the number of dimensions is not supported.
-
-    Examples:
-    ---------
-
-        >>> neigh = get_vox_neighbors(neighborhood = '6', dims = '3')
-
+        If dimensions don't match coordinates or neighborhood type is invalid.
+    
+    Examples
+    --------
+    >>> # Get 26-connected neighbors in 3D
+    >>> center = np.array([10, 15, 20])
+    >>> neighbors = get_vox_neighbors(center, neighborhood='26', dims='3')
+    >>> print(f"Found {len(neighbors)} neighbors")
     """
 
     # Check if the number of dimensions in coord supported by the supplied coordinates
@@ -611,34 +722,436 @@ def get_vox_neighbors(
 
     return neighbors
 
-
-# Moving coordinates from voxel to mm
-def vox2mm(vox_coords, affine):
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############           Section 3: Methods to operate over images (e.g. crop)            ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def crop_image_from_mask(
+    in_image: str,
+    mask: Union[str, np.ndarray],
+    out_image: str,
+    st_codes: Union[list, np.ndarray] = None,
+) -> str:
     """
-    Convert voxel coordinates to mm coordinates. The input matrix must have 3 columns.
-
+    Crop image using a mask to minimum bounding box containing specified structures.
+    
     Parameters
     ----------
-    vox_coords : numpy array
-        Matrix with the voxel coordinates. The matrix must have 3 columns.
-    affine : numpy array
-        Affine matrix of the image.
-
+    in_image : str
+        Path to input image file.
+        
+    mask : str or np.ndarray
+        Path to mask file or mask array. Can be binary or multi-label.
+        
+    out_image : str
+        Path for output cropped image.
+        
+    st_codes : list or np.ndarray, optional
+        Structure codes to include in cropping. If None, uses all non-zero values.
+        Default is None.
+    
     Returns
     -------
-    mm_coords : numpy array
-        Matrix with the mm coordinates. The matrix has the same number of rows as the input matrix, and 3 columns.
-
-    Raises:
-    -------
-
-    ValueError : The number of columns of the input matrix must be 3
-
+    str
+        Path to the created output image.
+    
+    Raises
+    ------
+    ValueError
+        If input parameters are invalid or files don't exist.
+    
     Examples
     --------
-    >>> vox2mm(np.array([[1,2,3]]), np.eye(4))
-    array([[1, 2, 3]])
+    >>> # Crop using binary mask
+    >>> output = crop_image_from_mask(
+    ...     'brain.nii.gz', 'mask.nii.gz', 'cropped_brain.nii.gz'
+    ... )
+    >>> 
+    >>> # Crop specific structures
+    >>> output = crop_image_from_mask(
+    ...     'image.nii.gz', 'segmentation.nii.gz', 'cropped.nii.gz',
+    ...     st_codes=[1, 2, 3]
+    ... )
+    """
 
+    if isinstance(in_image, str) == False:
+        raise ValueError("The 'image' parameter must be a string.")
+
+    if isinstance(mask, str):
+        if not os.path.exists(mask):
+            raise ValueError("The 'mask' parameter must be a string.")
+        else:
+            mask = nib.load(mask)
+            mask_data = mask.get_fdata()
+    elif isinstance(mask, np.ndarray):
+        mask_data = mask
+    else:
+        raise ValueError("The 'mask' parameter must be a string or a numpy array.")
+
+    if st_codes is None:
+        st_codes = np.unique(mask_data)
+        st_codes = st_codes[st_codes != 0]
+
+    st_codes = cltmisc.build_indices(st_codes)
+    st_codes = np.array(st_codes)
+
+    # Create the output directory if it does not exist
+    out_pth = os.path.dirname(out_image)
+    if os.path.exists(out_pth) == False:
+        Path(out_pth).mkdir(parents=True, exist_ok=True)
+
+    # Loading both images
+    img1 = nib.load(in_image)  # Original MRI image
+
+    # Get data and affine matrices
+    img1_affine = img1.affine
+
+    # Get the destination shape
+    img1_data = img1.get_fdata()
+    img1_shape = img1_data.shape
+
+    # Finding the minimum and maximum indexes for the mask
+    tmask = np.isin(mask_data, st_codes)
+    tmp_var = np.argwhere(tmask)
+
+    # Minimum and maximum indexes for X axis
+    i_start = np.min(tmp_var[:, 0])
+    i_end = np.max(tmp_var[:, 0])
+
+    # Minimum and maximum indexes for Y axis
+    j_start = np.min(tmp_var[:, 1])
+    j_end = np.max(tmp_var[:, 1])
+
+    # Minimum and maximum indexes for Z axis
+    k_start = np.min(tmp_var[:, 2])
+    k_end = np.max(tmp_var[:, 2])
+
+    # If img1_data is a 4D array we need to multiply it by the mask in the last dimension only. If not, we multiply it by the mask
+    # Applying the mask
+    if len(img1_data.shape) == 4:
+        masked_data = img1_data * tmask[..., np.newaxis]
+    else:
+        masked_data = img1_data * tmask
+
+    # Creating a new Nifti image with the same affine and header as img1
+    array_img = nib.Nifti1Image(masked_data, img1_affine)
+
+    # Cropping the masked data
+    if len(img1_data.shape) == 4:
+        cropped_img = array_img.slicer[i_start:i_end, j_start:j_end, k_start:k_end, :]
+    else:
+        cropped_img = array_img.slicer[i_start:i_end, j_start:j_end, k_start:k_end]
+
+    # Saving the cropped image
+    nib.save(cropped_img, out_image)
+
+    return out_image
+
+####################################################################################################
+def cropped_to_native(in_image: str, native_image: str, out_image: str) -> str:
+    """
+    Restore cropped image to dimensions of reference native image.
+    
+    Parameters
+    ----------
+    in_image : str
+        Path to cropped image file.
+        
+    native_image : str
+        Path to reference image defining target dimensions.
+        
+    out_image : str
+        Path for output restored image.
+    
+    Returns
+    -------
+    str
+        Path to the created output image.
+    
+    Raises
+    ------
+    ValueError
+        If input parameters are not strings.
+    
+    Examples
+    --------
+    >>> # Restore cropped image to original dimensions
+    >>> restored = cropped_to_native(
+    ...     'cropped_result.nii.gz', 
+    ...     'original.nii.gz', 
+    ...     'restored_result.nii.gz'
+    ... )
+    """
+
+    if isinstance(in_image, str) == False:
+        raise ValueError("The 'in_image' parameter must be a string.")
+
+    if isinstance(native_image, str) == False:
+        raise ValueError("The 'native_image' parameter must be a string.")
+
+    # Create the output directory if it does not exist
+    out_pth = os.path.dirname(out_image)
+    if os.path.exists(out_pth) == False:
+        Path(out_pth).mkdir(parents=True, exist_ok=True)
+
+    # Loading both images
+    img1 = nib.load(native_image)  # Original MRI image
+    img2 = nib.load(in_image)  # Cropped image
+
+    # Get data and affine matrices
+    img1_affine = img1.affine
+    img2_affine = img2.affine
+
+    # Get the destination shape
+    img1_data = img1.get_fdata()
+    img1_shape = img1_data.shape
+
+    # Get data from IM2
+    img2_data = img2.get_fdata()
+    img2_shape = img2_data.shape
+
+    # Multiply the inverse of the affine matrix of img1 by the affine matrix of img2
+    affine_mult = np.linalg.inv(img1_affine) @ img2_affine
+
+    # If the img2 is a 4D add the forth dimension to the shape of the img1
+    if len(img2_shape) == 4:
+        img1_shape = (img1_shape[0], img1_shape[1], img1_shape[2], img2_shape[3])
+
+        # Create an empty array with the same dimensions as IM1
+        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
+
+        for vol in range(img2_data.shape[-1]):
+            # Find the coordinates in voxels of the voxels different from 0 on the img2
+            indices = np.argwhere(img2_data[..., vol] != 0)
+
+            # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
+            new_coords = np.round(
+                affine_mult
+                @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
+            ).astype(int)
+
+            # Fill the new image with the values of the voxels different from 0 on img2
+            new_data[new_coords[0], new_coords[1], new_coords[2], vol] = img2_data[
+                indices[:, 0], indices[:, 1], indices[:, 2], vol
+            ]
+
+    elif len(img2_shape) == 3:
+        # Create an empty array with the same dimensions as IM1
+        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
+
+        # Find the coordinates in voxels of the voxels different from 0 on the img2
+        indices = np.argwhere(img2_data != 0)
+
+        # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
+        new_coords = np.round(
+            affine_mult
+            @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
+        ).astype(int)
+
+        # Fill the new image with the values of the voxels different from 0 on img2
+        new_data[new_coords[0], new_coords[1], new_coords[2]] = img2_data[
+            indices[:, 0], indices[:, 1], indices[:, 2]
+        ]
+
+    # Create a new Nifti image with the same affine and header as IM1
+    new_img2 = nib.Nifti1Image(new_data, affine=img1_affine, header=img1.header)
+
+    # Save the new image
+    nib.save(new_img2, out_image)
+
+    return out_image
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############      Section 4: Methods to apply transformations or changes of space       ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def apply_multi_transf(
+    in_image: str,
+    out_image: str,
+    ref_image: str,
+    xfm_output,
+    interp_order: int = 0,
+    invert: bool = False,
+    cont_tech: str = "local",
+    cont_image: str = None,
+    force: bool = False,
+) -> None:
+    """
+    Apply ANTs transformation to image with support for multiple transform types.
+    
+    Parameters
+    ----------
+    in_image : str
+        Path to input image.
+        
+    out_image : str
+        Path for transformed output image.
+        
+    ref_image : str
+        Path to reference image defining target space.
+        
+    xfm_output : str
+        Path to transformation files (supports affine and nonlinear).
+        
+    interp_order : int, optional
+        Interpolation method: 0=NearestNeighbor, 1=Linear, 2=BSpline, etc.
+        Default is 0.
+        
+    invert : bool, optional
+        Whether to invert the transformation. Default is False.
+        
+    cont_tech : str, optional
+        Container technology: 'local', 'singularity', 'docker'. Default is 'local'.
+        
+    cont_image : str, optional
+        Container image specification. Default is None.
+        
+    force : bool, optional
+        Force recomputation if output exists. Default is False.
+    
+    Examples
+    --------
+    >>> # Apply transformation with nearest neighbor interpolation
+    >>> apply_multi_transf(
+    ...     'input.nii.gz', 'output.nii.gz', 'template.nii.gz',
+    ...     'transform_prefix', interp_order=0
+    ... )
+    """
+
+    # Check if the path of out_basename exists
+    out_path = os.path.dirname(out_image)
+    if not os.path.isdir(out_path):
+        os.makedirs(out_path)
+
+    if interp_order == 0:
+        interp_cad = "NearestNeighbor"
+    elif interp_order == 1:
+        interp_cad = "Linear"
+    elif interp_order == 2:
+        interp_cad = "BSpline[3]"
+    elif interp_order == 3:
+        interp_cad = "CosineWindowedSinc"
+    elif interp_order == 4:
+        interp_cad = "WelchWindowedSinc"
+    elif interp_order == 5:
+        interp_cad = "HammingWindowedSinc"
+    elif interp_order == 6:
+        interp_cad = "LanczosWindowedSinc"
+    elif interp_order == 7:
+        interp_cad = "Welch"
+
+    ######## -- Registration to the template space  ------------ #
+    # Creating spatial transformation folder
+    stransf_dir = Path(os.path.dirname(xfm_output))
+    stransf_name = os.path.basename(xfm_output)
+
+    if stransf_name.endswith(".nii.gz"):
+        stransf_name = stransf_name[:-7]
+    elif stransf_name.endswith(".nii") or stransf_name.endswith(".mat"):
+        stransf_name = stransf_name[:-4]
+
+    if stransf_name.endswith("_xfm"):
+        stransf_name = stransf_name[:-4]
+
+    if "_desc-" in stransf_name:
+        affine_name = cltbids.replace_entity_value(stransf_name, {"desc": "affine"})
+        nl_name = cltbids.replace_entity_value(stransf_name, {"desc": "warp"})
+        invnl_name = cltbids.replace_entity_value(stransf_name, {"desc": "iwarp"})
+    else:
+        affine_name = stransf_name + "_desc-affine"
+        nl_name = stransf_name + "_desc-warp"
+        invnl_name = stransf_name + "_desc-iwarp"
+
+    affine_transf = os.path.join(stransf_dir, affine_name + "_xfm.mat")
+    nl_transf = os.path.join(stransf_dir, nl_name + "_xfm.nii.gz")
+    invnl_transf = os.path.join(stransf_dir, invnl_name + "_xfm.nii.gz")
+
+    # Check if out_image is not computed and force is True
+    if not os.path.isfile(out_image) or force:
+
+        if not os.path.isfile(affine_transf):
+            print("The spatial transformation file does not exist.")
+            sys.exit()
+
+        if os.path.isfile(invnl_transf) and os.path.isfile(nl_transf):
+            if invert:
+                bashargs_transforms = [
+                    "-t",
+                    invnl_transf,
+                    "-t",
+                    "[" + affine_transf + ",1]",
+                ]
+            else:
+                bashargs_transforms = ["-t", nl_transf, "-t", affine_transf]
+        else:
+            if invert:
+                bashargs_transforms = ["-t", "[" + affine_transf + ",1]"]
+            else:
+                bashargs_transforms = ["-t", affine_transf]
+
+        # Creating the command
+        cmd_bashargs = [
+            "antsApplyTransforms",
+            "-e",
+            "3",
+            "-i",
+            in_image,
+            "-r",
+            ref_image,
+            "-o",
+            out_image,
+            "-n",
+            interp_cad,
+        ]
+        cmd_bashargs.extend(bashargs_transforms)
+
+        # Running containerization
+        cmd_cont = cltmisc.generate_container_command(
+            cmd_bashargs, cont_tech, cont_image
+        )  # Generating container command
+        out_cmd = subprocess.run(
+            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+        )
+
+####################################################################################################
+def vox2mm(vox_coords, affine) -> np.ndarray:
+    """
+    Convert voxel coordinates to millimeter coordinates using affine matrix.
+    
+    Parameters
+    ----------
+    vox_coords : np.ndarray
+        Matrix with voxel coordinates (N x 3).
+        
+    affine : np.ndarray
+        4x4 affine transformation matrix.
+    
+    Returns
+    -------
+    np.ndarray
+        Matrix with millimeter coordinates (N x 3).
+    
+    Raises
+    ------
+    ValueError
+        If input matrix doesn't have 3 columns.
+    
+    Examples
+    --------
+    >>> # Convert voxel coordinates to mm
+    >>> vox_coords = np.array([[10, 20, 30], [15, 25, 35]])
+    >>> mm_coords = vox2mm(vox_coords, img.affine)
+    >>> print(f"MM coordinates: {mm_coords}")
     """
 
     # Detect if the number of rows is bigger than the number of columns. If not, transpose the matrix
@@ -662,33 +1175,35 @@ def vox2mm(vox_coords, affine):
 
     return mm_coords
 
-
-def mm2vox(mm_coords, affine):
+####################################################################################################
+def mm2vox(mm_coords, affine) -> np.ndarray:
     """
-    Convert mm coordinates to voxel coordinates. The input matrix must have 3 columns.
-
+    Convert millimeter coordinates to voxel coordinates using affine matrix.
+    
     Parameters
     ----------
-    mm_coords : numpy array
-        Matrix with the mm coordinates. The matrix must have 3 columns.
-    affine : numpy array
-        Affine matrix of the image.
-
+    mm_coords : np.ndarray
+        Matrix with millimeter coordinates (N x 3).
+        
+    affine : np.ndarray
+        4x4 affine transformation matrix.
+    
     Returns
     -------
-    vox_coords : numpy array
-        Matrix with the voxel coordinates. The matrix has the same number of rows as the input matrix, and 3 columns.
-
-    Raises:
-    -------
-
-    ValueError : The number of columns of the input matrix must be 3
-
+    np.ndarray
+        Matrix with voxel coordinates (N x 3).
+    
+    Raises
+    ------
+    ValueError
+        If input matrix doesn't have 3 columns.
+    
     Examples
     --------
-    >>> mm2vox(np.array([[1,2,3]]), np.eye(4))
-    array([[1, 2, 3]])
-
+    >>> # Convert mm coordinates to voxels
+    >>> mm_coords = np.array([[45.5, -12.3, 78.9]])
+    >>> vox_coords = mm2vox(mm_coords, img.affine)
+    >>> print(f"Voxel coordinates: {vox_coords}")
     """
 
     # Detect if the number of rows is bigger than the number of columns. If not, transpose the matrix
@@ -710,251 +1225,16 @@ def mm2vox(mm_coords, affine):
         raise ValueError("The number of columns of the input matrix must be 3")
 
     return vox_coords
-class MorphologicalOperations:
-    """
-    A class to perform morphological operations on binary arrays.
-    Works with both 2D and 3D arrays using scipy.ndimage.
-    """
-    
-    def __init__(self):
-        """Initialize the morphological operations class."""
-        pass
-    
-    def create_structuring_element(self, shape='cube', size=3, dimensions=None):
-        """
-        Create a structuring element for morphological operations.
-        
-        Parameters:
-        - shape: str, 'cube'/'square' (box), 'ball'/'disk' (sphere/circle), 'cross'
-        - size: int, size of the structuring element
-        - dimensions: int, number of dimensions (auto-detected from input if None)
-        
-        Returns:
-        - numpy array representing the structuring element
-        """
-        if dimensions is None:
-            dimensions = 3  # default to 3D
-        
-        if shape in ['cube', 'square']:
-            # Create cubic/square structuring element
-            return np.ones((size,) * dimensions, dtype=bool)
-        
-        elif shape in ['ball', 'disk']:
-            # Create spherical/circular structuring element
-            radius = size // 2
-            if dimensions == 2:
-                y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
-                return x**2 + y**2 <= radius**2
-            elif dimensions == 3:
-                z, y, x = np.ogrid[-radius:radius+1, -radius:radius+1, -radius:radius+1]
-                return x**2 + y**2 + z**2 <= radius**2
-            else:
-                raise ValueError("Ball/disk only supported for 2D and 3D")
-        
-        elif shape == 'cross':
-            # Create cross-shaped structuring element
-            if dimensions == 2:
-                cross = np.array([[0, 1, 0],
-                                [1, 1, 1],
-                                [0, 1, 0]], dtype=bool)
-                return cross
-            elif dimensions == 3:
-                cross = np.zeros((3, 3, 3), dtype=bool)
-                cross[1, 1, :] = True  # x-axis
-                cross[1, :, 1] = True  # y-axis
-                cross[:, 1, 1] = True  # z-axis
-                return cross
-            else:
-                raise ValueError("Cross only supported for 2D and 3D")
-        
-        else:
-            raise ValueError("Shape must be 'cube', 'ball', 'cross', 'square', or 'disk'")
-    
-    def erode(self, binary_array, structure=None, iterations=1):
-        """
-        Perform binary erosion - shrinks objects, removes small noise.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element (None for default 3x3 or 3x3x3 cube)
-        - iterations: number of erosion iterations
-        """
-        binary_array = self._ensure_binary(binary_array)
-        
-        if structure is None:
-            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
-        
-        return binary_erosion(binary_array, structure=structure, iterations=iterations)
-    
-    def dilate(self, binary_array, structure=None, iterations=1):
-        """
-        Perform binary dilation - expands objects, fills small gaps.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element (None for default 3x3 or 3x3x3 cube)
-        - iterations: number of dilation iterations
-        """
-        binary_array = self._ensure_binary(binary_array)
-        
-        if structure is None:
-            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
-        
-        return binary_dilation(binary_array, structure=structure, iterations=iterations)
-    
-    def opening(self, binary_array, structure=None, iterations=1):
-        """
-        Perform morphological opening (erosion followed by dilation).
-        Removes small objects and noise while preserving larger structures.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element
-        - iterations: number of iterations
-        """
-        binary_array = self._ensure_binary(binary_array)
-        
-        if structure is None:
-            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
-        
-        return binary_opening(binary_array, structure=structure, iterations=iterations)
-    
-    def closing(self, binary_array, structure=None, iterations=1):
-        """
-        Perform morphological closing (dilation followed by erosion).
-        Fills small holes and gaps while preserving object size.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element
-        - iterations: number of iterations
-        """
-        binary_array = self._ensure_binary(binary_array)
-        
-        if structure is None:
-            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
-        
-        return binary_closing(binary_array, structure=structure, iterations=iterations)
-    
-    def fill_holes(self, binary_array, structure=None):
-        """
-        Fill holes in binary objects.
-        Works on both 2D and 3D arrays.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element for connectivity
-        """
-        binary_array = self._ensure_binary(binary_array)
-        return binary_fill_holes(binary_array, structure=structure)
-    
-    def remove_small_objects(self, binary_array, min_size=50):
-        """
-        Remove connected components smaller than min_size.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - min_size: minimum size of objects to keep (in voxels/pixels)
-        """
-        binary_array = self._ensure_binary(binary_array)
-        labeled_array, num_labels = label(binary_array)
-        
-        # Count voxels/pixels in each connected component
-        label_sizes = np.bincount(labeled_array.ravel())
-        
-        # Create mask for objects to keep (size >= min_size)
-        keep_labels = label_sizes >= min_size
-        keep_labels[0] = False  # Always remove background (label 0)
-        
-        # Create final result
-        result = np.zeros_like(binary_array, dtype=bool)
-        for label_idx in np.where(keep_labels)[0]:
-            result[labeled_array == label_idx] = True
-        
-        return result
-    
-    def gradient(self, binary_array, structure=None):
-        """
-        Morphological gradient (dilation - erosion).
-        Highlights object boundaries.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element
-        """
-        binary_array = self._ensure_binary(binary_array)
-        
-        if structure is None:
-            structure = self.create_structuring_element('cube', 3, binary_array.ndim)
-        
-        dilated = self.dilate(binary_array, structure)
-        eroded = self.erode(binary_array, structure)
-        
-        return (dilated & ~eroded)  # Return as boolean
-    
-    def tophat(self, binary_array, structure=None):
-        """
-        White top-hat transform (original - opening).
-        Extracts small bright structures.
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element
-        """
-        binary_array = self._ensure_binary(binary_array)
-        opened = self.opening(binary_array, structure)
-        return (binary_array & ~opened)  # Return as boolean
-    
-    def blackhat(self, binary_array, structure=None):
-        """
-        Black top-hat transform (closing - original).
-        Extracts small dark structures (holes).
-        
-        Parameters:
-        - binary_array: binary numpy array (2D or 3D)
-        - structure: structuring element
-        """
-        binary_array = self._ensure_binary(binary_array)
-        closed = self.closing(binary_array, structure)
-        return (closed & ~binary_array)  # Return as boolean
-    
-    def _ensure_binary(self, array):
-        """Ensure the array is binary (boolean type)."""
-        if array.dtype != bool:
-            return (array != 0)
-        return array
 
-
-# Convenience function for quick operations
-def quick_morphology(binary_array, operation, **kwargs):
-    """
-    Quick access to morphological operations.
-    
-    Parameters:
-    - binary_array: binary numpy array (2D or 3D)
-    - operation: str, 'erode', 'dilate', 'opening', 'closing', 'fill_holes', 
-                 'remove_small', 'gradient', 'tophat', 'blackhat'
-    - **kwargs: additional arguments for the operation
-    """
-    morph = MorphologicalOperations()
-    
-    operation_map = {
-        'erode': morph.erode,
-        'dilate': morph.dilate,
-        'opening': morph.opening,
-        'closing': morph.closing,
-        'fill_holes': morph.fill_holes,
-        'remove_small': morph.remove_small_objects,
-        'gradient': morph.gradient,
-        'tophat': morph.tophat,
-        'blackhat': morph.blackhat
-    }
-    
-    if operation not in operation_map:
-        raise ValueError(f"Operation must be one of: {list(operation_map.keys())}")
-    
-    return operation_map[operation](binary_array, **kwargs)
-
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############    Section 5: Methods to perform, or work with, tesselations from images   ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def extract_mesh_from_volume(volume_array: np.ndarray, 
                                 gaussian_smooth:bool=True, 
                                 sigma:float=1.0,
@@ -966,38 +1246,78 @@ def extract_mesh_from_volume(volume_array: np.ndarray,
 
     ) -> pv.PolyData:
 
-    """    
-    Extracts a mesh from a 3D volume array using marching cubes algorithm.
+    """
+    Extract surface mesh from 3D volume using marching cubes algorithm.
+    
+    Creates high-quality surface mesh with optional smoothing, hole filling,
+    and coordinate transformation to millimeter space.
+    
     Parameters
     ----------
     volume_array : np.ndarray
-        3D numpy array representing the volume data.
-
+        3D binary volume array for mesh extraction.
+        
     gaussian_smooth : bool, optional
-        Whether to apply Gaussian smoothing to the volume data before extraction (default: True).
-
+        Whether to apply Gaussian smoothing before extraction. Default is True.
+        
     sigma : float, optional
-        Standard deviation for Gaussian smoothing (default: 1.0).
-
+        Standard deviation for Gaussian smoothing. Default is 1.0.
+        
     fill_holes : bool, optional
-        Whether to fill holes in the extracted mesh (default: True).
-
+        Whether to fill holes in extracted mesh. Default is True.
+        
     smooth_iterations : int, optional
-        Number of smoothing iterations to apply to the mesh (default: 10).
-
+        Number of Taubin smoothing iterations. Default is 10.
+        
     affine : np.ndarray, optional
-        Affine transformation matrix to convert vertices from voxel space to mm space (default: None).
-
+        4x4 affine matrix to transform vertices to mm space. Default is None.
+        
     closing_iterations : int, optional
-        Number of iterations for morphological closing operation to fill small gaps in the binary mask (default:
-
-    vertex_value : np.float32, optional
-        Value to assign to the vertices in the mesh (default: 1.0).
-
+        Morphological closing iterations before extraction. Default is 1.
+        
+    vertex_value : float, optional
+        Scalar value assigned to mesh vertices. Default is 1.0.
+    
     Returns
     -------
-    tuple
-        A tuple containing vertices, faces, normals, and values of the extracted mesh.
+    pv.PolyData
+        PyVista mesh with vertices in mm coordinates (if affine provided),
+        computed normals, and scalar values.
+    
+    Raises
+    ------
+    TypeError
+        If volume_array is not a numpy array.
+        
+    ValueError
+        If volume_array is not 3D or no surface can be extracted.
+    
+    Notes
+    -----
+    The extraction pipeline includes:
+    1. Morphological closing to fill small gaps
+    2. Optional Gaussian smoothing for noise reduction
+    3. Marching cubes surface extraction
+    4. Mesh cleaning and hole filling
+    5. Taubin smoothing for feature preservation
+    6. Normal computation for proper shading
+    
+    Examples
+    --------
+    >>> # Basic mesh extraction
+    >>> mesh = extract_mesh_from_volume(binary_volume)
+    >>> print(f"Mesh has {mesh.n_points} vertices and {mesh.n_cells} faces")
+    >>> 
+    >>> # High-quality mesh with coordinate transformation
+    >>> mesh = extract_mesh_from_volume(
+    ...     binary_volume, 
+    ...     affine=img.affine,
+    ...     smooth_iterations=20,
+    ...     fill_holes=True
+    ... )
+    >>> 
+    >>> # Save mesh
+    >>> mesh.save('surface.ply')
     """
 
     # Binary mask for the specified value
