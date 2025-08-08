@@ -758,8 +758,14 @@ class Parcellation:
             # Move vertices to mm space and the apply affine transformation
             vertices = cltimg.vox2mm(vertices, parc.affine) 
 
-            # Add column with 3's to faces array for PyVista
-            faces = np.c_[np.full(len(faces), 3), faces]
+                mesh = cltimg.extract_mesh_from_volume(st_parc_temp.data, 
+                                    gaussian_smooth=gaussian_smooth, 
+                                    sigma=sigma,
+                                    fill_holes=fill_holes,
+                                    smooth_iterations=smooth_iterations,
+                                    affine= st_parc_temp.affine,
+                                    closing_iterations=closing_iterations,
+                                    vertex_value=color_table[i,4]
 
             mesh = pv.PolyData(vertices, faces)
             mesh.point_data["surface"] = (
