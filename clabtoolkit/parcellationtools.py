@@ -6,6 +6,17 @@ import numpy as np
 import pandas as pd
 import nibabel as nib
 from typing import Union, List
+from scipy.ndimage import gaussian_filter
+from skimage import measure
+
+from rich.progress import (
+    Progress,
+    BarColumn,
+    TimeRemainingColumn,
+    TextColumn,
+    MofNCompleteColumn,
+    SpinnerColumn,
+)
 
 # Importing local modules
 from . import misctools as cltmisc
@@ -732,28 +743,23 @@ class Parcellation:
         rotation_matrix = get_rotation_matrix(parc.affine)
         
         surfaces_list = []
-        for i, code in enumerate(codes_list):
-            print(f"Processing code {code}...")
-            # Create binary mask for current code
-            parc_temp = copy.deepcopy(parc)
-            parc_temp.keep_by_code(codes2keep=[code], rearrange=True)
-
-            # Apply Gaussian smoothing to reduce noise and fill small gaps
-            volume_data = parc_temp.data.astype(float)
-            if gaussian_smooth:
-                volume_data = gaussian_filter(volume_data, sigma=sigma)
-                # Re-threshold after smoothing
-                volume_data = (volume_data > 0.5).astype(int)
-                if volume_data.max() == 0:
-                    volume_data = parc_temp.data.astype(float)
-
-            # Check if the code exists in the data
-            # Extract surface using marching cubes
-            vertices, faces, normals, values = measure.marching_cubes(
-                volume_data, 
-                level=0.5, 
-                gradient_direction='ascent'
-            )
+        
+        # Add Rich progress bar around the main loop
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}", justify="right"),
+            BarColumn(bar_width=None),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            expand=True,
+        ) as progress:
+            
+            task = progress.add_task("Mesh extraction", total=len(unique_regions))
+            
+            for i, code in enumerate(unique_regions):
+                struct_name = temp_parc.name[i]
+                progress.update(task, description=f"Mesh extraction (Code {code}: {struct_name})", completed=i+1)
 
             # Move vertices to mm space and the apply affine transformation
             vertices = cltimg.vox2mm(vertices, parc.affine) 
