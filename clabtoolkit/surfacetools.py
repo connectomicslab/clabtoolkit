@@ -412,6 +412,39 @@ class Surface:
         faces = faces_raw.reshape(n_faces, 4)[:, 1:4]  # Skip the first column (n_vertices)
         return faces
 
+    def compute_normals(self) -> None:
+        """
+        Compute vertices normals for the surface mesh.
+
+        This method calculates normals for each vertex in the mesh and stores them
+        in the mesh point data under the key "Normals".
+
+        Raises
+        ------
+        RuntimeError
+            If no surface data has been loaded
+
+        Examples
+        --------
+        >>> surface = Surface("path/to/lh.pial")
+        >>> surface.compute_normals()
+        >>> normals = surface.get_normals()
+        >>> print(f"Computed normals shape: {normals.shape}")
+        """
+        if not self.is_loaded():
+            raise RuntimeError("No surface data loaded. Load data first.")
+        
+        self.mesh.compute_normals(inplace=True) # Compute normals and store in mesh
+
+        # Force the normals to be unit vectors
+        if "Normals" in self.mesh.point_data:
+            normals = self.mesh.point_data["Normals"]
+            norms = np.linalg.norm(normals, axis=1)
+            if np.any(norms > 0):
+                self.mesh.point_data["Normals"] = normals / norms[:, np.newaxis]
+            else:
+                raise RuntimeError("Computed normals have zero length. Cannot normalize.")  
+
     def get_normals(self) -> Optional[np.ndarray]:
         """
         Get the vertex normals of the surface mesh if available.
