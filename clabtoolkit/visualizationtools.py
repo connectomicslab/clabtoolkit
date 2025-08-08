@@ -28,6 +28,27 @@ if TYPE_CHECKING:
     from . import surfacetools as cltsurf
 
 
+def get_screen_size() -> Tuple[int, int]:
+    """
+    Get the current screen size in pixels.
+
+    Returns
+    -------
+    tuple of int
+        Screen width and height in pixels
+
+    Examples
+    --------
+    >>> width, height = get_screen_size()
+    >>> print(f"Screen size: {width}x{height}")
+    """
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    width = root.winfo_screenwidth()
+    height = root.winfo_screenheight()
+    return width, height
+
+
 class DefineLayout:
     """
     A comprehensive class for creating multi-view layouts of brain surface visualizations.
