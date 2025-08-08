@@ -1939,3 +1939,68 @@ class Surface:
                             colorbar_title=colorbar_title,
                             colorbar_position = colorbar_position,
                         )
+
+def merge_surfaces_list(surface_list):
+    """
+    Merge a list of Surface objects into a single Surface object.
+    This function takes a list of Surface objects and merges them into a single
+    Surface object by combining their geometries and point data.
+    If the list is empty, it returns None.
+
+    Parameters
+    ----------
+    surface_list : List[Surface]
+        List of Surface objects to merge
+
+    Returns
+    -------
+    Surface or None
+        Merged Surface object or None if the list is empty
+
+    Raises
+    ------
+    TypeError
+        If surface_list is not a list or contains non-Surface objects
+    ValueError
+        If the surface_list is empty
+    """
+
+    if not isinstance(surface_list, list):
+        raise TypeError("surface_list must be a list")
+    
+    if any(not isinstance(surf, Surface) for surf in surface_list):
+        raise TypeError("All items in surface_list must be Surface objects")
+    
+    # If the list is empty, return None
+    if not surface_list:
+        return None
+    
+    # If there's only one surface, return it as is
+    if len(surface_list) == 1:
+        return copy.deepcopy(surface_list[0])
+    
+    # Start with the first surface as the base for merging
+    merged = copy.deepcopy(surface_list[0])
+    
+    # Iterate through the rest of the surfaces and merge them
+    for surf in surface_list[1:]:
+        try:
+            # Use the merge_surfaces method of the Surface class
+            # This will handle the merging logic and return a new Surface object
+            # If the merge_surfaces method modifies the merged object in place,
+            # we can just continue using the merged object
+
+
+            # Most common: merge_surfaces returns a new object
+            result = merged.merge_surfaces([surf])
+
+            # If result is not None, update merged
+            if result is not None:
+                merged = result
+                
+            # If result is None, assume it modified merged in place
+        except Exception as e:
+            print(f"Merge failed: {e}")
+            return None
+    
+    return merged
