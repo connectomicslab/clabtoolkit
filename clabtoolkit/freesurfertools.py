@@ -37,21 +37,50 @@ class AnnotParcellation:
 
     def __init__(
         self,
-        parc_file: str,
+        parc_file: str = None,
         ref_surf: str = None,
         cont_tech: str = "local",
         cont_image: str = None,
     ):
         """
         Initialize the AnnotParcellation object
-
+        
         Parameters
         ----------
-        parc_file     - Required  : Parcellation filename:
-        ref_surf      - Optional  : Reference surface. Default is the white surface of the fsaverage subject:
-        cont_tech     - Optional  : Container technology. Default is local:
-        cont_image    - Optional  : Container image. Default is local:
-
+        parc_file - Optional : Parcellation filename. If None, creates empty instance
+        ref_surf - Optional : Reference surface. Default is the white surface of the fsaverage subject
+        cont_tech - Optional : Container technology. Default is local
+        cont_image - Optional : Container image. Default is local
+        """
+        # Initialize empty attributes
+        self.filename = None
+        self.path = None
+        self.name = None
+        self.hemi = None
+        self.codes = None
+        self.regtable = None
+        self.regnames = None
+        
+        # If parc_file is provided, load it
+        if parc_file is not None:
+            self.load_from_file(parc_file, ref_surf, cont_tech, cont_image)
+    
+    def load_from_file(
+        self, 
+        parc_file: str, 
+        ref_surf: str = None, 
+        cont_tech: str = "local", 
+        cont_image: str = None
+    ):
+        """
+        Load parcellation data from file
+        
+        Parameters
+        ----------
+        parc_file - Required : Parcellation filename
+        ref_surf - Optional : Reference surface. Default is the white surface of the fsaverage subject
+        cont_tech - Optional : Container technology. Default is local
+        cont_image - Optional : Container image. Default is local
         """
         booldel = False
         self.filename = parc_file
@@ -66,12 +95,11 @@ class AnnotParcellation:
 
         # Detecting the hemisphere
         temp_name = self.name.lower()
-
         # Find in the string annot_name if it is lh. or rh.
         hemi = detect_hemi(self.name)
 
         self.hemi = hemi
-
+        
         # If the file is a .gii file, then convert it to a .annot file
         if self.name.endswith(".gii"):
 
