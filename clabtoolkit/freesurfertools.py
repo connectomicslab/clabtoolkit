@@ -145,6 +145,36 @@ class AnnotParcellation:
         self.codes = codes
         self.regtable = reg_table
         self.regnames = reg_names
+    
+    def is_loaded(self):
+        """Check if parcellation data has been loaded"""
+        return self.codes is not None
+    
+    def create_from_data(self, codes, regtable, regnames, hemi=None, filename=None):
+        """
+        Create parcellation from existing data arrays
+        
+        Parameters
+        ----------
+        codes : array-like
+            Vertex-wise region codes
+        regtable : array-like
+            Region table with colors and codes
+        regnames : list
+            List of region names
+        hemi : str, optional
+            Hemisphere ('lh' or 'rh')
+        filename : str, optional
+            Associated filename
+        """
+        self.codes = codes
+        self.regtable = regtable
+        self.regnames = regnames
+        self.hemi = hemi
+        self.filename = filename
+        if filename:
+            self.path = os.path.dirname(filename)
+            self.name = os.path.basename(filename)
 
     def save_annotation(self, out_file: str = None, force: bool = True):
         """
