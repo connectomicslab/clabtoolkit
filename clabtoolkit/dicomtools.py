@@ -43,6 +43,7 @@ def progress_indicator(future):
             completed=n_comp,
         )
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -73,24 +74,33 @@ def org_conv_dicoms(
         Directory containing the subjects. It assumes all individual folders inside the directory as individual subjects.
         The subjects directory should start with 'sub-' otherwise the subjects will not be considered unless the "nosub"
         variable is set to True.
+
     out_dic_dir : str
         Output directory where the organized DICOM files will be saved. A new folder called 'Dicom' will be created inside this directory.
+
     demog_file : str, optional
         Demographics file containing the information about the subjects. The file should contain the following mandatory columns:
         'participant_id', 'session_id', 'acq_date'. Other columns such as 'birth_date', 'sex', 'group_id' or 'scanner_id' could be added.
+
     ids_file : str, optional
         Text file containing the list of subject IDs to be considered. The file should contain the subject IDs in a single column.
+
     ses_id : str, optional
         Session ID to be added to the session name. If not provided, the session ID will be the date of the study or the session ID
         extracted from the demographics table.
+
     nosub : bool, optional, default=False
         Boolean variable to consider the subjects that do not start with 'sub-'.
+
     booldic : bool, optional, default=True
         Boolean variable to organize the DICOM files. If False it will leave the folders as they are.
+
     boolcomp : bool, optional, default=False
         Boolean variable to compress the sessions containing the organized DICOM files. If True it will compress the sessions.
+
     force : bool, optional, default=False
         Boolean variable to force the copy of the DICOM file if the file already exists.
+
     nthreds : int, optional, default=0
         Number of threads to be used in the process. Default is 0 that means automatic selection of the number of cores.
 
@@ -103,8 +113,10 @@ def org_conv_dicoms(
     ------
     FileNotFoundError
         If the input directory does not exist.
+
     ValueError
         If the demographics file is provided but does not contain the mandatory columns.
+
     PermissionError
         If there are insufficient permissions to write to the output directory.
 
@@ -347,6 +359,7 @@ def org_conv_dicoms(
     if boolcomp:
         compress_dicom_session(out_dic_dir)
 
+
 ####################################################################################################
 def copy_dicom_file(
     dic_file: str,
@@ -365,19 +378,26 @@ def copy_dicom_file(
     -----------
     dic_file: str
         Path to the DICOM file.
+
     subj_id: str
         Subject ID.
+
     out_dic_dir: str
         Output directory where the DICOM files will be saved.
+
     ses_id: str
         Session ID to be added to the session name. If not provided, the session ID will be the date of the study or the session ID
         extracted from the demographics table.
+
     date_times: list
         List containing the date and time of all the studies for that subject ID.
+
     demogbool: bool
         Boolean variable to use the demographics table for the session id definition.
+
     demog_tab: pd.DataFrame
         Demographics table containing the information about the subjects.
+
     force: bool
         Boolean variable to force the copy of the DICOM file.
 
@@ -452,6 +472,7 @@ def copy_dicom_file(
 
     return dest_dic_dir
 
+
 ####################################################################################################
 def create_session_series_names(dataset):
     """
@@ -466,6 +487,7 @@ def create_session_series_names(dataset):
     -------
     ses_id: str
         Session ID.
+
     ser_id: str
         Series ID.
 
@@ -557,6 +579,7 @@ def create_session_series_names(dataset):
 
     return ses_id, ser_id
 
+
 ####################################################################################################
 def uncompress_dicom_session(
     dic_dir: str,
@@ -571,8 +594,10 @@ def uncompress_dicom_session(
     dic_dir : str
         Directory containing the subjects. It assumes an organization in:
         <subj_id>/<session_id>/<series_id>
+
     boolrmtar : bool, optional, default=False
         Boolean variable to remove the tar files after uncompressing the session.
+
     subj_ids : str, list of str, or None, optional
         Subject IDs to be considered. Can be:
         - None: consider all subjects in the directory (default)
@@ -588,12 +613,16 @@ def uncompress_dicom_session(
     ------
     FileNotFoundError
         If the specified directory does not exist.
+
     ValueError
         If subj_ids is not None, str, or list, or if subject IDs file cannot be read.
+
     tarfile.TarError
         If there are issues with reading or extracting tar files.
+
     PermissionError
         If there are insufficient permissions to extract files or remove tar archives.
+
     OSError
         If there are filesystem-related errors during extraction.
 
@@ -718,6 +747,7 @@ def uncompress_dicom_session(
     print(f"\nProcessed {n_subj} subjects with {len(failed_sessions)} failures.")
     return failed_sessions
 
+
 ####################################################################################################
 def compress_dicom_session(
     dic_dir: str,
@@ -732,11 +762,13 @@ def compress_dicom_session(
     dic_dir : str
         Directory containing the subjects. It assumes an organization in:
         <subj_id>/<session_id>/<series_id>
+
     subj_ids : str, list of str, or None, optional
         Subject IDs to be considered. Can be:
         - None: consider all subjects in the directory (default)
         - str: path to text file containing subject IDs (one per line)
         - list of str: explicit list of subject IDs
+
     remove_original : bool, optional, default=True
         Whether to remove the original session directories after successful compression.
 
@@ -749,12 +781,16 @@ def compress_dicom_session(
     ------
     FileNotFoundError
         If the specified directory does not exist.
+
     ValueError
         If subj_ids is not None, str, or list, or if subject IDs file cannot be read.
+
     tarfile.TarError
         If there are issues with creating or writing tar files.
+
     PermissionError
         If there are insufficient permissions to compress files or remove directories.
+
     OSError
         If there are filesystem-related errors during compression.
 

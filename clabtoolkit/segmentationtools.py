@@ -38,50 +38,50 @@ def abased_parcellation(
 ):
     """
     Perform atlas-based parcellation using ANTs registration and transformation.
-    
+
     Registers individual T1-weighted image to template space, then applies inverse
     transformation to bring atlas into subject space, creating subject-specific
     parcellation based on template atlas.
-    
+
     Parameters
     ----------
     t1 : str
         Path to input T1-weighted image.
-        
+
     t1_temp : str
         Path to T1-weighted template image for registration target.
-        
+
     atlas : str
         Path to atlas image (either SPAM probabilities or discrete labels).
-        
+
     out_parc : str
         Path for output parcellation file.
-        
+
     xfm_output : str
         Base path/name for transformation files. Extensions and descriptors
         will be automatically added.
-        
+
     atlas_type : str, optional
         Atlas format: 'spam' for probability maps or 'maxprob' for discrete labels.
         Default is 'spam'.
-        
+
     interp : str, optional
         Interpolation method: 'Linear', 'NearestNeighbor', 'BSpline'. Default is 'Linear'.
-        
+
     cont_tech : str, optional
         Container technology: 'local', 'singularity', 'docker'. Default is 'local'.
-        
+
     cont_image : str, optional
         Container image specification. Default is None.
-        
+
     force : bool, optional
         Whether to overwrite existing files. Default is False.
-    
+
     Returns
     -------
     str
         Path to the generated parcellation file.
-    
+
     Notes
     -----
     The method performs the following steps:
@@ -90,21 +90,21 @@ def abased_parcellation(
     3. Applies inverse transformation to atlas
     4. For SPAM atlases, preserves probability values
     5. For maxprob atlases, uses nearest neighbor interpolation
-    
+
     Generated transformation files follow BIDS naming conventions with
     descriptors: affine, warp, iwarp.
-    
+
     Examples
     --------
     >>> # Basic SPAM atlas parcellation
     >>> parc_file = abased_parcellation(
     ...     t1='subject_T1w.nii.gz',
-    ...     t1_temp='MNI152_T1_1mm.nii.gz', 
+    ...     t1_temp='MNI152_T1_1mm.nii.gz',
     ...     atlas='AAL_SPAM.nii.gz',
     ...     out_parc='subject_AAL.nii.gz',
     ...     xfm_output='transforms/subject_to_MNI'
     ... )
-    >>> 
+    >>>
     >>> # Discrete atlas with nearest neighbor interpolation
     >>> parc_file = abased_parcellation(
     ...     t1='T1w.nii.gz',
@@ -303,22 +303,23 @@ def abased_parcellation(
 
     return out_parc
 
+
 ######################################################################################################
 @staticmethod
 def tissue_seg_table(tsv_filename):
     """
     Create standard tissue segmentation lookup table.
-    
+
     Parameters
     ----------
     tsv_filename : str
         Output TSV file path.
-    
+
     Returns
     -------
     pd.DataFrame
         DataFrame with tissue segmentation information (CSF, GM, WM).
-    
+
     Examples
     --------
     >>> seg_df = Parcellation.tissue_seg_table('tissues.tsv')
@@ -353,4 +354,3 @@ def tissue_seg_table(tsv_filename):
         tsv_file.write(seg_df.to_csv(sep="\t", index=False))
 
     return seg_df
-

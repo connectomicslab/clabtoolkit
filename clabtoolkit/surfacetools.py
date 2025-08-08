@@ -11,6 +11,7 @@ from . import freesurfertools as cltfree
 from . import visualizationtools as cltvis
 from . import misctools as cltmisc
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -23,11 +24,11 @@ from . import misctools as cltmisc
 class Surface:
     """
     Comprehensive class for loading and visualizing brain surface data.
-    
+
     Provides interface for working with brain surface geometries including loading
     from files or arrays, managing scalar maps and parcellations, and creating
     visualizations using PyVista. Supports FreeSurfer and other surface formats.
-    
+
     Attributes
     ----------
     surf : str or None
@@ -41,45 +42,46 @@ class Surface:
 
     colortables : dict
         Dictionary storing color table information for parcellations.
-    
+
     Examples
     --------
     >>> # Load from FreeSurfer surface file
     >>> surface = Surface('lh.pial')
-    >>> 
+    >>>
     >>> # Create from vertex/face arrays
     >>> surface = Surface(vertices=verts, faces=faces, hemi='lh')
-    >>> 
+    >>>
     >>> # Load scalar data and parcellations
     >>> surface.load_scalar_map('thickness.mgh', 'thickness')
     >>> surface.load_annotation('lh.aparc.annot', 'aparc')
     """
+
     ##############################################################################################
     def __init__(
-        self, 
-        surface_file: str = None, 
-        vertices: np.ndarray = None, 
-        faces: np.ndarray = None, 
-        hemi: str = None
+        self,
+        surface_file: str = None,
+        vertices: np.ndarray = None,
+        faces: np.ndarray = None,
+        hemi: str = None,
     ) -> None:
         """
         Initialize Surface object from file, arrays, or create empty instance.
-        
+
         Parameters
         ----------
         surface_file : str, optional
             Path to surface file (FreeSurfer .pial, .white, .inflated). Default is None.
-            
+
         vertices : np.ndarray, optional
             Vertex coordinates array with shape (n_vertices, 3). Default is None.
-            
+
         faces : np.ndarray, optional
             Face connectivity array with shape (n_faces, 3). Default is None.
-            
+
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Auto-detected from filename
             if None. Default is None.
-        
+
         Raises
         ------
         ValueError
@@ -87,42 +89,42 @@ class Surface:
             one of vertices/faces is provided.
         FileNotFoundError
             If surface file doesn't exist.
-        
+
         Examples
         --------
         >>> # Load from file with auto-detection
         >>> surface = Surface('lh.pial')
-        >>> 
+        >>>
         >>> # Create from arrays
         >>> vertices = np.random.rand(100, 3)
         >>> faces = np.array([[0, 1, 2], [1, 2, 3]])
         >>> surface = Surface(vertices=vertices, faces=faces, hemi='lh')
-        >>> 
+        >>>
         >>> # Create empty instance
         >>> surface = Surface()
         """
-        
+
         # Initialize attributes to None (empty instance)
         self.surf = None
         self.mesh = None
         self.hemi = None
         self.colortables: Dict[str, Dict] = {}
-        
+
         # Validate input parameters
         if surface_file is not None and (vertices is not None or faces is not None):
             raise ValueError("Cannot specify both surface_file and vertices/faces")
-        
+
         if vertices is not None and faces is None:
             raise ValueError("If vertices are provided, faces must also be provided")
-        
+
         if faces is not None and vertices is None:
             raise ValueError("If faces are provided, vertices must also be provided")
-        
+
         # Load data if provided
         if surface_file is not None:
             if not os.path.isfile(surface_file):
                 raise FileNotFoundError(f"Surface file not found: {surface_file}")
-            
+
             self.surf = surface_file
             self.load_from_file(surface_file, hemi)
 
@@ -133,34 +135,34 @@ class Surface:
     def load_from_file(self, surface_file: str, hemi: str = None) -> None:
         """
         Load surface geometry from FreeSurfer or compatible surface file.
-        
+
         Parameters
         ----------
         surface_file : str
             Path to surface file (e.g., FreeSurfer .pial, .white, .inflated).
-            
+
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Auto-detected from filename
             if None. Default is None.
-        
+
         Raises
         ------
         FileNotFoundError
             If surface file cannot be found.
         ValueError
             If surface file format is unsupported or corrupted.
-        
+
         Notes
         -----
         Automatically detects hemisphere from filename and creates default
         surface colors. Sets up basic parcellation data for visualization.
-        
+
         Examples
         --------
         >>> surface = Surface()
         >>> surface.load_from_file('lh.pial')
         >>> print(f"Loaded {surface.mesh.n_points} vertices")
-        >>> 
+        >>>
         >>> # Explicit hemisphere specification
         >>> surface.load_from_file('brain_surface.surf', hemi='rh')
         """
@@ -169,7 +171,7 @@ class Surface:
         # Check if the file exists
         if not os.path.isfile(self.surf):
             raise FileNotFoundError(f"Surface file not found: {self.surf}")
-    
+
         # Load the surface geometry
         try:
             vertices, faces = nib.freesurfer.read_geometry(self.surf)
@@ -183,21 +185,20 @@ class Surface:
             )  # Default colors
 
             self.mesh = mesh
-            
+
         except Exception as e:
             raise ValueError(f"Failed to load surface file '{self.surf}': {e}")
 
-                
         # Hemisphere detection from filename
         if hemi is not None:
             self.hemi = hemi
         else:
             self.hemi = cltfree.detect_hemi(self.surf)
-            
+
         # Fallback hemisphere detection from BIDS organization
         surf_name = os.path.basename(self.surf)
         detected_hemi = cltfree.detect_hemi(surf_name)
-        
+
         if detected_hemi is None:
             self.hemi = "lh"  # Default to left hemisphere
 
@@ -206,39 +207,38 @@ class Surface:
 
     ##############################################################################################
     def load_from_arrays(
-        self, 
-        vertices: np.ndarray, 
-        faces: np.ndarray, 
+        self,
+        vertices: np.ndarray,
+        faces: np.ndarray,
         normals: np.ndarray = None,
         hemi: str = None,
-        surface_file: str = None
-
+        surface_file: str = None,
     ) -> None:
         """
         Load surface geometry from vertex and face arrays.
-        
+
         Parameters
         ----------
         vertices : np.ndarray
             Vertex coordinates with shape (n_vertices, 3).
-            
+
         faces : np.ndarray
             Face connectivity with shape (n_faces, 3).
-            
+
         normals : np.ndarray, optional
             Vertex normals with shape (n_vertices, 3). Default is None.
-            
+
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Defaults to 'lh'.
-            
+
         surface_file : str, optional
             Associated surface file path for metadata. Default is None.
-        
+
         Raises
         ------
         ValueError
             If vertices or faces arrays have incorrect shapes.
-        
+
         Examples
         --------
         >>> # Basic triangle mesh
@@ -246,7 +246,7 @@ class Surface:
         >>> faces = np.array([[0, 1, 2]])
         >>> surface = Surface()
         >>> surface.load_from_arrays(vertices, faces, hemi='lh')
-        >>> 
+        >>>
         >>> # With normals
         >>> normals = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 1]])
         >>> surface.load_from_arrays(vertices, faces, normals, hemi='rh')
@@ -262,27 +262,27 @@ class Surface:
     def load_from_mesh(self, mesh: pv.PolyData, hemi: str = None) -> None:
         """
         Load surface geometry from existing PyVista mesh object.
-        
+
         Parameters
         ----------
         mesh : pv.PolyData
             PyVista mesh object containing surface geometry.
-            
+
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Defaults to 'lh'.
-        
+
         Notes
         -----
         Creates a deep copy of the input mesh to avoid modifying the original.
         Adds default surface colors if not present in the mesh.
-        
+
         Examples
         --------
         >>> # From existing PyVista mesh
         >>> existing_mesh = pv.PolyData(vertices, faces)
         >>> surface = Surface()
         >>> surface.load_from_mesh(existing_mesh, hemi='rh')
-        >>> 
+        >>>
         >>> # From procedural mesh
         >>> sphere = pv.Sphere(radius=50)
         >>> surface.load_from_mesh(sphere, hemi='lh')
@@ -305,12 +305,12 @@ class Surface:
     def is_loaded(self) -> bool:
         """
         Check whether surface data has been loaded.
-        
+
         Returns
         -------
         bool
             True if surface data is loaded, False otherwise.
-        
+
         Examples
         --------
         >>> surface = Surface()
@@ -324,16 +324,16 @@ class Surface:
     def _create_default_parcellation(self) -> None:
         """
         Create default parcellation data for surface visualization.
-        
+
         Internal method that sets up basic parcellation with uniform surface
         colors for initial visualization before loading specific annotations.
-        
+
         Notes
         -----
         Creates a single-region parcellation with default gray color values
         assigned to all vertices.
         """
-                
+
         tmp_ctable = cltfree.colors2colortable(
             np.array([[240, 240, 240]], dtype=np.uint8)
         )
@@ -343,43 +343,40 @@ class Surface:
             ["surface"],
             "surface",
         )
-    
+
     ##############################################################################################
     def create_mesh_from_arrays(
-        self, 
-        vertices: np.ndarray, 
-        faces: np.ndarray,
-        normals: np.ndarray = None
+        self, vertices: np.ndarray, faces: np.ndarray, normals: np.ndarray = None
     ) -> pv.PolyData:
         """
         Create PyVista mesh object from vertex and face arrays.
-        
+
         Parameters
         ----------
         vertices : np.ndarray
             Vertex coordinates with shape (n_vertices, 3).
-            
+
         faces : np.ndarray
             Face connectivity with shape (n_faces, 3).
-            
+
         normals : np.ndarray, optional
             Vertex normals with shape (n_vertices, 3). Default is None.
-        
+
         Returns
         -------
         pv.PolyData
             PyVista mesh object with vertices, faces, and default surface colors.
-        
+
         Raises
         ------
         ValueError
             If arrays have incorrect shapes or face indices are invalid.
-        
+
         Notes
         -----
         Validates input arrays and creates properly formatted PyVista mesh
         with default surface colors. Adds normals to point data if provided.
-        
+
         Examples
         --------
         >>> surface = Surface()
@@ -392,43 +389,51 @@ class Surface:
         # Validate array shapes
         if vertices.ndim != 2 or vertices.shape[1] != 3:
             raise ValueError("Vertices array must have shape (n_vertices, 3)")
-        
+
         if faces.ndim != 2 or faces.shape[1] != 3:
             raise ValueError("Faces array must have shape (n_faces, 3)")
-        
-        if normals is not None and (normals.ndim != 2 or normals.shape[1] != 3 or normals.shape[0] != vertices.shape[0]):
+
+        if normals is not None and (
+            normals.ndim != 2
+            or normals.shape[1] != 3
+            or normals.shape[0] != vertices.shape[0]
+        ):
             raise ValueError("Normals array must have shape (n_vertices, 3)")
-        
+
         # Check that face indices are valid
         if np.any(faces >= len(vertices)) or np.any(faces < 0):
-            raise ValueError("Face indices must be valid indices into the vertices array")
-        
+            raise ValueError(
+                "Face indices must be valid indices into the vertices array"
+            )
+
         mesh = self._create_pyvista_mesh(vertices, faces)
-        
+
         # Add normals if provided
         if normals is not None:
             mesh.point_data["Normals"] = normals
-        
+
         return mesh
-    
+
     ##############################################################################################
-    def _create_pyvista_mesh(self, vertices: np.ndarray, faces: np.ndarray) -> pv.PolyData:
+    def _create_pyvista_mesh(
+        self, vertices: np.ndarray, faces: np.ndarray
+    ) -> pv.PolyData:
         """
         Internal method to create PyVista mesh from vertices and faces.
-        
+
         Parameters
         ----------
         vertices : np.ndarray
             Vertex coordinates with shape (n_vertices, 3).
-            
+
         faces : np.ndarray
             Face connectivity with shape (n_faces, 3).
-        
+
         Returns
         -------
         pv.PolyData
             PyVista mesh object with default surface colors.
-        
+
         Notes
         -----
         Handles PyVista-specific formatting requirements including adding
@@ -449,17 +454,17 @@ class Surface:
     def get_vertices(self) -> np.ndarray:
         """
         Get vertex coordinates from the surface mesh.
-        
+
         Returns
         -------
         np.ndarray
             Array of vertex coordinates with shape (n_vertices, 3).
-        
+
         Raises
         ------
         RuntimeError
             If no surface data has been loaded.
-        
+
         Examples
         --------
         >>> surface = Surface('lh.pial')
@@ -476,24 +481,24 @@ class Surface:
     def get_faces(self) -> np.ndarray:
         """
         Get face connectivity from the surface mesh.
-        
+
         Returns
         -------
         np.ndarray
             Array of face indices with shape (n_faces, 3). Each row contains
             three vertex indices forming a triangular face.
-        
+
         Raises
         ------
         RuntimeError
             If no surface data has been loaded.
-        
+
         Notes
         -----
         Extracts face connectivity from PyVista's internal format which stores
         faces as [n_vertices, vertex_id1, vertex_id2, ...]. This method returns
         only the vertex indices in standard format.
-        
+
         Examples
         --------
         >>> surface = Surface('lh.pial')
@@ -504,43 +509,45 @@ class Surface:
 
         if not self.is_loaded():
             raise RuntimeError("No surface data loaded. Load data first.")
-        
+
         # PyVista stores faces as [n_vertices, vertex_id1, vertex_id2, ...]
         # We need to extract just the vertices indices
         faces_raw = self.mesh.faces
         n_faces = self.mesh.n_cells
-        faces = faces_raw.reshape(n_faces, 4)[:, 1:4]  # Skip the first column (n_vertices)
+        faces = faces_raw.reshape(n_faces, 4)[
+            :, 1:4
+        ]  # Skip the first column (n_vertices)
         return faces
 
     ##############################################################################################
     def compute_normals(self) -> None:
         """
         Compute and store vertex normals for the surface mesh.
-        
+
         Calculates unit normal vectors for each vertex and stores them in the
         mesh point data under the key "Normals". Normals are automatically
         normalized to unit length.
-        
+
         Raises
         ------
         RuntimeError
             If no surface data has been loaded.
         RuntimeError
             If computed normals have zero length and cannot be normalized.
-        
+
         Notes
         -----
         Uses PyVista's built-in normal computation which averages face normals
         at each vertex. The resulting normals are forced to be unit vectors.
         Overwrites any existing normals in the mesh.
-        
+
         Examples
         --------
         >>> surface = Surface('lh.pial')
         >>> surface.compute_normals()
         >>> normals = surface.get_normals()
         >>> print(f"Computed {len(normals)} unit normal vectors")
-        >>> 
+        >>>
         >>> # Check that normals are unit vectors
         >>> norms = np.linalg.norm(normals, axis=1)
         >>> print(f"Normal lengths range: {norms.min():.3f} - {norms.max():.3f}")
@@ -548,8 +555,8 @@ class Surface:
 
         if not self.is_loaded():
             raise RuntimeError("No surface data loaded. Load data first.")
-        
-        self.mesh.compute_normals(inplace=True) # Compute normals and store in mesh
+
+        self.mesh.compute_normals(inplace=True)  # Compute normals and store in mesh
 
         # Force the normals to be unit vectors
         if "Normals" in self.mesh.point_data:
@@ -558,24 +565,26 @@ class Surface:
             if np.any(norms > 0):
                 self.mesh.point_data["Normals"] = normals / norms[:, np.newaxis]
             else:
-                raise RuntimeError("Computed normals have zero length. Cannot normalize.")  
+                raise RuntimeError(
+                    "Computed normals have zero length. Cannot normalize."
+                )
 
     ##############################################################################################
     def get_normals(self) -> Optional[np.ndarray]:
         """
         Get vertex normals from the surface mesh if available.
-        
+
         Returns
         -------
         np.ndarray or None
             Array of normal vectors with shape (n_vertices, 3) if normals
             have been computed, None otherwise.
-        
+
         Notes
         -----
         Returns None if normals haven't been computed yet. Use compute_normals()
         to calculate normals before calling this method.
-        
+
         Examples
         --------
         >>> surface = Surface('lh.pial')
@@ -590,9 +599,9 @@ class Surface:
 
         if not self.is_loaded():
             return None
-        
+
         return self.mesh.point_data.get("Normals", None)
-    
+
     ##############################################################################################
     def load_maps_from_csv(
         self,
@@ -603,41 +612,41 @@ class Surface:
     ) -> None:
         """
         Load scalar data from CSV file onto surface for visualization.
-        
+
         Handles both vertex-wise data (one value per vertex) and region-wise data
         (requires annotation for mapping to vertices).
-        
+
         Parameters
         ----------
         map_file : str
             Path to CSV file containing scalar data.
-            
+
         annot_file : str or AnnotParcellation, optional
             Annotation file/object for mapping region data to vertices.
             Required if CSV has region-wise data. Default is None.
-            
+
         map_name : str, optional
             Name for scalar data reference. If None, uses CSV column names.
             Default is None.
-            
+
         cmap : str, optional
             Colormap name for visualization. Default is 'viridis'.
-        
+
         Raises
         ------
         FileNotFoundError
             If map file or annotation file cannot be found.
         ValueError
             If annot_file required but not provided or invalid type.
-        
+
         Examples
         --------
         >>> # Load vertex-wise data
         >>> surface.load_maps_from_csv('vertex_thickness.csv')
-        >>> 
+        >>>
         >>> # Load region-wise data
         >>> surface.load_maps_from_csv(
-        ...     'region_volumes.csv', 
+        ...     'region_volumes.csv',
         ...     annot_file='lh.aparc.annot'
         ... )
         """
@@ -689,51 +698,55 @@ class Surface:
     ) -> None:
         """
         Load scalar data arrays or DataFrames onto surface for visualization.
-        
+
         Supports single or multiple scalar maps with automatic format detection
         and region-to-vertex mapping when needed.
-        
+
         Parameters
         ----------
         maps_array : str, np.ndarray, or pd.DataFrame
             Scalar data as filename, array, or DataFrame. Can be 1D (single map)
             or 2D (multiple maps).
-            
+
         map_names : str or list, optional
             Names for scalar data. Auto-generated if None. Default is None.
-            
+
         annot_file : str or AnnotParcellation, optional
             Annotation for mapping region data to vertices. Required if array
             length doesn't match vertex count. Default is None.
-        
+
         Raises
         ------
         ValueError
             If maps_array format invalid or map_names length mismatch.
         FileNotFoundError
             If file cannot be found.
-        
+
         Examples
         --------
         >>> # Single map as 1D array
         >>> data = np.random.rand(surface.mesh.n_points)
         >>> surface.load_arrays_of_maps(data, map_names='random')
-        >>> 
+        >>>
         >>> # Multiple maps from DataFrame
         >>> df = pd.DataFrame({'thickness': thick_data, 'curv': curv_data})
         >>> surface.load_arrays_of_maps(df)
         """
 
-        if not isinstance(maps_array, str) and not isinstance(maps_array, np.ndarray) and not isinstance(
-            maps_array, pd.DataFrame
+        if (
+            not isinstance(maps_array, str)
+            and not isinstance(maps_array, np.ndarray)
+            and not isinstance(maps_array, pd.DataFrame)
         ):
-            raise ValueError("maps_array must be a filename, a numpy array or a pandas DataFrame")
-        
+            raise ValueError(
+                "maps_array must be a filename, a numpy array or a pandas DataFrame"
+            )
+
         if isinstance(maps_array, str):
             # If maps_array is a string, assume it's a filename
             if not os.path.isfile(maps_array):
                 raise FileNotFoundError(f"Map file not found: {maps_array}")
-            
+
             # Read the file into a DataFrame
             maps_array = cltmisc.smart_read_table(maps_array)
 
@@ -806,30 +819,30 @@ class Surface:
     def load_scalar_map(self, map_file: str, map_name: str) -> None:
         """
         Load FreeSurfer format scalar data onto surface.
-        
+
         Loads scalar files (.mgh, .mgz, .curv) and stores as vertex-wise values
         for visualization and analysis.
-        
+
         Parameters
         ----------
         map_file : str
             Path to FreeSurfer scalar file.
-            
+
         map_name : str
             Name for scalar data reference and visualization.
-        
+
         Raises
         ------
         FileNotFoundError
             If map file cannot be found.
         ValueError
             If map_name not string or data doesn't match surface dimensions.
-        
+
         Examples
         --------
         >>> # Load cortical thickness
         >>> surface.load_scalar_map('lh.thickness.mgh', 'thickness')
-        >>> 
+        >>>
         >>> # Load curvature
         >>> surface.load_scalar_map('lh.curv', 'curvature')
         """
@@ -852,30 +865,30 @@ class Surface:
     ) -> None:
         """
         Load parcellation annotation onto surface for visualization.
-        
+
         Loads FreeSurfer annotation files or AnnotParcellation objects,
         storing labels and color information for region-based visualization.
-        
+
         Parameters
         ----------
         annot_input : str or AnnotParcellation
             Path to annotation file (.annot) or AnnotParcellation object.
-            
+
         parc_name : str
             Name for parcellation reference in visualizations.
-        
+
         Raises
         ------
         FileNotFoundError
             If annotation file cannot be found.
         ValueError
             If invalid input type or vertex count mismatch.
-        
+
         Examples
         --------
         >>> # Load Desikan-Killiany parcellation
         >>> surface.load_annotation('lh.aparc.annot', 'aparc')
-        >>> 
+        >>>
         >>> # Load from object
         >>> annot = AnnotParcellation('lh.aparc.a2009s.annot')
         >>> surface.load_annotation(annot, 'destrieux')
@@ -930,24 +943,24 @@ class Surface:
     ) -> None:
         """
         Store parcellation data and create color mappings.
-        
+
         Internal method for organizing parcellation labels, colors, and names
         in surface object for visualization and analysis.
-        
+
         Parameters
         ----------
         labels : np.ndarray
             Label values for each vertex.
-            
+
         reg_ctable : np.ndarray
             Color table with RGBA values for each region.
-            
+
         reg_names : list
             Region names corresponding to color table.
-            
+
         parc_name : str
             Name of the parcellation.
-        
+
         Notes
         -----
         Stores labels in mesh point data and creates organized color table
@@ -973,21 +986,21 @@ class Surface:
     ) -> None:
         """
         Create PyVista color table for parcellation visualization.
-        
+
         Internal method for creating visualization-ready color tables from
         parcellation data.
-        
+
         Parameters
         ----------
         reg_ctable : np.ndarray
             Color table with RGBA values for each region.
-            
+
         reg_names : list
             Region names corresponding to color table.
-            
+
         parc_name : str
             Name of the parcellation.
-        
+
         Notes
         -----
         Placeholder implementation that needs completion based on specific
@@ -996,15 +1009,15 @@ class Surface:
         # Placeholder implementation - you'll need to implement this
         # based on how you want to create the PyVista LookupTable
         pass
-    
+
     ###############################################################################################
     def list_overlays(self) -> Dict[str, str]:
         """
         List all available surface overlays and their data types.
-        
+
         Categorizes loaded data based on array dimensions and properties to
         identify scalar maps, color data, normals, and other overlay types.
-        
+
         Returns
         -------
         dict
@@ -1013,29 +1026,29 @@ class Surface:
             - 'color': 2D arrays with RGB color values (shape: n_vertices, 3)
             - 'normals': 2D arrays with unit normal vectors (shape: n_vertices, 3)
             - 'unknown': Arrays with other dimensions or unrecognized format
-        
+
         Notes
         -----
         Automatically detects data type based on:
         - 1D arrays: Classified as scalar data
         - 2D arrays with 3 columns: Checked for unit vectors (normals) vs colors
         - Other dimensions: Classified as unknown
-        
+
         Normal vectors are identified by having unit length (norm ≈ 1) and
         containing negative values.
-        
+
         Examples
         --------
         >>> # Load various data types
         >>> surface.load_scalar_map('thickness.mgh', 'thickness')
         >>> surface.load_annotation('aparc.annot', 'aparc')
         >>> surface.compute_normals()
-        >>> 
+        >>>
         >>> # List all overlays
         >>> overlays = surface.list_overlays()
         >>> print(overlays)
         {'surface': 'color', 'thickness': 'scalar', 'aparc': 'scalar', 'Normals': 'normals'}
-        >>> 
+        >>>
         >>> # Filter for scalar maps only
         >>> scalar_maps = {k: v for k, v in overlays.items() if v == 'scalar'}
         >>> print(f"Available scalar maps: {list(scalar_maps.keys())}")
@@ -1051,7 +1064,9 @@ class Surface:
             elif isinstance(tmp, np.ndarray) and tmp.ndim == 2:
                 if tmp.shape[1] == 3:
                     # If there are negative values and the norm is equal to 1, it's likely normals
-                    if np.all(np.round(np.linalg.norm(tmp, axis=1)) == 1) and np.any(tmp < 0):
+                    if np.all(np.round(np.linalg.norm(tmp, axis=1)) == 1) and np.any(
+                        tmp < 0
+                    ):
                         overlays[key] = "normals"
                     else:
                         overlays[key] = "color"
@@ -1093,39 +1108,39 @@ class Surface:
     def remove_overlay(self, overlay_name: str) -> None:
         """
         Set the active overlay for visualization.
-        
+
         Designates which data array should be used as the primary scalar field
         for coloring and visualization in PyVista plots. This affects how the
         surface is colored when rendered.
-        
+
         Parameters
         ----------
         overlay_name : str
             Name of the overlay to set as active. Must exist in mesh point data.
-        
+
         Raises
         ------
         ValueError
             If the specified overlay is not found in mesh point data.
-        
+
         Notes
         -----
         The active overlay determines which data is used for:
         - Surface coloring in visualizations
         - Colormap application
         - Scalar value display in interactive plots
-        
+
         PyVista uses the active scalars for automatic coloring unless
         explicitly overridden in visualization methods.
-        
+
         Examples
         --------
         >>> # Set thickness as active for visualization
         >>> surface.set_active_overlay('thickness')
-        >>> 
+        >>>
         >>> # Switch to parcellation display
         >>> surface.set_active_overlay('aparc')
-        >>> 
+        >>>
         >>> # Check available overlays first
         >>> overlays = surface.list_overlays()
         >>> if 'curvature' in overlays:
@@ -1161,7 +1176,7 @@ class Surface:
         except:
             # If there's any issue with active scalars, just continue
             pass
-    
+
     ##############################################################################################
     def get_overlay_info(self, overlay_name: str) -> Dict:
         """
@@ -1176,7 +1191,7 @@ class Surface:
         -------
         Dict
             Dictionary containing overlay metadata with keys:
-            
+
             - 'name' : str
                 Name of the overlay.
             - 'data_shape' : tuple
@@ -1204,7 +1219,7 @@ class Surface:
         >>> print(f"Overlay has {info['num_regions']} regions")
         >>> print(f"Data type: {info['data_type']}")
         """
-        
+
         if overlay_name not in self.mesh.point_data:
             raise ValueError(f"Overlay '{overlay_name}' not found")
 
@@ -1606,7 +1621,7 @@ class Surface:
         merged_surface.colortables = merged_colortables
 
         return merged_surface
-    
+
     ##############################################################################################
     def save_surface(
         self,
@@ -1614,25 +1629,25 @@ class Surface:
         format: str = "freesurfer",
         save_annotation: str = None,
         map_name: str = None,
-        overwrite: bool = False
+        overwrite: bool = False,
     ) -> None:
         """
         Save the surface mesh to a file in the specified format.
 
-        Exports the surface geometry (vertices and faces) and optionally associated 
+        Exports the surface geometry (vertices and faces) and optionally associated
         data to various file formats including FreeSurfer, VTK, PLY, STL, and OBJ.
 
         Parameters
         ----------
         filename : str
-            Output filename with or without extension. Extension will be added 
+            Output filename with or without extension. Extension will be added
             automatically if missing for some formats.
 
         format : str, default "freesurfer"
             Output format: 'freesurfer', 'vtk', 'ply', 'stl', or 'obj'.
 
         save_annotation : str, optional
-            Path to save annotation file (for parcellation data). Only applicable 
+            Path to save annotation file (for parcellation data). Only applicable
             for FreeSurfer.
 
         map_name : str, optional
@@ -1644,7 +1659,7 @@ class Surface:
         Raises
         ------
         ValueError
-            If filename is invalid, format is unsupported, or file exists and 
+            If filename is invalid, format is unsupported, or file exists and
             overwrite is False.
         FileNotFoundError
             If the output directory does not exist.
@@ -1662,7 +1677,9 @@ class Surface:
 
         # Check if the filename exists as a valid path
         if os.path.exists(filename) and not overwrite:
-            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
+            raise ValueError(
+                f"File '{filename}' already exists. Please set overwrite to True or choose a different name."
+            )
 
         # Ensure the directory exists
         directory = os.path.dirname(filename)
@@ -1688,25 +1705,32 @@ class Surface:
                 elif format.lower() == "stl":
                     filename += ".stl"
                 else:
-                    raise ValueError(f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl'.")
-                
+                    raise ValueError(
+                        f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl'."
+                    )
+
             self.export_to_pyvista(filename, save_annotation, map_name, overwrite)
             # Print a message indicating the file was saved
             print(f"Surface saved to {filename}")
 
         else:
-            raise ValueError(f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl', 'obj', and 'freesurfer'.")
+            raise ValueError(
+                f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl', 'obj', and 'freesurfer'."
+            )
 
     ##############################################################################################
-    def export_to_obj(self, filename: str, 
-                save_annotation: str = None,
-                map_name: str = None,
-                overwrite: bool = False) -> None:
+    def export_to_obj(
+        self,
+        filename: str,
+        save_annotation: str = None,
+        map_name: str = None,
+        overwrite: bool = False,
+    ) -> None:
         """
         Export the surface mesh to an OBJ file format.
 
-        Writes surface geometry as a Wavefront OBJ file, which stores vertices 
-        and triangular faces in a simple text format widely supported by 3D 
+        Writes surface geometry as a Wavefront OBJ file, which stores vertices
+        and triangular faces in a simple text format widely supported by 3D
         software and visualization tools.
 
         Parameters
@@ -1746,32 +1770,32 @@ class Surface:
             raise ValueError("filename must be a string")
         if not filename:
             raise ValueError("filename cannot be empty")
-        
+
         # Check if the filename exists as a valid path
         if os.path.exists(filename) and not overwrite:
-            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
-        
+            raise ValueError(
+                f"File '{filename}' already exists. Please set overwrite to True or choose a different name."
+            )
+
         # Ensure the directory exists
         directory = os.path.dirname(filename)
         if directory and not os.path.exists(directory):
             raise FileNotFoundError(f"Directory '{directory}' does not exist")
-        
+
         # If save_annotation is provided, save the annotation data
         if save_annotation is not None:
             self.export_annotation(
-                filename=save_annotation,
-                parc_name=map_name,
-                overwrite=overwrite
+                filename=save_annotation, parc_name=map_name, overwrite=overwrite
             )
 
         vertices = self.mesh.points
         faces = self.mesh.regular_faces
 
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             f.write(f"# OBJ file exported from Surface class\n")
             f.write(f"# Vertices: {len(vertices)}\n")
             f.write(f"# Faces: {len(faces)}\n\n")
-            
+
             # Write vertices
             for vertex in vertices:
                 f.write(f"v {vertex[0]:.6f} {vertex[1]:.6f} {vertex[2]:.6f}\n")
@@ -1780,19 +1804,21 @@ class Surface:
             f.write("\n")
             for face in faces:
                 f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
-        
+
         print(f"Surface exported to {filename}")
 
-    def export_to_pyvista(self,
-                filename: str,
-                save_annotation: str = None,
-                map_name: str = None,
-                overwrite: bool = False) -> None:
+    def export_to_pyvista(
+        self,
+        filename: str,
+        save_annotation: str = None,
+        map_name: str = None,
+        overwrite: bool = False,
+    ) -> None:
         """
         Export surface to VTK, STL, or PLY format using PyVista.
 
-        Saves the surface mesh in formats supported by PyVista, preserving 
-        geometry and optionally scalar data or colors. The file format is 
+        Saves the surface mesh in formats supported by PyVista, preserving
+        geometry and optionally scalar data or colors. The file format is
         determined by the filename extension.
 
         Parameters
@@ -1812,15 +1838,15 @@ class Surface:
         Raises
         ------
         ValueError
-            If filename is invalid, map_name not found, or file exists and 
+            If filename is invalid, map_name not found, or file exists and
             overwrite is False.
         FileNotFoundError
             If the output directory does not exist.
 
         Notes
         -----
-        VTK format can store additional scalar data and colors. PLY and STL 
-        formats primarily store geometry. When map_name is specified, the 
+        VTK format can store additional scalar data and colors. PLY and STL
+        formats primarily store geometry. When map_name is specified, the
         overlay data is prepared as vertex colors using associated colortables.
 
         Examples
@@ -1828,52 +1854,52 @@ class Surface:
         >>> surface.export_to_pyvista("brain.vtk")
         >>> surface.export_to_pyvista("surface.ply", map_name="thickness")
         """
-        
+
         # Validate filename
         if not isinstance(filename, str):
             raise ValueError("filename must be a string")
         if not filename:
             raise ValueError("filename cannot be empty")
-        
+
         # Check if the filename exists as a valid path
         if os.path.exists(filename) and not overwrite:
-            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
-        
+            raise ValueError(
+                f"File '{filename}' already exists. Please set overwrite to True or choose a different name."
+            )
+
         # Ensure the directory exists
         directory = os.path.dirname(filename)
         if directory and not os.path.exists(directory):
             raise FileNotFoundError(f"Directory '{directory}' does not exist")
-        
+
         # If save_annotation is provided, save the annotation data
         if save_annotation is not None:
             self.export_annotation(
-                filename=save_annotation,
-                parc_name=map_name,
-                overwrite=overwrite
+                filename=save_annotation, parc_name=map_name, overwrite=overwrite
             )
-        
+
         if map_name is not None:
             # Ensure the map_name is valid
             if not isinstance(map_name, str):
                 raise ValueError("map_name must be a string")
             if not map_name:
                 raise ValueError("map_name cannot be empty")
-            
+
             # Ensure the map_name exists in the mesh point data
             if map_name not in self.mesh.point_data:
                 raise ValueError(f"Map '{map_name}' not found in mesh point data")
-            
+
             # Set the active scalars to the specified map_name
             self.mesh.set_active_scalars(map_name)
-            
+
             # Prepare colors
             self.prepare_colors(
                 overlay_name=map_name,
                 cmap=None,  # Use the colortable for this map
                 vmin=None,
-                vmax=None
+                vmax=None,
             )
-            
+
             # Save the mesh (no texture parameter needed for vertices colors)
             self.mesh.save(filename)
 
@@ -1882,17 +1908,18 @@ class Surface:
             self.mesh.save(filename)
 
     ##############################################################################################
-    def export_to_freesurfer(self, 
-                        filename: str, 
-                        save_annotation: str = None,
-                        map_name: str = None,
-                        overwrite: bool = False
+    def export_to_freesurfer(
+        self,
+        filename: str,
+        save_annotation: str = None,
+        map_name: str = None,
+        overwrite: bool = False,
     ) -> None:
         """
         Export surface to FreeSurfer binary format.
 
         Saves the surface mesh in FreeSurfer's native binary geometry format,
-        which efficiently stores vertex coordinates and triangular face 
+        which efficiently stores vertex coordinates and triangular face
         connectivity for neuroimaging applications.
 
         Parameters
@@ -1915,8 +1942,8 @@ class Surface:
 
         Notes
         -----
-        FreeSurfer format is a compact binary representation optimized for 
-        neuroimaging workflows. The format stores only geometry data; 
+        FreeSurfer format is a compact binary representation optimized for
+        neuroimaging workflows. The format stores only geometry data;
         additional data like parcellations are saved separately as .annot files.
 
         Examples
@@ -1929,28 +1956,28 @@ class Surface:
             raise ValueError("filename must be a string")
         if not filename:
             raise ValueError("filename cannot be empty")
-        
+
         # Check if the filename exist as a valid path
         if os.path.exists(filename) and not overwrite:
-            raise ValueError(f"File '{filename}' already exists. Please set overwrite to True or choose a different name.")
-        
+            raise ValueError(
+                f"File '{filename}' already exists. Please set overwrite to True or choose a different name."
+            )
+
         # Ensure the directory exists
         directory = os.path.dirname(filename)
         if directory and not os.path.exists(directory):
             raise FileNotFoundError(f"Directory '{directory}' does not exist")
-        
+
         # If save_annotation is provided, save the annotation data
         if save_annotation is not None:
             self.export_annotation(
-                filename=save_annotation,
-                parc_name=map_name,
-                overwrite=overwrite
+                filename=save_annotation, parc_name=map_name, overwrite=overwrite
             )
 
         # Separating vertices and faces
         vertices = self.mesh.points
         faces = self.mesh.regular_faces
-        
+
         # Use nibabel to write FreeSurfer geometry
         nib.freesurfer.write_geometry(filename, vertices, faces)
 
@@ -1980,7 +2007,7 @@ class Surface:
         Raises
         ------
         ValueError
-            If filename or parc_name is invalid, parcellation not found, or 
+            If filename or parc_name is invalid, parcellation not found, or
             file exists and overwrite is False.
         FileNotFoundError
             If the output directory does not exist.
@@ -2000,28 +2027,30 @@ class Surface:
         # If save_annotation is provided, save the annotation data
         if not isinstance(filename, str):
             raise ValueError("The annotation filename must be a string")
-            
+
         if not filename:
             raise ValueError("The annotation filename cannot be empty")
 
         # Check if the annotation file exists
         if os.path.isfile(filename) and not overwrite:
-            raise ValueError(f"Annotation file '{filename}' already exists. Please set overwrite to True or choose a different name.")
+            raise ValueError(
+                f"Annotation file '{filename}' already exists. Please set overwrite to True or choose a different name."
+            )
 
         # Check if the directory exists
         annot_directory = os.path.dirname(filename)
         if annot_directory and not os.path.exists(annot_directory):
             raise FileNotFoundError(f"Directory '{annot_directory}' does not exist")
-        
+
         if not isinstance(parc_name, str):
             raise ValueError("parc_name must be a string")
         if not parc_name:
             raise ValueError("parc_name cannot be empty")
-                
+
         # Ensure the parc_name exists in the mesh point data
         if parc_name not in self.mesh.point_data:
             raise ValueError(f"Map '{parc_name}' not found in mesh point data")
-                
+
         # Extract the annotation data
         maps_array = self.mesh.point_data[parc_name]
 
@@ -2035,7 +2064,9 @@ class Surface:
             annot_obj.create_from_data(maps_array, ctable, struct_names)
             annot_obj.save_annotation(filename, force=overwrite)
         else:
-            print(f"Warning: No colortable found for map '{parc_name}'. Annotation file will not be saved.") 
+            print(
+                f"Warning: No colortable found for map '{parc_name}'. Annotation file will not be saved."
+            )
 
     ###############################################################################################
     def plot(
@@ -2065,7 +2096,7 @@ class Surface:
             Name of the overlay to visualize from the surface's point data.
 
         cmap : str, optional
-            Colormap for scalar data. If None, uses parcellation colors for 
+            Colormap for scalar data. If None, uses parcellation colors for
             categorical data or 'viridis' for scalar data.
 
         vmin : float, optional
@@ -2075,7 +2106,7 @@ class Surface:
             Maximum value for colormap scaling. If None, uses data maximum.
 
         views : str or List[str], default ["lateral"]
-            Camera view(s): 'lateral', 'medial', 'dorsal', 'ventral', 'anterior', 
+            Camera view(s): 'lateral', 'medial', 'dorsal', 'ventral', 'anterior',
             'posterior', or multiple views like ['lateral', 'medial']. Also supports
             preset layouts: '4_views', '6_views', '8_views' with optional orientation.
 
@@ -2129,19 +2160,21 @@ class Surface:
         from . import visualizationtools as cltvis
 
         plotter = cltvis.SurfacePlotter()
-        plotter.plot_surface(self, 
-                            hemi=hemi, 
-                            views=views,
-                            map_name=overlay_name,
-                            colormap= cmap,
-                            vmin=vmin,
-                            vmax=vmax, 
-                            notebook=notebook,
-                            colorbar=show_colorbar, 
-                            colorbar_title=colorbar_title,
-                            colorbar_position = colorbar_position,
-                            save_path= save_path,
-                        )
+        plotter.plot_surface(
+            self,
+            hemi=hemi,
+            views=views,
+            map_name=overlay_name,
+            colormap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            notebook=notebook,
+            colorbar=show_colorbar,
+            colorbar_title=colorbar_title,
+            colorbar_position=colorbar_position,
+            save_path=save_path,
+        )
+
 
 def merge_surfaces_list(surface_list):
     """
@@ -2184,21 +2217,21 @@ def merge_surfaces_list(surface_list):
 
     if not isinstance(surface_list, list):
         raise TypeError("surface_list must be a list")
-    
+
     if any(not isinstance(surf, Surface) for surf in surface_list):
         raise TypeError("All items in surface_list must be Surface objects")
-    
+
     # If the list is empty, return None
     if not surface_list:
         return None
-    
+
     # If there's only one surface, return it as is
     if len(surface_list) == 1:
         return copy.deepcopy(surface_list[0])
-    
+
     # Start with the first surface as the base for merging
     merged = copy.deepcopy(surface_list[0])
-    
+
     # Iterate through the rest of the surfaces and merge them
     for surf in surface_list[1:]:
         try:
@@ -2206,7 +2239,6 @@ def merge_surfaces_list(surface_list):
             # This will handle the merging logic and return a new Surface object
             # If the merge_surfaces method modifies the merged object in place,
             # we can just continue using the merged object
-
 
             # Most common: merge_surfaces returns a new object
             result = merged.merge_surfaces([surf])
@@ -2219,5 +2251,5 @@ def merge_surfaces_list(surface_list):
         except Exception as e:
             print(f"Merge failed: {e}")
             return None
-    
+
     return merged

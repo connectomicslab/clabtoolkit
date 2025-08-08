@@ -25,7 +25,8 @@ from . import misctools as cltmisc
 # Use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
     from . import surfacetools as cltsurf
-    
+
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -101,7 +102,7 @@ class SurfacePlotter:
         else:
             # Use the provided configuration file path
             config_file = os.path.abspath(config_file)
-        
+
         # Check if the configuration file exists
         if not os.path.exists(config_file):
             raise FileNotFoundError(f"Configuration file '{config_file}' not found")
@@ -119,6 +120,7 @@ class SurfacePlotter:
             "rostral": ["Rostral view"],
             "caudal": ["Caudal view"],
         }
+
     #########################################################################################################
     def _load_configs(self) -> None:
         """
@@ -411,11 +413,11 @@ class SurfacePlotter:
 
         # Recalculate optimal layout for filtered views
         num_views = len(filtered_views)
-        
+
         # If the views are not row or column aligned, we need to adjust the shape
         if config["shape"][0] == 1 or config["shape"][1] == 1:
             # Ensure at least 2 views per row/column for better visualization
-            
+
             if config["shape"][0] == 1:
                 optimal_shape = (1, num_views)
             else:
@@ -493,7 +495,6 @@ class SurfacePlotter:
             cols = math.ceil(math.sqrt(num_views))
             rows = math.ceil(num_views / cols)
             return [rows, cols]
-
 
     ###############################################################################################
     def _calculate_single_view_multi_map_layout(
@@ -993,7 +994,7 @@ class SurfacePlotter:
             raise TypeError(
                 "v_limits must be None, a tuple (vmin, vmax), or a list of tuples [(vmin1, vmax1), ...]"
             )
-        
+
         if v_limits is None:
             # Auto-compute limits for each map
             return [(None, None)] * n_maps
@@ -1263,7 +1264,7 @@ class SurfacePlotter:
             PyVista plotter instance with active subplot.
 
         map_data_list : List[Dict]
-            List of dictionaries containing data, colormap, title, vmin, vmax 
+            List of dictionaries containing data, colormap, title, vmin, vmax
             for each map.
 
         colorbar_position : str
@@ -1418,7 +1419,7 @@ class SurfacePlotter:
             f"✅ Created concatenated {colorbar_position.upper()} colorbar with {n_maps} segments"
         )
 
-    ############################################################################################### 
+    ###############################################################################################
     def _add_individual_colorbar(
         self,
         plotter: pv.Plotter,
@@ -1485,7 +1486,6 @@ class SurfacePlotter:
             data_max = np.max(data_values)
         else:
             data_max = vmax
-
 
         # SIMPLE POSITION-BASED ORIENTATION (position already corrected)
         n_points = 256
@@ -1568,7 +1568,6 @@ class SurfacePlotter:
             f"✅ Created {orientation.upper()} colorbar for {map_name} at {colorbar_position.upper()} position"
         )
 
-    
     ###############################################################################################
     def _process_vertex_colors(
         self,
@@ -1739,7 +1738,7 @@ class SurfacePlotter:
         valid_positions = ["top", "bottom", "left", "right"]
         if colorbar_position not in valid_positions:
             colorbar_position = "bottom"
-        
+
         if colorbar:
             original_shape = config["shape"]
 
@@ -1873,7 +1872,7 @@ class SurfacePlotter:
         >>> view_names = plotter.list_available_view_names()
         >>> print(f"Available views: {view_names}")
         """
-        
+
         view_names = list(self._view_name_mapping.keys())
         view_names_capitalized = [name.capitalize() for name in view_names]
 
@@ -1893,7 +1892,6 @@ class SurfacePlotter:
 
         return view_names_capitalized
 
-
     ###############################################################################################
     def list_available_layouts(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -1903,7 +1901,7 @@ class SurfacePlotter:
         -------
         Dict[str, Dict[str, Any]]
             Dictionary containing detailed layout information for each configuration.
-            Keys are configuration names, values contain shape, window_size, 
+            Keys are configuration names, values contain shape, window_size,
             num_views, and views information.
 
         Examples
@@ -1917,7 +1915,6 @@ class SurfacePlotter:
         >>> print(f"Shape: {layout_info['shape']}")
         >>> print(f"Views: {layout_info['num_views']}")
         """
-
 
         layout_info = {}
 
@@ -1988,7 +1985,7 @@ class SurfacePlotter:
         Returns
         -------
         Dict[str, Any] or None
-            Detailed configuration information if found, None if configuration 
+            Detailed configuration information if found, None if configuration
             doesn't exist. Contains shape, window_size, and views information.
 
         Examples
@@ -2132,14 +2129,14 @@ class SurfacePlotter:
         Parameters
         ----------
         surface : Surface
-            Surface object with mesh data and point_data arrays for the 
+            Surface object with mesh data and point_data arrays for the
             specified hemisphere.
 
         hemi : str, default "lh"
             Hemisphere specification: "lh" (left) or "rh" (right).
 
         views : str or List[str], default "8_views"
-            Either configuration name from JSON file (e.g., "8_views", "6_views") 
+            Either configuration name from JSON file (e.g., "8_views", "6_views")
             or list of view names (e.g., ["lateral", "medial", "dorsal"]).
 
         map_name : str, default "surface"
@@ -2172,7 +2169,7 @@ class SurfacePlotter:
         Raises
         ------
         ValueError
-            If invalid hemisphere specified, invalid view names provided, or 
+            If invalid hemisphere specified, invalid view names provided, or
             required data arrays are missing.
 
         KeyError
@@ -2216,7 +2213,14 @@ class SurfacePlotter:
         else:
             # Predefined configuration - filter for single hemisphere
             if views not in self.views_conf:
-                if views in ["lateral", "medial", "dorsal", "ventral", "rostral", "caudal"]:
+                if views in [
+                    "lateral",
+                    "medial",
+                    "dorsal",
+                    "ventral",
+                    "rostral",
+                    "caudal",
+                ]:
                     # Special case for global views
                     config = self._create_single_hemisphere_config([views], hemi)
                 else:
@@ -2227,7 +2231,9 @@ class SurfacePlotter:
                         f"Available options: {available_configs}"
                     )
             else:
-                config = self._filter_config_for_hemisphere(self.views_conf[views], hemi)
+                config = self._filter_config_for_hemisphere(
+                    self.views_conf[views], hemi
+                )
                 config_name = f"{views}_{hemi}"
 
         # Set colorbar to False if the map_name is on the colortable
@@ -2303,7 +2309,7 @@ class SurfacePlotter:
         colorbar_position: str = "bottom",
         save_path: Optional[str] = None,
     ) -> None:
-        
+
         pass
 
     ###############################################################################################
@@ -2338,7 +2344,7 @@ class SurfacePlotter:
             Right hemisphere surface object with mesh data and point_data arrays.
 
         views : str or List[str], default "8_views"
-            Either configuration name from JSON file (e.g., "8_views", "6_views") 
+            Either configuration name from JSON file (e.g., "8_views", "6_views")
             or list of view names (e.g., ["lateral", "medial", "dorsal"]).
 
         notebook : bool, default False
@@ -2522,7 +2528,7 @@ class SurfacePlotter:
             dynamically select.
 
         views_orientation : str, default "horizontal"
-            Layout orientation: "horizontal" (maps as rows) or "vertical" 
+            Layout orientation: "horizontal" (maps as rows) or "vertical"
             (maps as columns). Ignored when using grid layout.
 
         notebook : bool, default False
@@ -2532,11 +2538,11 @@ class SurfacePlotter:
             List of data arrays to use for surface coloring.
 
         v_limits : tuple or List[tuple], optional
-            Colormap limits for the maps. Can be single tuple for all maps or 
+            Colormap limits for the maps. Can be single tuple for all maps or
             list of tuples for individual maps.
 
         colormaps : str or List[str], default "BrBG"
-            Colormap(s) to use. Either single colormap for all maps or list 
+            Colormap(s) to use. Either single colormap for all maps or list
             of colormaps.
 
         save_path : str, optional
@@ -2554,17 +2560,17 @@ class SurfacePlotter:
             If list, each element is the title for the corresponding map.
 
         colorbar_position : str, default "right"
-            Colorbar placement: "right" or "bottom". Invalid combinations 
+            Colorbar placement: "right" or "bottom". Invalid combinations
             will be auto-corrected.
 
         Raises
         ------
         TypeError
-            If map_names is not a string or list of strings, or v_limits format 
+            If map_names is not a string or list of strings, or v_limits format
             is invalid.
 
         ValueError
-            If no valid maps found in both hemispheres, or v_limits list length 
+            If no valid maps found in both hemispheres, or v_limits list length
             doesn't match maps.
 
         Examples
@@ -2928,7 +2934,7 @@ class SurfacePlotter:
                         vmin,
                         vmax,
                         n_views,  # Pass number of views for multi-view enforcement
-                        views_orientation  # Pass orientation for multi-view enforcement
+                        views_orientation,  # Pass orientation for multi-view enforcement
                     )
 
         # Add shared colorbar if requested
@@ -2976,7 +2982,6 @@ class SurfacePlotter:
 
         # Execute final rendering/display
         self._finalize_plot(plotter, save_mode, save_path)
-
 
 
 #####################################################################################################

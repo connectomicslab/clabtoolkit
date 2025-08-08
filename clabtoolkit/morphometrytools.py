@@ -354,7 +354,7 @@ def compute_reg_area_fromsurf(
 
         sparc_data = cltfree.AnnotParcellation()
         sparc_data.load_from_file(parc_file=parc_file)
-        
+
     elif isinstance(parc_file, cltfree.AnnotParcellation):
         sparc_data = copy.deepcopy(parc_file)
     else:

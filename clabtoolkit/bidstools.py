@@ -414,7 +414,6 @@ def insert_entity(
 
         return ent_out
 
-
 ####################################################################################################
 def recursively_replace_entity_value(
     root_dir: str, dict2old: Union[dict, str], dict2new: Union[dict, str]
@@ -1901,15 +1900,19 @@ def generate_bids_tree(
     ----------
     bids_root : str
         Path to the BIDS root directory.
+
     max_depth : int, optional
         Maximum depth to traverse. If None (default), traverses entire directory
         structure without depth limitation.
+
     show_hidden : bool, optional
         Whether to show hidden files and folders (starting with '.').
         Default is False.
+
     exclude_patterns : set of str, optional
         Set of file/folder name patterns to exclude from the tree. If None,
         defaults to {'.git', '__pycache__', '.DS_Store', 'Thumbs.db'}.
+
     save_to_file : str, optional
         Path to save the tree output as a text file. If None, only returns
         the string without saving.
@@ -1924,11 +1927,14 @@ def generate_bids_tree(
     ------
     FileNotFoundError
         If the specified bids_root path does not exist.
+
     NotADirectoryError
         If the specified bids_root path is not a directory.
+
     PermissionError
         If there are insufficient permissions to read certain directories.
         Individual permission errors are handled gracefully and noted in output.
+
     OSError
         If there are file system related errors during tree generation or
         file saving operations.
@@ -2049,6 +2055,7 @@ def generate_bids_tree(
 
     return tree_output
 
+
 ####################################################################################################
 def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     """
@@ -2058,6 +2065,7 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     ----------
     bids_root : str
         Path to the BIDS root directory.
+
     **kwargs
         Additional keyword arguments passed to generate_bids_tree().
         See generate_bids_tree() documentation for available parameters.
@@ -2071,10 +2079,13 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     ------
     FileNotFoundError
         If the specified bids_root path does not exist.
+
     NotADirectoryError
         If the specified bids_root path is not a directory.
+
     PermissionError
         If there are insufficient permissions to read directories.
+
     OSError
         If there are file system related errors.
 
@@ -2118,6 +2129,7 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
     stats = f"\n\nStatistics:\n├── Directories: {dir_count}\n└── Files: {file_count}"
 
     return tree + stats
+
 
 ####################################################################################################
 def validate_bids_structure(bids_root: str) -> List[str]:
@@ -2190,6 +2202,7 @@ def validate_bids_structure(bids_root: str) -> List[str]:
 
     return warnings
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -2199,6 +2212,7 @@ def validate_bids_structure(bids_root: str) -> List[str]:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+
 
 # Loading the JSON file containing the BIDs configuration file. It includes the entities and suffixes
 # of the BIDs dataset.

@@ -39,6 +39,7 @@ from typing import Union, List, Optional
 ####################################################################################################
 ####################################################################################################
 
+
 class SmartFormatter(argparse.HelpFormatter):
     """
     Class to format the help message
@@ -197,7 +198,7 @@ def is_color_like(color) -> bool:
     bool
         True if the color is valid, False otherwise.
 
-    How to Use:
+    Examples:
     --------------
         >>> is_color_like("#FF5733")  # Hex string
         True
@@ -316,7 +317,7 @@ def multi_rgb2hex(
     hexcodes: list
         List of hexadecimal codes for the colors
 
-    How to Use:
+    Examples:
     --------------
         >>> colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
         >>> hexcodes = multi_rgb2hex(colors)
@@ -345,7 +346,7 @@ def hex2rgb(hexcode: str) -> tuple:
     tuple
         Tuple with the rgb values
 
-    How to Use:
+    Examples:
     --------------
         >>> hexcode = "#FF5733"
         >>> rgb = hex2rgb(hexcode)
@@ -372,7 +373,7 @@ def multi_hex2rgb(hexcodes: Union[str, List[str]]) -> np.ndarray:
     rgb_list: np.array
         Array of rgb values
 
-    How to Use:
+    Examples:
     --------------
         >>> hexcodes = ["#FF5733", "#33FF57", "#3357FF"]
         >>> rgb_list = multi_hex2rgb(hexcodes)
@@ -479,6 +480,7 @@ def invert_colors(
 
     # Return same container type as input
     return np.array(result) if isinstance(colors, np.ndarray) else result
+
 
 ####################################################################################################
 def harmonize_colors(
@@ -589,7 +591,7 @@ def readjust_colors(
     out_colors: list or numpy array
         List of colors in the desired format
 
-    How to Use:
+    Examples:
     --------------
         >>> colors = ["#FF5733", [255, 87, 51], np.array([51, 87, 255])]
         >>> out_colors = readjust_colors(colors, output_format='hex')
@@ -607,6 +609,7 @@ def readjust_colors(
     out_colors = harmonize_colors(colors, output_format=output_format)
 
     return out_colors
+
 
 ####################################################################################################
 def create_random_colors(
@@ -746,6 +749,7 @@ def create_random_colors(
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
+
 ###################################################################################################
 def values2colors(
     values: Union[List[Union[int, float]], np.ndarray],
@@ -884,6 +888,7 @@ def values2colors(
                 result_colors = 1.0 - result_colors
 
     return result_colors
+
 
 ###################################################################################################
 def visualize_colors(
@@ -1074,7 +1079,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
         Time difference in days between the target date and the closest date in the list.
         If the target date is not in the list, it will return the time difference in days.
 
-    How to Use:
+    Examples:
     --------------
         >>> dates_list = ["20230101", "20230201", "20230301"]
         >>> target_date = "20230215"
@@ -1226,6 +1231,7 @@ def build_indices(
         flat = [x for x in flat if x != 0]
 
     return sorted(set(flat))
+
 
 ####################################################################################################
 def get_indices_by_condition(condition: str, **kwargs):
@@ -1557,7 +1563,7 @@ def remove_duplicates(input_list: list):
     unique_list: list
         List of unique elements
 
-    How to Use:
+    Examples:
     --------------
         >>> input_list = [1, 2, 2, 3, 4, 4, 5]
         >>> unique_list = remove_duplicates(input_list)
@@ -1594,7 +1600,7 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]) -> list:
     out_ids: list
         List of ids that are in the file.
 
-    How to Use:
+    Examples:
     --------------
         >>> subj_ids = ["sub-01", "sub-02", "sub-03"]
         >>> ids_file = "ids.txt" # Column-wise text file with the ids to select (i.e. "sub-01", "sub-03")
@@ -1650,7 +1656,7 @@ def filter_by_substring(
     filtered_list: list
         List of elements that contain the substring
 
-    How to Use:
+    Examples:
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> or_filter = ["app", "ch"]
@@ -1757,7 +1763,7 @@ def get_indexes_by_substring(
     indexes: list
         List of indexes that contain any of the substring
 
-    How to Use:
+    Examples:
     --------------
         >>> input_list = ["apple", "banana", "cherry", "date"]
         >>> substr = ["ap", "ch"]
@@ -1959,7 +1965,7 @@ def list_intercept(list1: list, list2: list):
     int_list: list
         List of elements that are in both lists
 
-    How to Use:
+    Examples:
     --------------
         >>> list1 = [1, 2, 3, 4, 5]
         >>> list2 = [3, 4, 5, 6, 7]
@@ -2000,7 +2006,7 @@ def ismember_from_list(a, b):
     idx: list
         List of indices of elements in a that are in b
 
-    How to Use:
+    Examples:
     --------------
         >>> a = [1, 2, 3, 4, 5]
         >>> b = [3, 4, 5, 6, 7]
@@ -2040,7 +2046,7 @@ def get_leaf_directories(root_dir: str) -> list:
     leaf_folders: list
         A list of absolute paths to folders that do not contain any subfolders.
 
-    How to Use:
+    Examples:
     --------------
         >>> root_directory = "/path/to/your/folder"
         >>> leaf_folders = get_leaf_directories(root_directory)
@@ -2333,7 +2339,7 @@ def remove_empty_folders(start_path, deleted_folders=None):
         deleted_folders : list
             A list of all directories that were deleted.
 
-    How to Use:
+    Examples:
     --------------
         >>> deleted_folders = remove_empty_folders("/path/to/start")
         >>> print("Deleted folders:", deleted_folders)
@@ -2507,7 +2513,7 @@ def correct_names(
     regnames: list
         List of corrected region names
 
-    How to Use:
+    Examples:
     --------------
         >>> regnames = ["ctx-lh-1", "ctx-rh-2", "ctx-lh-3"]
         >>> prefix = "ctx-"
@@ -2587,7 +2593,7 @@ def remove_empty_keys_or_values(d: dict) -> dict:
     d : dict
         The dictionary with the empty entries removed.
 
-    How to Use:
+    Examples:
     --------------
         >>> my_dict = {'key1': 'value1', 'key2': '', '': 'value3', 'key4': None}
         >>> cleaned_dict = remove_empty_keys_or_values(my_dict)
@@ -2922,7 +2928,7 @@ def generate_container_command(
     container_cmd: list
         List with the command to run the bash command locally or inside the container
 
-    How to Use:
+    Examples:
     --------------
         >>> bash_args = ["bash", "-c", "echo Hello World"]
         >>> container_cmd = generate_container_command(bash_args, technology="docker", image_path="/path/to/image")
@@ -2997,6 +3003,7 @@ def generate_container_command(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+
 
 def format_signature(sig: inspect.Signature):
     """
@@ -3374,6 +3381,7 @@ def h5explorer(
         print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
         raise
 
+
 #####################################################################################################
 def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
     """
@@ -3440,6 +3448,7 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
     except Exception as e:
         print(f"Error: {e}")
         raise
+
 
 #####################################################################################################
 def show_object_content(obj, show_private=False, show_dunder=False):
@@ -3584,6 +3593,7 @@ def show_object_content(obj, show_private=False, show_dunder=False):
                 )
 
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
+
 
 #####################################################################################################
 def search_methods(obj, keyword, case_sensitive=False):

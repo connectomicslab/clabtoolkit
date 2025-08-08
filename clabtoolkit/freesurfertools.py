@@ -19,6 +19,7 @@ from collections import defaultdict
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -50,7 +51,7 @@ class AnnotParcellation:
     ):
         """
         Initialize the AnnotParcellation object
-        
+
         Parameters
         ----------
         parc_file - Optional : Parcellation filename. If None, creates empty instance
@@ -66,22 +67,22 @@ class AnnotParcellation:
         self.codes = None
         self.regtable = None
         self.regnames = None
-        
+
         # If parc_file is provided, load it
         if parc_file is not None:
             self.load_from_file(parc_file, ref_surf, cont_tech, cont_image)
-    
+
     ####################################################################################################
     def load_from_file(
-        self, 
-        parc_file: str, 
-        ref_surf: str = None, 
-        cont_tech: str = "local", 
-        cont_image: str = None
+        self,
+        parc_file: str,
+        ref_surf: str = None,
+        cont_tech: str = "local",
+        cont_image: str = None,
     ):
         """
         Load parcellation data from file
-        
+
         Parameters
         ----------
         parc_file - Required : Parcellation filename
@@ -91,21 +92,21 @@ class AnnotParcellation:
         """
         booldel = False
         self.filename = parc_file
-        
+
         # Verify if the file exists
         if not os.path.exists(self.filename):
             raise ValueError("The parcellation file does not exist")
-            
+
         # Extracting the filename, folder and name
         self.path = os.path.dirname(self.filename)
         self.name = os.path.basename(self.filename)
-        
+
         # Detecting the hemisphere
         temp_name = self.name.lower()
         # Find in the string annot_name if it is lh. or rh.
         hemi = detect_hemi(self.name)
         self.hemi = hemi
-        
+
         # If the file is a .gii file, then convert it to a .annot file
         if self.name.endswith(".gii"):
             annot_file = AnnotParcellation.gii2annot(
@@ -123,42 +124,42 @@ class AnnotParcellation:
                 self.filename, annot_file=self.filename.replace(".gcs", ".annot")
             )
             booldel = True
-            
+
         # Read the annot file using nibabel
         codes, reg_table, reg_names = nib.freesurfer.read_annot(
             annot_file, orig_ids=True
         )
-        
+
         if booldel:
             os.remove(annot_file)
-            
+
         # Correcting region names
         reg_names = [name.decode("utf-8") for name in reg_names]
-        
+
         # Detect the codes in the table that are not in the vertex wise data
         # Find the indexes where the codes are not in the vertex wise data
         tmp_ind = np.where(np.isin(reg_table[:, 4], np.unique(codes)) == False)[0]
-        
+
         # If there are codes that are not in the vertex wise data, then remove them from the table
         if tmp_ind.size > 0:
             reg_table = np.delete(reg_table, tmp_ind, axis=0)
             reg_names = np.delete(reg_names, tmp_ind).tolist()
-            
+
         # Storing the codes, colors and names in the object
         self.codes = codes
         self.regtable = reg_table
         self.regnames = reg_names
-    
+
     ####################################################################################################
     def is_loaded(self):
         """Check if parcellation data has been loaded"""
         return self.codes is not None
-    
+
     ####################################################################################################
     def create_from_data(self, codes, regtable, regnames, hemi=None, filename=None):
         """
         Create parcellation from existing data arrays
-        
+
         Parameters
         ----------
         codes : array-like
@@ -230,106 +231,105 @@ class AnnotParcellation:
         self, label_file: str, surf_file: str, corr_annot: str = None
     ):
         """
-        Correct the parcellation by refilling vertices from the cortex label file 
+        Correct the parcellation by refilling vertices from the cortex label file
         that do not have a label in the annotation file.
-        
-        This method iteratively fills unlabeled vertices (those with value -1 or 0) 
-        by assigning the most frequent label from their neighboring vertices. The 
-        algorithm focuses on boundary vertices - those at the edges of the 
-        parcellation - and continues until all vertices within the cortex have 
+
+        This method iteratively fills unlabeled vertices (those with value -1 or 0)
+        by assigning the most frequent label from their neighboring vertices. The
+        algorithm focuses on boundary vertices - those at the edges of the
+        parcellation - and continues until all vertices within the cortex have
         been assigned labels or no further progress can be made.
-        
+
         Parameters
         ----------
         label_file : str
-            Path to the cortex label file containing vertex indices that define 
-            the cortical surface. This file typically has a .label extension and 
+            Path to the cortex label file containing vertex indices that define
+            the cortical surface. This file typically has a .label extension and
             is used to mask vertices to only those within the cortex.
-            
+
         surf_file : str
-            Path to the surface geometry file containing vertex coordinates and 
-            face connectivity information. This is typically a FreeSurfer surface 
+            Path to the surface geometry file containing vertex coordinates and
+            face connectivity information. This is typically a FreeSurfer surface
             file (e.g., lh.pial, rh.white) that defines the mesh topology.
-            
+
         corr_annot : str, optional
-            Path where the corrected annotation file should be saved. If None, 
-            the original annotation filename will be used. The directory will be 
+            Path where the corrected annotation file should be saved. If None,
+            the original annotation filename will be used. The directory will be
             created if it doesn't exist. Default is None.
-        
+
         Returns
         -------
         corr_annot : str
             Path to the corrected annotation file that was saved.
-            
+
         vert_lab : numpy.ndarray
-            Array of vertex labels after correction, where each element corresponds 
+            Array of vertex labels after correction, where each element corresponds
             to the label assigned to that vertex index.
-            
+
         reg_ctable : numpy.ndarray
-            Region color table containing RGB color values for each region in the 
+            Region color table containing RGB color values for each region in the
             parcellation.
-            
+
         reg_names : list
-            List of region names corresponding to each label in the parcellation. 
-            May include "unknown" as the first element if unlabeled vertices were 
+            List of region names corresponding to each label in the parcellation.
+            May include "unknown" as the first element if unlabeled vertices were
             initially present.
-        
+
         Raises
         ------
         ValueError
-            If the surface file does not exist. Both annotation and surface files 
+            If the surface file does not exist. Both annotation and surface files
             are mandatory for the parcellation correction process.
-            
+
         ValueError
-            If the cortex label file does not exist. The cortex label file is 
+            If the cortex label file does not exist. The cortex label file is
             required to define which vertices should be considered for labeling.
-        
+
         Notes
         -----
         The algorithm works by:
-        
+
         1. Loading surface geometry and cortex label information
         2. Identifying vertices with missing labels (value -1, converted to 0)
         3. Finding boundary faces that contain both labeled and unlabeled vertices
-        4. Iteratively assigning labels to unlabeled boundary vertices based on 
+        4. Iteratively assigning labels to unlabeled boundary vertices based on
            the most frequent label among their neighbors
         5. Repeating until no more vertices can be labeled or all vertices are filled
-        
-        The method modifies the internal state of the annotation object and 
+
+        The method modifies the internal state of the annotation object and
         optionally saves the result to a file.
-        
+
         Examples
         --------
         Basic usage with an annotation object:
-        
+
         >>> # Assuming 'annot' is an annotation object
         >>> label_file = '/path/to/lh.cortex.label'
         >>> surf_file = '/path/to/lh.pial'
         >>> output_file = '/path/to/lh.corrected.annot'
-        >>> 
+        >>>
         >>> corrected_path, labels, ctable, names = annot.fill_parcellation(
         ...     label_file=label_file,
-        ...     surf_file=surf_file, 
+        ...     surf_file=surf_file,
         ...     corr_annot=output_file
         ... )
-        >>> 
+        >>>
         >>> print(f"Corrected annotation saved to: {corrected_path}")
         >>> print(f"Number of regions: {len(names)}")
-        
+
         Usage without specifying output file (uses original filename):
-        
+
         >>> corrected_path, labels, ctable, names = annot.fill_parcellation(
         ...     label_file=label_file,
         ...     surf_file=surf_file
         ... )
-        
+
         See Also
         --------
         nibabel.freesurfer.read_geometry : For reading surface files
         nibabel.freesurfer.read_label : For reading label files
         save_annotation : For saving annotation files
         """
-
 
         # Auxiliary variables for the progress bar
         # LINE_UP = '\033[1A'
@@ -479,72 +479,72 @@ class AnnotParcellation:
     ):
         """
         Export the parcellation table to a TSV file containing region information.
-        
+
         Creates a comprehensive table with region indices, annotation IDs, parcellation IDs,
         names, and hexadecimal color codes. This is useful for creating lookup tables,
-        documentation, or interfacing with other neuroimaging tools that require 
+        documentation, or interfacing with other neuroimaging tools that require
         parcellation metadata in tabular format.
-        
+
         Parameters
         ----------
         prefix2add : str, optional
-            Prefix string to prepend to all region names. This is useful for 
-            distinguishing regions from different hemispheres (e.g., 'lh_' or 'rh_') 
-            or different atlases. If None, original region names are preserved. 
+            Prefix string to prepend to all region names. This is useful for
+            distinguishing regions from different hemispheres (e.g., 'lh_' or 'rh_')
+            or different atlases. If None, original region names are preserved.
             Default is None.
-            
+
         reg_offset : int, optional
-            Integer offset to add to the parcellation IDs. This helps avoid ID 
-            conflicts when combining multiple parcellations or when specific ID 
-            ranges are required. The offset is added to sequential indices starting 
+            Integer offset to add to the parcellation IDs. This helps avoid ID
+            conflicts when combining multiple parcellations or when specific ID
+            ranges are required. The offset is added to sequential indices starting
             from 0. Default is 1000.
-            
+
         tsv_file : str, optional
-            Path where the TSV file should be saved. If provided, the DataFrame 
-            will be written to this file with tab separation. The parent directory 
-            will be created if it doesn't exist. If None, no file is saved and 
+            Path where the TSV file should be saved. If provided, the DataFrame
+            will be written to this file with tab separation. The parent directory
+            will be created if it doesn't exist. If None, no file is saved and
             only the DataFrame is returned. Default is None.
-        
+
         Returns
         -------
         tsv_df : pandas.DataFrame
             DataFrame containing the parcellation table with the following columns:
-            
+
             - 'index': Sequential indices starting from 0 for each region
             - 'annotid': Original annotation IDs from the FreeSurfer annotation file
             - 'parcid': Parcellation IDs (index + reg_offset)
             - 'name': Region names, optionally prefixed
             - 'color': Hexadecimal color codes (e.g., '#FF0000' for red)
-            
+
         tsv_file : str
-            Path to the saved TSV file if tsv_file parameter was provided, 
+            Path to the saved TSV file if tsv_file parameter was provided,
             otherwise returns the input tsv_file parameter (which may be None).
-        
+
         Raises
         ------
         PermissionError
-            If the specified directory for the TSV file cannot be created due to 
-            insufficient write permissions. The method will print an error message 
+            If the specified directory for the TSV file cannot be created due to
+            insufficient write permissions. The method will print an error message
             and exit the program.
-        
+
         Notes
         -----
         The method processes the internal parcellation data as follows:
-        
-        1. Converts RGB color values to hexadecimal format using the first 3 columns 
+
+        1. Converts RGB color values to hexadecimal format using the first 3 columns
         of the region table
         2. Applies optional prefix to region names using a name correction function
         3. Creates sequential indices and applies the specified offset to parcellation IDs
         4. Combines all information into a structured DataFrame
         5. Optionally saves to TSV format with tab separation and no row indices
-        
+
         The annotation IDs correspond to the original FreeSurfer annotation values,
         while parcellation IDs provide a more standardized numbering scheme.
-        
+
         Examples
         --------
         Basic usage - return DataFrame only:
-        
+
         >>> # Assuming 'annot' is an annotation object
         >>> df, filename = annot.export_to_tsv()
         >>> print(df.head())
@@ -552,17 +552,17 @@ class AnnotParcellation:
         0        0     1234    1000    unknown   #000000
         1        1     5678    1001    precentral #FF0000
         2        2     9012    1002    postcentral #00FF00
-        
+
         Add prefix to region names:
-        
+
         >>> df, filename = annot.export_to_tsv(prefix2add='lh_')
         >>> print(df['name'].head())
         0        lh_unknown
-        1        lh_precentral  
+        1        lh_precentral
         2        lh_postcentral
-        
+
         Save to file with custom offset:
-        
+
         >>> output_file = '/path/to/parcellation_table.tsv'
         >>> df, saved_path = annot.export_to_tsv(
         ...     prefix2add='rh_',
@@ -571,26 +571,26 @@ class AnnotParcellation:
         ... )
         >>> print(f"Table saved to: {saved_path}")
         >>> print(f"Parcellation IDs range: {df['parcid'].min()}-{df['parcid'].max()}")
-        
+
         Create hemisphere-specific tables:
-        
+
         >>> # Left hemisphere
         >>> lh_df, lh_file = lh_annot.export_to_tsv(
         ...     prefix2add='lh_',
         ...     reg_offset=1000,
         ...     tsv_file='lh_parcellation.tsv'
         ... )
-        >>> 
-        >>> # Right hemisphere  
+        >>>
+        >>> # Right hemisphere
         >>> rh_df, rh_file = rh_annot.export_to_tsv(
         ...     prefix2add='rh_',
-        ...     reg_offset=2000, 
+        ...     reg_offset=2000,
         ...     tsv_file='rh_parcellation.tsv'
         ... )
-        >>> 
+        >>>
         >>> # Combine both hemispheres
         >>> combined_df = pd.concat([lh_df, rh_df], ignore_index=True)
-        
+
         See Also
         --------
         pandas.DataFrame.to_csv : For saving DataFrames in various formats
@@ -642,110 +642,114 @@ class AnnotParcellation:
                 tsv_f.write(tsv_df.to_csv(sep="\t", index=False))
 
         return tsv_df, tsv_file
-    
+
     ####################################################################################################
-    def map_values(self, regional_values: Union[str, pd.DataFrame, np.ndarray], is_dataframe: bool = False) -> Union[np.ndarray, pd.DataFrame]:
+    def map_values(
+        self,
+        regional_values: Union[str, pd.DataFrame, np.ndarray],
+        is_dataframe: bool = False,
+    ) -> Union[np.ndarray, pd.DataFrame]:
         """
         Map regional values to vertex-wise values using the parcellation codes and region table.
-        
-        This method transforms region-level data (e.g., statistical measures, anatomical 
-        properties, or functional metrics computed per brain region) into vertex-level 
-        data for surface visualization. Each vertex is assigned the value corresponding 
+
+        This method transforms region-level data (e.g., statistical measures, anatomical
+        properties, or functional metrics computed per brain region) into vertex-level
+        data for surface visualization. Each vertex is assigned the value corresponding
         to its parcellation region, enabling surface-based visualization of regional data.
-        
+
         Parameters
         ----------
         regional_values : str or pandas.DataFrame or numpy.ndarray
             Regional values to map to vertices. Can be provided in three formats:
-            
-            - **str**: Path to a text/CSV file containing regional values. The file 
-            should have one row per region matching the parcellation. Single column 
-            files are read as arrays, while multi-column CSV files can optionally 
+
+            - **str**: Path to a text/CSV file containing regional values. The file
+            should have one row per region matching the parcellation. Single column
+            files are read as arrays, while multi-column CSV files can optionally
             be read with headers when is_dataframe=True.
-            
-            - **pandas.DataFrame**: DataFrame with one row per region and columns 
-            representing different measures. Must have numeric values and column 
-            names. The number of rows must match the number of regions in the 
+
+            - **pandas.DataFrame**: DataFrame with one row per region and columns
+            representing different measures. Must have numeric values and column
+            names. The number of rows must match the number of regions in the
             parcellation.
-            
-            - **numpy.ndarray**: Array with shape (n_regions, n_measures) where 
-            n_regions matches the number of regions in the parcellation. Can be 
+
+            - **numpy.ndarray**: Array with shape (n_regions, n_measures) where
+            n_regions matches the number of regions in the parcellation. Can be
             1D for single measures or 2D for multiple measures.
-            
+
         is_dataframe : bool, optional
-            Whether to read text files as DataFrames with column headers. Only 
-            applies when regional_values is a file path (str). If True, the first 
-            row is treated as column names and preserved in the output. If False, 
+            Whether to read text files as DataFrames with column headers. Only
+            applies when regional_values is a file path (str). If True, the first
+            row is treated as column names and preserved in the output. If False,
             the file is read without headers. Default is False.
-        
+
         Returns
         -------
         vertex_wise_values : numpy.ndarray or pandas.DataFrame
-            Vertex-wise values mapped from the regional values. The output format 
+            Vertex-wise values mapped from the regional values. The output format
             depends on the input:
-            
-            - **numpy.ndarray**: Returned when input is a numpy array or a file 
-            read without headers (is_dataframe=False). Shape is (n_vertices,) 
+
+            - **numpy.ndarray**: Returned when input is a numpy array or a file
+            read without headers (is_dataframe=False). Shape is (n_vertices,)
             for single measures or (n_vertices, n_measures) for multiple measures.
-            
-            - **pandas.DataFrame**: Returned when input is a DataFrame or a file 
-            read with headers (is_dataframe=True). Has one row per vertex and 
+
+            - **pandas.DataFrame**: Returned when input is a DataFrame or a file
+            read with headers (is_dataframe=True). Has one row per vertex and
             preserves original column names.
-        
+
         Raises
         ------
         ValueError
             If the regional values file does not exist (when input is a file path).
-            
+
         ValueError
-            If the number of rows in regional_values does not match the number of 
-            regions in the parcellation. This ensures proper mapping between regions 
+            If the number of rows in regional_values does not match the number of
+            regions in the parcellation. This ensures proper mapping between regions
             and values.
-            
+
         ValueError
-            If the DataFrame contains non-numeric values. All regional values must 
+            If the DataFrame contains non-numeric values. All regional values must
             be numeric for proper mapping to vertices.
-            
+
         ValueError
-            If regional_values is not one of the supported types (str, DataFrame, 
+            If regional_values is not one of the supported types (str, DataFrame,
             or ndarray).
-        
+
         Notes
         -----
         The mapping process works as follows:
-        
-        1. **Input validation**: Checks that the input format is supported and that 
+
+        1. **Input validation**: Checks that the input format is supported and that
         dimensions match the parcellation structure.
-        
-        2. **Format standardization**: Converts all input types to numpy arrays 
+
+        2. **Format standardization**: Converts all input types to numpy arrays
         while preserving column information when applicable.
-        
-        3. **Vertex assignment**: Uses the internal `region_to_vertexwise` function 
-        to assign each vertex the value from its corresponding region based on 
+
+        3. **Vertex assignment**: Uses the internal `region_to_vertexwise` function
+        to assign each vertex the value from its corresponding region based on
         the parcellation codes.
-        
-        4. **Output formatting**: Returns data in the same structural format as the 
+
+        4. **Output formatting**: Returns data in the same structural format as the
         input (array vs DataFrame) to maintain consistency.
-        
-        The parcellation codes (self.codes) define which region each vertex belongs 
-        to, and the region table (self.regtable) provides the mapping structure. 
-        Vertices with undefined regions (typically background or unknown areas) 
-        may receive special handling depending on the implementation of 
+
+        The parcellation codes (self.codes) define which region each vertex belongs
+        to, and the region table (self.regtable) provides the mapping structure.
+        Vertices with undefined regions (typically background or unknown areas)
+        may receive special handling depending on the implementation of
         `region_to_vertexwise`.
-        
+
         Examples
         --------
         Map single measure from numpy array:
-        
+
         >>> import numpy as np
         >>> # Regional thickness values for each region
         >>> thickness_values = np.array([2.5, 3.1, 2.8, 3.2, 2.9])  # 5 regions
         >>> vertex_values = annot.map_values(thickness_values)
         >>> print(f"Mapped {len(vertex_values)} vertices")
         >>> print(f"Value range: {vertex_values.min():.2f} - {vertex_values.max():.2f}")
-        
+
         Map multiple measures from DataFrame:
-        
+
         >>> import pandas as pd
         >>> # Multiple regional measures
         >>> regional_data = pd.DataFrame({
@@ -756,52 +760,52 @@ class AnnotParcellation:
         >>> vertex_df = annot.map_values(regional_data)
         >>> print(f"Output columns: {list(vertex_df.columns)}")
         >>> print(f"Vertex data shape: {vertex_df.shape}")
-        
+
         Read from CSV file without headers:
-        
+
         >>> # File contains single column of regional values
         >>> vertex_values = annot.map_values('regional_thickness.txt')
         >>> print(f"Mapped values type: {type(vertex_values)}")
-        
+
         Read from CSV file with headers:
-        
+
         >>> # File contains multiple columns with headers
         >>> vertex_df = annot.map_values(
-        ...     'regional_measures.csv', 
+        ...     'regional_measures.csv',
         ...     is_dataframe=True
         ... )
         >>> print(f"Preserved columns: {list(vertex_df.columns)}")
-        
+
         Typical neuroimaging workflow:
-        
+
         >>> # Load regional statistics from analysis
         >>> regional_stats = pd.read_csv('region_statistics.csv')
-        >>> 
+        >>>
         >>> # Map to surface for visualization
         >>> surface_data = annot.map_values(regional_stats)
-        >>> 
+        >>>
         >>> # Save for visualization software
         >>> if isinstance(surface_data, pd.DataFrame):
         ...     surface_data.to_csv('surface_values.csv', index=False)
         ... else:
         ...     np.savetxt('surface_values.txt', surface_data)
-        
+
         Error handling example:
-        
+
         >>> try:
         ...     # This will fail if dimensions don't match
         ...     wrong_size = np.array([1, 2, 3])  # Only 3 values for 5 regions
         ...     vertex_values = annot.map_values(wrong_size)
         ... except ValueError as e:
         ...     print(f"Dimension mismatch: {e}")
-        
+
         See Also
         --------
         region_to_vertexwise : Underlying function that performs the mapping
         pandas.read_csv : For reading CSV files with various options
         numpy.loadtxt : Alternative for reading simple numeric files
         """
-        
+
         # Check if the regional values are a string (txt file)
         if isinstance(regional_values, str):
             # Check if the file exists
@@ -831,9 +835,7 @@ class AnnotParcellation:
             else:
                 # Check if the columns are numeric
                 if not np.issubdtype(regional_values.dtypes[0], np.number):
-                    raise ValueError(
-                        "The regional values should be numeric"
-                    )
+                    raise ValueError("The regional values should be numeric")
                 else:
                     # Convert the pandas dataframe to a numpy array
                     col_names = regional_values.columns.tolist()
@@ -851,19 +853,17 @@ class AnnotParcellation:
             raise ValueError(
                 "The regional values should be a pandas dataframe, a numpy array or a txt file"
             )
-                
 
-        vertex_wise_values = region_to_vertexwise(regional_values, self.codes, self.regtable) 
+        vertex_wise_values = region_to_vertexwise(
+            regional_values, self.codes, self.regtable
+        )
 
-        if  col_names is not None:
+        if col_names is not None:
             # If the regional values are a pandas dataframe, then create a dictionary with the column names and the vertex wise values
-            vertex_wise_values = pd.DataFrame(
-                vertex_wise_values, columns=col_names
-            )
+            vertex_wise_values = pd.DataFrame(vertex_wise_values, columns=col_names)
         else:
             # If the regional values are a numpy array, then create a numpy array with the vertex wise values
-            vertex_wise_values = np.array(vertex_wise_values) 
-
+            vertex_wise_values = np.array(vertex_wise_values)
 
         return vertex_wise_values
 
@@ -878,106 +878,106 @@ class AnnotParcellation:
     ):
         """
         Convert FreeSurfer GIFTI parcellation files to annotation files using mris_convert.
-        
-        This method converts GIFTI label files (commonly used in neuroimaging pipelines 
-        like HCP, fMRIPrep) to FreeSurfer's native annotation format. The conversion 
-        enables use of external parcellations within FreeSurfer's ecosystem and 
+
+        This method converts GIFTI label files (commonly used in neuroimaging pipelines
+        like HCP, fMRIPrep) to FreeSurfer's native annotation format. The conversion
+        enables use of external parcellations within FreeSurfer's ecosystem and
         visualization tools.
-        
+
         Parameters
         ----------
         gii_file : str
-            Path to the input GIFTI label file (.gii). The file should contain 
-            parcellation labels corresponding to surface vertices. The hemisphere 
+            Path to the input GIFTI label file (.gii). The file should contain
+            parcellation labels corresponding to surface vertices. The hemisphere
             is automatically detected from the filename.
-            
+
         ref_surf : str, optional
-            Path to the reference surface file used for the conversion. This surface 
-            should match the geometric space of the GIFTI file. If None, defaults 
-            to the white surface of the fsaverage subject from FREESURFER_HOME. 
+            Path to the reference surface file used for the conversion. This surface
+            should match the geometric space of the GIFTI file. If None, defaults
+            to the white surface of the fsaverage subject from FREESURFER_HOME.
             Default is None.
-            
+
         annot_file : str, optional
-            Path for the output annotation file. If None, the output file is created 
-            in the same directory as the input file with the extension changed from 
+            Path for the output annotation file. If None, the output file is created
+            in the same directory as the input file with the extension changed from
             .gii to .annot. Default is None.
-            
+
         cont_tech : str, optional
-            Container technology for running FreeSurfer commands. Options include 
-            'local' (run directly), 'singularity', 'docker', or other supported 
+            Container technology for running FreeSurfer commands. Options include
+            'local' (run directly), 'singularity', 'docker', or other supported
             containerization methods. Default is 'local'.
-            
+
         cont_image : str, optional
-            Container image specification when using containerized execution. 
-            Required when cont_tech is not 'local'. Should specify the FreeSurfer 
+            Container image specification when using containerized execution.
+            Required when cont_tech is not 'local'. Should specify the FreeSurfer
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
-        
+
         Returns
         -------
         annot_file : str
             Path to the created annotation file.
-        
+
         Raises
         ------
         ValueError
             If the input GIFTI file does not exist.
-            
+
         ValueError
-            If FREESURFER_HOME environment variable is not set and no reference 
+            If FREESURFER_HOME environment variable is not set and no reference
             surface is provided.
-            
+
         ValueError
             If the provided reference surface file does not exist.
-        
+
         Notes
         -----
-        This method uses FreeSurfer's `mris_convert` command with the `--annot` flag 
+        This method uses FreeSurfer's `mris_convert` command with the `--annot` flag
         to perform the conversion. The command structure is:
-        
+
         .. code-block:: bash
-        
+
             mris_convert --annot input.gii reference_surface.surf output.annot
-        
-        The reference surface is crucial for proper conversion as it defines the 
-        vertex correspondence between the GIFTI labels and the annotation format. 
-        The method automatically detects the hemisphere from the GIFTI filename 
+
+        The reference surface is crucial for proper conversion as it defines the
+        vertex correspondence between the GIFTI labels and the annotation format.
+        The method automatically detects the hemisphere from the GIFTI filename
         and selects the appropriate reference surface.
-        
-        Container execution allows running FreeSurfer tools without a local 
-        installation, which is useful in cloud environments or when FreeSurfer 
+
+        Container execution allows running FreeSurfer tools without a local
+        installation, which is useful in cloud environments or when FreeSurfer
         is not available locally.
-        
+
         Examples
         --------
         Basic conversion with automatic reference surface:
-        
+
         >>> # Convert HCP-style parcellation to FreeSurfer format
         >>> gii_file = '/path/to/lh.Schaefer2018_400Parcels.label.gii'
         >>> annot_file = AnnotParcellation.gii2annot(gii_file)
         >>> print(f"Created annotation: {annot_file}")
-        
+
         Specify custom reference surface:
-        
+
         >>> # Use subject-specific surface for conversion
         >>> gii_file = '/path/to/rh.custom_parcellation.gii'
         >>> ref_surf = '/path/to/subject/surf/rh.pial'
         >>> output_file = '/path/to/output/rh.custom.annot'
-        >>> 
+        >>>
         >>> result = AnnotParcellation.gii2annot(
         ...     gii_file=gii_file,
         ...     ref_surf=ref_surf,
         ...     annot_file=output_file
         ... )
-        
+
         Using Docker container:
-        
+
         >>> # Run conversion in FreeSurfer Docker container
         >>> annot_file = AnnotParcellation.gii2annot(
         ...     gii_file='parcellation.gii',
         ...     cont_tech='docker',
         ...     cont_image='freesurfer/freesurfer:7.2.0'
         ... )
-        
+
         See Also
         --------
         annot2gii : Convert annotation files to GIFTI format
@@ -1036,115 +1036,115 @@ class AnnotParcellation:
     ):
         """
         Convert FreeSurfer annotation files to GIFTI format using mris_convert.
-        
-        This method converts FreeSurfer's native annotation format to GIFTI label 
-        files, enabling use of FreeSurfer parcellations in other neuroimaging 
-        software and analysis pipelines that support GIFTI format (e.g., Connectome 
+
+        This method converts FreeSurfer's native annotation format to GIFTI label
+        files, enabling use of FreeSurfer parcellations in other neuroimaging
+        software and analysis pipelines that support GIFTI format (e.g., Connectome
         Workbench, CIFTI-based analyses).
-        
+
         Parameters
         ----------
         annot_file : str
-            Path to the input FreeSurfer annotation file (.annot). This file 
-            contains the parcellation labels and associated color/name information 
+            Path to the input FreeSurfer annotation file (.annot). This file
+            contains the parcellation labels and associated color/name information
             in FreeSurfer's binary format.
-            
+
         ref_surf : str, optional
-            Path to the reference surface file that corresponds to the annotation. 
-            This surface defines the vertex coordinates and topology. If None, 
-            defaults to the white surface of the fsaverage subject from 
+            Path to the reference surface file that corresponds to the annotation.
+            This surface defines the vertex coordinates and topology. If None,
+            defaults to the white surface of the fsaverage subject from
             FREESURFER_HOME. Default is None.
-            
+
         gii_file : str, optional
-            Path for the output GIFTI file. If None, the output file is created 
-            in the same directory as the input file with the extension changed 
+            Path for the output GIFTI file. If None, the output file is created
+            in the same directory as the input file with the extension changed
             from .annot to .gii. Default is None.
-            
+
         cont_tech : str, optional
-            Container technology for running FreeSurfer commands. Options include 
-            'local' (run directly), 'singularity', 'docker', or other supported 
+            Container technology for running FreeSurfer commands. Options include
+            'local' (run directly), 'singularity', 'docker', or other supported
             containerization methods. Default is 'local'.
-            
+
         cont_image : str, optional
-            Container image specification when using containerized execution. 
-            Required when cont_tech is not 'local'. Should specify the FreeSurfer 
+            Container image specification when using containerized execution.
+            Required when cont_tech is not 'local'. Should specify the FreeSurfer
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
-        
+
         Returns
         -------
         gii_file : str
             Path to the created GIFTI file.
-        
+
         Raises
         ------
         ValueError
             If the input annotation file does not exist.
-            
+
         ValueError
-            If FREESURFER_HOME environment variable is not set and no reference 
+            If FREESURFER_HOME environment variable is not set and no reference
             surface is provided.
-            
+
         ValueError
             If the provided reference surface file does not exist.
-        
+
         Notes
         -----
-        This method uses FreeSurfer's `mris_convert` command with the `--annot` flag 
+        This method uses FreeSurfer's `mris_convert` command with the `--annot` flag
         to perform the conversion. The command structure is:
-        
+
         .. code-block:: bash
-        
+
             mris_convert --annot input.annot reference_surface.surf output.gii
-        
-        The GIFTI format is more widely supported across neuroimaging software 
-        packages and is part of the CIFTI specification used in large-scale 
-        neuroimaging projects. The conversion preserves the parcellation labels 
+
+        The GIFTI format is more widely supported across neuroimaging software
+        packages and is part of the CIFTI specification used in large-scale
+        neuroimaging projects. The conversion preserves the parcellation labels
         but may not retain all FreeSurfer-specific metadata.
-        
-        The hemisphere is automatically detected from the annotation filename 
-        to select the appropriate reference surface when using the default 
+
+        The hemisphere is automatically detected from the annotation filename
+        to select the appropriate reference surface when using the default
         fsaverage surfaces.
-        
+
         Examples
         --------
         Basic conversion with automatic reference surface:
-        
+
         >>> # Convert FreeSurfer parcellation to GIFTI format
         >>> annot_file = '/path/to/lh.aparc.annot'
         >>> gii_file = AnnotParcellation.annot2gii(annot_file)
         >>> print(f"Created GIFTI: {gii_file}")
-        
+
         Specify custom output location:
-        
+
         >>> # Convert with custom output path
         >>> annot_file = '/path/to/rh.Destrieux.annot'
         >>> output_file = '/output/rh.Destrieux.label.gii'
-        >>> 
+        >>>
         >>> result = AnnotParcellation.annot2gii(
         ...     annot_file=annot_file,
         ...     gii_file=output_file
         ... )
-        
+
         Using subject-specific surface:
-        
+
         >>> # Use individual subject's surface
         >>> annot_file = '/subjects/sub001/label/lh.aparc.a2009s.annot'
         >>> ref_surf = '/subjects/sub001/surf/lh.white'
-        >>> 
+        >>>
         >>> gii_file = AnnotParcellation.annot2gii(
         ...     annot_file=annot_file,
         ...     ref_surf=ref_surf
         ... )
-        
+
         Using Singularity container:
-        
+
         >>> # Run conversion in Singularity container
         >>> gii_file = AnnotParcellation.annot2gii(
         ...     annot_file='parcellation.annot',
         ...     cont_tech='singularity',
         ...     cont_image='/path/to/freesurfer.sif'
         ... )
-        
+
         See Also
         --------
         gii2annot : Convert GIFTI files to annotation format
@@ -1441,80 +1441,80 @@ class AnnotParcellation:
     def annot2tsv(self, tsv_file: str = None):
         """
         Save the annotation colort able a tab-separated values (TSV) file.
-        
-        This method exports the region-wise parcellation labels to a simple text 
-        format that can be easily read by other software packages or analysis 
+
+        This method exports the region-wise parcellation labels to a simple text
+        format that can be easily read by other software packages or analysis
         scripts. Each line contains the label ID for the corresponding region.
-        
+
         Parameters
         ----------
         tsv_file : str, optional
-            Path for the output TSV file. If None, the file is saved in the same 
-            directory as the annotation file with the extension changed from 
-            .annot to .tsv. The directory will be created if it doesn't exist. 
+            Path for the output TSV file. If None, the file is saved in the same
+            directory as the annotation file with the extension changed from
+            .annot to .tsv. The directory will be created if it doesn't exist.
             Default is None.
-        
+
         Returns
         -------
         tsv_file : str
             Path to the created TSV file.
-        
+
         Notes
         -----
-        The output TSV file contains one integer per line, where each line 
-        corresponds to a region index and the value represents the parcellation 
-        label assigned to that vertices of that region. 
-        
+        The output TSV file contains one integer per line, where each line
+        corresponds to a region index and the value represents the parcellation
+        label assigned to that vertices of that region.
+
         This simple format is useful for:
-        
+
         - Importing labels into custom analysis scripts
         - Interfacing with non-FreeSurfer neuroimaging software
         - Creating lightweight label files for data sharing
         - Debugging and manual inspection of parcellation assignments
-        
-        The method uses tab separation and integer formatting to ensure 
+
+        The method uses tab separation and integer formatting to ensure
         compatibility across different systems and software packages.
-        
+
         Examples
         --------
         Save to default location:
-        
+
         >>> # Annotation file: /data/lh.aparc.annot
         >>> # Output will be: /data/lh.aparc.tsv
         >>> tsv_path = AnnotParcellation.annot2tsv()
         >>> print(f"Labels saved to: {tsv_path}")
-        
+
         Specify custom output path:
-        
+
         >>> # Save to specific location
         >>> output_file = '/analysis/vertex_labels.tsv'
         >>> tsv_path = AnnotParcellation.annot2tsv(tsv_file=output_file)
-        >>> 
+        >>>
         >>> # Verify the output
         >>> import numpy as np
         >>> labels = np.loadtxt(tsv_path, dtype=int)
         >>> print(f"Loaded {len(labels)} vertex labels")
         >>> print(f"Unique labels: {np.unique(labels)}")
-        
+
         Use in analysis pipeline:
-        
+
         >>> # Convert annotation to TSV for external analysis
         >>> tsv_file = AnnotParcellation.annot2tsv()
-        >>> 
+        >>>
         >>> # Read in external software (e.g., R, MATLAB)
         >>> # R: labels <- read.table(tsv_file, header=FALSE)
         >>> # MATLAB: labels = readtable(tsv_file);
-        
+
         Batch processing multiple annotations:
-        
+
         >>> import glob
         >>> annot_files = glob.glob('/subjects/*/label/*.annot')
-        >>> 
+        >>>
         >>> for annot_file in annot_files:
         ...     annot = AnnotParcellation(annot_file)
         ...     tsv_path = AnnotParcellation.annot2tsv()
         ...     print(f"Converted: {annot_file} -> {tsv_path}")
-        
+
         See Also
         --------
         numpy.savetxt : Function used internally for saving arrays
@@ -1844,102 +1844,102 @@ class AnnotParcellation:
     ):
         """
         Group parcellation regions into anatomical lobes for coarser-grained analysis.
-        
-        This method combines fine-grained brain regions into larger anatomical units 
-        (lobes) based on predefined or custom grouping schemes. This is useful for 
-        reducing dimensionality in analyses, creating simplified visualizations, 
+
+        This method combines fine-grained brain regions into larger anatomical units
+        (lobes) based on predefined or custom grouping schemes. This is useful for
+        reducing dimensionality in analyses, creating simplified visualizations,
         or studying brain function at the lobar level.
-        
+
         Parameters
         ----------
         grouping : str, optional
-            Grouping method or scheme name to use for lobar organization. Built-in 
-            options include 'desikan' for Desikan-Killiany atlas grouping. Custom 
-            groupings can be specified when providing a lobes_json file. 
+            Grouping method or scheme name to use for lobar organization. Built-in
+            options include 'desikan' for Desikan-Killiany atlas grouping. Custom
+            groupings can be specified when providing a lobes_json file.
             Default is 'desikan'.
-            
+
         lobes_json : str, optional
-            Path to a JSON file containing custom lobe definitions and region 
+            Path to a JSON file containing custom lobe definitions and region
             mappings. If None, uses the default grouping scheme called lobes.json.
             This file is located in the clabtoolkit package directory
-            (e.g., clabtoolkit/config/lobes.json). 
-                
+            (e.g., clabtoolkit/config/lobes.json).
+
             Default is None.
-            
+
         out_annot : str, optional
-            Path where the new lobar annotation file should be saved. If None, 
-            the parcellation is only returned as an object without saving to disk. 
+            Path where the new lobar annotation file should be saved. If None,
+            the parcellation is only returned as an object without saving to disk.
             The output directory will be created if it doesn't exist. Default is None.
-            
+
         ctxprefix : str, optional
-            Prefix string to prepend to the lobe names. This is useful for 
-            distinguishing between hemispheres (e.g., 'lh_' or 'rh_') or different 
+            Prefix string to prepend to the lobe names. This is useful for
+            distinguishing between hemispheres (e.g., 'lh_' or 'rh_') or different
             analysis contexts. If None, no prefix is added. Default is None.
-            
+
         force : bool, optional
-            Whether to overwrite existing output files. If False and the output 
-            file already exists, an error will be raised. If True, existing files 
+            Whether to overwrite existing output files. If False and the output
+            file already exists, an error will be raised. If True, existing files
             will be overwritten without warning. Default is False.
-        
+
         Returns
         -------
         lobar_parcellation : AnnotParcellation
-            New AnnotParcellation object containing the lobar parcellation where original 
-            regions have been grouped into larger anatomical units. The object 
-            contains updated region names, codes, and color tables corresponding 
+            New AnnotParcellation object containing the lobar parcellation where original
+            regions have been grouped into larger anatomical units. The object
+            contains updated region names, codes, and color tables corresponding
             to the lobes.
-        
+
         Raises
         ------
         FileExistsError
             If the output annotation file already exists and force=False.
-            
+
         FileNotFoundError
             If the specified lobes_json file does not exist.
-            
+
         ValueError
             If the JSON file format is invalid or missing required keys.
-            
+
         KeyError
-            If regions specified in the JSON file are not found in the current 
+            If regions specified in the JSON file are not found in the current
             parcellation.
-        
+
         Notes
         -----
         The grouping process works as follows:
-        
-        1. **Region mapping**: Original parcellation regions are mapped to their 
+
+        1. **Region mapping**: Original parcellation regions are mapped to their
         corresponding lobes based on the grouping scheme.
-        
-        2. **Label reassignment**: Vertex labels are updated to reflect the new 
+
+        2. **Label reassignment**: Vertex labels are updated to reflect the new
         lobar assignments rather than fine-grained regional assignments.
-        
-        3. **Color assignment**: New color table is created for the lobes, either 
+
+        3. **Color assignment**: New color table is created for the lobes, either
         from the JSON file specification or using default colors.
-        
-        4. **Metadata update**: Region names and identifiers are updated to 
+
+        4. **Metadata update**: Region names and identifiers are updated to
         reflect the lobar structure.
-        
+
         The method is particularly useful for:
-        
+
         - Simplifying complex parcellations for visualization
         - Reducing multiple comparisons in statistical analyses
         - Creating anatomically meaningful ROI groups
         - Cross-study comparisons at the lobar level
         - Educational and clinical applications
-        
+
         Examples
         --------
         Basic lobar grouping with default scheme:
-        
+
         >>> # Group Desikan-Killiany regions into standard lobes
         >>> lobar_parc = parc.group_into_lobes(grouping='desikan')
         >>> print(f"Original regions: {len(parc.regnames)}")
         >>> print(f"Lobar regions: {len(lobar_parc.regnames)}")
         >>> print(f"Lobe names: {lobar_parc.regnames}")
-        
+
         Save lobar parcellation to file:
-        
+
         >>> # Create and save lobar parcellation
         >>> output_file = '/results/lh.desikan_lobes.annot'
         >>> lobar_parc = parc.group_into_lobes(
@@ -1947,27 +1947,27 @@ class AnnotParcellation:
         ...     out_annot=output_file
         ... )
         >>> print(f"Lobar parcellation saved to: {output_file}")
-        
+
         Use custom JSON grouping file:
-        
+
         >>> # Create custom lobe definitions
         >>> custom_json = '/configs/custom_lobes.json'
         >>> lobar_parc = parc.group_into_lobes(
         ...     grouping='mylobes',
         ...     lobes_json=custom_json
         ... )
-        
-        
+
+
         Force overwrite existing files:
-        
+
         >>> # Overwrite existing lobar parcellation
         >>> lobar_parc = parc.group_into_lobes(
         ...     grouping='desikan',
         ...     out_annot='/existing/file.annot',
         ...     force=True
         ... )
-                
-        
+
+
         See Also
         --------
         export_to_tsv : Export parcellation tables for external analysis
@@ -2052,6 +2052,7 @@ class AnnotParcellation:
         else:
             self.codes = orig_codes
 
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -2064,9 +2065,9 @@ class AnnotParcellation:
 class FreeSurferSubject:
     """
     A comprehensive class for managing and analyzing FreeSurfer subject data.
-    
-    This class provides methods to work with FreeSurfer subjects, including 
-    initialization of file structures, processing status checking, launching 
+
+    This class provides methods to work with FreeSurfer subjects, including
+    initialization of file structures, processing status checking, launching
     FreeSurfer commands, and extracting morphometric statistics.
     """
 
@@ -2074,33 +2075,33 @@ class FreeSurferSubject:
     def __init__(self, subj_id: str, subjs_dir: str = None):
         """
         Initialize the FreeSurferSubject object with subject ID and subjects directory.
-        
+
         Creates organized dictionaries containing paths to all standard FreeSurfer
         outputs including MRI volumes, surface files, parcellations, and statistics.
-        
+
         Parameters
         ----------
         subj_id : str
             FreeSurfer subject identifier matching the directory name in the
             FreeSurfer subjects directory.
-            
+
         subjs_dir : str, optional
-            Path to the FreeSurfer subjects directory. If None, uses the 
-            SUBJECTS_DIR environment variable. Directory will be created 
+            Path to the FreeSurfer subjects directory. If None, uses the
+            SUBJECTS_DIR environment variable. Directory will be created
             if it doesn't exist. Default is None.
-        
+
         Attributes
         ----------
         subj_id : str
             The subject identifier.
-            
+
         subjs_dir : str
             Path to the FreeSurfer subjects directory.
-            
+
         fs_files : dict
             Nested dictionary containing organized paths to all FreeSurfer files
             organized by data type (mri, surf, stats) and hemisphere.
-        
+
         Examples
         --------
         >>> subject = FreeSurferSubject('sub-001')
@@ -2189,32 +2190,32 @@ class FreeSurferSubject:
     def get_hemi_dicts(self, subj_dir: str, hemi: str):
         """
         Create organized dictionaries containing hemisphere-specific FreeSurfer file paths.
-        
+
         Helper method that constructs structured dictionaries for surface meshes,
         morphometric maps, parcellations, and statistics files for a specified hemisphere.
-        
+
         Parameters
         ----------
         subj_dir : str
             Path to the FreeSurfer subject directory.
-            
+
         hemi : str
             Hemisphere identifier ('lh' or 'rh').
-        
+
         Returns
         -------
         s_dict : dict
             Surface mesh file paths (pial, white, inflated, sphere).
-            
+
         m_dict : dict
             Morphometric map file paths (curv, sulc, thickness, area, volume, lgi).
-            
+
         p_dict : dict
             Parcellation annotation file paths (desikan, destrieux, dkt).
-            
+
         t_dict : dict
             Statistics file paths for each parcellation and curvature.
-        
+
         Examples
         --------
         >>> surf, maps, parc, stats = subject.get_hemi_dicts(subj_dir, 'lh')
@@ -2256,23 +2257,23 @@ class FreeSurferSubject:
     def get_proc_status(self):
         """
         Check the FreeSurfer processing status for this subject.
-        
+
         Evaluates which FreeSurfer processing stages have been completed by
         checking for the existence of key output files. Handles missing pial
         surface files by copying from pial.T1 files when needed.
-        
+
         Attributes Set
         --------------
         pstatus : str
             Processing status: 'unprocessed', 'autorecon1', 'autorecon2', or 'processed'.
-        
+
         Notes
         -----
         - 'unprocessed': No processing done
         - 'autorecon1': Basic preprocessing completed
         - 'autorecon2': Surface reconstruction completed
         - 'processed': Full processing including parcellation completed
-        
+
         Examples
         --------
         >>> subject.get_proc_status()
@@ -2400,56 +2401,56 @@ class FreeSurferSubject:
     ):
         """
         Launch FreeSurfer recon-all processing with flexible options and containerization support.
-        
+
         Provides interface for running FreeSurfer's recon-all pipeline with support
         for containerized execution, incremental processing, and additional modules.
-        
+
         Parameters
         ----------
         t1w_img : str, optional
             Path to input T1-weighted MRI image. Required for unprocessed subjects.
-            
+
         proc_stage : str or list, optional
             Processing stage(s): 'all', 'autorecon1', 'autorecon2', 'autorecon3',
             or list of stages. Default is 'all'.
-            
+
         extra_proc : str or list, optional
             Additional modules: 'lgi', 'thalamus', 'brainstem', 'hippocampus',
             'amygdala', 'hypothalamus'. Default is None.
-            
+
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
-            
+
         cont_image : str, optional
             Container image specification when using containerization.
-            
+
         fs_license : str, optional
             Path to FreeSurfer license file for containers.
-            
+
         force : bool, optional
             Force reprocessing even if outputs exist. Default is False.
-        
+
         Returns
         -------
         proc_status : str
             Updated processing status after completion.
-        
+
         Raises
         ------
         ValueError
             If invalid processing stages or missing required files.
-        
+
         Examples
         --------
         >>> # Basic processing
         >>> status = subject.launch_freesurfer(t1w_img='/data/T1w.nii.gz')
-        >>> 
+        >>>
         >>> # With extra modules
         >>> status = subject.launch_freesurfer(
         ...     t1w_img='/data/T1w.nii.gz',
         ...     extra_proc=['lgi', 'hippocampus']
         ... )
-        >>> 
+        >>>
         >>> # Using Docker
         >>> status = subject.launch_freesurfer(
         ...     t1w_img='/data/T1w.nii.gz',
@@ -2838,39 +2839,39 @@ class FreeSurferSubject:
     ) -> pd.DataFrame:
         """
         Generate comprehensive FreeSurfer statistics table combining morphometric measurements.
-        
+
         Extracts and organizes cortical and volumetric measurements from FreeSurfer
         outputs into a structured DataFrame suitable for analysis.
-        
+
         Parameters
         ----------
         lobes_grouping : str, optional
-            Parcellation grouping method for lobar regions: 'desikan' or 
+            Parcellation grouping method for lobar regions: 'desikan' or
             'desikan+cingulate'. Default is 'desikan'.
-            
+
         add_bids_entities : bool, optional
             Whether to extract BIDS entities from subject ID. Default is False.
-            
+
         output_file : str, optional
             Path to save the DataFrame as CSV. If None, not saved. Default is None.
-        
+
         Returns
         -------
         pd.DataFrame
             Comprehensive statistics table with surface-based and volumetric
             measurements across multiple parcellation schemes.
-        
+
         Attributes Set
         --------------
         stats_table : pd.DataFrame
             The generated statistics table stored as object attribute.
-        
+
         Examples
         --------
         >>> # Generate basic stats table
         >>> stats_df = subject.create_stats_table()
         >>> print(f"Generated {len(stats_df)} measurements")
-        >>> 
+        >>>
         >>> # Save to file with BIDS entities
         >>> stats_df = subject.create_stats_table(
         ...     add_bids_entities=True,
@@ -2933,33 +2934,33 @@ class FreeSurferSubject:
     ) -> pd.DataFrame:
         """
         Compute volume measurements from FreeSurfer volumetric parcellations.
-        
+
         Extracts volumetric measurements from specified FreeSurfer parcellations
         and returns organized DataFrame with volume values per region.
-        
+
         Parameters
         ----------
         parcellations : list, optional
             List of parcellation names to compute volumes from. Default includes
             Desikan-Killiany, Destrieux, and DKT atlases combined with subcortical
             segmentation.
-            
+
         lobes_grouping : str, optional
             Grouping method for lobar segmentation: 'desikan' or 'desikan+cingulate'.
             Default is 'desikan'.
-        
+
         Returns
         -------
         pd.DataFrame
             DataFrame with volume measurements organized by parcellation atlas
             and brain region.
-        
+
         Examples
         --------
         >>> # Compute volumes for default parcellations
         >>> vol_df = subject.volume_morpho()
         >>> print(f"Computed volumes for {len(vol_df)} regions")
-        >>> 
+        >>>
         >>> # Custom parcellations
         >>> vol_df = subject.volume_morpho(
         ...     parcellations=['desikan+aseg', 'dkt+aseg']
@@ -2999,37 +3000,37 @@ class FreeSurferSubject:
     ) -> pd.DataFrame:
         """
         Compute morphometric metrics for a hemisphere using cortical surface data.
-        
+
         Extracts morphometric properties like thickness, surface area, and curvature
         from cortical surfaces, maps, and parcellations for the specified hemisphere.
-        
+
         Parameters
         ----------
         hemi : str, optional
             Hemisphere to process: 'lh' or 'rh'. Default is 'lh'.
-            
+
         lobes_grouping : str, optional
             Grouping method for lobar segmentation: 'desikan' or 'desikan+cingulate'.
             Default is 'desikan'.
-            
+
         verbose : bool, optional
             Whether to print processing progress. Default is False.
-        
+
         Returns
         -------
         pd.DataFrame
             DataFrame with morphometric measurements including thickness, area,
             curvature, and Euler characteristics organized by parcellation and region.
-        
+
         Examples
         --------
         >>> # Process left hemisphere
         >>> lh_df = subject.surface_hemi_morpho(hemi='lh')
         >>> print(f"Extracted {len(lh_df)} morphometric measurements")
-        >>> 
+        >>>
         >>> # Process with verbose output
         >>> rh_df = subject.surface_hemi_morpho(
-        ...     hemi='rh', 
+        ...     hemi='rh',
         ...     verbose=True
         ... )
         """
@@ -3222,32 +3223,32 @@ class FreeSurferSubject:
     def set_freesurfer_directory(fs_dir: str = None):
         """
         Set up the FreeSurfer subjects directory and configure environment variables.
-        
+
         Creates the FreeSurfer directory if it doesn't exist and sets the SUBJECTS_DIR
         environment variable. Used to ensure proper FreeSurfer environment setup.
-        
+
         Parameters
         ----------
         fs_dir : str, optional
             Path to FreeSurfer subjects directory. If None, extracts from SUBJECTS_DIR
             environment variable. Directory will be created if it doesn't exist.
             Default is None.
-        
+
         Returns
         -------
         None
             The directory path is set in the SUBJECTS_DIR environment variable.
-        
+
         Raises
         ------
         ValueError
             If fs_dir is None and SUBJECTS_DIR environment variable is not set.
-        
+
         Examples
         --------
         >>> # Use environment variable
         >>> FreeSurferSubject.set_freesurfer_directory()
-        >>> 
+        >>>
         >>> # Set custom directory
         >>> FreeSurferSubject.set_freesurfer_directory('/data/freesurfer')
         >>> print(os.environ['SUBJECTS_DIR'])
@@ -3282,49 +3283,49 @@ class FreeSurferSubject:
     ):
         """
         Map annotation parcellation from reference space to individual subject space.
-        
+
         Uses FreeSurfer's mri_surf2surf to transfer parcellation labels from a reference
         subject to the individual subject's surface, followed by gap-filling to ensure
         complete cortical coverage.
-        
+
         Parameters
         ----------
         ref_id : str
             FreeSurfer subject ID of the reference subject containing the source
             annotation file.
-            
+
         hemi : str
             Hemisphere identifier: 'lh' or 'rh'.
-            
+
         fs_annot : str
             Path to source annotation file or basename. Can be full path or just
             the annotation name (e.g., 'aparc'). Also accepts GIFTI files (.gii).
-            
+
         ind_annot : str
             Path for output annotation file in individual subject space.
-            
+
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
-            
+
         cont_image : str, optional
             Container image specification when using containerization. Default is None.
-            
+
         force : bool, optional
             Force processing even if output file exists. Default is False.
-            
+
         verbose : bool, optional
             Print verbose messages about processing status. Default is False.
-        
+
         Returns
         -------
         ind_annot : str
             Path to the created individual space annotation file.
-        
+
         Raises
         ------
         FileNotFoundError
             If the source annotation file cannot be found in expected locations.
-        
+
         Notes
         -----
         The method performs the following steps:
@@ -3332,7 +3333,7 @@ class FreeSurferSubject:
         2. Uses mri_surf2surf for surface-to-surface mapping
         3. Applies gap-filling to ensure complete cortical labeling
         4. Handles containerized execution with proper volume mounting
-        
+
         Examples
         --------
         >>> # Map Desikan-Killiany parcellation
@@ -3342,7 +3343,7 @@ class FreeSurferSubject:
         ...     fs_annot='aparc',
         ...     ind_annot='/output/lh.aparc.individual.annot'
         ... )
-        >>> 
+        >>>
         >>> # Using Docker container
         >>> output_file = subject.annot2ind(
         ...     ref_id='fsaverage',
@@ -3465,40 +3466,40 @@ class FreeSurferSubject:
     ):
         """
         Apply GCS classifier to generate individual subject parcellation.
-        
+
         Uses FreeSurfer's mris_ca_label to apply a trained Gaussian Classifier Surface
         (GCS) file to the individual subject, creating subject-specific parcellation
         followed by gap-filling for complete coverage.
-        
+
         Parameters
         ----------
         fs_gcs : str
             Path to the FreeSurfer GCS (Gaussian Classifier Surface) file containing
             the trained classifier model.
-            
+
         ind_annot : str
             Path for output annotation file in individual subject space.
-            
+
         hemi : str
             Hemisphere identifier: 'lh' or 'rh'.
-            
+
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
-            
+
         cont_image : str, optional
             Container image specification when using containerization. Default is None.
-            
+
         force : bool, optional
             Force processing even if output file exists. Default is False.
-            
+
         verbose : bool, optional
             Print verbose messages about processing status. Default is False.
-        
+
         Returns
         -------
         ind_annot : str
             Path to the created individual space annotation file.
-        
+
         Notes
         -----
         The method performs the following steps:
@@ -3506,12 +3507,12 @@ class FreeSurferSubject:
         2. Applies the GCS classifier to generate parcellation labels
         3. Performs gap-filling to ensure complete cortical coverage
         4. Handles containerized execution with proper volume mounting
-        
+
         Requires the following FreeSurfer files for the individual subject:
         - cortex.label: Defines cortical vertices
         - sphere.reg: Spherical surface registration
         - Standard FreeSurfer directory structure
-        
+
         Examples
         --------
         >>> # Apply Desikan-Killiany GCS classifier
@@ -3520,7 +3521,7 @@ class FreeSurferSubject:
         ...     ind_annot='/output/lh.aparc.individual.annot',
         ...     hemi='lh'
         ... )
-        >>> 
+        >>>
         >>> # Force reprocessing with custom classifier
         >>> output_file = subject.gcs2ind(
         ...     fs_gcs='/custom/rh.custom_atlas.gcs',
@@ -3626,53 +3627,53 @@ class FreeSurferSubject:
     ):
         """
         Create volumetric parcellation from surface annotation files.
-        
+
         Converts surface-based parcellation annotations to volumetric format,
         with options for label growing, white matter mixing, and coordinate
         space selection.
-        
+
         Parameters
         ----------
         atlas : str
             Atlas identifier or name for the surface parcellation to convert.
             Should correspond to available annotation files for both hemispheres.
-            
+
         out_vol : str
             Path for output volumetric parcellation file.
-            
+
         gm_grow : int or str, optional
             Amount in millimeters to grow gray matter labels into surrounding
             tissue. Can help fill gaps between surface and volume. Default is "0".
-            
+
         color_table : list or str, optional
             Format(s) for saving color lookup table: 'tsv', 'lut', or list
             of both ['tsv', 'lut']. Default is None (no color table saved).
-            
+
         bool_native : bool, optional
             If True, output parcellation in native subject space. If False,
             uses FreeSurfer's standard space. Default is False.
-            
+
         bool_mixwm : bool, optional
             Mix cortical white matter growing with gray matter labels.
             Extends cortical labels into white matter regions. Default is False.
-            
+
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
-            
+
         cont_image : str, optional
             Container image specification when using containerization. Default is None.
-            
+
         force : bool, optional
             Force processing even if output file exists. Default is False.
-            
+
         verbose : bool, optional
             Print verbose messages about processing progress. Default is False.
-        
+
         Returns
         -------
         out_vol : str
             Path to the created volumetric parcellation file.
-        
+
         Notes
         -----
         This method is particularly useful for:
@@ -3680,11 +3681,11 @@ class FreeSurferSubject:
         - Bridging surface-based and volume-based analyses
         - Generating masks for volume-based connectivity analysis
         - Converting surface atlases to volume format for other software
-        
+
         The process typically involves projecting surface labels onto the
         volumetric space, with optional growing and white matter integration
         to ensure comprehensive tissue coverage.
-        
+
         Examples
         --------
         >>> # Basic surface-to-volume conversion
@@ -3692,7 +3693,7 @@ class FreeSurferSubject:
         ...     atlas='aparc',
         ...     out_vol='/output/aparc_volume.mgz'
         ... )
-        >>> 
+        >>>
         >>> # With gray matter growing and color table
         >>> vol_file = subject.surf2vol(
         ...     atlas='aparc.a2009s',
@@ -3701,7 +3702,7 @@ class FreeSurferSubject:
         ...     color_table=['tsv', 'lut'],
         ...     bool_mixwm=True
         ... )
-        >>> 
+        >>>
         >>> # Native space output
         >>> vol_file = subject.surf2vol(
         ...     atlas='custom_atlas',
@@ -4035,50 +4036,50 @@ class FreeSurferSubject:
     ):
         """
         Transform image from FreeSurfer conform space to native acquisition space.
-        
+
         Uses FreeSurfer's mri_vol2vol to transform images from the standardized
         conform space (256³ isotropic) back to the original native acquisition
         space and dimensions.
-        
+
         Parameters
         ----------
         mgz_conform : str
             Path to input image in FreeSurfer conform space (typically .mgz format).
-            
+
         nii_native : str
             Path for output image in native acquisition space.
-            
+
         interp_method : str, optional
             Interpolation method for resampling: 'nearest', 'trilinear', or 'cubic'.
             Use 'nearest' for label/segmentation images. Default is 'nearest'.
-            
+
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
-            
+
         cont_image : str, optional
             Container image specification when using containerization. Default is None.
-            
+
         force : bool, optional
             Force processing even if output exists. If False, checks dimensions
             before deciding whether to reprocess. Default is False.
-        
+
         Returns
         -------
         None
             Output file is created at the specified nii_native path.
-        
+
         Raises
         ------
         FileNotFoundError
             If the required rawavg.mgz file (native space reference) doesn't exist.
-        
+
         Notes
         -----
         This method is essential for bringing FreeSurfer processing results back
         to native space for integration with other analyses or visualization in
         original acquisition coordinates. The transformation uses the header
         information from rawavg.mgz as the target native space reference.
-        
+
         Examples
         --------
         >>> # Convert parcellation to native space
@@ -4086,7 +4087,7 @@ class FreeSurferSubject:
         ...     mgz_conform='/fs/mri/aparc+aseg.mgz',
         ...     nii_native='/output/aparc_native.nii.gz'
         ... )
-        >>> 
+        >>>
         >>> # Convert with trilinear interpolation
         >>> subject.conform2native(
         ...     mgz_conform='/fs/mri/T1.mgz',
@@ -4178,37 +4179,37 @@ class FreeSurferSubject:
     def get_surface(self, hemi: str, surf_type: str):
         """
         Get the file path for a specific surface mesh.
-        
+
         Returns the path to surface files organized in the fs_files structure
         based on hemisphere and surface type specifications.
-        
+
         Parameters
         ----------
         hemi : str
             Hemisphere identifier: 'lh' or 'rh'.
-            
+
         surf_type : str
             Surface type: 'pial', 'white', 'inflated', or 'sphere'.
-        
+
         Returns
         -------
         surf_file : str
             Full path to the requested surface file.
-        
+
         Raises
         ------
         ValueError
             If hemisphere is not 'lh' or 'rh'.
-            
+
         ValueError
             If surf_type is not one of the valid surface types.
-        
+
         Examples
         --------
         >>> # Get left hemisphere pial surface
         >>> pial_surf = subject.get_surface('lh', 'pial')
         >>> print(pial_surf)
-        >>> 
+        >>>
         >>> # Get right hemisphere white matter surface
         >>> white_surf = subject.get_surface('rh', 'white')
         """
@@ -4227,37 +4228,37 @@ class FreeSurferSubject:
     def get_vertexwise_map(self, hemi: str, map_type: str):
         """
         Get the file path for a specific vertex-wise morphometric map.
-        
+
         Returns the path to morphometric map files organized in the fs_files
         structure based on hemisphere and map type specifications.
-        
+
         Parameters
         ----------
         hemi : str
             Hemisphere identifier: 'lh' or 'rh'.
-            
+
         map_type : str
             Map type: 'curv', 'sulc', 'thickness', 'area', or 'volume'.
-        
+
         Returns
         -------
         map_file : str
             Full path to the requested morphometric map file.
-        
+
         Raises
         ------
         ValueError
             If hemisphere is not 'lh' or 'rh'.
-            
+
         ValueError
             If map_type is not one of the valid morphometric map types.
-        
+
         Examples
         --------
         >>> # Get left hemisphere cortical thickness
         >>> thickness_map = subject.get_vertexwise_map('lh', 'thickness')
         >>> print(thickness_map)
-        >>> 
+        >>>
         >>> # Get right hemisphere curvature
         >>> curv_map = subject.get_vertexwise_map('rh', 'curv')
         """
@@ -4278,37 +4279,37 @@ class FreeSurferSubject:
     def get_annotation(self, hemi: str, annot_type: str):
         """
         Get the file path for a specific parcellation annotation.
-        
+
         Returns the path to annotation files organized in the fs_files structure
         based on hemisphere and annotation type specifications.
-        
+
         Parameters
         ----------
         hemi : str
             Hemisphere identifier: 'lh' or 'rh'.
-            
+
         annot_type : str
             Annotation type: 'desikan', 'destrieux', or 'dkt'.
-        
+
         Returns
         -------
         annot_file : str
             Full path to the requested annotation file.
-        
+
         Raises
         ------
         ValueError
             If hemisphere is not 'lh' or 'rh'.
-            
+
         ValueError
             If annot_type is not one of the valid annotation types.
-        
+
         Examples
         --------
         >>> # Get left hemisphere Desikan-Killiany parcellation
         >>> aparc_file = subject.get_annotation('lh', 'desikan')
         >>> print(aparc_file)
-        >>> 
+        >>>
         >>> # Get right hemisphere Destrieux parcellation
         >>> destrieux_file = subject.get_annotation('rh', 'destrieux')
         """
@@ -4322,6 +4323,7 @@ class FreeSurferSubject:
         annot_file = self.fs_files["surf"][hemi]["parc"][annot_type]
 
         return annot_file
+
 
 ####################################################################################################
 ####################################################################################################
@@ -4337,37 +4339,37 @@ def create_fsaverage_links(
 ):
     """
     Create symbolic links to the fsaverage reference subject folder.
-    
+
     Creates symbolic links from a custom FreeSurfer subjects directory to the
     standard fsaverage template, enabling FreeSurfer tools to locate reference data.
-    
+
     Parameters
     ----------
     fssubj_dir : str
         Target FreeSurfer subjects directory where the link will be created.
-        
+
     fsavg_dir : str, optional
         Source fsaverage directory path. If None, uses FREESURFER_HOME/subjects/fsaverage.
         Default is None.
-        
+
     refsubj_name : str, optional
         Reference subject name. If None, uses 'fsaverage'. Default is None.
-    
+
     Returns
     -------
     link_folder : str
         Path to the created symbolic link.
-    
+
     Raises
     ------
     ValueError
         If the FreeSurfer subjects directory or fsaverage directory doesn't exist.
-    
+
     Examples
     --------
     >>> # Create standard fsaverage link
     >>> link_path = create_fsaverage_links('/data/freesurfer_subjects')
-    >>> 
+    >>>
     >>> # Create link with custom reference
     >>> link_path = create_fsaverage_links(
     ...     '/data/freesurfer_subjects',
@@ -4415,24 +4417,25 @@ def create_fsaverage_links(
 
     return link_folder
 
+
 ####################################################################################################
 def remove_fsaverage_links(linkavg_folder: str):
     """
     Remove symbolic links to the fsaverage folder.
-    
+
     Safely removes symbolic links to fsaverage directories that don't point
     to the original FreeSurfer installation location.
-    
+
     Parameters
     ----------
     linkavg_folder : str
         Path to the fsaverage link folder to potentially remove.
-    
+
     Notes
     -----
     Only removes links that don't point to the original FREESURFER_HOME
     location to prevent accidental deletion of the actual fsaverage data.
-    
+
     Examples
     --------
     >>> # Remove custom fsaverage link
@@ -4451,36 +4454,39 @@ def remove_fsaverage_links(linkavg_folder: str):
     ):
         os.remove(linkavg_folder)
 
+
 ####################################################################################################
-def region_to_vertexwise(reg_values: np.ndarray, labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
+def region_to_vertexwise(
+    reg_values: np.ndarray, labels: np.ndarray, reg_ctable: np.ndarray
+) -> np.ndarray:
     """
     Map regional values to vertex-wise values using parcellation labels.
-    
+
     Assigns regional measurements to individual vertices based on their
     parcellation labels, creating vertex-wise data from region-wise data.
-    
+
     Parameters
     ----------
     reg_values : np.ndarray
         Array of values for each region. Can be 1D or 2D array.
-        
+
     labels : np.ndarray
         Array of parcellation labels for each vertex.
-        
+
     reg_ctable : np.ndarray
         Color table with shape (N, 5) where column 4 contains region labels.
-    
+
     Returns
     -------
     vertex_values : np.ndarray
         Array with values mapped to each vertex. Shape: (num_vertices, num_measures).
-    
+
     Raises
     ------
     ValueError
         If number of regions in reg_values doesn't match reg_ctable dimensions
         or if reg_values has more than 2 dimensions.
-    
+
     Examples
     --------
     >>> # Map thickness values to vertices
@@ -4489,10 +4495,12 @@ def region_to_vertexwise(reg_values: np.ndarray, labels: np.ndarray, reg_ctable:
     ...     regional_thickness, vertex_labels, color_table
     ... )
     """
-    
+
     # check that the number of rows of reg_values matches the number of regions in reg_ctable
-    if  reg_values.shape[0] != reg_ctable.shape[0]:
-        raise ValueError("The number of rows in reg_values must match the number of regions in reg_ctable")
+    if reg_values.shape[0] != reg_ctable.shape[0]:
+        raise ValueError(
+            "The number of rows in reg_values must match the number of regions in reg_ctable"
+        )
     # Ensure reg_values is a 2D array
     if reg_values.ndim == 1:
         reg_values = reg_values.reshape(-1, 1)
@@ -4501,85 +4509,89 @@ def region_to_vertexwise(reg_values: np.ndarray, labels: np.ndarray, reg_ctable:
 
     n_cols = reg_values.shape[1]
 
-    vertex_values = np.zeros((len(labels), n_cols), dtype=np.float32) # Default value is 0
-    
+    vertex_values = np.zeros(
+        (len(labels), n_cols), dtype=np.float32
+    )  # Default value is 0
+
     for i, region_info in enumerate(reg_ctable):
         # Find vertices with this label
         indices = np.where(labels == region_info[4])[0]
-        
+
         # Assign the region color (RGB from first 3 columns)
         if len(indices) > 0:
-            vertex_values[indices,:] = reg_values[i,:]
-            
+            vertex_values[indices, :] = reg_values[i, :]
+
     return vertex_values
+
 
 #####################################################################################################
 def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
     """
     Create per-vertex RGB colors based on parcellation labels.
-    
+
     Assigns colors to vertices based on their parcellation region using
     the color table information.
-    
+
     Parameters
     ----------
     labels : np.ndarray
         Array of parcellation labels for each vertex.
-        
+
     reg_ctable : np.ndarray
         Color table with shape (N, 5) where first 3 columns are RGB values
         and column 4 contains region labels.
-    
+
     Returns
     -------
     vertex_colors : np.ndarray
         Array of RGB colors for each vertex with shape (num_vertices, 3).
         Default color is gray (240, 240, 240) for unlabeled vertices.
-    
+
     Examples
     --------
     >>> # Create vertex colors for visualization
     >>> colors = create_vertex_colors(vertex_labels, color_table)
     >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 3)
     """
-    
+
     vertex_colors = np.ones((len(labels), 3), dtype=np.uint8) * 240  # Default gray
-    
+
     for i, region_info in enumerate(reg_ctable):
         # Find vertices with this label
         indices = np.where(labels == region_info[4])[0]
-        
+
         # Assign the region color (RGB from first 3 columns)
         if len(indices) > 0:
             vertex_colors[indices, :3] = region_info[:3]
-            
+
     return vertex_colors
+
 
 #####################################################################################################
 def colors2colortable(colors: Union[list, np.ndarray]):
     """
     Convert color list to FreeSurfer color table format.
-    
+
     Transforms hexadecimal colors or RGB arrays into FreeSurfer's standard
     color table format with packed RGB values.
-    
+
     Parameters
     ----------
     colors : list or np.ndarray
         List of hexadecimal color strings (e.g., ['#FF0000', '#00FF00'])
         or numpy array of RGB values.
-    
+
     Returns
     -------
     ctab : np.ndarray
         FreeSurfer color table with shape (N, 5) containing RGB values,
         alpha channel, and packed RGB values.
-    
+
     Raises
     ------
     ValueError
         If colors is not a list or numpy array.
-    
+
     Examples
     --------
     >>> # Convert hex colors to color table
@@ -4611,185 +4623,197 @@ def colors2colortable(colors: Union[list, np.ndarray]):
 
     return ctab
 
+
 #####################################################################################################
 def resolve_colortable_duplicates(color_table):
     """
     Make all RGB colors in FreeSurfer color table unique.
-    
+
     Identifies duplicate RGB colors and modifies them by incrementing color
     channels until uniqueness is achieved. Updates packed RGB values accordingly.
-    
+
     Parameters
     ----------
     color_table : np.ndarray
         FreeSurfer color table with shape (n, 5) where columns 0-2 are RGB,
         column 3 is alpha, and column 4 is packed RGB value.
-    
+
     Returns
     -------
     modified_table : np.ndarray
         Updated color table with unique colors.
-        
+
     modification_log : dict
         Dictionary containing details of changes made including original
         duplicates count and list of modifications.
-        
+
     packed_values_mapping : dict
         Dictionary with 'old_values' and 'new_values' arrays for updating
         label maps accordingly.
-    
+
     Examples
     --------
     >>> # Resolve duplicate colors
     >>> unique_table, log, mapping = resolve_colortable_duplicates(color_table)
     >>> print(f"Modified {len(log['modifications_made'])} colors")
     """
-    
+
     # Create a copy to avoid modifying the original
     table = color_table.copy()
-    
+
     # Track modifications
     modification_log = {
-        'original_duplicates': 0,
-        'modifications_made': [],
-        'final_unique_colors': 0
+        "original_duplicates": 0,
+        "modifications_made": [],
+        "final_unique_colors": 0,
     }
-    
+
     # Track old and new packed values for map correction
     old_packed_values = []
     new_packed_values = []
-    
+
     # Find duplicates by grouping indices by RGB values
     rgb_to_indices = defaultdict(list)
     for i, row in enumerate(table):
         rgb_key = tuple(row[:3].astype(int))  # Ensure integers (R, G, B)
         rgb_to_indices[rgb_key].append(i)
-    
+
     # Count original duplicates
-    duplicate_groups = {rgb: indices for rgb, indices in rgb_to_indices.items() if len(indices) > 1}
-    modification_log['original_duplicates'] = sum(len(indices) - 1 for indices in duplicate_groups.values())
-    
+    duplicate_groups = {
+        rgb: indices for rgb, indices in rgb_to_indices.items() if len(indices) > 1
+    }
+    modification_log["original_duplicates"] = sum(
+        len(indices) - 1 for indices in duplicate_groups.values()
+    )
+
     # Process each duplicate group
     for rgb_key, indices in duplicate_groups.items():
         # Keep the first occurrence unchanged, modify the rest
         for table_idx in indices[1:]:
             original_rgb = table[table_idx][:3].copy().astype(int)
-            
+
             # Store old packed value
             old_packed_value = int(table[table_idx][4])
             old_packed_values.append(old_packed_value)
-            
+
             # Find a unique color by trying modifications
-            new_rgb = find_unique_color(table[table_idx][:3].astype(int), rgb_to_indices)
-            
+            new_rgb = find_unique_color(
+                table[table_idx][:3].astype(int), rgb_to_indices
+            )
+
             # Update the table
             table[table_idx][:3] = new_rgb
-            
+
             # Recalculate packed RGB value: R + (G << 8) + (B << 16)
-            packed_rgb = int(new_rgb[0]) + (int(new_rgb[1]) << 8) + (int(new_rgb[2]) << 16)
+            packed_rgb = (
+                int(new_rgb[0]) + (int(new_rgb[1]) << 8) + (int(new_rgb[2]) << 16)
+            )
             table[table_idx][4] = packed_rgb
-            
+
             # Store new packed value
             new_packed_values.append(packed_rgb)
-            
+
             # Update our tracking dictionary
             new_rgb_key = tuple(new_rgb)
             rgb_to_indices[new_rgb_key] = [table_idx]
             rgb_to_indices[rgb_key].remove(table_idx)
-            
+
             # Determine which channel was modified and by how much
             diff = new_rgb - original_rgb
             modified_channel_idx = np.nonzero(diff)[0][0]  # First non-zero difference
-            channel_names = ['R', 'G', 'B']
-            
+            channel_names = ["R", "G", "B"]
+
             # Log the modification
-            modification_log['modifications_made'].append({
-                'index': table_idx,
-                'original_rgb': original_rgb.tolist(),
-                'new_rgb': new_rgb.tolist(),
-                'channel_modified': channel_names[modified_channel_idx],
-                'increment_applied': int(diff[modified_channel_idx]),
-                'new_packed_value': packed_rgb
-            })
-    
+            modification_log["modifications_made"].append(
+                {
+                    "index": table_idx,
+                    "original_rgb": original_rgb.tolist(),
+                    "new_rgb": new_rgb.tolist(),
+                    "channel_modified": channel_names[modified_channel_idx],
+                    "increment_applied": int(diff[modified_channel_idx]),
+                    "new_packed_value": packed_rgb,
+                }
+            )
+
     # Verify uniqueness
     final_rgb_values = [tuple(row[:3].astype(int)) for row in table]
     unique_colors = len(set(final_rgb_values))
-    modification_log['final_unique_colors'] = unique_colors
-    
+    modification_log["final_unique_colors"] = unique_colors
+
     # Verify no negative values
     if np.any(table[:, :3] < 0):
         raise ValueError("Negative RGB values detected after processing!")
-    
+
     # Verify no values exceed 255
     if np.any(table[:, :3] > 255):
         raise ValueError("RGB values exceeding 255 detected after processing!")
-    
+
     # Create mapping dictionary for correcting maps
     packed_values_mapping = {
-        'old_values': np.array(old_packed_values),
-        'new_values': np.array(new_packed_values)
+        "old_values": np.array(old_packed_values),
+        "new_values": np.array(new_packed_values),
     }
-    
+
     return table, modification_log, packed_values_mapping
+
 
 ######################################################################################################
 def find_unique_color(rgb, rgb_to_indices):
     """
     Find unique RGB color by systematically modifying channels.
-    
+
     Helper function that searches for an unused RGB color by incrementing
     or decrementing color channels in order: Blue, Green, Red.
-    
+
     Parameters
     ----------
     rgb : np.ndarray
         Original RGB values [R, G, B].
-        
+
     rgb_to_indices : dict
         Dictionary mapping RGB tuples to indices for collision detection.
-    
+
     Returns
     -------
     np.ndarray
         New unique RGB values.
-    
+
     Raises
     ------
     RuntimeError
         If no unique color can be found (extremely rare).
     """
     rgb = rgb.astype(int)
-    
+
     # Try modifying channels in order: B, G, R (to minimize visual impact)
     for channel_idx in [2, 1, 0]:  # B, G, R
-        
+
         # First, try positive increments (safer as they avoid negative values)
         for increment in range(1, 256):  # Try +1, +2, +3, ... up to +255
             new_rgb = rgb.copy()
-            
+
             # Check if we can add this increment without exceeding 255
             if new_rgb[channel_idx] + increment <= 255:
                 new_rgb[channel_idx] += increment
                 new_rgb_key = tuple(new_rgb)
-                
+
                 # Check if this color is unique (not in the dictionary)
                 if new_rgb_key not in rgb_to_indices:
                     return new_rgb
-        
+
         # If positive increments don't work, try negative increments
         for decrement in range(1, 256):  # Try -1, -2, -3, ... up to -255
             new_rgb = rgb.copy()
-            
+
             # Check if we can subtract this decrement without going below 0
             if new_rgb[channel_idx] - decrement >= 0:
                 new_rgb[channel_idx] -= decrement
                 new_rgb_key = tuple(new_rgb)
-                
+
                 # Check if this color is unique (not in the dictionary)
                 if new_rgb_key not in rgb_to_indices:
                     return new_rgb
-    
+
     # If we get here, we couldn't find a unique color by modifying single channels
     # This is extremely unlikely but let's try modifying two channels
     for channel1 in [0, 1, 2]:
@@ -4798,40 +4822,45 @@ def find_unique_color(rgb, rgb_to_indices):
                 for inc1 in range(1, 10):  # Limit to small increments for two channels
                     for inc2 in range(1, 10):
                         new_rgb = rgb.copy()
-                        
-                        if (new_rgb[channel1] + inc1 <= 255 and 
-                            new_rgb[channel2] + inc2 <= 255):
+
+                        if (
+                            new_rgb[channel1] + inc1 <= 255
+                            and new_rgb[channel2] + inc2 <= 255
+                        ):
                             new_rgb[channel1] += inc1
                             new_rgb[channel2] += inc2
                             new_rgb_key = tuple(new_rgb)
-                            
+
                             if new_rgb_key not in rgb_to_indices:
                                 return new_rgb
-    
+
     # Last resort: this should never happen with proper color tables
-    raise RuntimeError(f"Could not find unique color for RGB {rgb}. Color space might be saturated.")
+    raise RuntimeError(
+        f"Could not find unique color for RGB {rgb}. Color space might be saturated."
+    )
+
 
 #######################################################################################################
 def verify_packed_rgb_values(color_table):
     """
     Verify that packed RGB values are correctly calculated.
-    
+
     Checks if the packed RGB values (column 4) match the calculated values
     from RGB channels using the formula: R + (G << 8) + (B << 16).
-    
+
     Parameters
     ----------
     color_table : np.ndarray
         FreeSurfer color table to verify.
-    
+
     Returns
     -------
     all_correct : bool
         True if all packed values are correct.
-        
+
     incorrect_indices : list
         List of dictionaries with details of incorrect entries.
-    
+
     Examples
     --------
     >>> # Verify color table integrity
@@ -4839,55 +4868,58 @@ def verify_packed_rgb_values(color_table):
     >>> if not is_correct:
     ...     print(f"Found {len(errors)} incorrect packed values")
     """
-    
+
     all_correct = True
     incorrect_indices = []
-    
+
     for i, row in enumerate(color_table):
         r, g, b = int(row[0]), int(row[1]), int(row[2])
         expected_packed = r + (g << 8) + (b << 16)
         actual_packed = int(row[4])
-        
+
         if expected_packed != actual_packed:
             all_correct = False
-            incorrect_indices.append({
-                'index': i,
-                'rgb': [r, g, b],
-                'expected_packed': expected_packed,
-                'actual_packed': actual_packed
-            })
-    
+            incorrect_indices.append(
+                {
+                    "index": i,
+                    "rgb": [r, g, b],
+                    "expected_packed": expected_packed,
+                    "actual_packed": actual_packed,
+                }
+            )
+
     return all_correct, incorrect_indices
+
 
 ########################################################################################################
 def detect_hemi(file_name: str):
     """
     Detect hemisphere from filename using common naming conventions.
-    
+
     Identifies left ('lh') or right ('rh') hemisphere from FreeSurfer and
     BIDS-style filenames using various naming patterns.
-    
+
     Parameters
     ----------
     file_name : str
         Filename to analyze for hemisphere information.
-    
+
     Returns
     -------
     hemi : str or None
         Hemisphere identifier ('lh' or 'rh') or None if not detected.
-    
+
     Notes
     -----
     Recognizes patterns like 'lh.', 'rh.', 'hemi-L', 'hemi-left', etc.
     Issues warning if hemisphere cannot be determined.
-    
+
     Examples
     --------
     >>> # Detect from FreeSurfer filename
     >>> hemi = detect_hemi('lh.aparc.annot')
     >>> print(hemi)  # 'lh'
-    >>> 
+    >>>
     >>> # Detect from BIDS filename
     >>> hemi = detect_hemi('sub-01_hemi-L_pial.surf.gii')
     >>> print(hemi)  # 'lh'
@@ -4925,36 +4957,37 @@ def detect_hemi(file_name: str):
 
     return hemi
 
+
 ############################################################################################################
 def load_lobes_json(lobes_json: str = None):
     """
     Load JSON file containing anatomical lobe definitions.
-    
+
     Loads configuration file that defines how brain regions are grouped
     into anatomical lobes for coarser-grained analyses.
-    
+
     Parameters
     ----------
     lobes_json : str, optional
         Path to custom JSON file. If None, uses default configuration
         file included with the package. Default is None.
-    
+
     Returns
     -------
     pipe_dict : dict
         Dictionary containing lobe definitions and grouping schemes.
-    
+
     Raises
     ------
     ValueError
         If the specified JSON file doesn't exist.
-    
+
     Examples
     --------
     >>> # Load default lobe definitions
     >>> lobes_config = load_lobes_json()
     >>> print(lobes_config.keys())
-    >>> 
+    >>>
     >>> # Load custom definitions
     >>> custom_config = load_lobes_json('/path/to/custom_lobes.json')
     """
@@ -4974,33 +5007,34 @@ def load_lobes_json(lobes_json: str = None):
 
     return pipe_dict
 
+
 ############################################################################################################
 def get_version(cont_tech: str = "local", cont_image: str = None):
     """
     Get FreeSurfer version number from installation or container.
-    
+
     Queries FreeSurfer installation to determine version number, supporting
     both local installations and containerized environments.
-    
+
     Parameters
     ----------
     cont_tech : str, optional
         Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
-        
+
     cont_image : str, optional
         Container image specification when using containerization. Default is None.
-    
+
     Returns
     -------
     vers_cad : str
         FreeSurfer version number (e.g., '7.2.0').
-    
+
     Examples
     --------
     >>> # Get local FreeSurfer version
     >>> version = get_version()
     >>> print(f"FreeSurfer version: {version}")
-    >>> 
+    >>>
     >>> # Get version from Docker container
     >>> version = get_version(
     ...     cont_tech='docker',
