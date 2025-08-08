@@ -13,10 +13,10 @@ import uuid
 import numpy as np
 import nibabel as nib
 import pandas as pd
+from collections import defaultdict
 
 # Importing local modules
 from . import misctools as cltmisc
-from . import parcellationtools as cltparc
 from . import bidstools as cltbids
 
 
@@ -3080,6 +3080,226 @@ def colors2colortable(colors: Union[list, np.ndarray]):
     ctab = ctab[1:]
 
     return ctab
+
+def resolve_colortable_duplicates(color_table):
+    """
+    Analyze FreeSurfer color table and make all RGB colors unique.
+    
+    For duplicate colors, modifies one RGB channel by incrementing until uniqueness.
+    Updates the packed RGB value (column 4) accordingly. This happens when the color
+    of bilateral hemispheres is the same, e.g. in the case of the
+    Desikan-Killiany atlas where the left and right hemisphere have the same color
+    for the same region.
+    This function returns the modified color table, a log of modifications made,
+    and a mapping of old to new packed RGB values for map correction.
+    
+    
+    Parameters:
+    -----------
+    color_table : numpy.ndarray
+        FreeSurfer color table with shape (n, 5) where:
+        - Columns 0-2: RGB values (0-255)
+        - Column 3: Alpha (usually 0)
+        - Column 4: Packed RGB value
+    
+    Returns:
+    --------
+    tuple: (modified_table, modification_log, packed_values_mapping)
+        - modified_table: Updated color table with unique colors
+        - modification_log: Dictionary with details of changes made
+        - packed_values_mapping: Dictionary with 'old_values' and 'new_values' 
+            numpy arrays for map correction
+    """
+    
+    # Create a copy to avoid modifying the original
+    table = color_table.copy()
+    
+    # Track modifications
+    modification_log = {
+        'original_duplicates': 0,
+        'modifications_made': [],
+        'final_unique_colors': 0
+    }
+    
+    # Track old and new packed values for map correction
+    old_packed_values = []
+    new_packed_values = []
+    
+    # Find duplicates by grouping indices by RGB values
+    rgb_to_indices = defaultdict(list)
+    for i, row in enumerate(table):
+        rgb_key = tuple(row[:3].astype(int))  # Ensure integers (R, G, B)
+        rgb_to_indices[rgb_key].append(i)
+    
+    # Count original duplicates
+    duplicate_groups = {rgb: indices for rgb, indices in rgb_to_indices.items() if len(indices) > 1}
+    modification_log['original_duplicates'] = sum(len(indices) - 1 for indices in duplicate_groups.values())
+    
+    # Process each duplicate group
+    for rgb_key, indices in duplicate_groups.items():
+        # Keep the first occurrence unchanged, modify the rest
+        for table_idx in indices[1:]:
+            original_rgb = table[table_idx][:3].copy().astype(int)
+            
+            # Store old packed value
+            old_packed_value = int(table[table_idx][4])
+            old_packed_values.append(old_packed_value)
+            
+            # Find a unique color by trying modifications
+            new_rgb = find_unique_color(table[table_idx][:3].astype(int), rgb_to_indices)
+            
+            # Update the table
+            table[table_idx][:3] = new_rgb
+            
+            # Recalculate packed RGB value: R + (G << 8) + (B << 16)
+            packed_rgb = int(new_rgb[0]) + (int(new_rgb[1]) << 8) + (int(new_rgb[2]) << 16)
+            table[table_idx][4] = packed_rgb
+            
+            # Store new packed value
+            new_packed_values.append(packed_rgb)
+            
+            # Update our tracking dictionary
+            new_rgb_key = tuple(new_rgb)
+            rgb_to_indices[new_rgb_key] = [table_idx]
+            rgb_to_indices[rgb_key].remove(table_idx)
+            
+            # Determine which channel was modified and by how much
+            diff = new_rgb - original_rgb
+            modified_channel_idx = np.nonzero(diff)[0][0]  # First non-zero difference
+            channel_names = ['R', 'G', 'B']
+            
+            # Log the modification
+            modification_log['modifications_made'].append({
+                'index': table_idx,
+                'original_rgb': original_rgb.tolist(),
+                'new_rgb': new_rgb.tolist(),
+                'channel_modified': channel_names[modified_channel_idx],
+                'increment_applied': int(diff[modified_channel_idx]),
+                'new_packed_value': packed_rgb
+            })
+    
+    # Verify uniqueness
+    final_rgb_values = [tuple(row[:3].astype(int)) for row in table]
+    unique_colors = len(set(final_rgb_values))
+    modification_log['final_unique_colors'] = unique_colors
+    
+    # Verify no negative values
+    if np.any(table[:, :3] < 0):
+        raise ValueError("Negative RGB values detected after processing!")
+    
+    # Verify no values exceed 255
+    if np.any(table[:, :3] > 255):
+        raise ValueError("RGB values exceeding 255 detected after processing!")
+    
+    # Create mapping dictionary for correcting maps
+    packed_values_mapping = {
+        'old_values': np.array(old_packed_values),
+        'new_values': np.array(new_packed_values)
+    }
+    
+    return table, modification_log, packed_values_mapping
+
+
+def find_unique_color(rgb, rgb_to_indices):
+    """
+    Find a unique RGB color by systematically modifying channels.
+    
+    Parameters:
+    -----------
+    rgb : numpy.ndarray
+        Original RGB values [R, G, B]
+    rgb_to_indices : dict
+        Dictionary mapping RGB tuples to indices
+    
+    Returns:
+    --------
+    numpy.ndarray: New unique RGB values
+    """
+    rgb = rgb.astype(int)
+    
+    # Try modifying channels in order: B, G, R (to minimize visual impact)
+    for channel_idx in [2, 1, 0]:  # B, G, R
+        
+        # First, try positive increments (safer as they avoid negative values)
+        for increment in range(1, 256):  # Try +1, +2, +3, ... up to +255
+            new_rgb = rgb.copy()
+            
+            # Check if we can add this increment without exceeding 255
+            if new_rgb[channel_idx] + increment <= 255:
+                new_rgb[channel_idx] += increment
+                new_rgb_key = tuple(new_rgb)
+                
+                # Check if this color is unique (not in the dictionary)
+                if new_rgb_key not in rgb_to_indices:
+                    return new_rgb
+        
+        # If positive increments don't work, try negative increments
+        for decrement in range(1, 256):  # Try -1, -2, -3, ... up to -255
+            new_rgb = rgb.copy()
+            
+            # Check if we can subtract this decrement without going below 0
+            if new_rgb[channel_idx] - decrement >= 0:
+                new_rgb[channel_idx] -= decrement
+                new_rgb_key = tuple(new_rgb)
+                
+                # Check if this color is unique (not in the dictionary)
+                if new_rgb_key not in rgb_to_indices:
+                    return new_rgb
+    
+    # If we get here, we couldn't find a unique color by modifying single channels
+    # This is extremely unlikely but let's try modifying two channels
+    for channel1 in [0, 1, 2]:
+        for channel2 in [0, 1, 2]:
+            if channel1 != channel2:
+                for inc1 in range(1, 10):  # Limit to small increments for two channels
+                    for inc2 in range(1, 10):
+                        new_rgb = rgb.copy()
+                        
+                        if (new_rgb[channel1] + inc1 <= 255 and 
+                            new_rgb[channel2] + inc2 <= 255):
+                            new_rgb[channel1] += inc1
+                            new_rgb[channel2] += inc2
+                            new_rgb_key = tuple(new_rgb)
+                            
+                            if new_rgb_key not in rgb_to_indices:
+                                return new_rgb
+    
+    # Last resort: this should never happen with proper color tables
+    raise RuntimeError(f"Could not find unique color for RGB {rgb}. Color space might be saturated.")
+
+
+def verify_packed_rgb_values(color_table):
+    """
+    Verify that packed RGB values are correctly calculated.
+    
+    Parameters:
+    -----------
+    color_table : numpy.ndarray
+        FreeSurfer color table
+    
+    Returns:
+    --------
+    tuple: (bool, list) - (True if all packed values are correct, list of incorrect indices)
+    """
+    
+    all_correct = True
+    incorrect_indices = []
+    
+    for i, row in enumerate(color_table):
+        r, g, b = int(row[0]), int(row[1]), int(row[2])
+        expected_packed = r + (g << 8) + (b << 16)
+        actual_packed = int(row[4])
+        
+        if expected_packed != actual_packed:
+            all_correct = False
+            incorrect_indices.append({
+                'index': i,
+                'rgb': [r, g, b],
+                'expected_packed': expected_packed,
+                'actual_packed': actual_packed
+            })
+    
+    return all_correct, incorrect_indices
 
 
 def detect_hemi(file_name: str):
