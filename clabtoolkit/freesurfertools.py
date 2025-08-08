@@ -19,22 +19,18 @@ from collections import defaultdict
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 
-
 class AnnotParcellation:
     """
     This class contains methods to work with FreeSurfer annot files
-
     # Implemented methods:
     # - Correct the parcellation by refilling the vertices from the cortex label file that do not have a label in the annotation file
     # - Convert FreeSurfer annot files to gcs files
-
     # Methods to be implemented:
     # Grouping regions to create a coarser parcellation
     # Removing regions from the parcellation
     # Correct parcellations by removing small clusters of vertices labeled inside another region
-
     """
-
+    
     def __init__(
         self,
         parc_file: str = None,
@@ -84,25 +80,23 @@ class AnnotParcellation:
         """
         booldel = False
         self.filename = parc_file
-
+        
         # Verify if the file exists
         if not os.path.exists(self.filename):
             raise ValueError("The parcellation file does not exist")
-
+            
         # Extracting the filename, folder and name
         self.path = os.path.dirname(self.filename)
         self.name = os.path.basename(self.filename)
-
+        
         # Detecting the hemisphere
         temp_name = self.name.lower()
         # Find in the string annot_name if it is lh. or rh.
         hemi = detect_hemi(self.name)
-
         self.hemi = hemi
         
         # If the file is a .gii file, then convert it to a .annot file
         if self.name.endswith(".gii"):
-
             annot_file = AnnotParcellation.gii2annot(
                 self.filename,
                 ref_surf=ref_surf,
@@ -111,36 +105,34 @@ class AnnotParcellation:
                 cont_image=cont_image,
             )
             booldel = True
-
         elif self.name.endswith(".annot"):
             annot_file = self.filename
-
         elif self.name.endswith(".gcs"):
             annot_file = AnnotParcellation.gcs2annot(
                 self.filename, annot_file=self.filename.replace(".gcs", ".annot")
             )
             booldel = True
-
+            
         # Read the annot file using nibabel
         codes, reg_table, reg_names = nib.freesurfer.read_annot(
             annot_file, orig_ids=True
         )
-
+        
         if booldel:
             os.remove(annot_file)
-
+            
         # Correcting region names
         reg_names = [name.decode("utf-8") for name in reg_names]
-
+        
         # Detect the codes in the table that are not in the vertex wise data
         # Find the indexes where the codes are not in the vertex wise data
         tmp_ind = np.where(np.isin(reg_table[:, 4], np.unique(codes)) == False)[0]
-
+        
         # If there are codes that are not in the vertex wise data, then remove them from the table
         if tmp_ind.size > 0:
             reg_table = np.delete(reg_table, tmp_ind, axis=0)
             reg_names = np.delete(reg_names, tmp_ind).tolist()
-
+            
         # Storing the codes, colors and names in the object
         self.codes = codes
         self.regtable = reg_table
@@ -208,7 +200,7 @@ class AnnotParcellation:
             os.remove(out_file)
 
         # Restructuring the codes to consecutive numbers
-        new_codes = np.zeros_like(self.codes) - 1
+        new_codes = np.full_like(self.codes, -1, dtype=int)  # Specify dtype=int
         for i, code in enumerate(self.regtable[:, 4]):
             new_codes[self.codes == code] = i
 
