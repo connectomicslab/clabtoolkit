@@ -782,18 +782,28 @@ class Parcellation:
             # 4. Clean again after smoothing
             mesh = mesh.clean()
             
-            # 5. Compute normals for better shading
-            mesh = mesh.compute_normals(split_vertices=True)
+            if save_annotation:
+                save_path = os.path.dirname(out_filename)
+                save_name = os.path.basename(out_filename)
 
+                # Replace the file extension with .annot
+                save_name = os.path.splitext(save_name)[0] + '.annot'
+                annot_filename = os.path.join(save_path, save_name)
 
-            surf_temp = cltsurf.Surface()
-            surf_temp.load_from_mesh(mesh, hemi='lh')
-            if i != 0:
-                surfaces_list.append(surf_temp)
+                merged_surf.save_surface(
+                    filename=out_filename,
+                    format=out_format,
+                    map_name='surface',
+                    save_annotation=annot_filename,
+                    overwrite=overwrite
+                )
             else:
-                surf_orig = copy.deepcopy(surf_temp)    
-        
-        surf_orig.merge_surfaces(surfaces_list)
+                merged_surf.save_surface(
+                    filename=out_filename,
+                    format=out_format,
+                    map_name='surface',
+                    overwrite=overwrite
+                )
 
         surf_orig.colortables = color_tables
 
