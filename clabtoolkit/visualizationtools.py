@@ -17,8 +17,6 @@ import nibabel as nib
 from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
 from nilearn import plotting
 import pyvista as pv
-import tkinter as tk
-import tkinter as tk
 
 # Importing local modules
 from . import freesurfertools as cltfree
@@ -885,9 +883,8 @@ class SurfacePlotter:
 
         # Get the absolute of this file
         cwd = os.path.dirname(os.path.abspath(__file__))
-
         if config_file is None:
-            # Default to the standard configuration file
+            cwd = os.path.dirname(os.path.abspath(__file__))
             config_file = os.path.join(cwd, "config", "viz_views.json")
         else:
             # Use the provided configuration file path
@@ -1156,6 +1153,8 @@ class SurfacePlotter:
         except KeyError:
             raise ValueError(f"Data array '{map_name}' not found in surface point_data")
 
+            vertex_values_lh = np.nan_to_num(vertex_values_lh, nan=0.0)
+            vertex_values_rh = np.nan_to_num(vertex_values_rh, nan=0.0)
         # Calculate symmetric color range based on absolute maximum
         abs_val = np.max(np.abs(np.concatenate((vertex_values_lh, vertex_values_rh))))
         vmin = -abs_val
