@@ -590,6 +590,7 @@ def get_processing_status_details_sqlite3(
     -------
     dict
         Dictionary containing the details of the processing status of the subjects.
+        
     str
         Path to the saved JSON file if out_json is provided, otherwise None.
     """

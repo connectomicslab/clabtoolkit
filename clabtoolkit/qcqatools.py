@@ -24,30 +24,53 @@ from rich.progress import (
 import clabtoolkit.bidstools as cltbids
 import clabtoolkit.misctools as cltmisc
 
-
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############    Section 1: Methods dedicated to the visual assessment of the images     ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def get_valid_slices(
     data: np.ndarray, 
     ignore_value: Optional[int] = None,
     slice_positions: List[float] = [0.3, 0.5, 0.7]
 ) -> Tuple[List[int], List[int], List[int]]:
     """
-    Get valid slice indices along each dimension, identifying regions with signal.
+    Get valid slice indices along each dimension by identifying regions with signal.
+    
+    Determines optimal slice positions by finding the spatial extent of non-background
+    voxels and calculating slice indices at specified relative positions within
+    that extent.
     
     Parameters
     ----------
     data : np.ndarray
-        3D neuroimaging data array
-    ignore_value : Optional[int], optional
-        Value to ignore when determining valid regions. If None, will use 0 as background,
-        by default None
-    slice_positions : List[float], optional
-        Relative positions (0-1) for the slices along each axis, by default [0.3, 0.5, 0.7]
+        3D neuroimaging data array.
+        
+    ignore_value : int, optional
+        Value to treat as background. If None, uses 0 as background. Default is None.
+        
+    slice_positions : list, optional
+        Relative positions (0-1) for slices along each axis. Default is [0.3, 0.5, 0.7].
     
     Returns
     -------
-    Tuple[List[int], List[int], List[int]]
-        Lists of slice indices for sagittal, coronal, and axial views
+    tuple
+        Three lists of slice indices for sagittal, coronal, and axial views.
+    
+    Examples
+    --------
+    >>> # Get slice indices for standard positions
+    >>> sag_slices, cor_slices, ax_slices = get_valid_slices(brain_data)
+    >>> print(f"Sagittal slices: {sag_slices}")
+    >>> 
+    >>> # Custom positions and background value
+    >>> slices = get_valid_slices(data, ignore_value=-1, slice_positions=[0.25, 0.75])
     """
+
     # Determine which values to consider as foreground
     if ignore_value is None:
         # Default: consider 0 as background, everything else as foreground
@@ -84,6 +107,7 @@ def get_valid_slices(
     
     return get_slices(x_min, x_max), get_slices(y_min, y_max), get_slices(z_min, z_max)
 
+####################################################################################################
 def generate_slices(
     nifti_path: Union[str, Path],
     output_path: Optional[Union[str, Path]] = None,
@@ -102,53 +126,84 @@ def generate_slices(
     overwrite: bool = False
 ) -> Optional[str]:
     """
-    Generate a visualization of brain image slices from a NIfTI file.
+    Generate composite visualization of brain image slices from neuroimaging file.
     
-    This function loads a neuroimaging file, selects slices at the specified positions
-    along each dimension, and creates a composite figure with all slices arranged in a row.
-    Intensity scaling is consistent across all slices.
+    Creates a figure showing slices from sagittal, coronal, and axial views at
+    specified positions with consistent intensity scaling and optional colorbar.
     
     Parameters
     ----------
-    nifti_path : Union[str, Path]
-        Path to the input neuroimaging file (NIfTI, MGZ, MINC, etc.)
-    output_path : Optional[Union[str, Path]], optional
-        Path where the output PNG should be saved. If None, will create a 'figures'
-        directory in the session folder based on BIDS convention, by default None
-    slice_positions : List[float], optional
-        Relative positions (0-1) for the slices along each axis, by default [0.3, 0.5, 0.7]
-    ignore_value : Optional[int], optional
-        Value to ignore when determining valid regions. If None, will use 0 as background,
-        by default None
+    nifti_path : str or Path
+        Path to input neuroimaging file (NIfTI, MGZ, MINC, etc.).
+        
+    output_path : str or Path, optional
+        Output PNG path. If None, saves alongside input file. Default is None.
+        
+    slice_positions : list, optional
+        Relative positions (0-1) for slices along each axis. Default is [0.3, 0.5, 0.7].
+        
+    ignore_value : int, optional
+        Value to ignore for slice selection. Default is None.
+        
     remove_invalid : bool, optional
-        Whether to remove invalid files when detected, by default True
-    fig_size : Optional[Tuple[int, int]], optional
-        Figure size in inches (width, height). If None, it will be calculated based on
-        the number of slices, by default None
+        Whether to remove invalid files when detected. Default is True.
+        
+    fig_size : tuple, optional
+        Figure size (width, height) in inches. Auto-calculated if None. Default is None.
+        
     dpi : int, optional
-        Output image resolution in dots per inch, by default 300
+        Output resolution in dots per inch. Default is 300.
+        
     bg_color : str, optional
-        Background color of the figure, by default "black"
+        Background color. Default is 'black'.
+        
     text_color : str, optional
-        Color of text elements, by default "white"
+        Text color. Default is 'white'.
+        
     cmap : str, optional
-        Colormap for displaying the image slices, by default "gray"
-    intensity_percentiles : Tuple[float, float], optional
-        Lower and upper percentiles for intensity normalization, by default (1, 99)
-        Used to determine consistent intensity scaling across all slices
+        Colormap for image display. Default is 'gray'.
+        
+    intensity_percentiles : tuple, optional
+        Percentiles for intensity normalization. Default is (1, 99).
+        
     show_colorbar : bool, optional
-        Whether to display a single colorbar at the right side of the figure, by default True
+        Whether to show colorbar. Default is True.
+        
     colorbar_width_inches : float, optional
-        Width of the colorbar in inches, by default 0.2
+        Colorbar width in inches. Default is 0.2.
+        
     colorbar_height_fraction : float, optional
-        Height of the colorbar as a fraction of the figure height, by default 0.7
+        Colorbar height as fraction of figure height. Default is 0.7.
+        
     overwrite : bool, optional
-        Whether to overwrite existing PNG files, by default False
+        Whether to overwrite existing files. Default is False.
     
     Returns
     -------
-    Optional[str]
-        Path to the generated PNG file, or None if generation failed or was skipped
+    str or None
+        Path to generated PNG file, or None if generation failed.
+    
+    Raises
+    ------
+    FileNotFoundError
+        If input file doesn't exist.
+        
+    ValueError
+        If file cannot be loaded or has invalid data.
+    
+    Examples
+    --------
+    >>> # Basic slice generation
+    >>> png_path = generate_slices('brain.nii.gz')
+    >>> print(f"Generated: {png_path}")
+    >>> 
+    >>> # Custom output with high resolution
+    >>> png_path = generate_slices(
+    ...     'T1w.nii.gz',
+    ...     output_path='slices.png',
+    ...     dpi=600,
+    ...     slice_positions=[0.4, 0.6]
+    ... )
     """
     
     # Convert to Path object for easier path manipulation
@@ -362,18 +417,30 @@ def generate_slices(
 # Move process_file function to module level so it can be pickled for multiprocessing
 def _process_single_file(args):
     """
-    Process a single file - moved to module level for multiprocessing compatibility.
+    Process a single neuroimaging file for slice generation (multiprocessing helper).
+    
+    Internal function used by recursively_generate_slices for parallel processing.
+    Validates the file, determines output path, and generates slice visualization.
     
     Parameters
     ----------
     args : tuple
-        Tuple containing (file_path, input_folder, output_folder, slice_positions, ignore_value, overwrite)
+        Arguments tuple containing (file_path, input_folder, output_folder, 
+        slice_positions, ignore_value, overwrite).
     
     Returns
     -------
     tuple
-        (success, result_or_error_message)
+        (success, result_or_error_message) where success is bool and result
+        is output path on success or error message on failure.
+    
+    Notes
+    -----
+    This function is moved to module level to support multiprocessing pickle
+    requirements. It performs file validation, path construction, and calls
+    generate_slices with appropriate parameters.
     """
+    
     file_path, input_folder, output_folder, slice_positions, ignore_value, overwrite = args
     
     try:
@@ -419,7 +486,7 @@ def _process_single_file(args):
     except Exception as e:
         return (False, f"Error processing {file_path}: {str(e)}")
 
-
+####################################################################################################
 def recursively_generate_slices(
     input_folder: Union[str, Path],
     output_folder: Optional[Union[str, Path]] = None,
@@ -434,61 +501,79 @@ def recursively_generate_slices(
     verbose: bool = True
 ) -> List[str]:
     """
-    Recursively traverse a folder, detect neuroimaging files, and generate PNG visualizations.
+    Recursively process neuroimaging files in a folder to generate PNG visualizations.
+    
+    Searches through directory structure, identifies neuroimaging files based on
+    filters and extensions, then generates slice visualizations with optional
+    parallel processing and progress tracking.
     
     Parameters
     ----------
-    input_folder : Union[str, Path]
-        Path to the input folder containing neuroimaging files
-    output_folder : Optional[Union[str, Path]], optional
-        Path to the output folder for saving PNG images. If None, PNGs will be saved in a 
-        'figures' subdirectory within the same directory structure, by default None
-    and_filter : Optional[Union[str, list, dict]], optional
-        AND filter to apply when searching for files, by default None
-    or_filter : Optional[Union[str, list, dict]], optional
-        OR filter to apply when searching for files, by default None
-    slice_positions : List[float], optional
-        Relative positions (0-1) for the slices along each axis, by default [0.3, 0.5, 0.7]
-    ignore_value : Optional[int], optional
-        Value to ignore when determining valid regions, by default None
+    input_folder : str or Path
+        Root directory containing neuroimaging files.
+        
+    output_folder : str or Path, optional
+        Output directory for PNG files. If None, saves alongside inputs. Default is None.
+        
+    and_filter : str, list, or dict, optional
+        AND filter for file selection. Default is None.
+        
+    or_filter : str, list, or dict, optional
+        OR filter for file selection. Default is None.
+        
+    slice_positions : list, optional
+        Relative positions for slices. Default is [0.3, 0.5, 0.7].
+        
+    ignore_value : int, optional
+        Background value to ignore. Default is None.
+        
     recursive : bool, optional
-        Whether to recursively search through subdirectories, by default True
+        Whether to search subdirectories. Default is True.
+        
     n_jobs : int, optional
-        Number of parallel jobs to run when processing files, by default 1
-    file_extensions : List[str], optional
-        List of file extensions to consider as neuroimaging files,
-        by default ['.nii', '.nii.gz', '.mgz', '.mnc']
+        Number of parallel processing jobs. Default is 1.
+        
+    file_extensions : list, optional
+        Valid neuroimaging file extensions. Default is ['.nii', '.nii.gz', '.mgz', '.mnc'].
+        
     overwrite : bool, optional
-        Whether to overwrite existing PNG files, by default False
+        Whether to overwrite existing PNG files. Default is False.
+        
     verbose : bool, optional
-        Whether to display progress information, by default True
+        Whether to show progress information. Default is True.
     
     Returns
     -------
-    List[str]
-        List of paths to the generated PNG images
+    list
+        Paths to generated PNG files.
     
     Raises
     ------
     FileNotFoundError
-        If the input folder does not exist
+        If input folder doesn't exist.
     
     Examples
     --------
-    Basic usage with default settings:
-    >>> output_files = recursively_generate_slices("/path/to/dataset")
-    
-    Filter files containing "T1w" in the filename:
-    >>> output_files = recursively_generate_slices("/path/to/dataset", and_filter="T1w")
-    
-    Specify output folder and process files in parallel with overwrite:
-    >>> output_files = recursively_generate_slices(
-    ...     "/path/to/dataset", 
-    ...     output_folder="/path/to/output_dir",
+    >>> # Process all files in directory
+    >>> png_files = recursively_generate_slices('/data/dataset')
+    >>> print(f"Generated {len(png_files)} visualizations")
+    >>> 
+    >>> # Filter T1w files and use parallel processing
+    >>> png_files = recursively_generate_slices(
+    ...     '/data/bids_dataset',
+    ...     and_filter='T1w',
     ...     n_jobs=4,
+    ...     output_folder='/output/figures'
+    ... )
+    >>> 
+    >>> # Custom slice positions
+    >>> png_files = recursively_generate_slices(
+    ...     '/data/dataset',
+    ...     slice_positions=[0.25, 0.5, 0.75],
     ...     overwrite=True
     ... )
     """
+
     # Initialize rich console
     console = Console()
     
@@ -650,7 +735,7 @@ def recursively_generate_slices(
     logging.info(f"Successfully generated {len(generated_images)} PNG images")
     return generated_images
 
-
+####################################################################################################
 def generate_image_selection_webpage(
     root_directory: Union[str, Path],
     output_html: Optional[Union[str, Path]] = None,
@@ -662,31 +747,67 @@ def generate_image_selection_webpage(
     overwrite: bool = False
 ) -> str:
     """
-    Generate an HTML webpage to display PNG images in hierarchical folder structure with checkboxes.
+    Generate interactive HTML webpage to display PNG images with selection checkboxes.
+    
+    Creates a webpage showing images in hierarchical folder structure with checkboxes
+    for selection, descriptions from JSON files, and download functionality for
+    creating file lists.
     
     Parameters
     ----------
-    root_directory : Union[str, Path]
-        Root directory to search for PNG files
-    output_html : Optional[Union[str, Path]], optional
-        Output path for the HTML file. If None, saves as 'png_selection.html' in root_directory
+    root_directory : str or Path
+        Root directory to search for PNG files.
+        
+    output_html : str or Path, optional
+        Output HTML file path. If None, saves as 'png_selection.html' in root directory.
+        Default is None.
+        
     png_pattern : str, optional
-        Glob pattern to find PNG files, by default "**/*.png"
+        Glob pattern for finding PNG files. Default is '**/*.png'.
+        
     title : str, optional
-        Title for the HTML page, by default "PNG Image Selection"
+        HTML page title. Default is 'PNG Image Selection'.
+        
     recursive : bool, optional
-        Whether to search recursively, by default True
+        Whether to search recursively. Default is True.
+        
     show_descriptions : bool, optional
-        Whether to try to extract descriptions from associated JSON files, by default True
+        Whether to extract descriptions from JSON files. Default is True.
+        
     image_width : str, optional
-        CSS width for images, by default "1400px"
+        CSS width for images. Default is '1400px'.
+        
     overwrite : bool, optional
-        Whether to overwrite existing HTML file, by default False
+        Whether to overwrite existing HTML file. Default is False.
     
     Returns
     -------
     str
-        Path to the generated HTML file
+        Path to generated HTML file.
+    
+    Notes
+    -----
+    The webpage includes:
+    - Hierarchical display of images by folder structure
+    - Checkboxes for image selection
+    - Descriptions extracted from associated JSON files
+    - Select all/none buttons
+    - Download selected files list functionality
+    - Dark theme optimized for neuroimaging
+    
+    Examples
+    --------
+    >>> # Create webpage for all PNGs
+    >>> html_file = generate_image_selection_webpage('/data/figures')
+    >>> print(f"Webpage created: {html_file}")
+    >>> 
+    >>> # Custom settings
+    >>> html_file = generate_image_selection_webpage(
+    ...     '/data/qc_images',
+    ...     output_html='/reports/qc_selection.html',
+    ...     title='Quality Control Images',
+    ...     image_width='1000px'
+    ... )
     """
     
     console = Console()
@@ -1081,30 +1202,42 @@ def generate_image_selection_webpage(
     console.print(f"[green]HTML file saved: {output_html}")
     return str(output_html)
 
-
-# Example usage function
+####################################################################################################
 def create_png_webpage_from_generated_slices(
     root_directory: Union[str, Path],
     output_html: Optional[Union[str, Path]] = None,
     overwrite: bool = False
 ) -> str:
     """
-    Convenience function to create a webpage from PNG files generated by the slice generation functions.
+    Convenience function to create webpage from PNG files generated by slice functions.
+    
+    Creates an HTML selection interface specifically optimized for brain slice
+    visualizations with appropriate title and settings.
     
     Parameters
     ----------
-    root_directory : Union[str, Path]
-        Root directory containing the generated PNG files
-    output_html : Optional[Union[str, Path]], optional
-        Output path for HTML file
+    root_directory : str or Path
+        Root directory containing generated PNG files.
+        
+    output_html : str or Path, optional
+        Output HTML file path. Default is None.
+        
     overwrite : bool, optional
-        Whether to overwrite existing HTML file, by default False
+        Whether to overwrite existing HTML file. Default is False.
     
     Returns
     -------
     str
-        Path to generated HTML file
+        Path to generated HTML file.
+    
+    Examples
+    --------
+    >>> # Create webpage after generating slices
+    >>> png_files = recursively_generate_slices('/data/dataset')
+    >>> html_file = create_png_webpage_from_generated_slices('/data/dataset')
+    >>> print(f"Browse results at: {html_file}")
     """
+
     return generate_image_selection_webpage(
         root_directory=root_directory,
         output_html=output_html,

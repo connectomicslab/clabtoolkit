@@ -8,9 +8,6 @@ from typing import Union
 import numpy as np
 import nibabel as nib
 
-from scipy.ndimage import convolve
-from scipy.spatial import distance
-
 # Importing local modules
 from . import misctools as cltmisc
 from . import bidstools as cltbids
@@ -18,7 +15,15 @@ from . import imagetools as cltimg
 from . import parcellationtools as cltparc
 
 
-# pylint: disable=too-many-arguments
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############           Section 1: Methods dedicated to image segmentation               ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
 def abased_parcellation(
     t1: str,
     t1_temp: str,
@@ -32,40 +37,83 @@ def abased_parcellation(
     force: bool = False,
 ):
     """
-    Compute atlas-based parcellation using ANTs.
-
-    Parameters:
+    Perform atlas-based parcellation using ANTs registration and transformation.
+    
+    Registers individual T1-weighted image to template space, then applies inverse
+    transformation to bring atlas into subject space, creating subject-specific
+    parcellation based on template atlas.
+    
+    Parameters
     ----------
     t1 : str
-        T1 image file
-
-    atlas: str
-        Atlas image.
-
-    atlas_type : str
-        Atlas type (e.g. spam or maxprob)
-
+        Path to input T1-weighted image.
+        
+    t1_temp : str
+        Path to T1-weighted template image for registration target.
+        
+    atlas : str
+        Path to atlas image (either SPAM probabilities or discrete labels).
+        
     out_parc : str
-        Output parcellation file
-
+        Path for output parcellation file.
+        
     xfm_output : str
-        Output name for the affine spatial transformation. It can include the path.
-
-    interp : str
-        Interpolation method (e.g. NearestNeighbor, Linear, BSpline)
-
-    cont_tech : str
-        Container technology (e.g. singularity, docker or local).
-
-    cont_image : str
-        Container image.
-
-    force : bool
-        Overwrite the results.
-
-    Returns:
+        Base path/name for transformation files. Extensions and descriptors
+        will be automatically added.
+        
+    atlas_type : str, optional
+        Atlas format: 'spam' for probability maps or 'maxprob' for discrete labels.
+        Default is 'spam'.
+        
+    interp : str, optional
+        Interpolation method: 'Linear', 'NearestNeighbor', 'BSpline'. Default is 'Linear'.
+        
+    cont_tech : str, optional
+        Container technology: 'local', 'singularity', 'docker'. Default is 'local'.
+        
+    cont_image : str, optional
+        Container image specification. Default is None.
+        
+    force : bool, optional
+        Whether to overwrite existing files. Default is False.
+    
+    Returns
+    -------
+    str
+        Path to the generated parcellation file.
+    
+    Notes
+    -----
+    The method performs the following steps:
+    1. ANTs SyN registration between subject T1 and template
+    2. Generates affine and non-linear transformation files
+    3. Applies inverse transformation to atlas
+    4. For SPAM atlases, preserves probability values
+    5. For maxprob atlases, uses nearest neighbor interpolation
+    
+    Generated transformation files follow BIDS naming conventions with
+    descriptors: affine, warp, iwarp.
+    
+    Examples
     --------
-
+    >>> # Basic SPAM atlas parcellation
+    >>> parc_file = abased_parcellation(
+    ...     t1='subject_T1w.nii.gz',
+    ...     t1_temp='MNI152_T1_1mm.nii.gz', 
+    ...     atlas='AAL_SPAM.nii.gz',
+    ...     out_parc='subject_AAL.nii.gz',
+    ...     xfm_output='transforms/subject_to_MNI'
+    ... )
+    >>> 
+    >>> # Discrete atlas with nearest neighbor interpolation
+    >>> parc_file = abased_parcellation(
+    ...     t1='T1w.nii.gz',
+    ...     t1_temp='template.nii.gz',
+    ...     atlas='discrete_atlas.nii.gz',
+    ...     out_parc='parcellation.nii.gz',
+    ...     xfm_output='xfm/transform',
+    ...     atlas_type='maxprob'
+    ... )
     """
 
     ######## -- Registration to the template space  ------------ #
@@ -255,182 +303,3 @@ def abased_parcellation(
 
     return out_parc
 
-
-def spams2maxprob(
-    spam_image: str,
-    prob_thresh: float = 0.05,
-    vol_indexes: np.array = None,
-    maxp_name: str = None,
-):
-    """
-    This method converts a SPAMs image into a maximum probability image.
-
-    Parameters:
-    -----------
-
-    spam_image : str
-        SPAMs image filename.
-
-    prob_thresh : float
-        Threshold value.
-
-    vol_indexes : np.array
-        Volume indexes.
-
-    maxp_name : str
-        Output maximum probability image filename.
-        If None, the image will not be saved and the function will return the image as a nunmpy array.
-
-    Returns:
-    --------
-
-    maxp_name : str
-        Output maximum probability image filename.
-        If None, the image will not be saved and the function will return the image as a nunmpy array.
-
-    """
-
-    spam_img = nib.load(spam_image)
-    affine = spam_img.affine
-    spam_vol = spam_img.get_fdata()
-
-    spam_vol[spam_vol < prob_thresh] = 0
-    spam_vol[spam_vol > 1] = 1
-
-    if vol_indexes is not None:
-        # Creating the maxprob
-
-        # I want to find the complementary indexes to vol_indexes
-        all_indexes = np.arange(0, spam_vol.shape[3])
-        set1 = set(all_indexes)
-        set2 = set(vol_indexes)
-
-        # Find the symmetric difference
-        diff_elements = set1.symmetric_difference(set2)
-
-        # Convert the result back to a NumPy array if needed
-        diff_array = np.array(list(diff_elements))
-        spam_vol[:, :, :, diff_array] = 0
-        # array_data = np.delete(spam_vol, diff_array, 3)
-
-    ind = np.where(np.sum(spam_vol, axis=3) == 0)
-    maxprob_thl = spam_vol.argmax(axis=3) + 1
-    maxprob_thl[ind] = 0
-
-    if maxp_name is not None:
-        # Save the image
-        imgcoll = nib.Nifti1Image(maxprob_thl.astype("int16"), affine)
-        nib.save(imgcoll, maxp_name)
-    else:
-        maxp_name = maxprob_thl
-
-    return maxp_name
-
-
-def region_growing(
-    iparc: np.ndarray, mask: Union[np.ndarray, np.bool_], neighborhood="26"
-):
-    """
-    Region growing algorithm for parcellation correction. It labels the unlabeled voxels of
-    the image mask with the most frequent label among the neighbors of each voxel.
-
-    Parameters:
-    -----------
-    iparc : np.ndarray
-        Parcellation image.
-
-    mask : np.ndarray
-        Mask image.
-
-        neighborhood : str
-        Neighborhood type (e.g. 6, 18, 26).
-
-    Returns:
-    --------
-
-
-    """
-
-    # Create a binary array where labeled voxels are marked as 1
-    binary_labels = (iparc > 0).astype(int)
-
-    # Convolve with the kernel to count labeled neighbors for each voxel
-    kernel = np.array(
-        [
-            [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
-            [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
-            [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
-        ]
-    )
-    labeled_neighbor_count = convolve(binary_labels, kernel, mode="constant", cval=0)
-
-    # Mask for voxels that have at least one labeled neighbor
-    mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
-    ind = np.argwhere(
-        (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
-    )
-    ind_orig = ind.copy() * 0
-
-    # Loop until no more voxels could be labeled or all the voxels are labeled
-    while (len(ind) > 0) & (np.array_equal(ind, ind_orig) == False):
-        ind_orig = ind.copy()
-        # Process each unlabeled voxel
-        for coord in ind:
-            x, y, z = coord
-
-            # Detecting the neighbors
-            neighbors = cltimg.get_vox_neighbors(
-                coord=coord, neighborhood="26", dims="3"
-            )
-            # Remove from motion the coordinates out of the bounding box
-            neighbors = neighbors[
-                (neighbors[:, 0] >= 0)
-                & (neighbors[:, 0] < iparc.shape[0])
-                & (neighbors[:, 1] >= 0)
-                & (neighbors[:, 1] < iparc.shape[1])
-                & (neighbors[:, 2] >= 0)
-                & (neighbors[:, 2] < iparc.shape[2])
-            ]
-
-            # Labels of the neighbors
-            neigh_lab = iparc[neighbors[:, 0], neighbors[:, 1], neighbors[:, 2]]
-
-            if len(np.argwhere(neigh_lab > 0)) > 2:
-
-                # Remove the neighbors that are not labeled
-                neighbors = neighbors[neigh_lab > 0]
-                neigh_lab = neigh_lab[neigh_lab > 0]
-
-                unique_labels, counts = np.unique(neigh_lab, return_counts=True)
-                max_count = counts.max()
-                max_labels = unique_labels[counts == max_count]
-
-                if len(max_labels) == 1:
-                    iparc[x, y, z] = max_labels[0]
-
-                else:
-                    # In case of tie, choose the label of the closest neighbor
-                    distances = [
-                        distance.euclidean(coord, (dx, dy, dz))
-                        for (dx, dy, dz), lbl in zip(neighbors, neigh_lab)
-                        if lbl in max_labels
-                    ]
-                    closest_label = max_labels[np.argmin(distances)]
-                    iparc[x, y, z] = closest_label
-                # most_frequent_label = np.bincount(neigh_lab[neigh_lab != 0]).argmax()
-
-        # Create a binary array where labeled voxels are marked as 1
-        binary_labels = (iparc > 0).astype(int)
-
-        # Convolve with the kernel to count labeled neighbors for each voxel
-        labeled_neighbor_count = convolve(
-            binary_labels, kernel, mode="constant", cval=0
-        )
-
-        # Mask for voxels that have at least one labeled neighbor
-        mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
-        ind = np.argwhere(
-            (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
-        )
-
-    return iparc * mask
