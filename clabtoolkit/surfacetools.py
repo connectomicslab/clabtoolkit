@@ -1194,6 +1194,14 @@ class Surface:
             Colormap to use for scalar overlays. If None, uses parcellation color table
             for categorical data or 'viridis' for scalar data.
 
+        vmin : np.float64, optional
+            Minimum value for scaling the colormap. If None, uses the minimum value of the overlay
+
+        vmax : np.float64, optional
+            Maximum value for scaling the colormap. If None, uses the maximum value of the overlay
+        If both vmin and vmax are None, the colormap will be applied to the full range of the overlay values.
+        If both are provided, they will be used to scale the colormap.
+
         Returns
         -------
         None
@@ -1207,7 +1215,7 @@ class Surface:
 
         Notes
         -----
-        This method sets the vertex colors in the mesh based on the specified overlay.
+        This method sets the vertices colors in the mesh based on the specified overlay.
         The colors are stored in the mesh's point_data under the key "RGB"
         and set as the active scalars for visualization.
 
