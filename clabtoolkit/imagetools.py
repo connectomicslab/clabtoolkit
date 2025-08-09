@@ -1354,6 +1354,7 @@ def spams2maxprob(
 
     return maxp_name
 
+
 #####################################################################################################
 def simulate_image(
     input_image: Union[str, nib.Nifti1Image],
@@ -2093,3 +2094,173 @@ def region_growing(
         )
 
     return iparc * mask
+
+
+#####################################################################################################
+def simulate_array(
+    mask_array: np.ndarray,
+    n_volumes: int = 1,
+    distribution: str = "normal",
+    random_seed: Optional[int] = None,
+    **dist_params,
+) -> np.ndarray:
+    """
+    Generate a simulated array with random values at non-zero voxel positions.
+
+    This function creates a new array where non-zero voxels from the mask array
+    are filled with random values following a specified statistical distribution.
+
+    Parameters
+    ----------
+    mask_array : numpy.ndarray
+        3D array used as a mask to determine where to place random values.
+        Shape: (N, M, P)
+
+    n_volumes : int, default=1
+        Number of volumes in the output array:
+        - If n_volumes == 1: creates a 3D array (N, M, P)
+        - If n_volumes > 1: creates a 4D array (N, M, P, n_volumes)
+
+    distribution : str, default='normal'
+        Statistical distribution for random value generation. Supported options:
+        - 'normal': Normal (Gaussian) distribution
+        - 'uniform': Uniform distribution
+        - 'exponential': Exponential distribution
+
+    random_seed : int, optional
+        Random seed for reproducible results. If None, uses system time.
+
+    **dist_params : dict
+        Distribution-specific parameters:
+        - For 'normal': loc (mean, default=0), scale (std, default=1)
+        - For 'uniform': low (default=0), high (default=1)
+        - For 'exponential': scale (default=1)
+
+    Returns
+    -------
+    numpy.ndarray
+        Simulated array with random values at non-zero mask positions:
+        - 3D array (N, M, P) if n_volumes == 1
+        - 4D array (N, M, P, n_volumes) if n_volumes > 1
+
+    Raises
+    ------
+    ValueError
+        If mask_array is not 3D, distribution is unsupported,
+        n_volumes is invalid, or distribution parameters are invalid.
+
+    RuntimeError
+        If no non-zero voxels are found in the mask array.
+
+    Examples
+    --------
+    >>> # Create 3D simulation with normal distribution
+    >>> mask = np.random.randint(0, 2, (64, 64, 30))
+    >>> sim_3d = simulate_array(
+    ...     mask,
+    ...     n_volumes=1,
+    ...     distribution='normal',
+    ...     loc=0,
+    ...     scale=1,
+    ...     random_seed=42
+    ... )
+
+    >>> # Create 4D simulation with uniform distribution
+    >>> sim_4d = simulate_array(
+    ...     mask,
+    ...     n_volumes=10,
+    ...     distribution='uniform',
+    ...     low=0,
+    ...     high=100,
+    ...     random_seed=42
+    ... )
+
+    Notes
+    -----
+    - Only voxels with non-zero values in the mask array will contain random values
+    - All other voxels remain zero in the output
+    - For 4D outputs, each volume gets independent random values
+    """
+
+    # Input validation
+    if not isinstance(mask_array, np.ndarray):
+        raise ValueError("mask_array must be a numpy array")
+
+    if mask_array.ndim != 3:
+        raise ValueError(f"mask_array must be 3D, got {mask_array.ndim}D")
+
+    if not isinstance(n_volumes, int) or n_volumes < 1:
+        raise ValueError("n_volumes must be a positive integer")
+
+    if distribution not in ["normal", "uniform", "exponential"]:
+        raise ValueError(
+            f"Unsupported distribution '{distribution}'. "
+            "Supported: 'normal', 'uniform', 'exponential'"
+        )
+
+    # Set random seed if provided
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    # Create mask for non-zero voxels
+    mask = mask_array != 0
+    n_nonzero_voxels = np.sum(mask)
+
+    if n_nonzero_voxels == 0:
+        raise RuntimeError("No non-zero voxels found in mask array")
+
+    # Distribution parameter validation and random value generation
+    def _generate_random_values(size: int) -> np.ndarray:
+        """Generate random values based on specified distribution."""
+        try:
+            if distribution == "normal":
+                loc = dist_params.get("loc", 0.0)
+                scale = dist_params.get("scale", 1.0)
+                if scale <= 0:
+                    raise ValueError(
+                        "Scale parameter for normal distribution must be positive"
+                    )
+                return np.random.normal(loc, scale, size).astype(np.float32)
+
+            elif distribution == "uniform":
+                low = dist_params.get("low", 0.0)
+                high = dist_params.get("high", 1.0)
+                if low >= high:
+                    raise ValueError(
+                        "Low parameter must be less than high parameter for uniform distribution"
+                    )
+                return np.random.uniform(low, high, size).astype(np.float32)
+
+            elif distribution == "exponential":
+                scale = dist_params.get("scale", 1.0)
+                if scale <= 0:
+                    raise ValueError(
+                        "Scale parameter for exponential distribution must be positive"
+                    )
+                return np.random.exponential(scale, size).astype(np.float32)
+
+        except Exception as e:
+            raise ValueError(f"Error generating random values: {e}")
+
+    # Get mask shape
+    mask_shape = mask_array.shape
+
+    # Create simulated data array
+    if n_volumes == 1:
+        # 3D output
+        simulated_data = np.zeros(mask_shape, dtype=np.float32)
+        simulated_data[mask] = _generate_random_values(n_nonzero_voxels)
+        output_shape = mask_shape
+
+    else:
+        # 4D output
+        output_shape = mask_shape + (n_volumes,)
+        simulated_data = np.zeros(output_shape, dtype=np.float32)
+
+        # Fill each volume with independent random values
+        for volume_idx in range(n_volumes):
+            simulated_data[..., volume_idx][mask] = _generate_random_values(
+                n_nonzero_voxels
+            )
+
+    return simulated_data
