@@ -142,6 +142,10 @@ class Parcellation:
 
             # If the parcellation is a numpy array
             elif isinstance(parc_file, np.ndarray):
+                self.parc_file = "numpy_array"
+
+                if parc_id is None:
+                    self.id = "numpy_array"
 
                 self.data = parc_file
                 self.parc_file = "numpy_array"
@@ -182,6 +186,70 @@ class Parcellation:
 
             # Detect minimum and maximum labels
             self.parc_range()
+
+    #####################################################################################################
+    def get_space_id(self, space_id: Optional[str] = "unknown"):
+        """
+        Set the space identifier for the parcellation.
+
+        Parameters
+        ----------
+        space_id : str, optional
+            Identifier for the space in which the parcellation is defined. Default is "unknown".
+
+        Raises
+        ------
+        ValueError
+            If the parcellation file is not set. 
+        
+        Returns
+        -------
+        space_id : str
+            The space identifier for the parcellation, formatted as 'space-<space_id>'.
+
+
+        Notes
+        -----
+        This method sets the `space` attribute of the Parcellation object.
+        It is useful for tracking the spatial context of the parcellation data.
+
+        Examples
+        --------
+        >>> parc = Parcellation('sub-01_ses-01_acq-mprage_space-t1_atlas-xxx_seg-yyy_scale-1_desc-test.nii.gz')
+        >>> space_id = parc.get_space_id()
+        >>> print(space_id)
+        'space-t1'
+
+        >>> parc = Parcellation('custom_parcellation.nii.gz')
+        >>> space_id = parc.get_space_id(space_id='custom_space')
+        >>> print(space_id)
+        'space-unknown'
+        >>> parc = Parcellation()
+        >>> space_id = parc.get_space_id()
+        'space-unknown'
+
+        """
+        # Check if the parcellation file is set
+        if not hasattr(self, "parc_file"):
+            raise ValueError(
+                "The parcellation file is not set. Please load a parcellation file first."
+            )
+                # Get the base name of the parcellation file
+        parc_file_name = os.path.basename(self.parc_file)
+
+        # Check if the parcellation file name follows BIDS naming conventions
+        if cltbids.is_bids_filename(parc_file_name):
+
+            # Extract entities from the parcellation file name
+            name_ent_dict = cltbids.str2entity(parc_file_name)
+            ent_names_list = list(name_ent_dict.keys())
+
+        if "space" in ent_names_list:
+            space_id += "_space-" + name_ent_dict["space"]
+
+        self.space = space_id
+
+        return space_id
 
     ####################################################################################################
     def get_parcellation_id(self) -> str:
