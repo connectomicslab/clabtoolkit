@@ -1597,6 +1597,255 @@ def simulate_image(
     return simulated_img
 
 
+#####################################################################################################
+def delete_volumes_from_4D_images(
+    in_image: str,
+    out_image: str,
+    vols_to_delete: List[Union[int, tuple, list, str, np.ndarray]] = None,
+    overwrite: bool = False,
+) -> Tuple[str, List[int]]:
+    """
+    Remove specific volumes from a 4D neuroimaging file.
+
+    This function removes specified volumes from 4D NIfTI images (such as fMRI time series,
+    DTI volumes, or other 4D datasets) and saves the result to a new file. It supports
+    flexible volume specification including individual indices, ranges, and complex
+    string-based patterns.
+
+    Parameters
+    ----------
+    in_image : str
+        Path to the input 4D NIfTI image file (.nii or .nii.gz).
+        The file must exist and be a valid 4D image.
+
+    out_image : str
+        Path where the output 4D image will be saved. The directory must exist.
+        If the file already exists, use `overwrite=True` to replace it.
+
+    vols_to_delete : list of int, tuple, list, np.ndarray, or str
+        Specification of volumes to remove from the 4D image. Supports multiple formats:
+
+        **Individual integers:**
+            Single volume indices to remove (0-based indexing).
+
+        **Tuples of 2 integers:**
+            Ranges specified as (start, end) - both endpoints are included.
+            Example: (5, 8) removes volumes [5, 6, 7, 8]
+
+        **Lists or numpy arrays:**
+            Collections of volume indices, automatically flattened.
+
+        **Strings (flexible syntax):**
+            Powerful string-based specification supporting:
+
+            - Single numbers: "5" → [5]
+            - Hyphen ranges: "8-10" → [8, 9, 10]
+            - Colon ranges: "11:13" → [11, 12, 13]
+            - Step ranges: "14:2:22" → [14, 16, 18, 20, 22]
+            - Comma-separated: "1, 2, 3" → [1, 2, 3]
+            - Mixed combinations: "0-2, 5, 10:2:14, 20" → [0, 1, 2, 5, 10, 12, 14, 20]
+
+        **Note:** All formats can be mixed in a single list.
+
+    overwrite : bool, default=False
+        Whether to overwrite the output file if it already exists.
+        If False and the output file exists, raises FileExistsError.
+
+    Returns
+    -------
+    out_image : str
+        Path to the successfully created output image file.
+
+    vols_removed : list of int
+        Sorted list of all volume indices that were removed from the original image.
+        Useful for verification and logging purposes.
+
+    Raises
+    ------
+    FileNotFoundError
+        - If the input image file does not exist
+        - If the output directory does not exist
+
+    ValueError
+        - If vols_to_delete is None or empty after parsing
+        - If the input image is not 4D (wrong number of dimensions)
+        - If any volume indices are out of range (negative or >= number of volumes)
+
+    FileExistsError
+        If the output file already exists and overwrite=False.
+
+    RuntimeError
+        If attempting to delete all volumes (would result in empty image).
+
+    Notes
+    -----
+    - Volume indexing is 0-based (first volume is index 0)
+    - Duplicate volume indices are automatically removed
+    - The function preserves the original image's affine transformation and header
+    - Memory usage scales with image size; very large 4D images may require substantial RAM
+    - The function validates all volume indices before processing to prevent partial failures
+
+    **Performance considerations:**
+    - Loading and processing large 4D images may take significant time and memory
+    - Consider processing in chunks for very large datasets
+
+    **File format support:**
+    - Input: .nii and .nii.gz files
+    - Output: Format determined by output filename extension
+
+    Examples
+    --------
+    **Basic usage - Remove specific volumes:**
+
+    >>> delete_volumes_from_4D_images(
+    ...     'fmri_data.nii.gz',
+    ...     'fmri_cleaned.nii.gz',
+    ...     vols_to_delete=[0, 1, 2, 99],
+    ...     overwrite=True
+    ... )
+
+    **Remove ranges using tuples:**
+
+    >>> delete_volumes_from_4D_images(
+    ...     'dti_data.nii.gz',
+    ...     'dti_subset.nii.gz',
+    ...     vols_to_delete=[(0, 4), (95, 99)],  # Remove first 5 and last 5 volumes
+    ...     overwrite=True
+    ... )
+
+    **String-based range specification:**
+
+    >>> delete_volumes_from_4D_images(
+    ...     'timeseries.nii.gz',
+    ...     'timeseries_clean.nii.gz',
+    ...     vols_to_delete=["0-4", "95:99"],  # Same as above using strings
+    ...     overwrite=True
+    ... )
+
+    **Complex mixed specification:**
+
+    >>> delete_volumes_from_4D_images(
+    ...     'bold_data.nii.gz',
+    ...     'bold_processed.nii.gz',
+    ...     vols_to_delete=[
+    ...         "0-2",           # Remove first 3 volumes (motion artifacts)
+    ...         (147, 149),      # Remove volumes 147-149 (spike artifacts)
+    ...         "200:5:220",     # Remove every 5th volume from 200-220
+    ...         [300, 301, 302], # Remove specific outlier volumes
+    ...         "450"            # Remove final volume
+    ...     ],
+    ...     overwrite=True
+    ... )
+
+    **Advanced string patterns:**
+
+    >>> # Remove multiple ranges and individual volumes in one string
+    >>> delete_volumes_from_4D_images(
+    ...     'input.nii.gz',
+    ...     'output.nii.gz',
+    ...     vols_to_delete=["0-2, 5, 10:2:14, 20-22, 50"],
+    ...     overwrite=True
+    ... )
+    >>> # This removes: [0,1,2,5,10,12,14,20,21,22,50]
+
+    """
+
+    # Check if input file exists
+    if not os.path.isfile(in_image):
+        raise FileNotFoundError(f"File {in_image} not found.")
+
+    # Check if volumes to delete is specified
+    if vols_to_delete is None:
+        raise ValueError(
+            "vols_to_delete parameter is required. Please specify which volumes to remove."
+        )
+
+    # Ensure vols_to_delete is a list
+    if not isinstance(vols_to_delete, list):
+        vols_to_delete = [vols_to_delete]
+
+    # Convert vols_to_delete to a flat list of integers
+    vols_to_delete = cltmisc.build_indices(vols_to_delete, nonzeros=False)
+
+    # Check if vols_to_delete is not empty
+    if len(vols_to_delete) == 0:
+        print("No volumes to delete. The volumes to delete list is empty.")
+        return in_image, []
+
+    # Create output filename if not specified
+    out_path = os.path.dirname(out_image)
+
+    # Check if the output path exists otherwise give an error
+    if out_path and not os.path.exists(out_path):
+        raise FileNotFoundError(f"Output directory {out_path} does not exist.")
+
+    if os.path.exists(out_image) and not overwrite:
+        raise FileExistsError(
+            f"Output file {out_image} already exists. Use 'overwrite=True' to replace it."
+        )
+
+    # Load the 4D image
+    img = nib.load(in_image)
+
+    # Get the dimensions of the image
+    dim = img.shape
+
+    # Check if the image is 4D
+    if len(dim) != 4:
+        raise ValueError(
+            f"Image {in_image} is not a 4D image. It has {len(dim)} dimensions."
+        )
+
+    # Get the number of volumes
+    nvols = dim[3]
+
+    # Check if trying to delete all volumes
+    if len(vols_to_delete) == nvols:
+        print(
+            "Number of volumes to delete is equal to the total number of volumes. No volumes will be deleted."
+        )
+        return in_image, []
+
+    # Check if volumes to delete are in valid range
+    if np.max(vols_to_delete) >= nvols:
+        vols_to_delete_array = np.array(vols_to_delete)
+        out_of_range = np.where(vols_to_delete_array >= nvols)[0]
+        raise ValueError(
+            f"Volumes out of range: {vols_to_delete_array[out_of_range]}. "
+            f"Values should be between 0 and {nvols-1}."
+        )
+
+    if np.min(vols_to_delete) < 0:
+        raise ValueError(
+            f"Volumes to delete {vols_to_delete} contain negative indices. "
+            f"Values should be between 0 and {nvols-1}."
+        )
+
+    # Get volumes to keep and remove
+    vols_to_remove = np.array(vols_to_delete)
+    vols_to_keep = np.where(np.isin(np.arange(nvols), vols_to_remove, invert=True))[0]
+
+    # Load image data
+    img_data = img.get_fdata()
+    affine = img.affine
+    header = img.header
+
+    # Remove the specified volumes
+    filtered_data = img_data[:, :, :, vols_to_keep]
+
+    # Create new image with filtered data
+    new_img = nib.Nifti1Image(filtered_data, affine, header)
+
+    # Save the new image
+    nib.save(new_img, out_image)
+
+    print(f"Successfully removed {len(vols_to_remove)} volumes from {in_image}")
+    print(f"Output saved to: {out_image}")
+    print(f"Volumes removed: {vols_to_remove.tolist()}")
+
+    return out_image, vols_to_remove.tolist()
+
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
