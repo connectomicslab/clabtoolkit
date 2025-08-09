@@ -1245,7 +1245,120 @@ def mm2vox(mm_coords, affine) -> np.ndarray:
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############    Section 5: Methods to perform, or work with, tesselations from images   ############
+############                Section 5: Methods to work with 4D Images                   ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def spams2maxprob(
+    spam_image: str,
+    prob_thresh: float = 0.05,
+    vol_indexes: np.array = None,
+    maxp_name: str = None,
+):
+    """
+    Convert SPAM probability maps to maximum probability parcellation.
+
+    Transforms 4D spatial probability maps into discrete 3D parcellation by
+    selecting the most probable label at each voxel, with optional thresholding
+    and volume selection.
+
+    Parameters
+    ----------
+    spam_image : str
+        Path to 4D SPAM image file with probability maps for each region.
+
+    prob_thresh : float, optional
+        Minimum probability threshold. Values below this are set to zero.
+        Default is 0.05.
+
+    vol_indexes : np.ndarray, optional
+        Indices of volumes (regions) to include. If None, uses all volumes.
+        Default is None.
+
+    maxp_name : str, optional
+        Output file path for maximum probability image. If None, returns
+        array without saving. Default is None.
+
+    Returns
+    -------
+    str or np.ndarray
+        Output file path if maxp_name provided, otherwise numpy array
+        with maximum probability labels.
+
+    Notes
+    -----
+    The conversion process:
+    1. Applies probability threshold to remove low-confidence voxels
+    2. Optionally filters to specific volume indices
+    3. Finds maximum probability across volumes for each voxel
+    4. Assigns winner-take-all labels (1-indexed)
+    5. Sets background where no probabilities exceed threshold
+
+    Useful for converting probabilistic atlases to discrete parcellations
+    for analysis requiring discrete labels.
+
+    Examples
+    --------
+    >>> # Convert SPAM to discrete parcellation
+    >>> maxprob_file = spams2maxprob(
+    ...     'AAL_SPAM.nii.gz',
+    ...     prob_thresh=0.1,
+    ...     maxp_name='AAL_discrete.nii.gz'
+    ... )
+    >>>
+    >>> # Get array without saving, specific regions only
+    >>> selected_regions = np.array([0, 1, 2, 5, 6])  # Volume indices
+    >>> maxprob_array = spams2maxprob(
+    ...     'probabilistic_atlas.nii.gz',
+    ...     vol_indexes=selected_regions,
+    ...     prob_thresh=0.2
+    ... )
+    >>> print(f"Max label: {maxprob_array.max()}")
+    """
+
+    spam_img = nib.load(spam_image)
+    affine = spam_img.affine
+    spam_vol = spam_img.get_fdata()
+
+    spam_vol[spam_vol < prob_thresh] = 0
+    spam_vol[spam_vol > 1] = 1
+
+    if vol_indexes is not None:
+        # Creating the maxprob
+
+        # I want to find the complementary indexes to vol_indexes
+        all_indexes = np.arange(0, spam_vol.shape[3])
+        set1 = set(all_indexes)
+        set2 = set(vol_indexes)
+
+        # Find the symmetric difference
+        diff_elements = set1.symmetric_difference(set2)
+
+        # Convert the result back to a NumPy array if needed
+        diff_array = np.array(list(diff_elements))
+        spam_vol[:, :, :, diff_array] = 0
+        # array_data = np.delete(spam_vol, diff_array, 3)
+
+    ind = np.where(np.sum(spam_vol, axis=3) == 0)
+    maxprob_thl = spam_vol.argmax(axis=3) + 1
+    maxprob_thl[ind] = 0
+
+    if maxp_name is not None:
+        # Save the image
+        imgcoll = nib.Nifti1Image(maxprob_thl.astype("int16"), affine)
+        nib.save(imgcoll, maxp_name)
+    else:
+        maxp_name = maxprob_thl
+
+    return maxp_name
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############        Section 6: Methods to perform operations from 3D or 4D arrays       ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -1408,6 +1521,7 @@ def extract_mesh_from_volume(
 
     return mesh
 
+
 #####################################################################################################
 def extract_centroid_from_volume(
     volume_array: np.ndarray,
@@ -1415,11 +1529,10 @@ def extract_centroid_from_volume(
     sigma: float = 1.0,
     closing_iterations: int = 1,
 ) -> tuple:
-    
     """
     Extract centroid and voxel count from a 3D binary volume.
     Computes the centroid of the non-zero region in the volume and counts the number of voxels.
-    Optionally applies Gaussian smoothing and morphological closing to improve the region definition.   
+    Optionally applies Gaussian smoothing and morphological closing to improve the region definition.
 
     Parameters
     ----------
@@ -1473,7 +1586,7 @@ def extract_centroid_from_volume(
     >>> centroid_info = extract_centroid_from_volume(binary_volume, gaussian_smooth=True, sigma=1.5, closing_iterations=2)
     >>> print(f"Centroid: {centroid_info[:3]}, Voxel Count: {centroid_info[3]}")
     """
-    
+
     # Binary mask for the specified value
     if not isinstance(volume_array, np.ndarray):
         raise TypeError("The volume_array must be a numpy ndarray.")
@@ -1508,7 +1621,7 @@ def extract_centroid_from_volume(
     # Skip if region doesn't exist in the data
     if len(region_x) == 0 and len(region_y) == 0 and len(region_z) == 0:
         return (np.array([None, None, None], dtype=np.float32), 0)
-    
+
     else:
         # Compute centroid
         centroid_x = np.mean(region_x)
@@ -1531,7 +1644,7 @@ def compute_mean_at_nonzero_voxels(
     """
     Compute mean values from data_array at positions where mask_array is non-zero.
 
-    Parameters:
+    Parameters
     -----------
     mask_array : numpy.ndarray
         3D array with dimensions (N, M, P) - used to find non-zero positions
@@ -1542,18 +1655,18 @@ def compute_mean_at_nonzero_voxels(
         If 3D, computes a single mean value.
         If 4D, computes mean across non-zero positions for each time point T.
 
-    Returns:
+    Returns
     --------
     numpy.ndarray or float
         - If data_array is 3D: returns a single float value
         - If data_array is 4D: returns a 1D array of length T
 
-    Raises:
+    Raises
     -------
     ValueError
         If data_array is not 3D or 4D.
 
-    Notes:
+    Notes
     -----
     - The function extracts values from data_array at positions where mask_array is non-zero.
     - For 3D data_array, it computes the mean of all selected values.
@@ -1562,7 +1675,7 @@ def compute_mean_at_nonzero_voxels(
     - If mask_array has no non-zero positions, the function will return NaN for 3D data_array
     or an array of NaNs for 4D data_array.
 
-    Examples:
+    Examples
     ---------
     >>> # Example with 3D data_array
     >>> mask = np.array([[[0, 1], [0, 0]],
@@ -1606,7 +1719,7 @@ def compute_mean_at_nonzero_voxels(
 #####################################################################################################
 def region_growing(
     iparc: np.ndarray, mask: Union[np.ndarray, np.bool_], neighborhood="26"
-):
+) -> np.ndarray:
     """
     Fill gaps in parcellation using region growing algorithm.
 
