@@ -2623,23 +2623,23 @@ def correct_names(
 #####################################################################################################
 def get_real_basename(file_name: str) -> str:
     """
-    Extracts the base name of an image file without its extension.
+    Extracts the base name of a file without its extension.
 
     Parameters
     ----------
     file_name : str
-        The full path to the image file.
+        The full path to the file.
 
     Returns
     -------
     str
-        The base name of the image file without its extension.
+        The base name of the file without its extension.
 
     Examples
     --------
-    >>> get_image_basename("/path/to/image.nii.gz")
+    >>> get_real_basename("/path/to/image.nii.gz")
     'image'
-    >>> get_image_basename("image.jpg")
+    >>> get_real_basename("image.jpg")
     'image'
     """
 
