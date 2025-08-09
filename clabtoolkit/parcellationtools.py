@@ -2058,6 +2058,137 @@ class Parcellation:
 
     ######################################################################################################
     @staticmethod
+    def lut_to_nilearnlut(
+        input_lut_path: Union[str, Path],
+        output_lut_path: Union[str, Path],
+        overwrite: bool = False,
+    ) -> str:
+        """
+        Convert a FreeSurfer-style color lookup table to nilearn-compatible format.
+
+        This function reads a color lookup table (LUT) file with the format:
+        "#No. Label Name: R G B A" and converts it to a pandas-readable format
+        that nilearn's NiftiLabelsMasker can use.
+
+        Parameters
+        ----------
+        input_lut_path : str or Path
+            Path to the input LUT file. Must exist.
+            Expected format: "label name R G B A" (will be converted to 'index' for nilearn)
+
+        output_lut_path : str or Path
+            Path for the output file. Directory must exist.
+
+        overwrite : bool, optional
+            Whether to overwrite the output file if it already exists.
+            Default: False
+
+        Returns
+        -------
+        str
+            Path to the created nilearn-compatible LUT file
+
+        Raises
+        ------
+        FileNotFoundError
+            If input_lut_path doesn't exist or output directory doesn't exist
+        FileExistsError
+            If output file exists and overwrite=False
+        ValueError
+            If no valid data lines are found in the input file
+
+        Examples
+        --------
+        >>> # Convert LUT file
+        >>> nilearn_lut = convert_colorlut_to_nilearn(
+        ...     'parcellation.lut',
+        ...     'parcellation_nilearn.lut'
+        ... )
+
+        >>> # Convert with overwrite enabled
+        >>> nilearn_lut = convert_colorlut_to_nilearn(
+        ...     'parcellation.lut',
+        ...     'parcellation_nilearn.lut',
+        ...     overwrite=True
+        ... )
+
+        >>> # Use with NiftiLabelsMasker
+        >>> from nilearn.maskers import NiftiLabelsMasker
+        >>> masker = NiftiLabelsMasker(labels_img='parcellation.nii.gz', lut=nilearn_lut)
+        """
+        # Convert to Path objects
+        input_path = Path(input_lut_path)
+        output_path = Path(output_lut_path)
+
+        # Check if input file exists
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input LUT file not found: {input_path}")
+
+        # Check if output directory exists
+        if not output_path.parent.exists():
+            raise FileNotFoundError(
+                f"Output directory does not exist: {output_path.parent}"
+            )
+
+        # Check if output file exists and handle overwrite
+        if output_path.exists() and not overwrite:
+            raise FileExistsError(
+                f"Output file already exists: {output_path}. Use overwrite=True to overwrite."
+            )
+
+        print(f"Converting: {input_path} -> {output_path}")
+
+        # Parse the input file
+        data_rows = []
+
+        with open(input_path, "r") as file:
+            for line in file:
+                line = line.strip()
+
+                # Skip empty lines and comments
+                if not line or line.startswith("#"):
+                    continue
+
+                # Split line and extract data
+                parts = line.split()
+                if len(parts) >= 6:
+                    try:
+                        # Format: index name R G B A (nilearn expects 'index' column)
+                        label = int(parts[0])
+                        r, g, b, a = map(int, parts[-4:])  # Last 4 are RGBA
+                        name_parts = parts[1:-4]  # Everything between label and RGBA
+                        name = "-".join(name_parts) if name_parts else f"region_{label}"
+
+                        data_rows.append(
+                            {
+                                "index": label,  # nilearn expects 'index' not 'label'
+                                "name": name,
+                                "R": r,
+                                "G": g,
+                                "B": b,
+                                "A": a,
+                            }
+                        )
+                    except ValueError:
+                        print(f"Warning: Skipping invalid line: {line}")
+                        continue
+
+        # Check if we found any data
+        if not data_rows:
+            raise ValueError(f"No valid data lines found in {input_path}")
+
+        # Create DataFrame and save
+        df = pd.DataFrame(data_rows)
+        df = df.sort_values("index").reset_index(drop=True)
+        df.to_csv(output_path, sep=" ", index=False)
+
+        print(f"✓ Converted {len(data_rows)} regions")
+        print(f"✓ Saved to: {output_path}")
+
+        return str(output_path)
+
+    ######################################################################################################
+    @staticmethod
     def read_luttable(
         in_file: str, filter_by_name: Union[str, List[str]] = None
     ) -> dict:
