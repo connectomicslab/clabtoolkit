@@ -1408,119 +1408,118 @@ def extract_mesh_from_volume(
 
     return mesh
 
-
-####################################################################################################
-####################################################################################################
-############                                                                            ############
-############                                                                            ############
-############    Section 6: Methods to perform operations from 3D or 4D arrays           ############
-############                                                                            ############
-############                                                                            ############
-####################################################################################################
-####################################################################################################
-def spams2maxprob(
-    spam_image: str,
-    prob_thresh: float = 0.05,
-    vol_indexes: np.array = None,
-    maxp_name: str = None,
-):
+#####################################################################################################
+def extract_centroid_from_volume(
+    volume_array: np.ndarray,
+    gaussian_smooth: bool = True,
+    sigma: float = 1.0,
+    closing_iterations: int = 1,
+) -> tuple:
+    
     """
-    Convert SPAM probability maps to maximum probability parcellation.
-
-    Transforms 4D spatial probability maps into discrete 3D parcellation by
-    selecting the most probable label at each voxel, with optional thresholding
-    and volume selection.
+    Extract centroid and voxel count from a 3D binary volume.
+    Computes the centroid of the non-zero region in the volume and counts the number of voxels.
+    Optionally applies Gaussian smoothing and morphological closing to improve the region definition.   
 
     Parameters
     ----------
-    spam_image : str
-        Path to 4D SPAM image file with probability maps for each region.
+    volume_array : np.ndarray
+        3D binary volume array where non-zero values represent the region of interest.
 
-    prob_thresh : float, optional
-        Minimum probability threshold. Values below this are set to zero.
-        Default is 0.05.
+    gaussian_smooth : bool, optional
+        Whether to apply Gaussian smoothing before centroid calculation. Default is True.
 
-    vol_indexes : np.ndarray, optional
-        Indices of volumes (regions) to include. If None, uses all volumes.
-        Default is None.
+    sigma : float, optional
+        Standard deviation for Gaussian smoothing. Default is 1.0.
 
-    maxp_name : str, optional
-        Output file path for maximum probability image. If None, returns
-        array without saving. Default is None.
+    closing_iterations : int, optional
+        Number of morphological closing iterations to apply before centroid calculation. Default is 1.
 
     Returns
     -------
-    str or np.ndarray
-        Output file path if maxp_name provided, otherwise numpy array
-        with maximum probability labels.
+    tuple
+        A tuple containing:
+        - Centroid coordinates as a numpy array of shape (3,) in mm space.
+        - Voxel count as an integer.
+
+    Raises
+    ------
+    TypeError
+        If volume_array is not a numpy ndarray.
+
+    ValueError
+        If volume_array is not 3D or if no region is found in the volume.
+
+    ValueError
+        If the volume does not contain sufficient data to compute a centroid.
+
 
     Notes
-    -----
-    The conversion process:
-    1. Applies probability threshold to remove low-confidence voxels
-    2. Optionally filters to specific volume indices
-    3. Finds maximum probability across volumes for each voxel
-    4. Assigns winner-take-all labels (1-indexed)
-    5. Sets background where no probabilities exceed threshold
-
-    Useful for converting probabilistic atlases to discrete parcellations
-    for analysis requiring discrete labels.
+    The function processes the input volume as follows:
+    1. Converts non-zero values to 1 to create a binary mask.
+    2. Applies morphological closing to fill small gaps in the region.
+    3. Optionally applies Gaussian smoothing to reduce noise.
+    4. Computes the centroid of the non-zero region.
+    5. Counts the number of voxels in the region.
+    6. Returns the centroid coordinates and voxel count as a numpy array.
 
     Examples
     --------
-    >>> # Convert SPAM to discrete parcellation
-    >>> maxprob_file = spams2maxprob(
-    ...     'AAL_SPAM.nii.gz',
-    ...     prob_thresh=0.1,
-    ...     maxp_name='AAL_discrete.nii.gz'
-    ... )
+    >>> # Basic centroid extraction
+    >>> centroid_info = extract_centroid_from_volume(binary_volume)
+    >>> print(f"Centroid: {centroid_info[:3]}, Voxel Count: {centroid_info[3]}")
     >>>
-    >>> # Get array without saving, specific regions only
-    >>> selected_regions = np.array([0, 1, 2, 5, 6])  # Volume indices
-    >>> maxprob_array = spams2maxprob(
-    ...     'probabilistic_atlas.nii.gz',
-    ...     vol_indexes=selected_regions,
-    ...     prob_thresh=0.2
-    ... )
-    >>> print(f"Max label: {maxprob_array.max()}")
+    >>> # With Gaussian smoothing and morphological closing
+    >>> centroid_info = extract_centroid_from_volume(binary_volume, gaussian_smooth=True, sigma=1.5, closing_iterations=2)
+    >>> print(f"Centroid: {centroid_info[:3]}, Voxel Count: {centroid_info[3]}")
     """
+    
+    # Binary mask for the specified value
+    if not isinstance(volume_array, np.ndarray):
+        raise TypeError("The volume_array must be a numpy ndarray.")
 
-    spam_img = nib.load(spam_image)
-    affine = spam_img.affine
-    spam_vol = spam_img.get_fdata()
+    if volume_array.ndim != 3:
+        raise ValueError("The volume_array must be a 3D numpy ndarray.")
 
-    spam_vol[spam_vol < prob_thresh] = 0
-    spam_vol[spam_vol > 1] = 1
+    # Everything that is different from 0 is set to 1
+    volume_array = (volume_array != 0).astype(np.float32)
 
-    if vol_indexes is not None:
-        # Creating the maxprob
+    if closing_iterations > 0:
+        volume_array = quick_morphology(
+            volume_array, "closing", iterations=closing_iterations
+        )
 
-        # I want to find the complementary indexes to vol_indexes
-        all_indexes = np.arange(0, spam_vol.shape[3])
-        set1 = set(all_indexes)
-        set2 = set(vol_indexes)
+    # Apply Gaussian smoothing to reduce noise and fill small gaps
+    if gaussian_smooth:
 
-        # Find the symmetric difference
-        diff_elements = set1.symmetric_difference(set2)
+        # Apply Gaussian smoothing
+        tmp_volume_array = gaussian_filter(volume_array, sigma=sigma)
+        # Re-threshold after smoothing
+        tmp_volume_array = (tmp_volume_array > 0).astype(int)
 
-        # Convert the result back to a NumPy array if needed
-        diff_array = np.array(list(diff_elements))
-        spam_vol[:, :, :, diff_array] = 0
-        # array_data = np.delete(spam_vol, diff_array, 3)
-
-    ind = np.where(np.sum(spam_vol, axis=3) == 0)
-    maxprob_thl = spam_vol.argmax(axis=3) + 1
-    maxprob_thl[ind] = 0
-
-    if maxp_name is not None:
-        # Save the image
-        imgcoll = nib.Nifti1Image(maxprob_thl.astype("int16"), affine)
-        nib.save(imgcoll, maxp_name)
+        if tmp_volume_array.max() == 0:
+            tmp_volume_array = copy.deepcopy(volume_array)
     else:
-        maxp_name = maxprob_thl
+        tmp_volume_array = copy.deepcopy(volume_array)
 
-    return maxp_name
+    # Create mask for current region
+    region_x, region_y, region_z = np.where(tmp_volume_array != 0)
 
+    # Skip if region doesn't exist in the data
+    if len(region_x) == 0:
+        raise ValueError(
+            "No region found in the volume. The volume may not contain sufficient data."
+        )
+
+    # Compute centroid
+    centroid_x = np.mean(region_x)
+    centroid_y = np.mean(region_y)
+    centroid_z = np.mean(region_z)
+
+    # Count voxels and compute volume
+    voxel_count = len(region_x)
+
+    return (np.array([centroid_x, centroid_y, centroid_z], dtype=np.float32), int(voxel_count))
 
 #####################################################################################################
 def region_growing(
