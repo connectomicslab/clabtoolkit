@@ -49,7 +49,8 @@ class Parcellation:
 
     ####################################################################################################
     def __init__(
-        self, parc_file: Union[str, np.uint] = None, affine: np.float64 = None
+        self, parc_file: Union[str, np.uint] = None, affine: np.float64 = None, parc_id: Optional[str] = None,
+        space_id: Optional[str] = "unknown"
     ):
         """
         Initialize Parcellation object from file or array.
@@ -63,6 +64,13 @@ class Parcellation:
         affine : np.ndarray, optional
             4x4 affine transformation matrix. If None and parc_file is array,
             creates identity matrix. Default is None.
+
+        parc_id : str, optional
+            Unique identifier for the parcellation. If None, generated from file name.
+            Default is None. 
+
+        space_id : str, optional
+            Identifier for the space in which the parcellation is defined. Default is "unknown".
 
         Attributes
         ----------
