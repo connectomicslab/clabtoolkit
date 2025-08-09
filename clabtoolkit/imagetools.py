@@ -2135,22 +2135,26 @@ def extract_centroid_from_volume(
 
 
 ####################################################################################################
-def compute_mean_at_nonzero_voxels(
-    mask_array: np.ndarray, data_array: np.ndarray
+def compute_statistics_at_nonzero_voxels(
+    mask_array: np.ndarray, data_array: np.ndarray, metric: str = "mean"
 ) -> np.ndarray:
     """
-    Compute mean values from data_array at positions where mask_array is non-zero.
+    Compute the value of certain statistic from data_array at positions where mask_array is non-zero.
 
     Parameters
     -----------
     mask_array : numpy.ndarray
         3D array with dimensions (N, M, P) - used to find non-zero positions
-        Non-zero positions in this array indicate where to compute the mean in data_array.
+        Non-zero positions in this array indicate where to compute the statistic in data_array.
 
     data_array : numpy.ndarray
         3D array (N, M, P) or 4D array (N, M, P, T) - data to compute mean from
         If 3D, computes a single mean value.
         If 4D, computes mean across non-zero positions for each time point T.
+
+    metric : str, optional
+        Metric to compute at non-zero positions. Default is "mean".
+        Supported metrics: "mean", "std", "var", "median", "sum", "max", "min".
 
     Returns
     --------
@@ -2195,6 +2199,14 @@ def compute_mean_at_nonzero_voxels(
 
     """
 
+    # Validate metric
+    metric = metric.lower()
+    valid_metrics = ["mean", "std", "var", "median", "sum", "max", "min"]
+    if metric not in valid_metrics:
+        raise ValueError(
+            f"Invalid metric '{metric}'. Supported metrics: {', '.join(valid_metrics)}"
+        )
+
     # Find indices where mask_array is non-zero
     nonzero_mask = mask_array != 0
 
@@ -2202,12 +2214,46 @@ def compute_mean_at_nonzero_voxels(
     if data_array.ndim == 3:
         # 3D case: extract values at non-zero positions and compute mean
         selected_values = data_array[nonzero_mask]
-        return np.mean(selected_values)
+        if len(selected_values) == 0:
+            return np.nan
+
+        if metric == "mean":
+            return np.mean(selected_values)
+        elif metric == "std":
+            return np.std(selected_values)
+        elif metric == "var":
+            return np.var(selected_values)
+        elif metric == "median":
+            return np.median(selected_values)
+        elif metric == "sum":
+            return np.sum(selected_values)
+        elif metric == "max":
+            return np.max(selected_values)
+        elif metric == "min":
+            return np.min(selected_values)
 
     elif data_array.ndim == 4:
         # 4D case: extract values at non-zero positions for each time point
         selected_values = data_array[nonzero_mask, :]  # Shape: (num_nonzero_voxels, T)
-        return np.mean(selected_values, axis=0)  # Mean across voxels, returns (T,)
+
+        if metric == "mean":
+            return np.mean(selected_values, axis=0)  # Mean across voxels, returns (T,)
+        elif metric == "std":
+            return np.std(selected_values, axis=0)  # Std across voxels, returns (T,)
+        elif metric == "var":
+            return np.var(
+                selected_values, axis=0
+            )  # Variance across voxels, returns (T,)
+        elif metric == "median":
+            return np.median(
+                selected_values, axis=0
+            )  # Median across voxels, returns (T,)
+        elif metric == "sum":
+            return np.sum(selected_values, axis=0)  # Sum across voxels, returns (T,)
+        elif metric == "max":
+            return np.max(selected_values, axis=0)  # Max across voxels, returns (T,)
+        elif metric == "min":
+            return np.min(selected_values, axis=0)  # Min across voxels, returns (T,)
 
     else:
         raise ValueError("data_array must be 3D or 4D")
@@ -2518,6 +2564,7 @@ def simulate_array(
             )
 
     return simulated_data
+
 
 #####################################################################################################
 def delete_volumes_from_4D_array(
