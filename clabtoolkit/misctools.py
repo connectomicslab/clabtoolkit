@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+import uuid
 
 from typing import Union, Dict, List, Tuple, Set, Any, Optional
 
@@ -2371,6 +2372,58 @@ def remove_empty_folders(start_path, deleted_folders=None):
         pass
 
     return deleted_folders
+
+
+#########################################################################################################
+def create_temporary_filename(
+    tmp_dir: str = "/tmp", prefix: str = "tmp", extension: str = ".nii.gz"
+) -> str:
+    """
+    Create a temporary filename with a unique identifier.
+
+    Parameters
+    ----------
+    tmp_dir : str
+        The directory where the temporary file will be created. Default is "/tmp".
+
+    prefix : str
+        The prefix for the temporary filename. Default is "tmp".
+
+    extension : str
+        The file extension for the temporary file. Default is ".nii.gz".
+
+    Returns
+    -------
+    str
+        A unique temporary filename with the specified prefix and extension.
+
+    Examples
+    --------
+    >>> tmp_filename = create_temporary_filename()
+    >>> print(tmp_filename)  # Output: /tmp/tmp_<unique_id>.nii.gz
+    """
+
+    # Validate the temporary directory
+    if not os.path.isdir(tmp_dir):
+        raise ValueError(f"The specified temporary directory does not exist: {tmp_dir}")
+
+    if not os.access(tmp_dir, os.W_OK):
+        raise ValueError(
+            f"The specified temporary directory is not writable: {tmp_dir}"
+        )
+
+    # Generate a unique identifier
+    unique_id = str(uuid.uuid4())
+
+    # Create the temporary filename
+    tmp_filename = os.path.join(tmp_dir, f"{prefix}_{unique_id}{extension}")
+
+    # Ensure the filename is unique
+    while os.path.exists(tmp_filename):
+        unique_id = str(uuid.uuid4())
+        tmp_filename = os.path.join(tmp_dir, f"{prefix}{unique_id}{extension}")
+
+    return tmp_filename
 
 
 ####################################################################################################
