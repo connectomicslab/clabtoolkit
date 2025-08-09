@@ -2590,7 +2590,7 @@ def delete_volumes_from_4D_array(
     --------
     **Basic usage - Remove specific volumes:**
 
-    >>> delete_volumes_from_4D_arrays(
+    >>> delete_volumes_from_4D_array(
     ...     in_array=np.random.rand(64, 64, 30, 100),  # Example 4D array
     ...     vols_to_delete=[0, 1, 2],  # Remove first 3 volumes
     ... )
@@ -2598,14 +2598,14 @@ def delete_volumes_from_4D_array(
     (array with shape (64, 64, 30, 97), [0, 1, 2])
 
     **Remove a range of volumes:**
-    >>> delete_volumes_from_4D_arrays(
+    >>> delete_volumes_from_4D_array(
     ...     in_array=np.random.rand(64, 64, 30, 100),  # Example 4D array
     ...     vols_to_delete=[(5, 8)],  # Remove volumes 5 to 8 (inclusive)
     ... )
     (array with shape (64, 64, 30, 96), [5, 6, 7, 8])
 
     **Remove volumes using a string specification:**
-    >>> delete_volumes_from_4D_arrays(
+    >>> delete_volumes_from_4D_array(
     ...     in_array=np.random.rand(64, 64, 30, 100),  # Example 4D array
     ...     vols_to_delete=["0-2", "5", "10:2:14", "20"]  # Mixed specification
     ... )
