@@ -26,6 +26,7 @@ from . import imagetools as cltimg
 from . import segmentationtools as cltseg
 from . import freesurfertools as cltfree
 from . import surfacetools as cltsurf
+from . import bidstools as cltbids
 
 
 ####################################################################################################
@@ -181,6 +182,87 @@ class Parcellation:
 
             # Detect minimum and maximum labels
             self.parc_range()
+
+    ####################################################################################################
+    def get_parcellation_id(self) -> str:
+        """
+        Generate a unique identifier for the parcellation based on its filename. If the filename
+        follows BIDS naming conventions, it extracts relevant entities to form the ID.
+        If the filename does not follow BIDS conventions, it uses the filename without extension.
+
+        Returns
+        -------
+        str
+            Unique identifier for the parcellation, formatted as 'atlas-<atlas_name>_seg-<seg_name>_scale-<scale_value>_desc-<description>'.
+            If no entities are found, it returns the filename without extension.
+
+        Raises
+        ------
+        ValueError
+            If the parcellation file is not set.
+
+        Notes
+        This method is useful for identifying and categorizing parcellation files based on their naming conventions.
+        It can be used to easily retrieve or reference specific parcellations in analyses or reports.
+
+        Examples
+        --------
+        >>> parc = Parcellation('sub-01_ses-01_acq-mprage_space-t1_atlas-xxx_seg-yyy_scale-1_desc-test.nii.gz')
+        >>> parc_id = parc.get_parcellation_id()
+        >>> print(parc_id)
+        'atlas-xxx_seg-yyy_scale-1_desc-test'
+        >>> parc = Parcellation('custom_parcellation.nii.gz')
+        >>> parc_id = parc.get_parcellation_id()
+        >>> print(parc_id)
+        'custom_parcellation'
+
+        """
+        # Check if the parcellation file is set
+        if not hasattr(self, "parc_file"):
+            raise ValueError(
+                "The parcellation file is not set. Please load a parcellation file first."
+            )
+
+        # Initialize parc_fullid as an empty string
+        parc_fullid = ""
+
+        # Get the base name of the parcellation file
+        parc_file_name = os.path.basename(self.parc_file)
+
+        # Check if the parcellation file name follows BIDS naming conventions
+        if cltbids.is_bids_filename(parc_file_name):
+
+            # Extract entities from the parcellation file name
+            name_ent_dict = cltbids.str2entity(parc_file_name)
+            ent_names_list = list(name_ent_dict.keys())
+
+            # Create parc_fullid based on the entities present in the parcellation file name
+            parc_fullid = ""
+            if "atlas" in ent_names_list:
+                parc_fullid = "atlas-" + name_ent_dict["atlas"]
+
+            if "seg" in ent_names_list:
+                parc_fullid += "_seg-" + name_ent_dict["seg"]
+
+            if "scale" in ent_names_list:
+                parc_fullid += "_scale-" + name_ent_dict["scale"]
+
+            if "desc" in ent_names_list:
+                parc_fullid += "_desc-" + name_ent_dict["desc"]
+
+            # Remove the _ if the parc_fullid starts with it
+            if parc_fullid.startswith("_"):
+                parc_fullid = parc_fullid[1:]
+
+        else:
+
+            # Remove the file extension if it exists
+            if parc_file_name.endswith(".nii.gz"):
+                parc_fullid = parc_file_name[:-7]
+            else:
+                parc_fullid = parc_file_name[:-4]
+
+        return parc_fullid
 
     ####################################################################################################
     def prepare_for_tracking(self):
