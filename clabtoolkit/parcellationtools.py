@@ -573,8 +573,11 @@ class Parcellation:
         self,
         struct_codes: Union[List[int], np.ndarray] = None,
         struct_names: Union[List[str], str] = None,
+        gaussian_smooth: bool = True,
+        sigma: float = 1.0,
+        closing_iterations: int = 2,
         centroid_table: str = None,
-    ):
+    ) -> pd.DataFrame:
         """
         Compute region centroids, voxel counts, and volumes.
 
@@ -585,6 +588,15 @@ class Parcellation:
 
         struct_names : list or str, optional
             Specific region names to include. Default is None.
+        
+        gaussian_smooth : bool, optional
+            Whether to apply Gaussian smoothing to the volume before centroid calculation. Default is True.
+        
+        sigma : float, optional
+            Standard deviation for Gaussian smoothing. Default is 1.0.
+        
+        closing_iterations : int, optional
+            Number of morphological closing iterations before centroid extraction. Default is 2.    
 
         centroid_table : str, optional
             Path to save results as TSV file. Default is None.
@@ -607,6 +619,11 @@ class Parcellation:
         >>> # Specific regions with file output
         >>> df = parc.compute_centroids(
         ...     struct_codes=[1, 2, 3],
+        ...     centroid_table='centroids.tsv'
+        ... )
+        >>> # Specific regions by name
+        >>> df = parc.compute_centroids(
+        ...     struct_names=['hippocampus', 'amygdala'],
         ...     centroid_table='centroids.tsv'
         ... )
         """
@@ -650,20 +667,17 @@ class Parcellation:
                 continue
             region_idx = region_idx[0]  # Get the first (should be only) match
 
-            # Create mask for current region
-            region_x, region_y, region_z = np.where(temp_parc.data == region_label)
+            # Extract centroid and voxel count
+            centroid, voxel_count = cltimg.extract_centroid_from_volume(
+            temp_parc.data == region_label,
+            gaussian_smooth=gaussian_smooth,
+            sigma= sigma,
+            closing_iterations = closing_iterations,
+            )
+            
+            centroid_x, centroid_y, centroid_z = centroid[0], centroid[1], centroid[2]
 
-            # Skip if region doesn't exist in the data
-            if len(region_x) == 0:
-                continue
-
-            # Compute centroid
-            centroid_x = np.mean(region_x)
-            centroid_y = np.mean(region_y)
-            centroid_z = np.mean(region_z)
-
-            # Count voxels and compute volume
-            voxel_count = len(region_x)
+            # Calculate total volume
             total_volume = voxel_count * voxel_volume
 
             # Store results
