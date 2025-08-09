@@ -1354,26 +1354,27 @@ def spams2maxprob(
 
     return maxp_name
 
+#####################################################################################################
 def simulate_image(
-    input_image: Union[str, nib.Nifti1Image], 
-    simulated_image: str, 
+    input_image: Union[str, nib.Nifti1Image],
+    simulated_image: str,
     n_volumes: int = 3,
-    distribution: str = 'normal', 
+    distribution: str = "normal",
     random_seed: Optional[int] = None,
-    **dist_params
+    **dist_params,
 ) -> nib.Nifti1Image:
     """
     Generate a simulated image with random values at non-zero voxel positions.
-    
-    This function creates a new NIfTI image where non-zero voxels from the input 
+
+    This function creates a new NIfTI image where non-zero voxels from the input
     image are filled with random values following a specified statistical distribution.
-    The output preserves the spatial dimensions, affine transformation, and header 
+    The output preserves the spatial dimensions, affine transformation, and header
     information from the input image.
 
     This is useful for simulating functional or structural images based on a mask
     or anatomical image, allowing for controlled random value generation in specific
     regions of interest.
-    
+
     Parameters
     ----------
     input_image : str or nibabel.Nifti1Image
@@ -1392,7 +1393,7 @@ def simulate_image(
     distribution : str, default='normal'
         Statistical distribution for random value generation. Supported options:
         - 'normal': Normal (Gaussian) distribution
-        - 'uniform': Uniform distribution  
+        - 'uniform': Uniform distribution
         - 'exponential': Exponential distribution
 
     random_seed : int, optional
@@ -1403,12 +1404,12 @@ def simulate_image(
         - For 'normal': loc (mean, default=0), scale (std, default=1)
         - For 'uniform': low (default=0), high (default=1)
         - For 'exponential': scale (default=1)
-    
+
     Returns
     -------
     nibabel.Nifti1Image
         The simulated image object with the same spatial properties as input.
-    
+
     Raises
     ------
     FileNotFoundError
@@ -1420,30 +1421,30 @@ def simulate_image(
 
     RuntimeError
         If no non-zero voxels are found in the input image.
-    
+
     Examples
     --------
     >>> # Create 3D simulation with normal distribution
     >>> sim_img = simulate_image(
-    ...     'brain_mask.nii.gz', 
-    ...     'output_3d.nii.gz', 
+    ...     'brain_mask.nii.gz',
+    ...     'output_3d.nii.gz',
     ...     n_volumes=1,
-    ...     distribution='normal', 
-    ...     loc=0, 
+    ...     distribution='normal',
+    ...     loc=0,
     ...     scale=1,
     ...     random_seed=42
     ... )
-    
+
     >>> # Create 4D simulation with uniform distribution
     >>> sim_img = simulate_image(
     ...     'brain_mask.nii.gz',
-    ...     'output_4d.nii.gz', 
+    ...     'output_4d.nii.gz',
     ...     n_volumes=10,
     ...     distribution='uniform',
     ...     low=0,
     ...     high=100
     ... )
-    
+
     Notes
     -----
     - Only voxels with non-zero values in the input image will contain random values
@@ -1451,19 +1452,21 @@ def simulate_image(
     - The function preserves the input image's affine transformation and header
     - Output file extension should be .nii or .nii.gz
     """
-    
+
     # Input validation
     if not isinstance(n_volumes, int) or n_volumes < 1:
         raise ValueError("n_volumes must be a positive integer")
-    
-    if distribution not in ['normal', 'uniform', 'exponential']:
-        raise ValueError(f"Unsupported distribution '{distribution}'. "
-                        "Supported: 'normal', 'uniform', 'exponential'")
-    
+
+    if distribution not in ["normal", "uniform", "exponential"]:
+        raise ValueError(
+            f"Unsupported distribution '{distribution}'. "
+            "Supported: 'normal', 'uniform', 'exponential'"
+        )
+
     # Set random seed if provided
     if random_seed is not None:
         np.random.seed(random_seed)
-    
+
     # Load and validate input image
     if isinstance(input_image, str):
         if not os.path.exists(input_image):
@@ -1472,103 +1475,116 @@ def simulate_image(
             input_img = nib.load(input_image)
         except Exception as e:
             raise ValueError(f"Failed to load input image: {e}")
-            
+
     elif isinstance(input_image, nib.Nifti1Image):
         input_img = input_image
     else:
-        raise ValueError("input_image must be a file path (str) or nibabel.Nifti1Image object")
-    
+        raise ValueError(
+            "input_image must be a file path (str) or nibabel.Nifti1Image object"
+        )
+
     # Validate output path
     output_dir = os.path.dirname(os.path.abspath(simulated_image))
     if output_dir and not os.path.exists(output_dir):
         raise ValueError(f"Output directory does not exist: {output_dir}")
-    
-    if not simulated_image.endswith(('.nii', '.nii.gz')):
-        warnings.warn("Output filename should have .nii or .nii.gz extension", 
-                    UserWarning)
-    
+
+    if not simulated_image.endswith((".nii", ".nii.gz")):
+        warnings.warn(
+            "Output filename should have .nii or .nii.gz extension", UserWarning
+        )
+
     # Extract image properties
     input_data = input_img.get_fdata()
     affine = input_img.affine.copy()
     header = input_img.header.copy()
     original_shape = input_data.shape
-    
+
     # Create mask for non-zero voxels
     mask = input_data != 0
     n_nonzero_voxels = np.sum(mask)
-    
+
     if n_nonzero_voxels == 0:
         raise RuntimeError("No non-zero voxels found in input image")
-    
+
     # Distribution parameter validation and random value generation
     def _generate_random_values(size: int) -> np.ndarray:
         """Generate random values based on specified distribution."""
         try:
-            if distribution == 'normal':
-                loc = dist_params.get('loc', 0.0)
-                scale = dist_params.get('scale', 1.0)
+            if distribution == "normal":
+                loc = dist_params.get("loc", 0.0)
+                scale = dist_params.get("scale", 1.0)
                 if scale <= 0:
-                    raise ValueError("Scale parameter for normal distribution must be positive")
+                    raise ValueError(
+                        "Scale parameter for normal distribution must be positive"
+                    )
                 return np.random.normal(loc, scale, size)
-                
-            elif distribution == 'uniform':
-                low = dist_params.get('low', 0.0)
-                high = dist_params.get('high', 1.0)
+
+            elif distribution == "uniform":
+                low = dist_params.get("low", 0.0)
+                high = dist_params.get("high", 1.0)
                 if low >= high:
-                    raise ValueError("Low parameter must be less than high parameter for uniform distribution")
+                    raise ValueError(
+                        "Low parameter must be less than high parameter for uniform distribution"
+                    )
                 return np.random.uniform(low, high, size)
-                
-            elif distribution == 'exponential':
-                scale = dist_params.get('scale', 1.0)
+
+            elif distribution == "exponential":
+                scale = dist_params.get("scale", 1.0)
                 if scale <= 0:
-                    raise ValueError("Scale parameter for exponential distribution must be positive")
+                    raise ValueError(
+                        "Scale parameter for exponential distribution must be positive"
+                    )
                 return np.random.exponential(scale, size)
-                
+
         except Exception as e:
             raise ValueError(f"Error generating random values: {e}")
-    
+
     # Create simulated data array
     if n_volumes == 1:
         # 3D output
         simulated_data = np.zeros(original_shape, dtype=np.float32)
         simulated_data[mask] = _generate_random_values(n_nonzero_voxels)
         output_shape = original_shape
-        
+
     else:
         # 4D output
-        spatial_shape = original_shape[:3] if len(original_shape) >= 3 else original_shape
+        spatial_shape = (
+            original_shape[:3] if len(original_shape) >= 3 else original_shape
+        )
         output_shape = spatial_shape + (n_volumes,)
         simulated_data = np.zeros(output_shape, dtype=np.float32)
-        
+
         # Fill each volume with independent random values
         for volume_idx in range(n_volumes):
-            simulated_data[..., volume_idx][mask] = _generate_random_values(n_nonzero_voxels)
-    
+            simulated_data[..., volume_idx][mask] = _generate_random_values(
+                n_nonzero_voxels
+            )
+
     # Update header for correct dimensionality
     header_copy = header.copy()
-    
+
     if n_volumes == 1 and len(original_shape) > 3:
         # Convert from 4D+ to 3D
-        header_copy['dim'][0] = 3
-        header_copy['dim'][4] = 1
-        
+        header_copy["dim"][0] = 3
+        header_copy["dim"][4] = 1
+
     elif n_volumes > 1:
         # Ensure 4D header
-        header_copy['dim'][0] = 4
-        header_copy['dim'][4] = n_volumes
-        
+        header_copy["dim"][0] = 4
+        header_copy["dim"][4] = n_volumes
+
         # Set appropriate time units if not already set
-        if header_copy.get('xyzt_units', 0) == 0:
-            header_copy['xyzt_units'] = 10  # mm + sec
-    
+        if header_copy.get("xyzt_units", 0) == 0:
+            header_copy["xyzt_units"] = 10  # mm + sec
+
     # Create output image
     try:
         simulated_img = nib.Nifti1Image(simulated_data, affine, header_copy)
         nib.save(simulated_img, simulated_image)
-        
+
     except Exception as e:
         raise RuntimeError(f"Failed to create or save simulated image: {e}")
-    
+
     # Log summary information
     print(f"Successfully created simulated image:")
     print(f"  Input shape: {original_shape}")
@@ -1576,8 +1592,9 @@ def simulate_image(
     print(f"  Non-zero voxels: {n_nonzero_voxels:,}")
     print(f"  Distribution: {distribution}")
     print(f"  Saved to: {simulated_image}")
-    
+
     return simulated_img
+
 
 ####################################################################################################
 ####################################################################################################
