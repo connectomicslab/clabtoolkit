@@ -1369,6 +1369,10 @@ def simulate_image(
     image are filled with random values following a specified statistical distribution.
     The output preserves the spatial dimensions, affine transformation, and header 
     information from the input image.
+
+    This is useful for simulating functional or structural images based on a mask
+    or anatomical image, allowing for controlled random value generation in specific
+    regions of interest.
     
     Parameters
     ----------
