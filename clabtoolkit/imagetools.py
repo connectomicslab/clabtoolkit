@@ -2513,3 +2513,161 @@ def simulate_array(
             )
 
     return simulated_data
+
+#####################################################################################################
+def delete_volumes_from_4D_array(
+    in_array: np.ndarray,
+    vols_to_delete: List[Union[int, tuple, list, str, np.ndarray]] = None,
+) -> Tuple[str, List[int]]:
+    """
+    Remove specific volumes from a 4D array.
+
+    This function allows you to delete specified volumes from a 4D numpy array,
+    which is commonly used in neuroimaging data (e.g., fMRI, DTI). It supports
+    various formats for specifying which volumes to remove, including individual indices,
+    ranges, lists, and flexible string-based specifications.
+    The function returns the modified array and a list of removed volume indices.
+    It is designed to handle large 4D arrays efficiently and ensures that the
+    integrity of the remaining data is preserved.
+    4D arrays are expected to have the shape (X, Y, Z, T), where T is the number of volumes.
+
+    Parameters
+    ----------
+    in_array : np.ndarray
+        Input 4D numpy array from which volumes will be removed.
+
+    vols_to_delete : list of int, tuple, list, np.ndarray, or str
+        Specification of volumes to remove from the 4D image. Supports multiple formats:
+
+        **Individual integers:**
+            Single volume indices to remove (0-based indexing).
+
+        **Tuples of 2 integers:**
+            Ranges specified as (start, end) - both endpoints are included.
+            Example: (5, 8) removes volumes [5, 6, 7, 8]
+
+        **Lists or numpy arrays:**
+            Collections of volume indices, automatically flattened.
+
+        **Strings (flexible syntax):**
+            Powerful string-based specification supporting:
+
+            - Single numbers: "5" → [5]
+            - Hyphen ranges: "8-10" → [8, 9, 10]
+            - Colon ranges: "11:13" → [11, 12, 13]
+            - Step ranges: "14:2:22" → [14, 16, 18, 20, 22]
+            - Comma-separated: "1, 2, 3" → [1, 2, 3]
+            - Mixed combinations: "0-2, 5, 10:2:14, 20" → [0, 1, 2, 5, 10, 12, 14, 20]
+
+        **Note:** All formats can be mixed in a single list.
+
+    Returns
+    -------
+    out_array : np.ndarray
+        The modified 4D numpy array with specified volumes removed.
+
+    vols_removed : list of int
+        Sorted list of all volume indices that were removed from the original image.
+        Useful for verification and logging purposes.
+
+    Raises
+    ------
+    TypeError
+        If `in_array` is not a numpy ndarray or if `vols_to_delete` is not a list or convertible to a list.
+
+    ValueError
+        If `in_array` is not a 4D array, if `vols_to_delete` is empty,
+        or if any specified volume indices are out of range.
+
+    Notes
+    - The function checks for valid input types and dimensions.
+    - It handles both individual volume indices and ranges specified as tuples or strings.
+    - The output array retains the original shape minus the removed volumes.
+    - If all volumes are specified for deletion, it returns the original array unchanged.
+
+
+    Examples
+    --------
+    **Basic usage - Remove specific volumes:**
+
+    >>> delete_volumes_from_4D_arrays(
+    ...     in_array=np.random.rand(64, 64, 30, 100),  # Example 4D array
+    ...     vols_to_delete=[0, 1, 2],  # Remove first 3 volumes
+    ... )
+
+    (array with shape (64, 64, 30, 97), [0, 1, 2])
+
+    **Remove a range of volumes:**
+    >>> delete_volumes_from_4D_arrays(
+    ...     in_array=np.random.rand(64, 64, 30, 100),  # Example 4D array
+    ...     vols_to_delete=[(5, 8)],  # Remove volumes 5 to 8 (inclusive)
+    ... )
+    (array with shape (64, 64, 30, 96), [5, 6, 7, 8])
+
+    **Remove volumes using a string specification:**
+    >>> delete_volumes_from_4D_arrays(
+    ...     in_array=np.random.rand(64, 64, 30, 100),  # Example 4D array
+    ...     vols_to_delete=["0-2", "5", "10:2:14", "20"]  # Mixed specification
+    ... )
+    (array with shape (64, 64, 30, 92), [0, 1, 2, 5, 10, 12, 14, 20])
+
+    """
+
+    # Ensure input is a numpy array
+    if not isinstance(in_array, np.ndarray):
+        raise TypeError("Input in_array must be a numpy ndarray.")
+
+    # Check if it is a 4D array
+    if in_array.ndim != 4:
+        raise ValueError(
+            f"Input in_array must be a 4D array. It has {in_array.ndim} dimensions."
+        )
+
+    # Ensure vols_to_delete is a list
+    if not isinstance(vols_to_delete, list):
+        vols_to_delete = [vols_to_delete]
+
+    # Convert vols_to_delete to a flat list of integers
+    vols_to_delete = cltmisc.build_indices(vols_to_delete, nonzeros=False)
+
+    # Check if vols_to_delete is not empty
+    if len(vols_to_delete) == 0:
+        print("No volumes to delete. The volumes to delete list is empty.")
+        return in_array, []
+
+    # Get the dimensions of the array
+    dim = in_array.shape
+
+    # Get the number of volumes
+    nvols = dim[3]
+
+    # Check if trying to delete all volumes
+    if len(vols_to_delete) == nvols:
+        print(
+            "Number of volumes to delete is equal to the total number of volumes. No volumes will be deleted."
+        )
+        return in_array, []
+
+    # Check if volumes to delete are in valid range
+    if np.max(vols_to_delete) >= nvols:
+        vols_to_delete_array = np.array(vols_to_delete)
+        out_of_range = np.where(vols_to_delete_array >= nvols)[0]
+        raise ValueError(
+            f"Volumes out of range: {vols_to_delete_array[out_of_range]}. "
+            f"Values should be between 0 and {nvols-1}."
+        )
+
+    if np.min(vols_to_delete) < 0:
+        raise ValueError(
+            f"Volumes to delete {vols_to_delete} contain negative indices. "
+            f"Values should be between 0 and {nvols-1}."
+        )
+
+    # Get volumes to keep and remove
+    vols_to_remove = np.array(vols_to_delete)
+    vols_to_keep = np.where(np.isin(np.arange(nvols), vols_to_remove, invert=True))[0]
+
+    # Remove the specified volumes from the input array
+    out_array = in_array[:, :, :, vols_to_keep]
+
+    return out_array, list(vols_to_remove.tolist())
