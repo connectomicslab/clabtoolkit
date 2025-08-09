@@ -2620,6 +2620,39 @@ def correct_names(
 
     return regnames
 
+#####################################################################################################
+def get_image_basename(file_name: str) -> str:
+    """
+    Extracts the base name of an image file without its extension.
+
+    Parameters
+    ----------
+    file_name : str
+        The full path to the image file.
+
+    Returns
+    -------
+    str
+        The base name of the image file without its extension.
+
+    Examples
+    --------
+    >>> get_image_basename("/path/to/image.nii.gz")
+    'image'
+    >>> get_image_basename("image.jpg")
+    'image'
+    """
+
+    file_basename = os.path.basename(file_name)
+
+    # Remove the file extension
+    if file_basename.endswith(".nii.gz"):
+        file_basename = file_basename[:-7]
+    else:
+        # Get the string until the last dot
+        file_basename = file_basename.rsplit(".", 1)[0]
+
+    return file_basename
 
 ####################################################################################################
 ####################################################################################################
