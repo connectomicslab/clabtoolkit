@@ -1358,7 +1358,7 @@ def spams2maxprob(
 #####################################################################################################
 def simulate_image(
     input_image: Union[str, nib.Nifti1Image],
-    simulated_image: str,
+    simulated_image: str = None,
     n_volumes: int = 3,
     distribution: str = "normal",
     random_seed: Optional[int] = None,
@@ -1384,7 +1384,8 @@ def simulate_image(
 
     simulated_image : str
         Output file path where the simulated image will be saved. Must include
-        the .nii or .nii.gz extension.
+        the .nii or .nii.gz extension. If None, the function will generate a
+        default name based on the input image.
 
     n_volumes : int, default=3
         Number of volumes in the output image:
@@ -1483,6 +1484,10 @@ def simulate_image(
         raise ValueError(
             "input_image must be a file path (str) or nibabel.Nifti1Image object"
         )
+
+    # Validate simulated_image path. If None, create a temporary filename
+    if simulated_image is None:
+        simulated_image = cltmisc.create_temporary_filename()
 
     # Validate output path
     output_dir = os.path.dirname(os.path.abspath(simulated_image))
