@@ -2621,7 +2621,7 @@ def correct_names(
     return regnames
 
 #####################################################################################################
-def get_image_basename(file_name: str) -> str:
+def get_real_basename(file_name: str) -> str:
     """
     Extracts the base name of an image file without its extension.
 
