@@ -1506,20 +1506,19 @@ def extract_centroid_from_volume(
     region_x, region_y, region_z = np.where(tmp_volume_array != 0)
 
     # Skip if region doesn't exist in the data
-    if len(region_x) == 0:
-        raise ValueError(
-            "No region found in the volume. The volume may not contain sufficient data."
-        )
+    if len(region_x) == 0 and len(region_y) == 0 and len(region_z) == 0:
+        return (np.array([None, None, None], dtype=np.float32), 0)
+    
+    else:
+        # Compute centroid
+        centroid_x = np.mean(region_x)
+        centroid_y = np.mean(region_y)
+        centroid_z = np.mean(region_z)
 
-    # Compute centroid
-    centroid_x = np.mean(region_x)
-    centroid_y = np.mean(region_y)
-    centroid_z = np.mean(region_z)
+        # Count voxels and compute volume
+        voxel_count = len(region_x)
 
-    # Count voxels and compute volume
-    voxel_count = len(region_x)
-
-    return (np.array([centroid_x, centroid_y, centroid_z], dtype=np.float32), int(voxel_count))
+        return (np.array([centroid_x, centroid_y, centroid_z], dtype=np.float32), int(voxel_count))
 
 #####################################################################################################
 def region_growing(
