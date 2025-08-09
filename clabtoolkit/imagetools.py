@@ -7,7 +7,7 @@ import nibabel as nib
 import numpy as np
 import subprocess
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union, Optional, List, Tuple
 import pyvista as pv
 
 from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, convolve
