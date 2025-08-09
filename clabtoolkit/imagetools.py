@@ -1518,7 +1518,90 @@ def extract_centroid_from_volume(
         # Count voxels and compute volume
         voxel_count = len(region_x)
 
-        return (np.array([centroid_x, centroid_y, centroid_z], dtype=np.float32), int(voxel_count))
+        return (
+            np.array([centroid_x, centroid_y, centroid_z], dtype=np.float32),
+            int(voxel_count),
+        )
+
+
+####################################################################################################
+def compute_mean_at_nonzero_voxels(
+    mask_array: np.ndarray, data_array: np.ndarray
+) -> np.ndarray:
+    """
+    Compute mean values from data_array at positions where mask_array is non-zero.
+
+    Parameters:
+    -----------
+    mask_array : numpy.ndarray
+        3D array with dimensions (N, M, P) - used to find non-zero positions
+        Non-zero positions in this array indicate where to compute the mean in data_array.
+
+    data_array : numpy.ndarray
+        3D array (N, M, P) or 4D array (N, M, P, T) - data to compute mean from
+        If 3D, computes a single mean value.
+        If 4D, computes mean across non-zero positions for each time point T.
+
+    Returns:
+    --------
+    numpy.ndarray or float
+        - If data_array is 3D: returns a single float value
+        - If data_array is 4D: returns a 1D array of length T
+
+    Raises:
+    -------
+    ValueError
+        If data_array is not 3D or 4D.
+
+    Notes:
+    -----
+    - The function extracts values from data_array at positions where mask_array is non-zero.
+    - For 3D data_array, it computes the mean of all selected values.
+    - For 4D data_array, it computes the mean across non-zero positions for each time point,
+    returning a 1D array with the mean for each time point.
+    - If mask_array has no non-zero positions, the function will return NaN for 3D data_array
+    or an array of NaNs for 4D data_array.
+
+    Examples:
+    ---------
+    >>> # Example with 3D data_array
+    >>> mask = np.array([[[0, 1], [0, 0]],
+    ...                  [[1, 0], [0, 1]]])
+    >>> data = np.array([[[1, 2], [3, 4]],
+    ...                  [[5, 6], [7, 8]]])
+    >>> mean_value = compute_mean_at_nonzero_voxels(mask, data)
+    >>> print(mean_value)  # Output: 4.5 (mean of 2, 5, 6, 8)
+    >>>
+    >>> # Example with 4D data_array
+    >>> mask_4d = np.array([[[0, 1], [0, 0]],
+    ...                     [[1, 0], [0, 1]]])
+    >>> data_4d = np.array([[[[1, 2], [3, 4]],
+    ...                      [[5, 6], [7, 8]]],
+    ...                     [[[9, 10], [11, 12]],
+    ...                      [[13, 14], [15, 16]]]])
+    >>> mean_values_4d = compute_mean_at_nonzero_voxels(mask_4d, data_4d)
+    >>> print(mean_values_4d)  # Output: [ 6.  8. 10. 12.] (mean for each time point
+    1, 2, 3, 4)
+
+    """
+
+    # Find indices where mask_array is non-zero
+    nonzero_mask = mask_array != 0
+
+    # Check if data_array is 3D or 4D
+    if data_array.ndim == 3:
+        # 3D case: extract values at non-zero positions and compute mean
+        selected_values = data_array[nonzero_mask]
+        return np.mean(selected_values)
+
+    elif data_array.ndim == 4:
+        # 4D case: extract values at non-zero positions for each time point
+        selected_values = data_array[nonzero_mask, :]  # Shape: (num_nonzero_voxels, T)
+        return np.mean(selected_values, axis=0)  # Mean across voxels, returns (T,)
+
+    else:
+        raise ValueError("data_array must be 3D or 4D")
+
 
 #####################################################################################################
 def region_growing(
