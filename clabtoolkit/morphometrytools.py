@@ -35,6 +35,7 @@ def compute_reg_val_fromannot(
     hemi: str,
     output_table: str = None,
     metric: str = "unknown",
+    units: str = None,
     stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
     table_type: str = "metric",
     include_unknown: bool = False,
@@ -51,24 +52,36 @@ def compute_reg_val_fromannot(
     ----------
     metric_file : str or np.ndarray
         Path to the surface map file or array containing metric values for each vertex.
+
     parc_file : str or cltfree.AnnotParcellation
         Path to the annotation file or AnnotParcellation object defining regions.
+
     hemi : str
         Hemisphere identifier ('lh' or 'rh').
+
     output_table : str, optional
         Path to save the resulting table. If None, the table is not saved.
+
     metric : str, default="unknown"
         Name of the metric being analyzed. Used for naming columns in the output DataFrame.
+
+    units : str, optional
+        Units of the metric. If None, units are determined from the metric name.
+
     stats_list : str or list, default=["value", "median", "std", "min", "max"]
         Statistics to compute for each region. Note: "value" is equivalent to the mean.
+
     table_type : str, default="metric"
         Output format specification:
         - "metric": Each column represents a specific statistic for each region
         - "region": Each column represents a region, with rows for different statistics
+
     include_unknown : bool, default=False
         Whether to include non-anatomical regions (medialwall, unknown, corpuscallosum).
+
     include_global : bool, default=True
         Whether to include hemisphere-wide statistics in the output.
+
     add_bids_entities : bool, default=True
         Whether to include BIDS entities as columns in the resulting DataFrame.
 
@@ -76,8 +89,10 @@ def compute_reg_val_fromannot(
     -------
     df : pd.DataFrame
         DataFrame containing the computed regional statistics.
+
     metric_vect : np.ndarray
         Array of metric values.
+
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
 
@@ -112,6 +127,7 @@ def compute_reg_val_fromannot(
     ... )
     >>> print(df_global.head())
     """
+
     # Input validation
     if isinstance(stats_list, str):
         stats_list = [stats_list]
@@ -227,7 +243,9 @@ def compute_reg_val_fromannot(
 
     # Add metadata columns
     nrows = df.shape[0]
-    units = get_units(metric)[0]
+
+    if units is None:
+        units = get_units(metric)[0]
 
     df.insert(0, "Source", ["vertices"] * nrows)
     df.insert(1, "Metric", [metric] * nrows)
@@ -890,6 +908,7 @@ def compute_reg_val_fromparcellation(
     parc_file: Union[str, cltparc.Parcellation, np.ndarray],
     output_table: str = None,
     metric: str = "unknown",
+    units: str = None,
     stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
     table_type: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
@@ -913,33 +932,48 @@ def compute_reg_val_fromparcellation(
     metric_file : str or np.ndarray
         Path to the volumetric metric file or array containing metric values for each voxel.
         If array, it should have the same dimensions as the parcellation data.
+
     parc_file : str, cltparc.Parcellation, or np.ndarray
         Path to the parcellation file, Parcellation object, or numpy array defining regions.
         Each unique integer value in the array represents a different anatomical region.
+
     output_table : str, optional
         Path to save the resulting table. If None, the table is not saved.
+
     metric : str, default="unknown"
         Name of the metric being analyzed. Used for naming columns in the output DataFrame
         and determining appropriate units.
+
+    units : str, optional
+        Units of the metric being analyzed. If None, units are determined based on the metric.
+        Supported units include "intensity", "thickness", "area", "euler", "volume", etc.
+        If not specified, the function will attempt to infer units from the metric name.
+
     stats_list : str or list, default=["value", "median", "std", "min", "max"]
         Statistics to compute for each region. Note: "value" is equivalent to the mean.
         Supported statistics: "value", "median", "std", "min", "max", "count", "sum".
+
     table_type : str, default="metric"
         Output format specification:
         - "metric": Each column represents a specific statistic for each region (regions as rows)
         - "region": Each column represents a region, with rows for different statistics
+
     exclude_by_code : list or np.ndarray, optional
         Region codes to exclude from the analysis. If None, no regions are excluded by code.
         Useful for excluding regions like ventricles or non-brain tissue.
+
     exclude_by_name : list or str, optional
         Region names to exclude from the analysis. If None, no regions are excluded by name.
         Example: ["Ventricles", "White-Matter"] to focus only on gray matter regions.
+
     add_bids_entities : bool, default=True
         Whether to include BIDS entities as columns in the resulting DataFrame.
         This extracts subject, session, and other metadata from the filename.
+
     region_prefix : str, default="region-unknown-"
         Prefix to use for region names when they cannot be determined from the parcellation object.
         The prefix will be combined with the region index number.
+
     interp_method : str, default="linear"
         Interpolation method to use when resampling the metric data to match parcellation resolution.
         Options include: "linear", "nearest", "cubic". Use "nearest" for categorical data.
@@ -948,8 +982,10 @@ def compute_reg_val_fromparcellation(
     -------
     df : pd.DataFrame
         DataFrame containing the computed regional statistics.
+
     metric_data : np.ndarray
         Array of metric values used in the calculation.
+
     output_path : str or None
         Path where the table was saved, or None if no table was saved.
 
@@ -1246,7 +1282,9 @@ def compute_reg_val_fromparcellation(
 
     # Add metadata columns
     nrows = df.shape[0]
-    units = get_units(metric)
+    if units is None:
+        units = get_units(metric)
+
     if isinstance(units, list) and len(units) > 0:
         units = units[0]
     elif units is None or (isinstance(units, list) and len(units) == 0):
