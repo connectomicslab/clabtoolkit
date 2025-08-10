@@ -2167,6 +2167,9 @@ def compute_statistics_at_nonzero_voxels(
     ValueError
         If data_array is not 3D or 4D.
 
+    ValueError
+        If metric is not one of the supported metrics.
+
     Notes
     -----
     - The function extracts values from data_array at positions where mask_array is non-zero.
@@ -2183,7 +2186,7 @@ def compute_statistics_at_nonzero_voxels(
     ...                  [[1, 0], [0, 1]]])
     >>> data = np.array([[[1, 2], [3, 4]],
     ...                  [[5, 6], [7, 8]]])
-    >>> mean_value = compute_mean_at_nonzero_voxels(mask, data)
+    >>> mean_value = compute_statistics_at_nonzero_voxels(mask, data)
     >>> print(mean_value)  # Output: 4.5 (mean of 2, 5, 6, 8)
     >>>
     >>> # Example with 4D data_array
@@ -2193,7 +2196,7 @@ def compute_statistics_at_nonzero_voxels(
     ...                      [[5, 6], [7, 8]]],
     ...                     [[[9, 10], [11, 12]],
     ...                      [[13, 14], [15, 16]]]])
-    >>> mean_values_4d = compute_mean_at_nonzero_voxels(mask_4d, data_4d)
+    >>> mean_values_4d = compute_statistics_at_nonzero_voxels(mask_4d, data_4d)
     >>> print(mean_values_4d)  # Output: [ 6.  8. 10. 12.] (mean for each time point
     1, 2, 3, 4)
 
@@ -2219,16 +2222,22 @@ def compute_statistics_at_nonzero_voxels(
 
         if metric == "mean":
             return np.mean(selected_values)
+        
         elif metric == "std":
             return np.std(selected_values)
+        
         elif metric == "var":
             return np.var(selected_values)
+        
         elif metric == "median":
             return np.median(selected_values)
+        
         elif metric == "sum":
             return np.sum(selected_values)
+        
         elif metric == "max":
             return np.max(selected_values)
+        
         elif metric == "min":
             return np.min(selected_values)
 
