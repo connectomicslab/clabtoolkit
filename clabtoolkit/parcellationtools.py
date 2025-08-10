@@ -854,6 +854,9 @@ class Parcellation:
         )
         coords_mm = cltimg.vox2mm(coords_vox, self.affine)
 
+        # Add centroid coordinates in mm
+        self.centroids = coords_mm.astype(float)
+
         x_coords_mm = coords_mm[:, 0]
         y_coords_mm = coords_mm[:, 1]
         z_coords_mm = coords_mm[:, 2]
