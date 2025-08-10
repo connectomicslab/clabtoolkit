@@ -1994,6 +1994,192 @@ class Parcellation:
             self.minlab = 0
             self.maxlab = 0
 
+    #######################################################################################################
+    def compute_morphometry_table(
+        self,
+        output_table: str = None,
+        add_bids_entities: bool = False,
+        map_files: Union[str, list] = None,
+        map_ids: Union[str, list] = None,
+        units: Union[str, list] = "unknown",
+    ):
+        """
+        Compute morphometry table for all regions in parcellation.
+        Sets morphometry containing region volumes and statistics.
+
+        Parameters
+        ----------
+        output_table : str, optional
+            Path to save the output table. If None, does not save. Default is None.
+
+        add_bids_entities : bool, optional
+            Whether to add BIDS entities to the output. Default is False.
+
+        map_files : str or list, optional
+            Paths to additional map files for morphometry. If None, only base morphometry is computed.
+            Default is None. This method will compute morphometry for each map file provided.
+
+        map_ids : str or list, optional
+            IDs for the additional maps. If None, uses filenames as IDs. Default is None.
+
+        units : str or list, optional
+            Units for the additional maps. If None, uses "unknown". Default is "unknown".
+
+        Raises
+        ------
+        TypeError
+            If output_table is not a string path.
+
+        FileNotFoundError
+            If the output directory does not exist.
+
+
+        Examples
+        --------
+        >>> # Compute morphometry table and save to CSV
+        >>> parc.compute_morphometry_table(
+        ...     output_table='morphometry.csv',
+        ...     add_bids_entities=True,
+        ...     map_files=['map1.nii.gz', 'map2.nii.gz'],
+        ...     map_ids=['map1', 'map2'],
+        ...     units=['mm^3', 'unknown']
+        ... )
+        >>> # Compute morphometry without additional maps
+        >>> parc.compute_morphometry_table(
+        ...     output_table='morphometry_base.csv',
+        ...     add_bids_entities=False
+        ... )
+        >>> # Compute morphometry with a single map file
+        >>> parc.compute_morphometry_table(
+        ...     output_table='morphometry_single.csv',
+        ...     add_bids_entities=True,
+        ...     map_files='single_map.nii.gz',
+        ...     map_ids='single_map',
+        ...     units='mm^3'
+        ... )
+        """
+
+        from . import morphometrytools as cltmorpho
+
+        # Add Rich progress bar around the main loop
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}", justify="right"),
+            BarColumn(bar_width=None),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            expand=True,
+        ) as progress:
+
+            cont_maps = 0
+
+            if map_files is not None:
+                if isinstance(map_files, str):
+                    map_files = [map_files]
+
+                # Handle map_ids: only replace if None or wrong length
+                if map_ids is None:
+                    map_ids = []
+                    for f in map_files:
+                        map_ids.append(cltmisc.get_real_basename(f))
+                elif isinstance(map_ids, str):
+                    map_ids = [map_ids]
+                elif len(map_ids) != len(map_files):
+                    # If lengths don't match, generate new ones
+                    map_ids = []
+                    for f in map_files:
+                        map_ids.append(cltmisc.get_real_basename(f))
+
+                # Handle units: same logic as map_ids
+                if units is None:
+                    units = ["unknown"] * len(map_files)
+                elif isinstance(units, str):
+                    units = [units]
+                elif len(units) != len(map_files):
+                    units = ["unknown"] * len(map_files)
+
+                fin_maps = []
+                fin_map_ids = []
+                fin_units = []
+
+                # Check if each map file exists
+                for map_file, map_id, unit in zip(map_files, map_ids, units):
+                    if os.path.exists(map_file):
+                        cont_maps += 1
+                        fin_maps.append(map_file)
+                        fin_map_ids.append(map_id)
+                        fin_units.append(unit)
+                    else:
+                        print(f"Warning: Map file not found: {map_file}")
+
+            # Fix: Calculate correct total (base morphometry + number of additional maps)
+            total_tasks = 1 + cont_maps
+
+            # Adding a task to the progress bar with correct total
+            task = progress.add_task("Computing base morphometry", total=total_tasks)
+
+            progress.update(
+                task,
+                description=f"Computing: [bold green]volume[/bold green] ([yellow]cm3[/yellow])",
+                completed=1,
+            )
+
+            # Computing the volume table
+            morphometry_table, *_ = cltmorpho.compute_reg_volume_fromparcellation(
+                self, add_bids_entities=add_bids_entities
+            )
+
+            # If there are additional maps, compute morphometry for each map file
+            if cont_maps > 0:
+                # Compute morphometry for each map file
+                for i, (map_file, map_id, unit) in enumerate(
+                    zip(fin_maps, fin_map_ids, fin_units)
+                ):
+                    # Update progress description to show current map info
+                    progress.update(
+                        task,
+                        description=f"Processing map: [bold green]{map_id}[/bold green] ([yellow]{unit}[/yellow])",
+                        completed=i
+                        + 2,  # +2 because we already completed the base (1) + current index
+                    )
+
+                    # Compute morphometry for the current map file
+                    df, _, _ = cltmorpho.compute_reg_val_fromparcellation(
+                        map_file,
+                        self,
+                        add_bids_entities=add_bids_entities,
+                        metric=map_id,
+                        units=unit,
+                    )
+                    morphometry_table = pd.concat([morphometry_table, df], axis=0)
+
+            # Final update
+            progress.update(
+                task,
+                description=f"[bold blue]Completed[/bold blue] morphometry for {cont_maps} maps",
+                completed=total_tasks,
+            )
+
+            self.morphometry = morphometry_table
+
+            # Saving the morphometry table if output_table is provided
+            if output_table is not None:
+                if isinstance(output_table, str):
+                    output_table = Path(output_table)
+                else:
+                    raise TypeError("output_table must be a string path")
+
+                # If the directory does not exist, create raise an error
+                if not output_table.parent.exists():
+                    raise FileNotFoundError(
+                        f"Output directory does not exist: {output_table.parent}"
+                    )
+
+                # Save the DataFrame to CSV
+                morphometry_table.to_csv(output_table, index=False)
+                print(f"Saved morphometry table to {output_table}")
+
     ######################################################################################################
     def compute_volume_table(self):
         """
