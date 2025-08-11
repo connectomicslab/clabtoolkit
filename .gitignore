@@ -105,3 +105,6 @@ ENV/
 # IDE settings
 .vscode/
 .idea/
+
+# Test data files (large files not suitable for repository)
+tests/testdata/
