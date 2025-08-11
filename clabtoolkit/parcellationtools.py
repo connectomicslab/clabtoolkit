@@ -1,13 +1,16 @@
 import os
 from datetime import datetime
 import copy
+import h5py
 
 import numpy as np
 import pandas as pd
 import nibabel as nib
 import pyvista as pv
+from pathlib import Path
 
-from typing import Union, List
+
+from typing import Union, List, Optional
 from scipy.ndimage import gaussian_filter
 from skimage import measure
 
@@ -49,8 +52,11 @@ class Parcellation:
 
     ####################################################################################################
     def __init__(
-        self, parc_file: Union[str, np.uint] = None, affine: np.float64 = None, parc_id: Optional[str] = None,
-        space_id: Optional[str] = "unknown"
+        self,
+        parc_file: Union[str, np.uint] = None,
+        affine: np.float64 = None,
+        parc_id: Optional[str] = None,
+        space_id: Optional[str] = "unknown",
     ):
         """
         Initialize Parcellation object from file or array.
@@ -67,7 +73,7 @@ class Parcellation:
 
         parc_id : str, optional
             Unique identifier for the parcellation. If None, generated from file name.
-            Default is None. 
+            Default is None.
 
         space_id : str, optional
             Identifier for the space in which the parcellation is defined. Default is "unknown".
@@ -102,6 +108,8 @@ class Parcellation:
             if isinstance(parc_file, str):
                 if os.path.exists(parc_file):
                     self.parc_file = parc_file
+                    self.get_parcellation_id()
+                    self.get_space_id(space_id=space_id)
                     temp_iparc = nib.load(parc_file)
                     affine = temp_iparc.affine
                     self.data = temp_iparc.get_fdata()
@@ -155,8 +163,9 @@ class Parcellation:
                 if parc_id is None:
                     self.id = "numpy_array"
 
+                self.space = space_id
                 self.data = parc_file
-                self.parc_file = "numpy_array"
+
                 # Creating a new affine matrix if the affine matrix is None
                 if affine is None:
                     affine = np.eye(4)
@@ -192,6 +201,12 @@ class Parcellation:
             ):
                 self.adjust_values()
 
+            # Dimensions of the parcellation
+            self.dim = self.data.shape
+
+            # Get voxel size
+            self.voxel_size = cltimg.get_voxel_volume(self.affine)
+
             # Detect minimum and maximum labels
             self.parc_range()
 
@@ -208,13 +223,12 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If the parcellation file is not set. 
-        
+            If the parcellation file is not set.
+
         Returns
         -------
         space_id : str
             The space identifier for the parcellation, formatted as 'space-<space_id>'.
-
 
         Notes
         -----
@@ -226,23 +240,24 @@ class Parcellation:
         >>> parc = Parcellation('sub-01_ses-01_acq-mprage_space-t1_atlas-xxx_seg-yyy_scale-1_desc-test.nii.gz')
         >>> space_id = parc.get_space_id()
         >>> print(space_id)
-        'space-t1'
+        't1'
 
         >>> parc = Parcellation('custom_parcellation.nii.gz')
         >>> space_id = parc.get_space_id(space_id='custom_space')
         >>> print(space_id)
-        'space-unknown'
+        'custom_space'
         >>> parc = Parcellation()
         >>> space_id = parc.get_space_id()
-        'space-unknown'
+        'unknown'
 
         """
+
         # Check if the parcellation file is set
         if not hasattr(self, "parc_file"):
             raise ValueError(
                 "The parcellation file is not set. Please load a parcellation file first."
             )
-                # Get the base name of the parcellation file
+            # Get the base name of the parcellation file
         parc_file_name = os.path.basename(self.parc_file)
 
         # Check if the parcellation file name follows BIDS naming conventions
@@ -252,9 +267,14 @@ class Parcellation:
             name_ent_dict = cltbids.str2entity(parc_file_name)
             ent_names_list = list(name_ent_dict.keys())
 
-        if "space" in ent_names_list:
-            space_id += "_space-" + name_ent_dict["space"]
+            # Create space_id based on the entities present in the parcellation file name
+            if "space" in ent_names_list:
+                if space_id != "unknown":
 
+                    # If space_id is provided, use it
+                    space_id = name_ent_dict["space"]
+
+        # Assign the space_id to the object
         self.space = space_id
 
         return space_id
@@ -338,7 +358,151 @@ class Parcellation:
             else:
                 parc_fullid = parc_file_name[:-4]
 
+        self.id = parc_fullid
+
         return parc_fullid
+
+    ####################################################################################################
+    def export_summary_to_hdf5(self, out_file: str, overwrite: bool = False):
+        """
+        Export parcellation summary to HDF5 file.
+
+        Parameters
+        ----------
+        out_file : str
+            Path to output HDF5 file.
+
+        Raises
+        ------
+        ValueError
+            If the parcellation data is not set.
+
+        Notes
+        -----
+        This method saves the parcellation data, index, name, and color attributes to an HDF5 file.
+        It is useful for archiving and sharing parcellation information in a structured format.
+
+        Examples
+        --------
+        >>> parc.export_summary_to_hdf5('parcellation_summary.h5')
+        """
+
+        out_path = Path(out_file)
+
+        # Check if the output directory exists, if not create raise an error
+        if not out_path.parent.exists():
+            raise ValueError(
+                f"The output directory {out_path.parent} does not exist. Please create it first."
+            )
+
+        # Check if the output file already exists
+        if out_path.exists() and not overwrite:
+            raise ValueError(
+                f"The output file {out_path} already exists. Use overwrite=True to overwrite it."
+            )
+
+        # Check if the parcellation data is set
+        if not hasattr(self, "data"):
+            raise ValueError(
+                "The parcellation data is not set. Please load a parcellation file first."
+            )
+
+        # Check if the attributes parcellation_id and space_id are set
+        if not hasattr(self, "id"):
+            self.get_parcellation_id()
+
+        if not hasattr(self, "space"):
+            self.get_space_id(space_id="unknown")
+
+        parc_id = self.id
+        space_id = self.space
+        base_cad = f"parcellation_{parc_id}/space-{space_id}"
+
+        # Create the hf file
+        hf = h5py.File(out_file, "w")
+
+        # Save the filename
+        if hasattr(self, "parc_file"):
+            hf.create_dataset(f"{base_cad}/header/file_path", data=self.parc_file)
+
+        # Save the LUT file pathname if it exists
+        if hasattr(self, "lut_file"):
+            hf.create_dataset(f"{base_cad}/header/lut_file", data=self.lut_file)
+
+        # Save the parcellation id
+        if hasattr(self, "id"):
+            hf.create_dataset(f"{base_cad}/header/id", data=self.id)
+
+        # Save the space id
+        if hasattr(self, "space"):
+            hf.create_dataset(f"{base_cad}/header/space", data=self.space)
+
+        # Save the parcellation dimension
+        if hasattr(self, "dim"):
+            hf.create_dataset(f"{base_cad}/header/dim", data=self.dim)
+
+        # Save the parcellation voxel size
+        if hasattr(self, "voxel_size"):
+            hf.create_dataset(f"{base_cad}/header/voxel_size", data=self.voxel_size)
+
+        # Save the parcellation affine
+        if hasattr(self, "affine"):
+            hf.create_dataset(f"{base_cad}/header/affine", data=self.affine)
+
+        # Save the number of regions
+        if hasattr(self, "index"):
+            hf.create_dataset(f"{base_cad}/header/num_regions", data=len(self.index))
+
+        else:
+            # If index is not set, calculate the number of regions from the data
+            regions = np.unique(self.data)
+            n_regions = len(regions[regions != 0])
+            hf.create_dataset(f"{base_cad}/header/num_regions", data=n_regions)
+
+        # Save the minimum label
+        if hasattr(self, "min_label"):
+            hf.create_dataset(f"{base_cad}/header/min_label", data=self.min_label)
+        else:
+            # If min_label and max_label are not set, calculate them from the data
+            regions = np.unique(self.data)
+            regions = regions[regions != 0]
+            hf.create_dataset(f"{base_cad}/header/min_label", data=np.min(regions))
+
+            # Save the maximum label
+        if hasattr(self, "max_label"):
+            hf.create_dataset(f"{base_cad}/header/max_label", data=self.max_label)
+        else:
+            # If min_label and max_label are not set, calculate them from the data
+            regions = np.unique(self.data)
+            regions = regions[regions != 0]
+            hf.create_dataset(f"{base_cad}/header/max_label", data=np.max(regions))
+
+        # Save the index of the regions
+        if hasattr(self, "index"):
+            hf.create_dataset(f"{base_cad}/regions_indices", data=self.index)
+
+        # Save the region names
+        if hasattr(self, "name"):
+            hf.create_dataset(f"{base_cad}/regions_names", data=self.name)
+
+        # Save the region colors
+        if hasattr(self, "color"):
+            hf.create_dataset(f"{base_cad}/regions_colors", data=self.color)
+
+        # Save the parcellation centroids
+        if hasattr(self, "centroids"):
+            hf.create_dataset(f"{base_cad}/regions_centroids", data=self.centroids)
+        
+        # Save the timeseries if they exist
+        if hasattr(self, "timeseries"):
+            hf.create_dataset(f"{base_cad}/time_series", data=self.timeseries)
+
+        # Close the file
+        hf.close()
+
+        # Save the morphometry DataFrame if it exists
+        if hasattr(self, "morphometry"):
+            cltmisc.save_morphometry_hdf5(out_file, "{base_cad}/morphometry", self.morphometry, mode="w")
 
     ####################################################################################################
     def prepare_for_tracking(self):
@@ -746,15 +910,15 @@ class Parcellation:
 
         struct_names : list or str, optional
             Specific region names to include. Default is None.
-        
+
         gaussian_smooth : bool, optional
             Whether to apply Gaussian smoothing to the volume before centroid calculation. Default is True.
-        
+
         sigma : float, optional
             Standard deviation for Gaussian smoothing. Default is 1.0.
-        
+
         closing_iterations : int, optional
-            Number of morphological closing iterations before centroid extraction. Default is 2.    
+            Number of morphological closing iterations before centroid extraction. Default is 2.
 
         centroid_table : str, optional
             Path to save results as TSV file. Default is None.
@@ -827,12 +991,12 @@ class Parcellation:
 
             # Extract centroid and voxel count
             centroid, voxel_count = cltimg.extract_centroid_from_volume(
-            temp_parc.data == region_label,
-            gaussian_smooth=gaussian_smooth,
-            sigma= sigma,
-            closing_iterations = closing_iterations,
+                temp_parc.data == region_label,
+                gaussian_smooth=gaussian_smooth,
+                sigma=sigma,
+                closing_iterations=closing_iterations,
             )
-            
+
             centroid_x, centroid_y, centroid_z = centroid[0], centroid[1], centroid[2]
 
             # Calculate total volume
@@ -900,6 +1064,214 @@ class Parcellation:
                 print(f"Error saving centroid table: {e}")
 
         return df
+
+    ######################################################################################################
+    def get_regionwise_timeseries(
+        self,
+        time_series_data: Union[str, np.ndarray],
+        vols_to_delete: Union[List[int], np.ndarray] = None,
+        method: str = "nilearn",
+        metric: str = "mean",
+        struct_codes: Union[List[int], np.ndarray] = None,
+        struct_names: Union[List[str], str] = None,
+    ) -> pd.DataFrame:
+        """
+        Compute region-wise time series.
+
+        Parameters
+        ----------
+        time_series_data : str or np.ndarray
+            Path to time series file or numpy array with shape (dimx X dimy X dimZ x Timepoints).
+
+        struct_codes : list or np.ndarray, optional
+            Specific region codes to include. Default is None (all regions).
+
+        struct_names : list or str, optional
+            Specific region names to include. Default is None.
+
+        ouput_h5file : str, optional
+            Path to save results as HDF5 file. Default is None.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with columns: index, name, color, X, Y, Z (mm), nvoxels, volume.
+
+        Raises
+        ------
+        ValueError
+            If both struct_codes and struct_names are specified.
+
+        Examples
+        --------
+        >>> # Compute region-wise time series from file
+        >>> region_ts = parc.get_regionwise_timeseries('timeseries.nii.gz')
+        >>>
+        # Compute from numpy array
+        >>> region_ts = parc.get_regionwise_timeseries(time_series_data=np.random.rand(64, 64, 64, 100))
+        >>>
+        # Compute with specific regions using codes
+        >>> region_ts = parc.get_regionwise_timeseries(
+        ...     time_series_data='timeseries.nii.gz',
+        ...     struct_codes=[1, 2, 3])
+
+        """
+
+        # Check if include_by_code and include_by_name are different from None at the same time
+        if struct_codes is not None and struct_names is not None:
+            raise ValueError(
+                "You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them."
+            )
+
+        temp_parc = copy.deepcopy(self)
+
+        # Apply inclusion if specified
+        if struct_codes is not None:
+            temp_parc.keep_by_code(codes2keep=struct_codes)
+
+        if struct_names is not None:
+            temp_parc.keep_by_name(names2look=struct_names)
+
+        # Delete volumes if specified
+        if vols_to_delete is not None:
+
+            # Check if the time_series_data is a string
+            if isinstance(time_series_data, str):
+                # Generating a temporary file to save the 4D data
+                tmp_image = cltmisc.create_temporary_filename(
+                    prefix="temp_timeseries",
+                    extension=".nii.gz",
+                    tmp_dir="/tmp",
+                )
+
+                # Deleting the volumes from the 4D image
+                del_img = cltimg.delete_volumes_from_4D_images(
+                    in_image=time_series_data,
+                    out_image=tmp_image,
+                    vols_to_delete=vols_to_delete,
+                )
+                time_series_data_tmp = tmp_image
+
+            elif isinstance(time_series_data, np.ndarray):
+                time_series_data_tmp, _ = cltimg.delete_volumes_from_4D_array(
+                    in_array=time_series_data, vols_to_delete=vols_to_delete
+                )
+        else:
+            time_series_data_tmp = time_series_data
+
+        if method == "nilearn":
+
+            if isinstance(time_series_data_tmp, str):
+
+                # Check if the file exists
+                try:
+                    from nilearn.maskers import NiftiLabelsMasker
+                except:
+                    raise ImportError(
+                        "nilearn is not installed. Please install it to use this method."
+                    )
+
+                # Generating a temporary parcellation file
+                tmp_parc_image = cltmisc.create_temporary_filename(
+                    prefix="temp_parcellation", extension=".nii.gz", tmp_dir="/tmp"
+                )
+
+                temp_parc.save_parcellation(out_file=tmp_parc_image, save_lut=True)
+                tmp_parc_image_lut = tmp_parc_image.replace(".nii.gz", ".lut")
+                tmp_parc_image_nilearnlut = tmp_parc_image.replace(
+                    ".nii.gz", "_nilearn.lut"
+                )
+
+                # Converting the parcellation to a nilearn LUT format
+                temp_parc.lut_to_nilearnlut(
+                    tmp_parc_image_lut, tmp_parc_image_nilearnlut, overwrite=True
+                )
+
+                # Generating the masker
+                masker = NiftiLabelsMasker(
+                    labels_img=tmp_parc_image,
+                    lut=tmp_parc_image_nilearnlut,
+                    standardize="zscore_sample",
+                    standardize_confounds=True,
+                    memory="nilearn_cache",
+                    verbose=1,
+                )
+
+                # Check if the parcellation is a numpy array
+                region_time_series = masker.fit_transform(time_series_data_tmp).T
+
+                # Delete the temporary files
+                os.remove(tmp_parc_image)
+                os.remove(tmp_parc_image_lut)
+                os.remove(tmp_parc_image_nilearnlut)
+
+            elif isinstance(time_series_data_tmp, np.ndarray):
+                print(
+                    "Using nilearn method requires a file path. Please provide a valid file path."
+                )
+                print(
+                    "Computing region-wise timeseries without using nilearn. This may take longer."
+                )
+                method = "clabtoolkit"
+
+        if method.lower() != "nilearn":
+
+            # Get unique region values
+            unique_regions = np.array(temp_parc.index)
+
+            # Load time series data
+            if isinstance(time_series_data_tmp, str):
+                if os.path.exists(time_series_data_tmp):
+                    time_series = nib.load(time_series_data_tmp).get_fdata()
+
+                else:
+                    raise ValueError("The time series file does not exist")
+
+            elif isinstance(time_series_data, np.ndarray):
+                time_series = time_series_data
+
+            else:
+                raise ValueError(
+                    "time_series_data must be a string (file path) or a numpy array"
+                )
+
+            # Check if time series has 4 dimensions
+            if time_series.ndim != 4:
+                raise ValueError(
+                    "Time series data must have 4 dimensions (dimx, dimy, dimz, timepoints)"
+                )
+            # Check if time series dimensions match parcellation dimensions
+            if time_series.shape[:3] != temp_parc.data.shape:
+                raise ValueError(
+                    "Time series dimensions do not match parcellation dimensions"
+                )
+
+            # Detect the number of time points
+            num_timepoints = time_series.shape[-1]
+
+            # Initialize array to hold region-wise time series
+            region_time_series = np.zeros((len(unique_regions), num_timepoints))
+
+            # Fixed loop - iterate over regions and find their index
+            for i, region_label in enumerate(unique_regions):
+                # Find the index of this region in parc.index
+                region_idx = np.where(np.array(temp_parc.index) == region_label)[0]
+                if len(region_idx) == 0:
+                    continue
+                region_idx = region_idx[0]  # Get the first (should be only) match
+
+                # Computing the mean time series at non-zero voxels for this region
+                ts_values = cltimg.compute_statistics_at_nonzero_voxels(
+                    temp_parc.data == region_label, time_series, metric=metric
+                )
+
+                region_time_series[i, :] = ts_values
+
+        # Create an attribute to hold the time series
+        temp_parc.seriesextractionmethod = method
+        temp_parc.timeseries = region_time_series
+
+        return region_time_series
 
     ######################################################################################################
     def surface_extraction(
@@ -1057,7 +1429,6 @@ class Parcellation:
                 surf_temp = cltsurf.Surface()
                 surf_temp.load_from_mesh(mesh, hemi="lh")
                 surfaces_list.append(surf_temp)
-                a = 1
                 # Update progress to show completion of this region
 
         # surf_orig.merge_surfaces(surfaces_list)

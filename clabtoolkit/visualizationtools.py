@@ -2983,6 +2983,78 @@ class SurfacePlotter:
         # Execute final rendering/display
         self._finalize_plot(plotter, save_mode, save_path)
 
+    ################################################################################################
+    def plot_surfaces_list(
+        self,
+        surfaces: List[Any],
+        views: Union[str, List[str]] = "8_views",
+        notebook: bool = False,
+        map_names: str = "surface",
+        colormap: str = "BrBG",
+        v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = None,
+        save_path: Optional[str] = None,
+        colorbar: bool = True,
+        colorbar_title: str = "Value",
+        colorbar_position: str = "bottom",
+    ) -> None:
+        """
+        Create a grid of brain surface plots from a list of surfaces.
+
+        Parameters
+        ----------
+        surfaces : List[Surface]
+            List of surface objects with mesh data and point_data arrays.
+
+        views : str or List[str], default "8_views"
+            Either configuration name from JSON file or list of view names.
+
+        notebook : bool, default False
+            Whether to optimize for Jupyter notebook display.
+
+        map_name : str, default "surface"
+            Name of data array in point_data to use for surface coloring.
+
+        colormap : str, default "BrBG"
+            Matplotlib colormap name for continuous data.
+
+        vmin : float, optional
+            Minimum value for colormap scaling. Auto-computed if None.
+
+        vmax : float, optional
+            Maximum value for colormap scaling. Auto-computed if None.
+
+        save_path : str, optional
+            File path to save figure. If None, displays interactively.
+
+        colorbar : bool, default True
+            Whether to display colorbar. Automatically disabled for parcellations.
+
+        colorbar_title : str, default "Value"
+            Title text for the colorbar.
+
+        colorbar_position : str, default "bottom"
+            Colorbar position: "right", "left", "top", or "bottom".
+
+        Raises
+        ------
+        KeyError
+            If views configuration not found or data array missing.
+
+        ValueError
+            If invalid view names provided or data arrays not found.
+        
+        Examples
+        --------
+        >>> # Basic usage with predefined configuration
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter.plot_surfaces_list(surfaces)
+        
+        >>> # Dynamic view selection with list of view names
+        >>> plotter.plot_surfaces_list(surfaces, views=["lateral", "medial", "dorsal"])
+        
+        >>> 
+        """
+        pass
 
 #####################################################################################################
 def get_screen_size() -> Tuple[int, int]:

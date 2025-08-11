@@ -43,12 +43,12 @@ def collect_info(category):
 def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> dict:
     """
     Recursively extracts all keys with string values from a nested dictionary. It will avoid keys
-    Parameters
+    Parameters:
     -----------
         data_dict: A nested dictionary to search through
         only_last_key: If True, uses only the leaf key name; if False, uses the full path
 
-    Returns
+    Returns:
     --------
         A dictionary where keys are either leaf keys or paths to string values,
         and values are the corresponding strings

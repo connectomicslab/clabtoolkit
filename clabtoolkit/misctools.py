@@ -3535,7 +3535,48 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
         print(f"Error: {e}")
         raise
 
+######################################################################################################
+def save_morphometry_hdf5(filename: str, base_cad: str, df_to_save: pd.DataFrame, 
+                        mode: str = "a", 
+                        complevel: int = 9, 
+                        complib: str = "blosc"):
+    """
+    Save the a DataFrame to an HDF5 file under `{base_cad}`.
 
+    Parameters
+    ----------
+    filename : str
+        Path to the HDF5 file.
+
+    base_cad : str
+        Base path inside the HDF5 hierarchy (e.g., 'subject1/session1').
+
+    morphometry : pd.DataFrame
+        DataFrame to store.
+
+    mode : str
+        File mode: 'a' (append), 'w' (overwrite), etc.
+
+    complevel : int
+        Compression level (0–9).
+
+    complib : str
+        Compression library ('zlib', 'bzip2', 'blosc').
+
+    """
+    key_path = f"{base_cad}/morphometry"
+    with pd.HDFStore(filename, mode=mode, complevel=complevel, complib=complib) as store:
+        store.put(key_path, df_to_save, format="table")
+
+######################################################################################################
+def load_morphometry_hdf5(filename: str, base_cad: str) -> pd.DataFrame:
+    """
+    Load the DataFrame from `{base_cad}` in the HDF5 file.
+    """
+    key_path = f"{base_cad}"
+    with pd.HDFStore(filename, mode="r") as store:
+        return store[key_path]
+    
 #####################################################################################################
 def show_object_content(obj, show_private=False, show_dunder=False):
     """
