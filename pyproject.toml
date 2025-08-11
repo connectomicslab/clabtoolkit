@@ -76,8 +76,12 @@ test = [
 ]
 
 [tool.setuptools]
-packages = ["clabtoolkit", "clabtoolkit.config"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["clabtoolkit.*"]
+exclude = ["clabtoolkit.tests", "clabtoolkit.tests.*"]
 
 [tool.setuptools.package-data]
 clabtoolkit = ["config/*"]

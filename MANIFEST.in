@@ -3,14 +3,20 @@ include CONTRIBUTING.rst
 include HISTORY.rst
 include LICENSE
 include README.rst
+include pyproject.toml
 
-recursive-include tests *
+# Include package source code
+recursive-include clabtoolkit *.py
+recursive-include clabtoolkit/config *.json
+
+# Include documentation
+recursive-include docs *.rst *.py *.bat *.png
+recursive-include docs Makefile
+include docs/make.bat
+
+# EXCLUDE tests data completely  
+prune tests
+
+# Exclude unwanted files (only those that exist)
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
-recursive-include clabtoolkit/config *
-
-exclude clabtoolkit/clabtoolkit/test3.py
-exclude clabtoolkit/clabtoolkit/test_2.py
-exclude clabtoolkit/clabtoolkit/test_file.py
-
-recursive-include docs *.rst conf.py Makefile make.bat *.jpg *.png *.gif
