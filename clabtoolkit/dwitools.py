@@ -721,6 +721,7 @@ def resample_streamlines(
     ----------
     in_streamlines : nib.streamlines.array_sequence.ArraySequence
         Input streamlines to be resampled.
+
     nb_points : int, optional
         Number of points to resample each streamline to. Default is 51.
 
@@ -733,8 +734,10 @@ def resample_streamlines(
     ------
     ValueError
         If the input streamlines are not in the expected format.
+
     ValueError
         If the input streamlines are empty.
+
     ValueError
         If nb_points is not a positive integer.
 
@@ -764,6 +767,7 @@ def resample_streamlines(
     for i, streamline in enumerate(in_streamlines):
         if not isinstance(streamline, np.ndarray):
             raise ValueError(f"Streamline {i} is not a valid numpy array.")
+        
         if streamline.ndim != 2 or streamline.shape[1] != 3:
             raise ValueError(
                 f"Streamline {i} must be a 2D array with shape (n_points, 3)."
@@ -880,16 +884,23 @@ def compute_tractogram_centroids(
     ----------
     in_tract : str
         Path to input tractogram file (.trk)
+
     centroid_tract : str
         Path to output file for centroids (.trk)
+
     clustered_tract : str
         Path to output file for clustered streamlines (.trk)
+
     nb_points : int, optional
         Number of points to resample the streamlines to. Default is 51.
+
     method : str, optional
         Clustering method to use. Can be 'qbx' or 'qb'. Default is 'qb'.
+
     thresholds : list of int, optional
         List of thresholds to use for clustering (only for qbx). Default is [10].
+        If using 'qb', only the first threshold will be used.
+
     save_scalars_for_trackvis : bool, optional
         If True, saves scalar data in TrackVis-compatible format. Default is True.
 
@@ -902,10 +913,13 @@ def compute_tractogram_centroids(
     ------
     FileNotFoundError
         If the input tracking file does not exist or output directories do not exist.
+
     ValueError
         If the input tracking file is not in the expected format or if nb_points is not a positive integer.
+
     ValueError
         If the clustering method is not recognized or if thresholds are not provided correctly.
+
     ValueError
         If the input streamlines are empty or not in the expected format.
 
@@ -1105,8 +1119,10 @@ def create_trackvis_colored_trk(
     ----------
     clustered_trk_path : str
         Path to the clustered streamlines TRK file
+
     output_path : str
         Path for the output TRK file optimized for TrackVis coloring
+
     color_by : str, optional
         Which metadata field to use for coloring. Options: 'cluster_id',
         'distance_to_centroid', 'original_index'. Default is 'cluster_id'.
@@ -1370,8 +1386,24 @@ class TRKExplorer:
         """
         Analyze streamlines using nibabel.
 
-        Args:
-            max_sample (int): Maximum number of streamlines to sample for detailed info
+        Parameters
+        ----------
+        max_sample : int, optional
+            Maximum number of streamlines to sample for detailed info.
+
+        Raises
+        ------
+        ValueError
+            If the TRK file does not contain any streamlines or if the number of streamlines
+            exceeds the specified maximum sample size.
+
+        Notes
+        -----
+        This method collects detailed information about the streamlines in the TRK file,
+        including their lengths, sizes, and data types. It also computes statistics such as
+        the total number of streamlines, minimum and maximum lengths, and average length.
+        The results are stored in the `streamlines_info` attribute of the class.
+
         """
         streamlines = self.trk_file.streamlines
         n_streamlines = len(streamlines)
@@ -1622,12 +1654,43 @@ def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
     """
     Quick function to explore a TRK file and return a summary.
 
-    Args:
-        filepath (str): Path to the TRK file
-        max_streamline_samples (int): Maximum number of streamlines to show as samples
+    Parameters
+    ----------
+    filepath : str
+        Path to the TRK file to explore.
+
+    max_streamline_samples : int, optional
+        Maximum number of streamlines to sample for detailed info.
+        Default is 5.
 
     Returns
-        str: Formatted summary string
+    -------
+    str
+        Formatted summary string of the TRK file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified TRK file does not exist.
+        
+    ValueError
+        If the TRK file is not in the expected format or does not contain streamlines.
+
+    Examples
+    --------
+    >>> summary = explore_trk('path/to/your/file.trk', max_streamline_samples=10)
+    >>> print(summary)
+    >>> # To get detailed information about streamlines and properties
+    >>> explorer = TRKExplorer('path/to/your/file.trk')
+    >>> explorer._analyze_streamlines(max_sample=5)
+    >>> explorer._analyze_data_properties()
+    >>> print(explorer.streamlines_info)
+    >>> print(explorer.data_properties)
+    >>> streamlines = explorer.get_streamlines()
+    >>> header_info = explorer.get_header_info()
+    >>> print(header_info)
+    >>> print(streamlines)
+
     """
 
     # Check if the file exists
