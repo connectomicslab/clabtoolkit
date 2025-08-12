@@ -2,6 +2,7 @@ import os
 import numpy as np
 import nibabel as nib
 from typing import Union, List, Dict, Optional, Tuple
+from pathlib import Path
 import pyvista as pv
 import pandas as pd
 import copy
