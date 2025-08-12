@@ -1602,16 +1602,22 @@ class Surface:
         else:
             # Set the active overlay
             self.set_active_overlay(overlay_name)
-        # If no colormap is provided, use the default colormap for the overlay
-        vertex_values = self.mesh.point_data[overlay_name]
-        dict_ctables = self.colortables
-        # Check if the overlay is a color or scalar type
-
-        if overlay_name in dict_ctables.keys():
-            # Use the colortable associated with the parcellation
-            vertex_colors = cltfree.create_vertex_colors(
-                vertex_values, self.colortables[overlay_name]["color_table"]
-            )
+        
+        if overlay_dict[overlay_name] == "color":
+                    self.mesh.point_data["RGB"] = self.mesh.point_data[overlay_name]
+                    self.mesh.set_active_scalars("RGB")
+                    return
+        
+        else: 
+            # If no colormap is provided, use the default colormap for the overlay
+            vertex_values = self.mesh.point_data[overlay_name]
+            dict_ctables = self.colortables
+            # Check if the overlay is a color or scalar type
+            if overlay_name in dict_ctables.keys():
+                # Use the colortable associated with the parcellation
+                vertex_colors = cltfree.create_vertex_colors(
+                    vertex_values, self.colortables[overlay_name]["color_table"]
+                )
 
         else:
             vertex_colors = cltmisc.values2colors(
