@@ -182,7 +182,7 @@ class Surface:
 
             mesh = pv.PolyData(vertices, faces)
             mesh.point_data["surface"] = (
-                np.ones((len(vertices), 3), dtype=np.float32) * 240
+                np.ones((len(vertices), 4), dtype=np.uint8) * 240
             )  # Default colors
 
             self.mesh = mesh
@@ -296,7 +296,7 @@ class Surface:
         # Ensure mesh has default surface colors if not present
         if "surface" not in self.mesh.point_data:
             self.mesh.point_data["surface"] = (
-                np.ones((self.mesh.n_points, 3), dtype=np.float32) * 240
+                np.ones((self.mesh.n_points, 4), dtype=np.uint8) * 240
             )  # Default colors
 
             # Create default parcellation data
@@ -446,7 +446,7 @@ class Surface:
 
         mesh = pv.PolyData(vertices, faces_pv)
         mesh.point_data["surface"] = (
-            np.ones((len(vertices), 3), dtype=np.float32) * 240
+            np.ones((len(vertices), 4), dtype=np.uint8) * 240
         )  # Default colors
 
         return mesh
@@ -1613,6 +1613,7 @@ class Surface:
             vertex_values = self.mesh.point_data[overlay_name]
             dict_ctables = self.colortables
             # Check if the overlay is a color or scalar type
+
             if overlay_name in dict_ctables.keys():
                 # Use the colortable associated with the parcellation
                 vertex_colors = cltfree.create_vertex_colors(

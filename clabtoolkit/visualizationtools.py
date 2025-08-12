@@ -1622,22 +1622,27 @@ class SurfacePlotter:
         >>> print(colors.shape)  # (n_vertices, 3) for RGB values
         """
 
-        dict_ctables = surface.colortables
+        overlay_dict = surface.list_overlays()
 
-        if map_name in dict_ctables.keys():
-            # Use predefined colortable for parcellations
-            vertex_colors = cltfree.create_vertex_colors(
-                vertex_values, surface.colortables[map_name]["color_table"]
-            )
+        if overlay_dict[map_name] == "color":
+            vertex_colors = surface.mesh.point_data[map_name]
         else:
-            # Use matplotlib colormap for continuous data
-            vertex_colors = cltmisc.values2colors(
-                vertex_values,
-                cmap=colormap,
-                output_format="rgb",
-                vmin=vmin,
-                vmax=vmax,
-            )
+            dict_ctables = surface.colortables
+
+            if map_name in dict_ctables.keys():
+                # Use predefined colortable for parcellations
+                vertex_colors = cltfree.create_vertex_colors(
+                    vertex_values, surface.colortables[map_name]["color_table"]
+                )
+            else:
+                # Use matplotlib colormap for continuous data
+                vertex_colors = cltmisc.values2colors(
+                    vertex_values,
+                    cmap=colormap,
+                    output_format="rgb",
+                    vmin=vmin,
+                    vmax=vmax,
+                )
 
         return vertex_colors
 
@@ -2857,7 +2862,7 @@ class SurfacePlotter:
                     surface = surfaces[view_config["mesh"]]
                     plotter.add_mesh(
                         surface.mesh,
-                        scalars="vertex_colors",
+                        scalars="RGB",
                         rgb=True,
                         ambient=self.figure_conf["mesh_ambient"],
                         diffuse=self.figure_conf["mesh_diffuse"],
@@ -2898,7 +2903,7 @@ class SurfacePlotter:
                         surface = surfaces[view_config["mesh"]]
                         plotter.add_mesh(
                             surface.mesh,
-                            scalars="vertex_colors",
+                            scalars="RGB",
                             rgb=True,
                             ambient=self.figure_conf["mesh_ambient"],
                             diffuse=self.figure_conf["mesh_diffuse"],
