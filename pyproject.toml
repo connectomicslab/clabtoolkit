@@ -80,7 +80,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["clabtoolkit.*"]
+include = ["clabtoolkit", "clabtoolkit.*"]
 exclude = ["clabtoolkit.tests", "clabtoolkit.tests.*"]
 
 [tool.setuptools.package-data]
