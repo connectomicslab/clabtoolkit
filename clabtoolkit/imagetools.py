@@ -2013,7 +2013,7 @@ def extract_mesh_from_volume(
     mesh = mesh.compute_normals(split_vertices=True)
 
     mesh.point_data["surface"] = (
-        np.ones((len(mesh.points), 1), dtype=np.float32) * vertex_value
+        np.ones((len(mesh.points), 1), dtype=np.uint32) * vertex_value
     )
 
     return mesh
