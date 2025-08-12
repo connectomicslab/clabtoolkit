@@ -45,6 +45,7 @@ class AnnotParcellation:
     def __init__(
         self,
         parc_file: str = None,
+        annot_id: str = None,
         ref_surf: str = None,
         cont_tech: str = "local",
         cont_image: str = None,
@@ -54,28 +55,47 @@ class AnnotParcellation:
 
         Parameters
         ----------
-        parc_file - Optional : Parcellation filename. If None, creates empty instance
-        ref_surf - Optional : Reference surface. Default is the white surface of the fsaverage subject
-        cont_tech - Optional : Container technology. Default is local
-        cont_image - Optional : Container image. Default is local
-        """
-        # Initialize empty attributes
-        self.filename = None
-        self.path = None
-        self.name = None
-        self.hemi = None
-        self.codes = None
-        self.regtable = None
-        self.regnames = None
+        parc_file : str, optional
+            Path to the parcellation file (annot, gii, or gcs format). If None, the object is initialized without loading any file.
 
+        annot_id : str, optional
+            Annotation ID to use for the parcellation. If None, uses the file name without extension.
+
+        ref_surf : str, optional
+            Reference surface for conversion. If None, uses the default FreeSurfer white surface.
+
+        cont_tech : str, optional
+            Container technology to use (e.g., 'local', 'docker'). Default is 'local'.
+
+        cont_image : str, optional
+            Container image to use. If None, uses the default for the specified container technology.
+
+
+        """
+        
         # If parc_file is provided, load it
         if parc_file is not None:
-            self.load_from_file(parc_file, ref_surf, cont_tech, cont_image)
+            if annot_id is None:
+                annot_id = os.path.splitext(os.path.basename(parc_file))[0]
+
+            self.filename = parc_file
+            self.load_from_file(parc_file, annot_id, ref_surf, cont_tech, cont_image)
+
+        else:
+            self.id = annot_id
+            self.filename = None
+            self.path = None
+            self.name = None
+            self.hemi = None
+            self.codes = None
+            self.regtable = None
+            self.regnames = None
 
     ####################################################################################################
     def load_from_file(
         self,
         parc_file: str,
+        annot_id: str = None,
         ref_surf: str = None,
         cont_tech: str = "local",
         cont_image: str = None,
@@ -85,10 +105,21 @@ class AnnotParcellation:
 
         Parameters
         ----------
-        parc_file - Required : Parcellation filename
-        ref_surf - Optional : Reference surface. Default is the white surface of the fsaverage subject
-        cont_tech - Optional : Container technology. Default is local
-        cont_image - Optional : Container image. Default is local
+        parc_file : str
+            Path to the parcellation file (annot, gii, or gcs format)
+
+        annot_id : str, optional
+            Annotation ID to use for the parcellation. If None, uses the file name.
+
+        ref_surf : str, optional
+            Reference surface for conversion. If None, uses the default FreeSurfer white surface.
+
+        cont_tech : str, optional
+            Container technology to use (e.g., 'local', 'docker'). Default is 'local'.
+
+        cont_image : str, optional
+            Container image to use. If None, uses the default for the specified container technology.
+
         """
         booldel = False
         self.filename = parc_file
@@ -101,10 +132,17 @@ class AnnotParcellation:
         self.path = os.path.dirname(self.filename)
         self.name = os.path.basename(self.filename)
 
+        # If annot_id is provided, use it as the name
+        if annot_id is not None:
+            self.id = annot_id
+        else:
+            # If annot_id is not provided, use the file name without extension
+            self.id = os.path.splitext(self.name)[0]
+
         # Detecting the hemisphere
         temp_name = self.name.lower()
         # Find in the string annot_name if it is lh. or rh.
-        hemi = detect_hemi(self.name)
+        hemi = detect_hemi(temp_name)
         self.hemi = hemi
 
         # If the file is a .gii file, then convert it to a .annot file
@@ -156,7 +194,7 @@ class AnnotParcellation:
         return self.codes is not None
 
     ####################################################################################################
-    def create_from_data(self, codes, regtable, regnames, hemi=None, filename=None):
+    def create_from_data(self, codes, regtable, regnames, annot_id, hemi="lh", filename=None):
         """
         Create parcellation from existing data arrays
 
@@ -170,6 +208,9 @@ class AnnotParcellation:
 
         regnames : list
             List of region names
+        
+        annot_id : str
+            Annotation ID for the parcellation
 
         hemi : str, optional
             Hemisphere ('lh' or 'rh')
@@ -177,6 +218,7 @@ class AnnotParcellation:
         filename : str, optional
             Associated filename
         """
+        self.id = annot_id
         self.codes = codes
         self.regtable = regtable
         self.regnames = regnames
@@ -4527,7 +4569,7 @@ def region_to_vertexwise(
 #####################################################################################################
 def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
     """
-    Create per-vertex RGB colors based on parcellation labels.
+    Create per-vertex RGBA colors based on parcellation labels.
 
     Assigns colors to vertices based on their parcellation region using
     the color table information.
@@ -4554,7 +4596,7 @@ def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarr
     >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 3)
     """
 
-    vertex_colors = np.ones((len(labels), 3), dtype=np.uint8) * 240  # Default gray
+    vertex_colors = np.ones((len(labels), 4), dtype=np.uint8) * 240  # Default gray
 
     for i, region_info in enumerate(reg_ctable):
         # Find vertices with this label
@@ -4562,7 +4604,7 @@ def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarr
 
         # Assign the region color (RGB from first 3 columns)
         if len(indices) > 0:
-            vertex_colors[indices, :3] = region_info[:3]
+            vertex_colors[indices, :4] = region_info[:4]
 
     return vertex_colors
 
