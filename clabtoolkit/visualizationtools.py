@@ -924,7 +924,7 @@ class SurfacePlotter:
             surface = surfaces[view_config["mesh"]]
             actor = plotter.add_mesh(
                 surface.mesh,
-                scalars="vertex_colors",
+                scalars="RGB",
                 rgb=True,
                 ambient=self.figure_conf["mesh_ambient"],
                 diffuse=self.figure_conf["mesh_diffuse"],
