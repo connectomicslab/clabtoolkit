@@ -1619,17 +1619,17 @@ class Surface:
                     vertex_values, self.colortables[overlay_name]["color_table"]
                 )
 
-        else:
-            vertex_colors = cltmisc.values2colors(
-                vertex_values,
-                cmap=cmap,
-                output_format="rgb",
-                vmin=vmin,
-                vmax=vmax,
-            )
+            else:
+                vertex_colors = cltmisc.values2colors(
+                    vertex_values,
+                    cmap=cmap,
+                    output_format="rgb",
+                    vmin=vmin,
+                    vmax=vmax,
+                )
 
-        self.mesh.point_data["RGB"] = vertex_colors
-        self.mesh.set_active_scalars("RGB")
+            self.mesh.point_data["RGB"] = vertex_colors
+            self.mesh.set_active_scalars("RGB")
 
     ##############################################################################################
     def merge_surfaces(self, surfaces: List["Surface"]) -> "Surface":
