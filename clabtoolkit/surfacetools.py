@@ -1602,13 +1602,13 @@ class Surface:
         else:
             # Set the active overlay
             self.set_active_overlay(overlay_name)
-        
+
         if overlay_dict[overlay_name] == "color":
-                    self.mesh.point_data["RGB"] = self.mesh.point_data[overlay_name]
-                    self.mesh.set_active_scalars("RGB")
-                    return
-        
-        else: 
+            self.mesh.point_data["RGB"] = self.mesh.point_data[overlay_name]
+            self.mesh.set_active_scalars("RGB")
+            return
+
+        else:
             # If no colormap is provided, use the default colormap for the overlay
             vertex_values = self.mesh.point_data[overlay_name]
             dict_ctables = self.colortables
