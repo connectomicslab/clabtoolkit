@@ -2257,7 +2257,7 @@ class SurfacePlotter:
         )
 
         # Apply colors to mesh data
-        surface.mesh.point_data["vertex_colors"] = vertex_colors
+        surface.mesh.point_data["RGB"] = vertex_colors
 
         # Determine rendering mode (save vs display)
         save_mode, use_off_screen, use_notebook = self._determine_render_mode(
@@ -2452,8 +2452,8 @@ class SurfacePlotter:
         )
 
         # Apply colors to mesh data
-        surf_lh.mesh.point_data["vertex_colors"] = vertex_colors_lh
-        surf_rh.mesh.point_data["vertex_colors"] = vertex_colors_rh
+        surf_lh.mesh.point_data["RGB"] = vertex_colors_lh
+        surf_rh.mesh.point_data["RGB"] = vertex_colors_rh
 
         # Create merged surface for colorbar data range
         surf_merged = surf_lh.merge_surfaces([surf_rh])
@@ -2818,8 +2818,8 @@ class SurfacePlotter:
             temp_surf_lh = copy.deepcopy(surf_lh)
             temp_surf_rh = copy.deepcopy(surf_rh)
 
-            temp_surf_lh.mesh.point_data["vertex_colors"] = vertex_colors_lh
-            temp_surf_rh.mesh.point_data["vertex_colors"] = vertex_colors_rh
+            temp_surf_lh.mesh.point_data["RGB"] = vertex_colors_lh
+            temp_surf_rh.mesh.point_data["RGB"] = vertex_colors_rh
 
             # Create merged surface for colorbar
             temp_surf_merged = temp_surf_lh.merge_surfaces([temp_surf_rh])
@@ -2991,7 +2991,9 @@ class SurfacePlotter:
         notebook: bool = False,
         map_names: str = "surface",
         colormap: str = "BrBG",
-        v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = None,
+        v_limits: Optional[
+            Union[Tuple[float, float], List[Tuple[float, float]]]
+        ] = None,
         save_path: Optional[str] = None,
         colorbar: bool = True,
         colorbar_title: str = "Value",
@@ -3042,19 +3044,20 @@ class SurfacePlotter:
 
         ValueError
             If invalid view names provided or data arrays not found.
-        
+
         Examples
         --------
         >>> # Basic usage with predefined configuration
         >>> plotter = SurfacePlotter("configs.json")
         >>> plotter.plot_surfaces_list(surfaces)
-        
+
         >>> # Dynamic view selection with list of view names
         >>> plotter.plot_surfaces_list(surfaces, views=["lateral", "medial", "dorsal"])
-        
-        >>> 
+
+        >>>
         """
         pass
+
 
 #####################################################################################################
 def get_screen_size() -> Tuple[int, int]:
