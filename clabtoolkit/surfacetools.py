@@ -603,265 +603,10 @@ class Surface:
         return self.mesh.point_data.get("Normals", None)
 
     ##############################################################################################
-    def load_maps_from_csv(
-        self,
-        map_file: str,
-        annot_file: Union[str, cltfree.AnnotParcellation] = None,
-        map_name: str = None,
-        cmap: str = "viridis",
-    ) -> None:
-        """
-        Load scalar data from CSV file onto surface for visualization.
-
-        Handles both vertex-wise data (one value per vertex) and region-wise data
-        (requires annotation for mapping to vertices).
-
-        Parameters
-        ----------
-        map_file : str
-            Path to CSV file containing scalar data.
-
-        annot_file : str or AnnotParcellation, optional
-            Annotation file/object for mapping region data to vertices.
-            Required if CSV has region-wise data. Default is None.
-
-        map_name : str, optional
-            Name for scalar data reference. If None, uses CSV column names.
-            Default is None.
-
-        cmap : str, optional
-            Colormap name for visualization. Default is 'viridis'.
-
-        Raises
-        ------
-        FileNotFoundError
-            If map file or annotation file cannot be found.
-        ValueError
-            If annot_file required but not provided or invalid type.
-
-        Examples
-        --------
-        >>> # Load vertex-wise data
-        >>> surface.load_maps_from_csv('vertex_thickness.csv')
-        >>>
-        >>> # Load region-wise data
-        >>> surface.load_maps_from_csv(
-        ...     'region_volumes.csv',
-        ...     annot_file='lh.aparc.annot'
-        ... )
-        """
-
-        if not os.path.isfile(map_file):
-            raise FileNotFoundError(f"Map file not found: {map_file}")
-
-        maps_df = cltmisc.smart_read_table(map_file)
-
-        # If the number oof rows of the dataframe is equal to the number of vertices, we can use it directly
-        if maps_df.shape[0] == self.mesh.n_points:
-            self.load_arrays_of_maps(maps_df)
-        else:
-            if annot_file is None:
-                raise ValueError(
-                    "annot_file must be provided if map_file does not match the number of vertices"
-                )
-            if not isinstance(annot_file, (str, cltfree.AnnotParcellation)):
-                raise ValueError(
-                    "annot_file must be a string or an AnnotParcellation object"
-                )
-            # If map_name is not provided, use the first column name from the DataFrame
-            if isinstance(annot_file, str):
-                # Check if the annotation file exists
-                if not os.path.isfile(annot_file):
-                    raise FileNotFoundError(f"Annotation file not found: {annot_file}")
-                else:
-                    # Create AnnotParcellation object to benefit from its processing and cleaning
-                    parc = cltfree.AnnotParcellation()
-                    parc.load_from_file(parc_file=annot_file)
-
-            elif isinstance(annot_file, cltfree.AnnotParcellation):
-                parc = copy.deepcopy(
-                    annot_file
-                )  # Use a copy to avoid modifying the original object
-
-            vertex_maps = parc.map_values(regional_values=maps_df, is_dataframe=True)
-            self.load_arrays_of_maps(
-                vertex_maps,
-                map_names=maps_df.columns.tolist() if map_name is None else map_name,
-            )
-
-    ##############################################################################################
-    def load_arrays_of_maps(
-        self,
-        maps_array: Union[str, np.ndarray, pd.DataFrame],
-        map_names: Union[str, List[str]] = None,
-        annot_file: Union[str, cltfree.AnnotParcellation] = None,
-    ) -> None:
-        """
-        Load scalar data arrays or DataFrames onto surface for visualization.
-
-        Supports single or multiple scalar maps with automatic format detection
-        and region-to-vertex mapping when needed.
-
-        Parameters
-        ----------
-        maps_array : str, np.ndarray, or pd.DataFrame
-            Scalar data as filename, array, or DataFrame. Can be 1D (single map)
-            or 2D (multiple maps).
-
-        map_names : str or list, optional
-            Names for scalar data. Auto-generated if None. Default is None.
-
-        annot_file : str or AnnotParcellation, optional
-            Annotation for mapping region data to vertices. Required if array
-            length doesn't match vertex count. Default is None.
-
-        Raises
-        ------
-        ValueError
-            If maps_array format invalid or map_names length mismatch.
-        FileNotFoundError
-            If file cannot be found.
-
-        Examples
-        --------
-        >>> # Single map as 1D array
-        >>> data = np.random.rand(surface.mesh.n_points)
-        >>> surface.load_arrays_of_maps(data, map_names='random')
-        >>>
-        >>> # Multiple maps from DataFrame
-        >>> df = pd.DataFrame({'thickness': thick_data, 'curv': curv_data})
-        >>> surface.load_arrays_of_maps(df)
-        """
-
-        if (
-            not isinstance(maps_array, str)
-            and not isinstance(maps_array, np.ndarray)
-            and not isinstance(maps_array, pd.DataFrame)
-        ):
-            raise ValueError(
-                "maps_array must be a filename, a numpy array or a pandas DataFrame"
-            )
-
-        if isinstance(maps_array, str):
-            # If maps_array is a string, assume it's a filename
-            if not os.path.isfile(maps_array):
-                raise FileNotFoundError(f"Map file not found: {maps_array}")
-
-            # Read the file into a DataFrame
-            maps_array = cltmisc.smart_read_table(maps_array)
-
-        if isinstance(maps_array, pd.DataFrame):
-            # Convert DataFrame to numpy array
-            map_names = maps_array.columns.tolist() if map_names is None else map_names
-            maps_array = maps_array.to_numpy()
-
-        # Check if maps_array has only one dimension if this is the case
-        if maps_array.ndim == 1:
-            maps_array = maps_array[:, np.newaxis]
-
-        if map_names is not None:
-            if isinstance(map_names, str):
-                map_names = [map_names]
-            elif not isinstance(map_names, list):
-                raise ValueError("map_names must be a string or a list of strings")
-
-            if len(map_names) != maps_array.shape[1]:
-                raise ValueError(
-                    "Length of map_names must match the number of columns in maps_array"
-                )
-        else:
-            # Generate default names if not provided
-            map_names = [f"map_{i}" for i in range(maps_array.shape[1])]
-
-        if maps_array.shape[0] == self.mesh.n_points:
-            # Store scalar data
-            for i, map_name in enumerate(map_names):
-
-                # Ensure the map data is a 1D array
-                map_data = maps_array[:, i]
-
-                # Store the map data in the mesh point data
-                self.mesh.point_data[map_name] = map_data
-
-        else:
-            if annot_file is None:
-                raise ValueError(
-                    "annot_file must be provided if maps_array does not match the number of vertices"
-                )
-            if not isinstance(annot_file, (str, cltfree.AnnotParcellation)):
-                raise ValueError(
-                    "annot_file must be a string or an AnnotParcellation object"
-                )
-
-            # If map_names is not provided, use the first column name from the DataFrame
-            if isinstance(annot_file, str):
-                # Check if the annotation file exists
-                if not os.path.isfile(annot_file):
-                    raise FileNotFoundError(f"Annotation file not found: {annot_file}")
-                else:
-                    parc = cltfree.AnnotParcellation()
-                    parc.load_from_file(parc_file=annot_file)
-
-            elif isinstance(annot_file, cltfree.AnnotParcellation):
-                parc = copy.deepcopy(annot_file)
-
-            vertex_maps = parc.map_values(
-                regional_values=maps_array, is_dataframe=False
-            )
-            for i, map_name in enumerate(map_names):
-                # Ensure the map data is a 1D array
-                map_data = vertex_maps[:, i]
-
-                # Store the map data in the mesh point data
-                self.mesh.point_data[map_name] = map_data
-
-    ##############################################################################################
-    def load_scalar_map(self, map_file: str, map_name: str) -> None:
-        """
-        Load FreeSurfer format scalar data onto surface.
-
-        Loads scalar files (.mgh, .mgz, .curv) and stores as vertex-wise values
-        for visualization and analysis.
-
-        Parameters
-        ----------
-        map_file : str
-            Path to FreeSurfer scalar file.
-
-        map_name : str
-            Name for scalar data reference and visualization.
-
-        Raises
-        ------
-        FileNotFoundError
-            If map file cannot be found.
-        ValueError
-            If map_name not string or data doesn't match surface dimensions.
-
-        Examples
-        --------
-        >>> # Load cortical thickness
-        >>> surface.load_scalar_map('lh.thickness.mgh', 'thickness')
-        >>>
-        >>> # Load curvature
-        >>> surface.load_scalar_map('lh.curv', 'curvature')
-        """
-
-        if not os.path.isfile(map_file):
-            raise FileNotFoundError(f"Map file not found: {map_file}")
-
-        if not isinstance(map_name, str):
-            raise ValueError("map_name must be a string")
-
-        # Read the map file
-        map_data = nib.freesurfer.read_morph_data(map_file)
-
-        # Store scalar data
-        self.mesh.point_data[map_name] = map_data
-
-    ##############################################################################################
     def load_annotation(
-        self, annot_input: Union[str, "AnnotParcellation"], parc_name: str
+        self,
+        annotation: Union[str, Path, cltfree.AnnotParcellation],
+        parc_name: str = None,
     ) -> None:
         """
         Load parcellation annotation onto surface for visualization.
@@ -871,7 +616,7 @@ class Surface:
 
         Parameters
         ----------
-        annot_input : str or AnnotParcellation
+        annotation : str , Path or AnnotParcellation
             Path to annotation file (.annot) or AnnotParcellation object.
 
         parc_name : str
@@ -881,6 +626,7 @@ class Surface:
         ------
         FileNotFoundError
             If annotation file cannot be found.
+
         ValueError
             If invalid input type or vertex count mismatch.
 
@@ -894,23 +640,29 @@ class Surface:
         >>> surface.load_annotation(annot, 'destrieux')
         """
 
+        if isinstance(annotation, Path):
+            annotation = str(annotation)
+
         # Handle different input types
-        if isinstance(annot_input, str):
+        if isinstance(annotation, str):
             # Input is a file path
-            if not os.path.isfile(annot_input):
-                raise FileNotFoundError(f"Annotation file not found: {annot_input}")
+            if not os.path.isfile(annotation):
+                raise FileNotFoundError(f"Annotation file not found: {annotation}")
 
             # Create AnnotParcellation object to benefit from its processing and cleaning
             annot_parc = cltfree.AnnotParcellation()
-            annot_parc.load_from_file(parc_file=annot_input)
+            annot_parc.load_from_file(parc_file=annotation, annot_id=parc_name)
 
         elif (
-            hasattr(annot_input, "codes")
-            and hasattr(annot_input, "regtable")
-            and hasattr(annot_input, "regnames")
+            hasattr(annotation, "codes")
+            and hasattr(annotation, "regtable")
+            and hasattr(annotation, "regnames")
         ):
             # Input is an AnnotParcellation object
-            annot_parc = annot_input
+            annot_parc = copy.deepcopy(annotation)
+            if parc_name is not None:
+                annot_parc.id = parc_name
+
         else:
             raise ValueError(
                 "annot_input must be either a file path (str) or an AnnotParcellation object"
@@ -926,6 +678,10 @@ class Surface:
             raise ValueError(
                 f"Number of vertices in annotation ({len(labels)}) does not match surface ({self.mesh.n_points})"
             )
+        # If parc_name is not provided, use the annot_id from AnnotParcellation
+
+        if parc_name is None:
+            parc_name = annot_parc.id
 
         # Store the parcellation data
         self._store_parcellation_data(labels, reg_ctable, reg_names, parc_name)
@@ -1010,6 +766,361 @@ class Surface:
         # based on how you want to create the PyVista LookupTable
         pass
 
+    ##############################################################################################
+    def _get_parcellation_data(
+        self, annotation: Union[str, Path, cltfree.AnnotParcellation]
+    ) -> cltfree.AnnotParcellation:
+        """
+        Load or retrieve parcellation data from annotation file or object.
+        Handles both file paths and AnnotParcellation objects, ensuring
+        consistent data retrieval for visualization and analysis.
+
+        Parameters
+        ----------
+        annotation : str, Path or AnnotParcellation
+            Path to annotation file (.annot) or AnnotParcellation object.
+
+        Returns
+        -------
+        cltfree.AnnotParcellation
+            AnnotParcellation object containing parcellation data.
+
+        Raises
+        ------
+        FileNotFoundError
+            If annotation file cannot be found and no colortable is available.
+
+        ValueError
+            If annotation input type is invalid or does not match expected formats.
+
+        Notes
+        -----
+        - If annotation is a file path, it checks for existence and loads the data.
+
+        - If annotation is an AnnotParcellation object, it returns a deep copy to avoid
+        modifying the original object.
+
+        - If the annotation file is not found, it attempts to load from colortables
+        if available.
+        - If no colortable is available, it raises a FileNotFoundError.
+
+        Examples
+        --------
+        >>> # Load from annotation file
+        >>> annot_parc = surface._get_parcellation_data('lh.aparc.annot')
+        >>>
+        """
+
+        if isinstance(annotation, Path):
+            annotation = str(annotation)
+
+        # If map_name is not provided, use the first column name from the DataFrame
+        if isinstance(annotation, str):
+            # Check if the annotation file exists
+            if not os.path.isfile(annotation) and annotation in self.mesh.point_data:
+                # If the annotation file is not found, try to load it from the colortables
+
+                # Extract the annotation data
+                maps_array = self.mesh.point_data[annotation]
+
+                # If there is a colortable for this map, use it
+                if annotation in self.colortables:
+                    ctable = self.colortables[annotation]["color_table"]
+                    struct_names = self.colortables[annotation]["struct_names"]
+
+                    # Create AnnotParcellation object from the data
+                    parc = cltfree.AnnotParcellation()
+                    parc.create_from_data(maps_array, ctable, struct_names)
+                else:
+                    raise FileNotFoundError(
+                        f"Annotation file not found: {annotation} and no colortable available"
+                    )
+
+            elif os.path.isfile(annotation):
+                # Create AnnotParcellation object to benefit from its processing and cleaning
+                parc = cltfree.AnnotParcellation()
+                parc.load_from_file(parc_file=annotation)
+            else:
+                raise FileNotFoundError(f"Annotation file not found: {annotation}")
+
+        elif isinstance(annotation, cltfree.AnnotParcellation):
+            parc = copy.deepcopy(
+                annotation
+            )  # Use a copy to avoid modifying the original object
+
+        return parc
+
+    ##############################################################################################
+    def load_scalar_maps(
+        self,
+        scalar_map: Union[str, Path, np.ndarray, pd.DataFrame],
+        annotation: Union[str, Path, cltfree.AnnotParcellation] = None,
+        maps_names: Union[str, List[str]] = None,
+    ) -> None:
+        """
+        Load data from a FreeSurfer vertex-wise map, a numpy array, a CSV file or
+        pandas Dataframe onto surface for visualization.
+
+        Handles both vertex-wise data (one value per vertex) and region-wise data
+        (requires annotation for mapping to vertices). It is important that the CSV file
+        has a header row with column names because the first row is used to name the maps.
+
+        If it contains region-wise data then the Annotation file is mandatory.
+
+        Parameters
+        ----------
+        scalar_map : str, Path, pd.DataFrame
+            Path to a FreeSurfer vertex-wise map file, a CSV file, a numpy array or a
+            pandas DataFrame.
+
+        annotation : str, Path or AnnotParcellation, optional
+            Annotation file/object for mapping region data to vertices.
+            Required if the Dataframe has region-wise data. Default is None.
+
+        maps_names : str or list, optional
+            Names for scalar data. If None, uses column names from CSV.
+            Default is None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If map file or annotation file cannot be found.
+
+        ValueError
+            If annot_file required but not provided or invalid type.
+
+        ValueError
+            If maps_names length does not match number of columns in CSV.
+
+        Notes
+        -----
+        Automatically detects if the array, the CSV or the array contains vertex-wise
+        or region-wise data based on the number of rows. If the number of rows matches
+        the number of vertices in the mesh, it is treated as vertex-wise data.
+        Otherwise, it is treated as region-wise data and requires an annotation file to
+        map region values to vertices.
+
+        The annotation can be provided as a file path, a string or as an AnnotParcellation object.
+        If the annotation file is not found, it will try to load it from the colortables
+        associated with the surface.
+
+        If maps_names is not provided, it uses the column names from the CSV file.
+        If the annotation is provided as a string, it will try to load it as an AnnotParcellation
+        object. If it is provided as an AnnotParcellation object, it will use it directly.
+
+
+        Examples
+        --------
+        >>> surf_lh = cltsurf.Surface("/opt/freesurfer/subjects/fsaverage/surf/lh.pial")
+
+        >>> # Example 1: Reading a region-wise map from a CSV file and selecting a specific column name
+        >>> print("Example 1: Reading a region-wise map from a CSV file with a specific column name")
+        >>> surf_lh.load_maps_scalar_maps("/tmp/values.csv",
+                                        annotation="/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot",
+                                        maps_names="region_index")
+
+        >>> print("Loaded maps from CSV file for an specific column name:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+
+        >>> # Example 2: Reading a region-wise map from a dataframe and selecting a column with specified name
+        >>> import pandas as pd
+        >>> values_df = pd.read_csv("/tmp/values.csv")
+        >>> print("Example 2: Reading a region-wise map from a DataFrame with specified names")
+        >>> surf_lh.load_maps_scalar_maps(values_df,
+                                        annotation="/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot",
+                                        maps_names=["value"])
+
+        >>> print(" Loaded maps from DataFrame with specified names:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+
+        >>> # Example 3: Reading a region-wise map from a numpy array without specifiying names
+        >>> import pandas as pd
+        >>> print("Example 3: Reading a region-wise map from a numpy array without specifying names")
+        >>> values_df = pd.read_csv("/tmp/values.csv")
+        >>> surf_lh.load_maps_scalar_maps(values_df.to_numpy(),
+                                        annotation="/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot")
+
+        >>> print("Loaded maps from numpy array without specifying names:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+
+        >>> ######### Creating a csv with values as the number of vertices
+        >>> import pandas as pd
+        >>> n_points = surf_lh.mesh.n_points
+        >>> values_df = pd.DataFrame({'vertex_index': np.arange(n_points), 'vertex_value': np.random.rand(n_points)})
+
+        >>> values_df.to_csv("/tmp/values-vertexwise.csv", index=False)
+
+        >>> # Example 4: Loading vertex-wise maps from a CSV file
+        >>> print("Example 4: Loading vertex-wise maps from a CSV file")
+        >>> surf_lh.load_maps_scalar_maps("/tmp/values-vertexwise.csv"
+                                        )
+        >>> print("Loaded vertex-wise maps from CSV file:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+
+        >>> # Example 5: Reading a region-wise map from a numpy array and an specified name
+        >>> print("Example 5: Reading a region-wise map from a numpy array with specified names")
+        >>> import numpy as np
+        >>> values_array = np.random.rand(n_points)
+        >>> surf_lh.load_maps_scalar_maps(values_array,
+                                        maps_names=["ex5_vertex_value_array"])
+        >>> print("Loaded vertex-wise maps from numpy array:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+
+        >>> # Example 6: Creating a numpy array without specifying names
+        >>> values_array = np.random.rand(n_points)
+        >>> print("Example 6: Creating a numpy array with values as the number of vertices without specifying names")
+        >>> surf_lh.load_maps_scalar_maps(values_array)
+        >>> print("Loaded vertex-wise maps from numpy array without specifying names:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+
+        >>> # Example 7: Reading a FreeSurfer map file
+        >>> print("Example 7: Reading a FreeSurfer map file")
+        >>> surf_lh.load_maps_scalar_maps("/opt/freesurfer/subjects/fsaverage/surf/lh.thickness",
+                                        maps_names=["cthickness"])
+        >>> print("Loaded vertex-wise maps from FreeSurfer map file:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+
+        >>> # Example 8: Reading multiple FreeSurfer map files
+        >>> print("Example 8: Reading multiple FreeSurfer map files specifying names")
+        >>> list_of_maps = [
+            "/opt/freesurfer/subjects/fsaverage/surf/lh.thickness",
+            "/opt/freesurfer/subjects/fsaverage/surf/lh.curv",
+            "/opt/freesurfer/subjects/fsaverage/surf/lh.sulc"]
+
+        >>> maps_names = ["thickness", "curvature", "sulc"]
+
+        >>> for i, map_file in enumerate(list_of_maps):
+            surf_lh.load_maps_scalar_maps(map_file, maps_names=maps_names[i])
+        >>> print("Loaded vertex-wise maps from FreeSurfer map files:")
+        >>> print(surf_lh.list_overlays())
+        >>> print("")
+        """
+
+        if maps_names is not None:
+            if isinstance(maps_names, str):
+                maps_names = [maps_names]
+
+        # Load the scalar map based on its type
+        try:
+            if isinstance(scalar_map, pd.DataFrame):
+                # If map_file is a DataFrame, use it directly
+                maps_df = copy.deepcopy(scalar_map)
+
+                # Filter the columns that that are equal to the maps_names if maps_names is provided
+                if maps_names is not None:
+                    maps_df = maps_df[maps_names]
+
+            elif isinstance(scalar_map, np.ndarray):
+
+                if scalar_map.ndim == 1:
+                    # If it is a row vector convert it to a column vector
+                    # If scalar_map is a 1D numpy array, convert it to a 2D array
+                    scalar_map = scalar_map[:, np.newaxis]
+
+                # If the maps names are not provided, create default names
+                if maps_names is None:
+                    # Create default names for the maps
+                    tmp_names = [f"map_{i}" for i in range(scalar_map.shape[1])]
+                    maps_df = pd.DataFrame(scalar_map, columns=tmp_names)
+                else:
+                    if len(maps_names) != scalar_map.shape[1]:
+                        raise ValueError(
+                            "Length of maps_names must match the number of columns in the numpy array"
+                        )
+                    # If scalar_map is a numpy array, convert it to a DataFrame
+                    maps_df = pd.DataFrame(scalar_map, columns=maps_names)
+
+            else:
+                if isinstance(scalar_map, Path):
+                    scalar_map = str(scalar_map)
+
+                if not os.path.isfile(scalar_map):
+                    raise FileNotFoundError(f"Map file not found: {scalar_map}")
+
+                # Read the map file into a DataFrame
+                maps_df = cltmisc.smart_read_table(scalar_map)
+                if maps_names is not None:
+                    maps_df = maps_df[maps_names]
+
+            if annotation is not None:
+                if isinstance(annotation, Path):
+                    annotation = str(annotation)
+
+                if not isinstance(annotation, (str, cltfree.AnnotParcellation)):
+                    raise ValueError(
+                        "annotation must be a string or an AnnotParcellation object"
+                    )
+
+            if maps_names is not None:
+                if isinstance(maps_names, str):
+                    maps_names = [maps_names]
+
+                elif not isinstance(maps_names, list):
+                    raise ValueError("maps_names must be a string or a list of strings")
+
+                if len(maps_names) != maps_df.shape[1]:
+                    raise ValueError(
+                        "Length of maps_names must match the number of columns in the DataFrame"
+                    )
+
+            else:
+                # If maps_names is not provided, use the column names from the DataFrame
+                maps_names = maps_df.columns.tolist()
+
+            # If the number of rows of the dataframe is equal to the number of vertices, we can use it directly
+            if maps_df.shape[0] == self.mesh.n_points:
+                vertex_maps = maps_df.to_numpy()
+            else:
+                if annotation is None:
+                    raise ValueError(
+                        "annotation must be provided if map_file does not match the number of vertices"
+                    )
+                # Extracting the parcellation data
+                parc = self._get_parcellation_data(annotation)
+
+                vertex_maps = parc.map_values(
+                    regional_values=maps_df, is_dataframe=True
+                ).to_numpy()
+
+            for i, map_name in enumerate(maps_names):
+                # Ensure the map data is a 1D array
+                map_data = vertex_maps[:, i]
+
+                # Store the map data in the mesh point data
+                self.mesh.point_data[map_name] = map_data
+
+        except:
+            if isinstance(scalar_map, (str, Path)):
+                if not os.path.isfile(scalar_map):
+                    raise FileNotFoundError(f"Map file not found: {scalar_map}")
+
+                # Read the map file
+                tmp_map = nib.freesurfer.read_morph_data(str(scalar_map))
+
+                if tmp_map.shape[0] == self.mesh.n_points:
+                    if maps_names is None:
+                        # If maps_names is not provided, use the file name as the map name
+                        map_name = os.path.splitext(os.path.basename(scalar_map))[0]
+                    else:
+                        if len(maps_names) != 1:
+                            raise ValueError(
+                                "maps_names must be a single string or a list with one name"
+                            )
+
+                        self.mesh.point_data[maps_names[0]] = tmp_map
+
+                else:
+                    raise ValueError(
+                        f"Map file {scalar_map} does not match the number of vertices"
+                    )
+
     ###############################################################################################
     def list_overlays(self) -> Dict[str, str]:
         """
@@ -1059,7 +1170,12 @@ class Surface:
         for key in self.mesh.point_data.keys():
             tmp = self.mesh.point_data[key]
             if isinstance(tmp, np.ndarray) and tmp.ndim == 1:
-                overlays[key] = "scalar"
+
+                # If it's a 1D array, but has a color table, treat it as scalar with colortable
+                if key in self.colortables:
+                    overlays[key] = "scalar_with_colortable"
+                else:
+                    overlays[key] = "scalar"
 
             elif isinstance(tmp, np.ndarray) and tmp.ndim == 2:
                 if tmp.shape[1] == 3:
