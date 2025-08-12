@@ -96,7 +96,7 @@
                     {"subplot": [5, 0], "title": "RH: Medial view", "mesh": "rh", "view": "yz", "azimuth": 180, "elevation": 0, "zoom": 1}
             ]
         },
-        "4_views_2x2": {
+        "4_views": {
             "shape": [2, 2],
             "window_size": [900, 768],
             "views": [
