@@ -4,6 +4,7 @@ import uuid
 
 from typing import Union, Dict, List, Tuple, Set, Any, Optional
 
+
 import shlex
 import os
 import argparse
@@ -237,6 +238,157 @@ def is_color_like(color) -> bool:
     return mpl_is_color_like(color)
 
 
+#####################################################################################################
+def detect_rgb_range(rgb: Any) -> str:
+    """
+    Detect if an RGB array uses 0-255 or 0-1 range.
+
+    This function analyzes RGB color values to determine whether they follow
+    the 0-255 integer format (8-bit) or the 0-1 float format (normalized).
+
+    Parameters
+    ----------
+    rgb : Any
+        RGB color array/list containing 3 numeric values [R, G, B].
+        Expected formats: [255, 128, 0] or [1.0, 0.5, 0.0]
+
+    Returns
+    -------
+    str
+        - "0-255" if any value is greater than 1
+        - "0-1" if all values are between 0 and 1 (inclusive)
+        - "invalid" if input is malformed or values are outside valid ranges
+
+    Raises
+    ------
+    None
+        This function does not raise any exceptions. Invalid inputs
+        return "invalid" instead of raising errors.
+
+    Examples
+    --------
+    >>> detect_rgb_range([255, 128, 0])
+    '0-255'
+    >>> detect_rgb_range([1.0, 0.5, 0.0])
+    '0-1'
+    >>> detect_rgb_range([0, 1, 0])
+    '0-1'
+    >>> detect_rgb_range([255, 0.5, 128])
+    'invalid'
+    >>> detect_rgb_range([300, 200, 100])
+    'invalid'
+    >>> detect_rgb_range([0.0, 0.0, 0.0])
+    '0-1'
+    >>> detect_rgb_range([255, 255, 255])
+    '0-255'
+    >>> detect_rgb_range([2, 1, 0])
+    '0-255'
+    >>> detect_rgb_range("not_a_list")
+    'invalid'
+    >>> detect_rgb_range([255, 128])
+    'invalid'
+
+    Notes
+    -----
+    - Expects exactly 3 numeric values (R, G, B)
+    - Any value greater than 1 classifies the array as "0-255" range
+    - All values between 0-1 (inclusive) classify the array as "0-1" range
+    - Combinations like [0, 1, 0] are treated as "0-1" range
+    - Mixed ranges (e.g., [255, 0.5, 128]) are considered invalid
+    - Out-of-range values (negative or > 255) result in "invalid" classification
+    """
+    # Validate input format
+    if not isinstance(rgb, (list, tuple)) or len(rgb) != 3:
+        return "invalid"
+
+    # Check if all values are numeric
+    try:
+        values = [float(val) for val in rgb]
+    except (ValueError, TypeError):
+        return "invalid"
+
+    # Check if all values are in 0-1 range
+    in_zero_one = all(0.0 <= val <= 1.0 for val in values)
+
+    # Check if all values are in 0-255 range
+    in_zero_255 = all(0 <= val <= 255 for val in values)
+
+    # Determine range based on values
+    if not in_zero_one and not in_zero_255:
+        return "invalid"
+
+    # If any value > 1, it's definitely 0-255 range
+    if any(val > 1 for val in values):
+        return "0-255"
+
+    # If all values <= 1, treat as 0-1 range
+    # (This includes combinations of 0 and 1)
+    return "0-1"
+
+
+#####################################################################################################
+def is_valid_rgb_255(rgb: Any) -> bool:
+    """
+    Check if RGB array contains valid 0-255 range values.
+
+    Parameters
+    ----------
+    rgb : Any
+        RGB color array/list to validate
+
+    Returns
+    -------
+    bool
+        True if all values are in 0-255 range, False otherwise
+    """
+    return detect_rgb_range(rgb) == "0-255"
+
+
+#####################################################################################################
+def is_valid_rgb_01(rgb: Any) -> bool:
+    """
+    Check if RGB array contains valid 0-1 range values.
+
+    Parameters
+    ----------
+    rgb : Any
+        RGB color array/list to validate
+
+    Returns
+    -------
+    bool
+        True if all values are in 0-1 range, False otherwise
+    """
+    return detect_rgb_range(rgb) == "0-1"
+
+
+#####################################################################################################
+def normalize_rgb(rgb: Any) -> Union[List[float], None]:
+    """
+    Convert RGB array to 0-1 range regardless of input format.
+
+    Parameters
+    ----------
+    rgb : Any
+        RGB color array in either 0-255 or 0-1 format
+
+    Returns
+    -------
+    List[float] or None
+        RGB values normalized to 0-1 range, or None if invalid input
+    """
+    range_type = detect_rgb_range(rgb)
+
+    if range_type == "invalid":
+        return None
+    elif range_type == "0-255":
+        return [val / 255.0 for val in rgb]
+    elif range_type == "0-1":
+        return [float(val) for val in rgb]
+    else:
+        return None
+
+
 ####################################################################################################
 def rgb2hex(r: Union[int, float], g: Union[int, float], b: Union[int, float]) -> str:
     """
@@ -331,59 +483,60 @@ def multi_rgb2hex(
 
     return hexcodes
 
+
 #######################################################################################################
 def is_valid_hex_color(hex_color):
     """
     Strict validation that requires # prefix and only allows 6-digit format.
-    
+
     This function validates hexadecimal color codes using a strict format that
     requires exactly 6 hexadecimal digits preceded by a hash (#) symbol.
-    
+
     Parameters
     ----------
     hex_color : str
         The hex color string to validate. Must be in the format #RRGGBB
         where R, G, B are hexadecimal digits (0-9, A-F, a-f).
-    
+
     Returns
     -------
     bool
         True if the input is a valid 6-digit hex color with # prefix,
         False otherwise.
-    
+
     Raises
     ------
     None
         This function does not raise any exceptions. Invalid inputs
         return False instead of raising errors.
-    
+
     Examples
     --------
-    >>> is_valid_hex_color_strict("#FF0000")
+    >>> is_valid_hex_color("#FF0000")
     True
-    >>> is_valid_hex_color_strict("#00FF00")
+    >>> is_valid_hex_color("#00FF00")
     True
-    >>> is_valid_hex_color_strict("#0000FF")
+    >>> is_valid_hex_color("#0000FF")
     True
-    >>> is_valid_hex_color_strict("#ffffff")
+    >>> is_valid_hex_color("#ffffff")
     True
-    >>> is_valid_hex_color_strict("#ABC123")
+    >>> is_valid_hex_color("#ABC123")
     True
     >>> is_valid_hex_color_strict("#FFF")
     False
-    >>> is_valid_hex_color_strict("FF0000")
+    >>> is_valid_hex_color("FF0000")
     False
-    >>> is_valid_hex_color_strict("#GG0000")
+    >>> is_valid_hex_color("#GG0000")
     False
-    >>> is_valid_hex_color_strict("#FF0000FF")
+    >>> is_valid_hex_color("#FF0000FF")
     False
-    >>> is_valid_hex_color_strict("")
+    >>> is_valid_hex_color("")
     False
-    >>> is_valid_hex_color_strict(None)
+    >>> is_valid_hex_color(None)
     False
-    >>> is_valid_hex_color_strict(123)
+    >>> is_valid_hex_color(123)
     False
-    
+
     Notes
     -----
     - Only accepts 6-digit hexadecimal format (e.g., #RRGGBB)
@@ -395,9 +548,10 @@ def is_valid_hex_color(hex_color):
     """
     if not isinstance(hex_color, str):
         return False
-        
-    pattern = r'^#[0-9A-Fa-f]{6}$'
+
+    pattern = r"^#[0-9A-Fa-f]{6}$"
     return bool(re.match(pattern, hex_color))
+
 
 ####################################################################################################
 def hex2rgb(hexcode: str) -> tuple:
@@ -2687,6 +2841,7 @@ def correct_names(
 
     return regnames
 
+
 #####################################################################################################
 def get_real_basename(file_name: str) -> str:
     """
@@ -2720,6 +2875,7 @@ def get_real_basename(file_name: str) -> str:
         file_basename = file_basename.rsplit(".", 1)[0]
 
     return file_basename
+
 
 ####################################################################################################
 ####################################################################################################
@@ -3602,48 +3758,7 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
         print(f"Error: {e}")
         raise
 
-######################################################################################################
-def save_morphometry_hdf5(filename: str, base_cad: str, df_to_save: pd.DataFrame, 
-                        mode: str = "a", 
-                        complevel: int = 9, 
-                        complib: str = "blosc"):
-    """
-    Save the a DataFrame to an HDF5 file under `{base_cad}`.
 
-    Parameters
-    ----------
-    filename : str
-        Path to the HDF5 file.
-
-    base_cad : str
-        Base path inside the HDF5 hierarchy (e.g., 'subject1/session1').
-
-    morphometry : pd.DataFrame
-        DataFrame to store.
-
-    mode : str
-        File mode: 'a' (append), 'w' (overwrite), etc.
-
-    complevel : int
-        Compression level (0–9).
-
-    complib : str
-        Compression library ('zlib', 'bzip2', 'blosc').
-
-    """
-    key_path = f"{base_cad}/morphometry"
-    with pd.HDFStore(filename, mode=mode, complevel=complevel, complib=complib) as store:
-        store.put(key_path, df_to_save, format="table")
-
-######################################################################################################
-def load_morphometry_hdf5(filename: str, base_cad: str) -> pd.DataFrame:
-    """
-    Load the DataFrame from `{base_cad}` in the HDF5 file.
-    """
-    key_path = f"{base_cad}"
-    with pd.HDFStore(filename, mode="r") as store:
-        return store[key_path]
-    
 #####################################################################################################
 def show_object_content(obj, show_private=False, show_dunder=False):
     """
