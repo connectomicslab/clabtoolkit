@@ -331,6 +331,73 @@ def multi_rgb2hex(
 
     return hexcodes
 
+#######################################################################################################
+def is_valid_hex_color_strict(hex_color):
+    """
+    Strict validation that requires # prefix and only allows 6-digit format.
+    
+    This function validates hexadecimal color codes using a strict format that
+    requires exactly 6 hexadecimal digits preceded by a hash (#) symbol.
+    
+    Parameters
+    ----------
+    hex_color : str
+        The hex color string to validate. Must be in the format #RRGGBB
+        where R, G, B are hexadecimal digits (0-9, A-F, a-f).
+    
+    Returns
+    -------
+    bool
+        True if the input is a valid 6-digit hex color with # prefix,
+        False otherwise.
+    
+    Raises
+    ------
+    None
+        This function does not raise any exceptions. Invalid inputs
+        return False instead of raising errors.
+    
+    Examples
+    --------
+    >>> is_valid_hex_color_strict("#FF0000")
+    True
+    >>> is_valid_hex_color_strict("#00FF00")
+    True
+    >>> is_valid_hex_color_strict("#0000FF")
+    True
+    >>> is_valid_hex_color_strict("#ffffff")
+    True
+    >>> is_valid_hex_color_strict("#ABC123")
+    True
+    >>> is_valid_hex_color_strict("#FFF")
+    False
+    >>> is_valid_hex_color_strict("FF0000")
+    False
+    >>> is_valid_hex_color_strict("#GG0000")
+    False
+    >>> is_valid_hex_color_strict("#FF0000FF")
+    False
+    >>> is_valid_hex_color_strict("")
+    False
+    >>> is_valid_hex_color_strict(None)
+    False
+    >>> is_valid_hex_color_strict(123)
+    False
+    
+    Notes
+    -----
+    - Only accepts 6-digit hexadecimal format (e.g., #RRGGBB)
+    - Requires the # prefix
+    - Case-insensitive for hex digits (A-F or a-f)
+    - Does not accept 3-digit shorthand (e.g., #FFF)
+    - Does not accept 8-digit format with alpha channel
+    - Non-string inputs return False
+    """
+    if not isinstance(hex_color, str):
+        return False
+        
+    pattern = r'^#[0-9A-Fa-f]{6}$'
+    return bool(re.match(pattern, hex_color))
 
 ####################################################################################################
 def hex2rgb(hexcode: str) -> tuple:
