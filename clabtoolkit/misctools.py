@@ -332,7 +332,7 @@ def multi_rgb2hex(
     return hexcodes
 
 #######################################################################################################
-def is_valid_hex_color_strict(hex_color):
+def is_valid_hex_color(hex_color):
     """
     Strict validation that requires # prefix and only allows 6-digit format.
     
