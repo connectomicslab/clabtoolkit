@@ -519,6 +519,206 @@ class Surface:
             :, 1:4
         ]  # Skip the first column (n_vertices)
         return faces
+    
+    ###############################################################################################
+    def get_edges(self, return_counts: bool = False) -> np.ndarray:
+        """
+        Extract unique edges from a triangular mesh using vectorized operations.
+        
+        This function efficiently extracts all unique edges from a triangular mesh
+        represented as a faces array. Each triangle contributes three edges, and 
+        the function automatically removes duplicates that occur when triangles 
+        share edges.
+        
+        Parameters
+        ----------
+        faces : np.ndarray of shape (n_faces, 3)
+            Array where each row represents a triangular face defined by three 
+            vertex indices. Vertex indices should be non-negative integers.
+            
+        return_counts : bool, optional
+            If True, also return the count of how many faces each edge belongs to.
+            This is useful for identifying boundary edges (count=1) vs interior 
+            edges (count=2). Default is False.
+        
+        Returns
+        -------
+        edges : np.ndarray of shape (n_edges, 2)
+            Array of unique edges where each row contains two vertex indices
+            [v1, v2] with v1 <= v2. Edges are sorted lexicographically.
+            
+        counts : np.ndarray of shape (n_edges,), optional
+            Number of faces that contain each edge. Only returned if 
+            return_counts=True. Boundary edges have count=1, interior edges 
+            have count=2.
+        
+        Raises
+        ------
+        ValueError
+            If faces array does not have exactly 3 columns (not triangular).
+            If faces array is empty.
+            If faces array contains negative indices.
+        
+        Examples
+        --------
+        >>> # Simple triangular mesh with 2 triangles sharing an edge
+        >>> faces = np.array([[0, 1, 2], [1, 3, 2]])
+        >>> edges = get_edges(faces)
+        >>> print(edges)
+        [[0 1]
+        [0 2]
+        [1 2]
+        [1 3]
+        [2 3]]
+        
+        >>> # Get edge counts to identify boundary vs interior edges
+        >>> edges, counts = get_edges(faces, return_counts=True)
+        >>> boundary_edges = edges[counts == 1]
+        >>> interior_edges = edges[counts == 2]
+        >>> print("Boundary edges:", boundary_edges)
+        >>> print("Interior edges:", interior_edges)
+        Boundary edges: [[0 1]
+                        [0 2]
+                        [1 3]
+                        [2 3]]
+        Interior edges: [[1 2]]
+        
+        >>> # Cube mesh (8 vertices, 12 triangular faces)
+        >>> cube_faces = np.array([
+        ...     [0, 1, 2], [0, 2, 3],  # Bottom face
+        ...     [4, 5, 6], [4, 6, 7],  # Top face  
+        ...     [0, 1, 5], [0, 5, 4],  # Front face
+        ...     [2, 3, 7], [2, 7, 6],  # Back face
+        ...     [0, 3, 7], [0, 7, 4],  # Left face
+        ...     [1, 2, 6], [1, 6, 5]   # Right face
+        ... ])
+        >>> edges = get_edges(cube_faces)
+        >>> print(f"Cube has {len(edges)} unique edges")
+        Cube has 18 unique edges
+        
+        Notes
+        -----
+        This function uses vectorized NumPy operations for high performance on 
+        large meshes. The algorithm:
+        
+        1. Extracts all three edges from each triangle simultaneously
+        2. Sorts vertex pairs to canonical form (smaller index first)
+        3. Uses numpy.unique to efficiently remove duplicates
+        
+        Time complexity: O(n log n) where n is the number of faces
+        Space complexity: O(n) for intermediate arrays
+        
+        For non-triangular meshes, use the general `extract_edges_from_faces` 
+        function instead.
+        
+        The canonical edge representation ensures that edge (i, j) and edge (j, i)
+        are treated as the same edge, with the final representation always having
+        the smaller vertex index first.
+        
+        See Also
+        --------
+        extract_edges_from_faces : General version for arbitrary polygon meshes
+        numpy.unique : Used internally for deduplication
+        """
+
+        # Getting the faces array from the mesh
+        faces = self.mesh.faces[:, 1:4]  # Extract only the vertex indices, skip the first column
+
+        # Input validation
+        if faces.size == 0:
+            raise ValueError("Faces array cannot be empty")
+            
+        if faces.ndim != 2 or faces.shape[1] != 3:
+            raise ValueError(f"Faces array must have shape (n_faces, 3), got {faces.shape}")
+            
+        if np.any(faces < 0):
+            raise ValueError("Faces array cannot contain negative vertex indices")
+        
+        # Extract all edges from all triangles using vectorized operations
+        # Each triangle contributes 3 edges: (v0,v1), (v1,v2), (v2,v0)
+        all_edges = np.concatenate([
+            faces[:, [0, 1]],  # Edge from vertex 0 to vertex 1
+            faces[:, [1, 2]],  # Edge from vertex 1 to vertex 2  
+            faces[:, [2, 0]]   # Edge from vertex 2 to vertex 0
+        ], axis=0)
+        
+        # Sort each edge to canonical form (smaller vertex index first)
+        # This ensures (i,j) and (j,i) are treated as the same edge
+        canonical_edges = np.sort(all_edges, axis=1)
+        
+        # Remove duplicate edges and optionally count occurrences
+        if return_counts:
+            unique_edges, counts = np.unique(canonical_edges, axis=0, return_counts=True)
+            return unique_edges, counts
+        else:
+            unique_edges = np.unique(canonical_edges, axis=0)
+            return unique_edges
+
+    ###############################################################################################
+    def get_boundary_edges(self) -> np.ndarray:
+        """
+        Extract only the boundary edges from a triangular mesh.
+        
+        Boundary edges are those that belong to only one triangle, indicating
+        the mesh boundary or holes in the mesh.
+        
+        Parameters
+        ----------
+        faces : np.ndarray of shape (n_faces, 3)
+            Triangular mesh faces array.
+            
+        Returns
+        -------
+        boundary_edges : np.ndarray of shape (n_boundary_edges, 2)
+            Array of boundary edges where each edge belongs to only one face.
+            
+        Examples
+        --------
+        >>> # Mesh with a hole (incomplete sphere)
+        >>> faces = np.array([[0, 1, 2], [1, 3, 2], [3, 4, 2]])
+        >>> boundary = get_boundary_edges(faces)
+        >>> print("Boundary edges:", boundary)
+        """
+
+
+        # Getting the faces array from the mesh
+        faces = self.mesh.faces[:, 1:4]  # Extract only the vertex indices, skip the first column
+
+        edges, counts = self.get_edges(faces, return_counts=True)
+        return edges[counts == 1]
+
+    ###############################################################################################
+    def get_manifold_edges(self) -> np.ndarray:
+        """
+        Extract only the manifold (interior) edges from a triangular mesh.
+        
+        Manifold edges are those shared by exactly two triangles, indicating
+        proper mesh topology without boundaries or non-manifold geometry.
+        
+        Parameters
+        ----------
+        faces : np.ndarray of shape (n_faces, 3)
+            Triangular mesh faces array.
+            
+        Returns
+        -------
+        manifold_edges : np.ndarray of shape (n_manifold_edges, 2)
+            Array of manifold edges where each edge belongs to exactly two faces.
+            
+        Examples
+        --------
+        >>> # Closed mesh (tetrahedron)
+        >>> faces = np.array([[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 2, 3]])
+        >>> manifold = get_manifold_edges(faces)
+        >>> print("Manifold edges:", manifold)
+        """
+        # Getting the faces array from the mesh
+        faces = self.mesh.faces[:, 1:4]  # Extract only the vertex indices
+
+
+        edges, counts = self.get_edges(faces, return_counts=True)
+        return edges[counts == 2]
+
 
     ##############################################################################################
     def compute_normals(self) -> None:
