@@ -706,7 +706,7 @@ def invert_colors(
 
 ####################################################################################################
 def harmonize_colors(
-    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+    colors: Union[str, List[Union[str, list, np.ndarray]], np.ndarray],
     output_format: str = "hex",
 ) -> Union[List[str], List[np.ndarray]]:
     """
@@ -747,6 +747,11 @@ def harmonize_colors(
     array([1.        , 0.34117647, 0.2       ]),
     array([0.2       , 0.34117647, 1.        ])]
     """
+
+    if isinstance(colors, str):
+        # Single color string input, convert to list for processing
+        colors = [colors]
+
     if not isinstance(colors, (list, np.ndarray)):
         raise TypeError("Input must be a list or numpy array")
 
