@@ -1527,6 +1527,115 @@ class Surface:
             return regions
 
     ##############################################################################################
+    def get_vertexwise_colors(
+        self,
+        overlay_name: str = "surface",
+        colormap: str = "viridis",
+        vmin: np.float64 = None,
+        vmax: np.float64 = None,
+    ) -> None:
+        """
+        Compute vertices colors for visualization based on the specified overlay.
+
+        This method processes the overlay data and creates appropiate vertices colors
+        for visualization, handling both scalar data (with colormaps) and
+        categorical data (with discrete color tables).
+
+        Parameters
+        ----------
+        overlay_name : str, optional
+            Name of the overlay to visualize. If None, the first available overlay is used.
+
+        colormap : str, optional
+            Colormap to use for scalar overlays. If None, uses parcellation color table
+            for categorical data or 'viridis' for scalar data.
+
+        vmin : np.float64, optional
+            Minimum value for scaling the colormap. If None, uses the minimum value of the overlay
+
+        vmax : np.float64, optional
+            Maximum value for scaling the colormap. If None, uses the maximum value of the overlay
+        If both vmin and vmax are None, the colormap will be applied to the full range of the overlay values.
+        If both are provided, they will be used to scale the colormap.
+
+        Returns
+        -------
+        vertices_colors : np.ndarray
+            Array of RGBA colors for each vertex in the mesh.
+
+        Raises
+        ------
+        ValueError
+            If the specified overlay is not found in the mesh point data
+
+        ValueError
+            If no overlays are available
+
+        Notes
+        -----
+        This method sets the vertices colors based on the specified overlay.
+        
+
+        Examples
+        --------
+        >>> # Prepare colors for a parcellation (uses discrete colors)
+        >>> surface.get_vertexwise_colors(overlay_name="aparc")
+        >>>
+        >>> # Prepare colors for scalar data with custom colormap
+        >>> surface.get_vertexwise_colors(overlay_name="thickness", colormap="hot")
+        >>>
+        >>> # Prepare colors for the surface overlay
+        >>> surface.get_vertexwise_colors()
+        """
+
+        # Get the list of overlays
+        overlay_dict = self.list_overlays()
+
+        # If the dictionary is empty
+        overlays = list(overlay_dict.keys())
+        if overlay_name is None:
+            overlay_name = overlays[0] if overlay_dict else None
+
+        if overlay_name not in overlays:
+            raise ValueError(
+                f"Overlay '{overlay_name}' not found. Available overlays: {', '.join(overlays)}"
+            )
+
+        # Getting the values of the overlay
+        vertex_values = self.mesh.point_data[overlay_name]
+
+        # if colortables is an attribute of the class, use it
+        if hasattr(self, "colortables"):
+            dict_ctables = self.colortables
+            
+            # Check if the overlay is on the colortables
+            if overlay_name in dict_ctables.keys():
+                # Use the colortable associated with the parcellation
+
+                vertices_colors = cltmisc.get_colors_from_colortable(
+                    vertex_values, self.colortables[overlay_name]["color_table"]
+                )
+            else:
+                # Use the colormap for scalar data
+                vertices_colors = cltmisc.values2colors(
+                    vertex_values,
+                    cmap=colormap,
+                    output_format="rgb",
+                    vmin=vmin,
+                    vmax=vmax,
+                )
+        else:
+            vertices_colors = cltmisc.values2colors(
+                vertex_values,
+                cmap=colormap,
+                output_format="rgb",
+                vmin=vmin,
+                vmax=vmax,
+            )
+
+        return vertices_colors
+
+    ##############################################################################################
     def prepare_colors(
         self,
         overlay_name: str = None,
