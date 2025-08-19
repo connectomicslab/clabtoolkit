@@ -60,9 +60,11 @@ class Surface:
     ##############################################################################################
     def __init__(
         self,
-        surface_file: str = None,
+        surface_file: Union[str, Path] = None,
         vertices: np.ndarray = None,
         faces: np.ndarray = None,
+        color: Union[str, np.ndarray] = "#f0f0f0",
+        alpha: float = 1.0,
         hemi: str = None,
     ) -> None:
         """
@@ -70,7 +72,7 @@ class Surface:
 
         Parameters
         ----------
-        surface_file : str, optional
+        surface_file : str or Path, optional
             Path to surface file (FreeSurfer .pial, .white, .inflated). Default is None.
 
         vertices : np.ndarray, optional
@@ -78,6 +80,13 @@ class Surface:
 
         faces : np.ndarray, optional
             Face connectivity array with shape (n_faces, 3). Default is None.
+
+        color : str or np.ndarray, optional
+            Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
+            or an RGB array in [0, 1] or [0, 255] range. Default is '#f0f0f0'.
+
+        alpha : float, optional
+            Alpha transparency value in [0, 1] for the surface color. Default is 1.0 (opaque).
 
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Auto-detected from filename
@@ -111,6 +120,31 @@ class Surface:
         self.hemi = None
         self.colortables: Dict[str, Dict] = {}
 
+        # Create the defalt colortable for the surface
+
+        # Set the colortable for the surface
+        # Validate alpha value
+        if isinstance(alpha, int):
+            alpha = float(alpha)
+
+        # If the alpha is not in the range [0, 1], raise an error
+        if not (0 <= alpha <= 1):
+            raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
+        
+        # Handle color input
+        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
+
+        tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
+        tmp_ctable[:,:3] = tmp_ctable[:, :3]/255  # Ensure colors are between 0 and 1
+
+        # Store parcellation information in organized structure
+        self.colortables["surface"] = {
+            "struct_names": ["surface"],
+            "color_table": tmp_ctable,
+            "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
+        }
+
+
         # Validate input parameters
         if surface_file is not None and (vertices is not None or faces is not None):
             raise ValueError("Cannot specify both surface_file and vertices/faces")
@@ -123,24 +157,41 @@ class Surface:
 
         # Load data if provided
         if surface_file is not None:
-            if not os.path.isfile(surface_file):
-                raise FileNotFoundError(f"Surface file not found: {surface_file}")
+            if isinstance(surface_file, Path):
+                surface_file = str(surface_file)
 
-            self.surf = surface_file
-            self.load_from_file(surface_file, hemi)
+            if isinstance(surface_file,str):
+                if not os.path.isfile(surface_file):
+                    raise FileNotFoundError(f"Surface file not found: {surface_file}")
+
+                self.surf = surface_file
+                self.load_from_file(surface_file, color, alpha, hemi)
+
+            elif isinstance(surface_file, pv.PolyData):
+                self.load_from_mesh(surface_file, color, alpha, hemi)
 
         elif vertices is not None and faces is not None:
-            self.load_from_arrays(vertices, faces, hemi=hemi)
+            self.load_from_arrays(vertices, faces, color, alpha, hemi=hemi)
 
     ################################################################################################
-    def load_from_file(self, surface_file: str, hemi: str = None) -> None:
+    def load_from_file(self, surface_file: Union[str, Path], 
+                        color: Union[str, np.ndarray] = "#f0f0f0",
+                        alpha: np.float32 = 1.0,
+                        hemi: str = None) -> None:
         """
         Load surface geometry from FreeSurfer or compatible surface file.
 
         Parameters
         ----------
-        surface_file : str
+        surface_file : str or Path
             Path to surface file (e.g., FreeSurfer .pial, .white, .inflated).
+        
+        color : str or np.ndarray, optional
+            Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
+            or an RGB array in [0, 1] or [0, 255] range. Default is '#f0f0f0'.
+
+        alpha : float, optional
+            Alpha transparency value in [0, 1] for the surface color. Default is 1.0 (opaque).
 
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Auto-detected from filename
@@ -155,9 +206,14 @@ class Surface:
 
         Notes
         -----
-        Automatically detects hemisphere from filename and creates default
-        surface colors. Sets up basic parcellation data for visualization.
-
+        - Automatically detects hemisphere from filename if not provided.
+        - Converts color string to RGB array if provided as hex.
+        - Adds alpha channel to color for RGBA representation.
+        - Creates default parcellation data for visualization.
+        - Uses nibabel to read FreeSurfer geometry files.
+        - Handles both left ('lh') and right ('rh') hemisphere surfaces.
+        - If color is not provided, defaults to light gray ('#f0f0f0').
+        
         Examples
         --------
         >>> surface = Surface()
@@ -167,11 +223,27 @@ class Surface:
         >>> # Explicit hemisphere specification
         >>> surface.load_from_file('brain_surface.surf', hemi='rh')
         """
+
+        # Check if the surface file exists
+        if isinstance(surface_file, Path):
+            surface_file = str(surface_file)
+
+        if not os.path.isfile(surface_file):
+            raise FileNotFoundError(f"Surface file not found: {surface_file}")
+        
+        # Store the surface file path
         self.surf = surface_file
 
-        # Check if the file exists
-        if not os.path.isfile(self.surf):
-            raise FileNotFoundError(f"Surface file not found: {self.surf}")
+        # Validate alpha value
+        if isinstance(alpha, int):
+            alpha = float(alpha)
+
+        # If the alpha is not in the range [0, 1], raise an error
+        if not (0 <= alpha <= 1):
+            raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
+        
+        # Handle color input
+        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
 
         # Load the surface geometry
         try:
@@ -181,10 +253,10 @@ class Surface:
             faces = np.c_[np.full(len(faces), 3), faces]
 
             mesh = pv.PolyData(vertices, faces)
-            mesh.point_data["surface"] = (
-                np.ones((len(vertices), 4), dtype=np.uint8) * 240
-            )  # Default colors
 
+            # Add default surface colors if not present
+
+            # Adding the mesh
             self.mesh = mesh
 
         except Exception as e:
@@ -204,14 +276,15 @@ class Surface:
             self.hemi = "lh"  # Default to left hemisphere
 
         # Create default parcellation data
-        self._create_default_parcellation()
+        self._create_default_parcellation(color=color, alpha=alpha,)
 
     ##############################################################################################
     def load_from_arrays(
         self,
         vertices: np.ndarray,
         faces: np.ndarray,
-        normals: np.ndarray = None,
+        color: Union[str, np.ndarray] = "#f0f0f0",
+        alpha: float = 1.0,
         hemi: str = None,
         surface_file: str = None,
     ) -> None:
@@ -226,8 +299,12 @@ class Surface:
         faces : np.ndarray
             Face connectivity with shape (n_faces, 3).
 
-        normals : np.ndarray, optional
-            Vertex normals with shape (n_vertices, 3). Default is None.
+        color : str or np.ndarray, optional
+            Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
+            or an RGB array in [0, 1] or [0, 255] range. Default is '#f0f0f0'.
+
+        alpha : float, optional
+            Alpha transparency value in [0, 1] for the surface color. Default is 1.0 (opaque).
 
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Defaults to 'lh'.
@@ -247,20 +324,30 @@ class Surface:
         >>> faces = np.array([[0, 1, 2]])
         >>> surface = Surface()
         >>> surface.load_from_arrays(vertices, faces, hemi='lh')
-        >>>
-        >>> # With normals
-        >>> normals = np.array([[0, 0, 1], [0, 0, 1], [0, 0, 1]])
-        >>> surface.load_from_arrays(vertices, faces, normals, hemi='rh')
         """
+
+        # Validate alpha value
+        if isinstance(alpha, int):
+            alpha = float(alpha)
+
+        # If the alpha is not in the range [0, 1], raise an error
+        if not (0 <= alpha <= 1):
+            raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
+        
+        # Handle color input
+        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
+
         self.surf = surface_file
-        self.mesh = self.create_mesh_from_arrays(vertices, faces, normals)
+        self.mesh = self.create_mesh_from_arrays(vertices, faces)
         self.hemi = hemi if hemi is not None else "lh"  # Default to left hemisphere
 
         # Create default parcellation data
-        self._create_default_parcellation()
+        self._create_default_parcellation(color=color, alpha=alpha,)
 
     ##############################################################################################
-    def load_from_mesh(self, mesh: pv.PolyData, hemi: str = None) -> None:
+    def load_from_mesh(self, mesh: pv.PolyData, color: Union[str, np.ndarray] = "#f0f0f0",
+                        alpha: float = 1.0,
+                        hemi: str = None) -> None:
         """
         Load surface geometry from existing PyVista mesh object.
 
@@ -268,6 +355,13 @@ class Surface:
         ----------
         mesh : pv.PolyData
             PyVista mesh object containing surface geometry.
+        
+        color : str or np.ndarray, optional
+            Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
+            or an RGB array in [0, 1] or [0, 255] range. Default is '#f0f0f0'.
+
+        alpha : float, optional
+            Alpha transparency value in [0, 1] for the surface color. Default is 1.0 (opaque).
 
         hemi : str, optional
             Hemisphere designation ('lh' or 'rh'). Defaults to 'lh'.
@@ -293,14 +387,19 @@ class Surface:
         self.mesh = copy.deepcopy(mesh)  # Make a copy to avoid modifying the original
         self.hemi = hemi if hemi is not None else "lh"  # Default to left hemisphere
 
-        # Ensure mesh has default surface colors if not present
-        if "surface" not in self.mesh.point_data:
-            self.mesh.point_data["surface"] = (
-                np.ones((self.mesh.n_points, 4), dtype=np.uint8) * 240
-            )  # Default colors
+        # Validate alpha value
+        if isinstance(alpha, int):
+            alpha = float(alpha)
 
-            # Create default parcellation data
-            self._create_default_parcellation()
+        # If the alpha is not in the range [0, 1], raise an error
+        if not (0 <= alpha <= 1):
+            raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
+        
+        # Handle color input
+        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
+
+        # Ensure mesh has default surface colors if not present
+        self._create_default_parcellation(color=color, alpha=alpha)
 
     ##############################################################################################
     def is_loaded(self) -> bool:
@@ -322,24 +421,37 @@ class Surface:
         return self.mesh is not None
 
     ##############################################################################################
-    def _create_default_parcellation(self) -> None:
+    def _create_default_parcellation(self, 
+                                    color: Union[str, np.ndarray] = "#f0f0f0", 
+                                    alpha: np.ndarray = 1.0) -> None:
         """
         Create default parcellation data for surface visualization.
 
         Internal method that sets up basic parcellation with uniform surface
         colors for initial visualization before loading specific annotations.
 
+        Parameters
+        ----------
+
+        color : str or np.ndarray
+            Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
+            or an RGB array in [0, 1] or [0, 255] range.
+
+        alpha : float
+            Alpha transparency value in [0, 1] for the surface color. Default is 1.0 (opaque).
+
         Notes
         -----
         Creates a single-region parcellation with default gray color values
         assigned to all vertices.
         """
+        
+        tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
+        tmp_ctable[:,:3] = tmp_ctable[:, :3]/255  # Ensure colors are between 0 and 1
 
-        tmp_ctable = cltfree.colors2colortable(
-            np.array([[240, 240, 240]], dtype=np.uint8)
-        )
+
         self._store_parcellation_data(
-            np.ones((self.mesh.n_points,), dtype=np.uint32),
+            np.ones((self.mesh.n_points,) , dtype=np.uint32)* int(tmp_ctable[0,4]),
             tmp_ctable,
             ["surface"],
             "surface",
@@ -347,7 +459,7 @@ class Surface:
 
     ##############################################################################################
     def create_mesh_from_arrays(
-        self, vertices: np.ndarray, faces: np.ndarray, normals: np.ndarray = None
+        self, vertices: np.ndarray, faces: np.ndarray
     ) -> pv.PolyData:
         """
         Create PyVista mesh object from vertex and face arrays.
@@ -359,9 +471,6 @@ class Surface:
 
         faces : np.ndarray
             Face connectivity with shape (n_faces, 3).
-
-        normals : np.ndarray, optional
-            Vertex normals with shape (n_vertices, 3). Default is None.
 
         Returns
         -------
@@ -394,13 +503,6 @@ class Surface:
         if faces.ndim != 2 or faces.shape[1] != 3:
             raise ValueError("Faces array must have shape (n_faces, 3)")
 
-        if normals is not None and (
-            normals.ndim != 2
-            or normals.shape[1] != 3
-            or normals.shape[0] != vertices.shape[0]
-        ):
-            raise ValueError("Normals array must have shape (n_vertices, 3)")
-
         # Check that face indices are valid
         if np.any(faces >= len(vertices)) or np.any(faces < 0):
             raise ValueError(
@@ -408,10 +510,6 @@ class Surface:
             )
 
         mesh = self._create_pyvista_mesh(vertices, faces)
-
-        # Add normals if provided
-        if normals is not None:
-            mesh.point_data["Normals"] = normals
 
         return mesh
 
@@ -445,10 +543,10 @@ class Surface:
         faces_pv = np.c_[np.full(len(faces), 3), faces]
 
         mesh = pv.PolyData(vertices, faces_pv)
-        mesh.point_data["surface"] = (
-            np.ones((len(vertices), 4), dtype=np.uint8) * 240
+        vertices_colors = (
+            np.ones((len(vertices), 3), dtype=np.uint8) * 240
         )  # Default colors
-
+        mesh.point_data["surface"] = np.c_[vertices_colors, np.ones(len(vertices), dtype=np.uint8) * 255]
         return mesh
 
     ##############################################################################################
@@ -942,38 +1040,6 @@ class Surface:
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
 
-        # Create discrete color table for regions if needed
-        self._create_parcellation_colortable(reg_ctable, reg_names, parc_name)
-
-    ##############################################################################################
-    def _create_parcellation_colortable(
-        self, reg_ctable: np.ndarray, reg_names: List[str], parc_name: str
-    ) -> None:
-        """
-        Create PyVista color table for parcellation visualization.
-
-        Internal method for creating visualization-ready color tables from
-        parcellation data.
-
-        Parameters
-        ----------
-        reg_ctable : np.ndarray
-            Color table with RGBA values for each region.
-
-        reg_names : list
-            Region names corresponding to color table.
-
-        parc_name : str
-            Name of the parcellation.
-
-        Notes
-        -----
-        Placeholder implementation that needs completion based on specific
-        PyVista visualization requirements.
-        """
-        # Placeholder implementation - you'll need to implement this
-        # based on how you want to create the PyVista LookupTable
-        pass
 
     ##############################################################################################
     def _get_parcellation_data(
@@ -2585,7 +2651,7 @@ class Surface:
         >>> surface.plot(overlay_name="thickness", cmap="hot", views="medial", show_colorbar=True)
         """
 
-        self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
+        # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
         dict_ctables = self.colortables
         if cmap is None:
