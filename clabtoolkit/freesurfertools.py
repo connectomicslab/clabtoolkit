@@ -4596,17 +4596,13 @@ def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarr
     >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 3)
     """
 
-    vertex_colors = np.ones((len(labels), 4), dtype=np.uint8) * 240  # Default gray
-
-    for i, region_info in enumerate(reg_ctable):
-        # Find vertices with this label
-        indices = np.where(labels == region_info[4])[0]
-
-        # Assign the region color (RGB from first 3 columns)
-        if len(indices) > 0:
-            vertex_colors[indices, :4] = region_info[:4]
-
-    return vertex_colors
+    # Automatically detect the range of the colors in reg_ctable
+    if reg_ctable.shape[1] != 5:
+        raise ValueError(
+            "The color table must have 5 columns: R, G, B, A, and packed RGB value"
+        )
+    
+    return cltmisc.get_colors_from_colortable(labels, reg_ctable)
 
 
 #####################################################################################################
@@ -4625,7 +4621,7 @@ def colors2colortable(colors: Union[list, np.ndarray]):
 
     Returns
     -------
-    ctab : np.ndarray
+    colortable : np.ndarray
         FreeSurfer color table with shape (N, 5) containing RGB values,
         alpha channel, and packed RGB values.
 
@@ -4642,28 +4638,12 @@ def colors2colortable(colors: Union[list, np.ndarray]):
     >>> print(f"Color table shape: {ctab.shape}")
     """
 
-    if not isinstance(colors, (list, np.ndarray)):
-        raise ValueError("The colors must be a list or a numpy array")
+    colortable = cltmisc.colors_to_table(colors)
 
-    if isinstance(colors, np.ndarray):
-        colors = cltmisc.multi_rgb2hex(colors)
-
-    # Create the new table
-    ctab = np.array([[0, 0, 0, 0, 0]])
-    for i, color in enumerate(colors):
-        rgb = cltmisc.hex2rgb(color)
-        vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
-
-        # Concatenate the new table
-        ctab = np.concatenate(
-            (ctab, np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])),
-            axis=0,
-        )
-
-    # Remove the first row
-    ctab = ctab[1:]
-
-    return ctab
+    # Ensure the color table has 5 columns: R, G, B, A, packed RGB and they are integer type
+    colortable = colortable.astype(np.uint32)
+    
+    return colortable
 
 
 #####################################################################################################
