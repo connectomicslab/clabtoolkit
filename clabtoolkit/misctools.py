@@ -1169,6 +1169,104 @@ def values2colors(
 
     return result_colors
 
+#####################################################################################################
+def colors_to_table(colors: Union[list, np.ndarray], 
+                        alpha_values: np.ndarray = 0, 
+                        values: np.ndarray = None) -> np.ndarray:
+    """
+    Convert color list to a color table. 
+    The color table will contain RGB values, alpha channel, and values or packed RGB values.
+
+    This function harmonizes the input colors to RGB format, applies alpha values,
+    and generates a color table with the specified values. It supports both
+    hexadecimal color strings and RGB arrays. If values are not provided, it will
+    generate a default packed RGB value for each color.
+
+    If only the colors are provided, the function will create a color table
+    with the RGB values, an alpha channel set to 0, and default packed RGB values. 
+    This structure is useful for creating a color table that can be used in FreeSurfer.
+
+    Parameters
+    ----------
+    colors : list or np.ndarray
+        List of hexadecimal color strings (e.g., ['#FF0000', '#00FF00'])
+        or numpy array of RGB values. It can be also a list of mixture of
+        hexadecimal strings and RGB arrays.
+
+    alpha_values : np.ndarray
+        Array of alpha values for each color. If a single value is provided,
+        it will be applied to all colors.
+
+    values : np.ndarray, optional
+        Array of values corresponding to each color. If a single value is provided,
+
+    Returns
+    -------
+    color_table : np.ndarray
+        Color table with shape (N, 5) containing RGB values,
+        alpha channel, and values or packed RGB values.
+
+    Raises
+    ------
+    ValueError
+        If colors is not a list or numpy array.
+
+    Examples
+    --------
+    >>> # Convert hex colors to color table
+    >>> hex_colors = ["#FF0000", "#00FF00", "#0000FF"]
+    >>> ctab = colors2colortable(hex_colors)
+    >>> print(f"Color table shape: {ctab.shape}")
+    """
+
+    if not isinstance(colors, (list, np.ndarray)):
+        raise ValueError("The colors must be a list or a numpy array")
+
+    colors = harmonize_colors(colors, output_format="rgb")
+
+    # If values is None
+    if values is None:
+        values = np.zeros(np.shape(colors)[0], dtype=int)
+        for i, color in enumerate(colors):
+            values[i] = int(color[0]) + int(color[1]) * 2**8 + int(color[2]) * 2**16
+
+    if hasattr(values, '__len__'):
+        values_len = len(values)
+    else:
+        values_len = 1
+
+    if values_len != np.shape(colors)[0]:
+        raise ValueError(
+            "The number of values must match the number of colors provided or a single value."
+        )
+    if hasattr(alpha_values, '__len__'):
+        alpha_len = len(alpha_values)
+    else:
+        alpha_len = 1
+
+    if alpha_len != np.shape(colors)[0]:
+        if alpha_len != 1:
+
+            raise ValueError(
+                "The number of alpha values must match the number of colors provided or a single value."
+            )
+        else:
+            if alpha_len == 1:
+                alpha_values = np.ones(np.shape(colors)[0]) * alpha_values
+            else:
+                alpha_values = np.ones(np.shape(colors)[0]) * alpha_values[0]
+    
+    # Concatenate RGB values and alpha channel and values
+    color_table = np.column_stack(
+        (
+            colors,
+            alpha_values,
+            values,
+        )
+    )
+
+
+    return color_table
 
 ###################################################################################################
 def visualize_colors(
