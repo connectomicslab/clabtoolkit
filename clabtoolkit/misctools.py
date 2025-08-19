@@ -971,6 +971,64 @@ def create_random_colors(
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
+#####################################################################################################
+def get_colors_from_colortable(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
+    """
+    Create per-vertex RGBA colors based on parcellation labels.
+
+    Assigns colors to vertices based on their parcellation region using
+    the color table information.
+
+    Parameters
+    ----------
+    labels : np.ndarray
+        Array of parcellation labels for each vertex.
+
+    reg_ctable : np.ndarray
+        Color table with shape (N, 5) where first 3 columns are RGB values
+        and column 4 contains region labels.
+
+    Returns
+    -------
+    colors : np.ndarray
+        Array of RGB colors for each vertex with shape (num_vertices, 3).
+        Default color is gray (240, 240, 240) for unlabeled vertices.
+
+    Examples
+    --------
+    >>> # Create vertex colors for visualization over a surface mesh
+    >>> colors = get_colors_from_colortable(vertex_labels, color_table)
+    >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 3)
+    """
+
+    # Automatically detect the range of the colors in reg_ctable
+    if reg_ctable.shape[1] != 5:
+        raise ValueError(
+            "The color table must have 5 columns: R, G, B, A, and packed RGB value"
+        )
+    # Get the colors from the first 3 columns
+    # This assumes the first 3 columns are RGB values
+    colors_ctable = reg_ctable[:, :3].astype(np.uint8)
+
+    # Check if all the colors are in the range 0-255
+    if not ((colors_ctable.min() >= 0.0) and (colors_ctable.max() <= 1.0)):
+        colors = np.ones((len(labels), 3), dtype=np.uint8) * 240  # Default gray
+        colors = np.append(colors, np.zeros((len(labels), 1), dtype=np.uint8), axis=1)
+
+    else:
+        colors = np.ones((len(labels), 3), dtype=np.uint8) * 240/255 # Default gray
+        colors = np.append(colors, np.ones((len(labels), 1), dtype=np.uint8), axis=1)
+
+    for i, region_info in enumerate(reg_ctable):
+        # Find vertices with this label
+        indices = np.where(labels == region_info[4])[0]
+
+        # Assign the region color (RGB from first 3 columns)
+        if len(indices) > 0:
+            colors[indices, :4] = region_info[:4]
+
+
+    return colors
 
 ###################################################################################################
 def values2colors(
