@@ -871,7 +871,7 @@ class Surface:
 
         # Extract the processed and cleaned data from AnnotParcellation
         labels = annot_parc.codes
-        reg_ctable = annot_parc.regtable
+        reg_ctable = annot_parc.regtable.astype(np.float32)  # Ensure colors are float32
         reg_names = annot_parc.regnames  # Already processed as strings
 
         # Validate that the number of vertices matches
@@ -885,6 +885,14 @@ class Surface:
             parc_name = annot_parc.id
 
         # Store the parcellation data
+        tmp_colors = reg_ctable[:, :3]
+        
+        reg_ctable[:, :3] = reg_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
+
+        # If all the opacity values are 0 set them to 1
+        if np.all(reg_ctable[:, 3] == 0):
+            reg_ctable[:, 3] = 1.0
+
         self._store_parcellation_data(labels, reg_ctable, reg_names, parc_name)
 
         # Store reference to AnnotParcellation object for advanced operations
