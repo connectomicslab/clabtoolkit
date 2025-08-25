@@ -12,19 +12,25 @@ Classes:
 import os
 import json
 import math
+import copy
 import numpy as np
 import nibabel as nib
 from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
 from nilearn import plotting
 import pyvista as pv
+import threading
+
+
+# Importing external modules
+import matplotlib.pyplot as plt
 
 # Importing local modules
 from . import freesurfertools as cltfree
 from . import misctools as cltmisc
+from . import plottools as cltplot
 
 # Use TYPE_CHECKING to avoid circular imports
-if TYPE_CHECKING:
-    from . import surfacetools as cltsurf
+from . import surfacetools as cltsurf
 
 
 ####################################################################################################
@@ -156,6 +162,8 @@ class SurfacePlotter:
 
             self.figure_conf = configs["figure_conf"]
             self.views_conf = configs["views_conf"]
+            self.layouts_conf = configs["layouts_conf"]
+            self.themes_conf = configs["themes_conf"]
 
         except FileNotFoundError:
             raise FileNotFoundError(
@@ -164,755 +172,2315 @@ class SurfacePlotter:
         except json.JSONDecodeError as e:
             raise json.JSONDecodeError(f"Invalid JSON in configuration file: {e}")
 
-    ##########################################################################################################
-    def _create_dynamic_config(
-        self, selected_views: List[str], reference_view: str = "8_views"
-    ) -> Dict[str, Any]:
+    def _get_views_to_plot(
+        self, views: Union[str, List[str]], hemi_id: Union[str, List[str]] = "lh"
+    ) -> List[str]:
         """
-        Create a dynamic configuration based on selected view names.
-
+        Get the list of views to plot based on user input and hemisphere.
+        This method normalizes the input views, validates them against the available
+        views configuration, and filters them based on the specified hemisphere.
         Parameters
         ----------
-        selected_views : List[str]
-            List of view names to include.
+        views : Union[str, List[str]]
+            The view names to plot. Can be a single string or a list of strings.
+            If a single string is provided, it will be converted to a list.
 
-        reference_view : str, default "8_views"
-            Base configuration to use as reference.
+        hemi_id : Union[str, List[str]]
+            The hemisphere identifiers to consider. Can be a single string or a list of strings.
+            Common identifiers are "lh" for left hemisphere and "rh" for right hemisphere.
 
         Returns
         -------
-        Dict[str, Any]
-            Dynamic configuration with filtered views and optimal layout.
+        List[str]
+            A list of valid view names to plot, filtered by the specified hemisphere.
 
         Raises
         ------
         ValueError
-            If no valid views are found or invalid view names provided.
+            If the provided views are not a string or a list of strings.
+            If no valid views are found after filtering.
 
-        Examples
-        --------
-        >>> config = plotter._create_dynamic_config(["lateral", "medial"])
-        >>> print(config["shape"])  # [1, 2]
-        >>>
-        >>> print(len(config["views"]))  # 4 (LH/RH lateral + LH/RH medial)
+        Notes
+        -----
+        This method is designed to work with the available views defined in the
+        `views_conf` attribute of the class. It ensures that the views are compatible
+        with the hemisphere specified and returns a list of valid view names.
+        If the input views are not valid or do not match any available views,
         """
 
-        # Load base 8_views configuration
-        if "8_views" not in self.views_conf:
-            raise ValueError("Base '8_views' configuration not found in config file")
-
-        base_config = self.views_conf[reference_view]
-        base_views = base_config["views"]
-
-        # Normalize input view names (case-insensitive)
-        selected_views_lower = [view.lower() for view in selected_views]
-
-        # Find matching views from base configuration
-        filtered_views = []
-        for view_name in selected_views_lower:
-            if view_name not in self._view_name_mapping:
-                available_views = list(self._view_name_mapping.keys())
-                raise ValueError(
-                    f"Invalid view name '{view_name}'. "
-                    f"Available options: {available_views}"
-                )
-
-            # Find matching view configurations
-            target_titles = self._view_name_mapping[view_name]
-            for base_view in base_views:
-                if base_view["title"] in target_titles:
-                    filtered_views.append(base_view.copy())
-
-        if not filtered_views:
-            raise ValueError("No valid views found for the provided selection")
-
-        # Calculate optimal grid layout
-        num_views = len(filtered_views)
-        optimal_shape = self._calculate_optimal_grid(num_views)
-
-        # Reassign subplot positions in optimal grid
-        for i, view in enumerate(filtered_views):
-            row = i // optimal_shape[1]
-            col = i % optimal_shape[1]
-            view["subplot"] = [row, col]
-
-        # Calculate window size based on shape and aspect ratio
-        base_window_size = base_config["window_size"]
-        aspect_ratio = base_window_size[0] / base_window_size[1]
-
-        # Maintain reasonable window sizing
-        if optimal_shape[1] > optimal_shape[0]:  # Wider than tall
-            new_width = min(1800, 450 * optimal_shape[1])
-            new_height = int(
-                new_width / aspect_ratio * optimal_shape[0] / optimal_shape[1]
-            )
-        else:  # Taller than wide
-            new_height = min(1200, 400 * optimal_shape[0])
-            new_width = int(
-                new_height * aspect_ratio * optimal_shape[1] / optimal_shape[0]
+        # Normalize input views to a list
+        if isinstance(views, str):
+            views = [views]
+        elif not isinstance(views, list):
+            raise ValueError(
+                "Views must be a string or a list of strings representing view names"
             )
 
-        # Create dynamic configuration
-        dynamic_config = {
-            "shape": optimal_shape,
-            "window_size": [new_width, new_height],
-            "views": filtered_views,
-        }
+        # Validate views
+        valid_views = self._get_valid_views(views)
 
-        return dynamic_config
+        # Get number of views
+        if len(valid_views) == 1:
+            if valid_views[0] in self._list_multiviews_layouts():
+                view_ids = self.layouts_conf[valid_views[0]]["views"]
+                if "lh" in hemi_id and "rh" not in hemi_id:
+                    # LH only, remove the view_ids that contain rh- on the name
+                    view_ids = [v for v in view_ids if "rh-" not in v]
+                elif "rh" in hemi_id and "lh" not in hemi_id:
+                    # RH only, remove the view_ids that contain lh- on the name
+                    view_ids = [v for v in view_ids if "lh-" not in v]
+                    # Flip the view_ids and the last will be the first
+                    view_ids = view_ids[::-1]
 
-    ################################################################################################
-    def _create_single_hemisphere_config(
-        self, selected_views: List[str], hemi: str
-    ) -> Dict[str, Any]:
-        """
-        Create a dynamic configuration for single hemisphere based on selected view names.
-
-        Parameters
-        ----------
-        selected_views : List[str]
-            List of view names to include.
-
-        hemi : str
-            Hemisphere specification: "lh" or "rh".
-
-        Returns
-        -------
-        Dict[str, Any]
-            Dynamic configuration with filtered views and optimal layout.
-
-        Raises
-        ------
-        ValueError
-            If no valid views are found or invalid view names provided.
-
-        Examples
-        --------
-        >>> config = plotter._create_single_hemisphere_config(["lateral", "medial"], "lh")
-        >>> print(config["shape"])  # [1, 2]
-        >>>
-        >>> print(len(config["views"]))  # 2 (LH lateral + LH medial)
-        """
-
-        # Load base 8_views configuration
-        if "8_views" not in self.views_conf:
-            raise ValueError("Base '8_views' configuration not found in config file")
-
-        base_config = self.views_conf["8_views"]
-        base_views = base_config["views"]
-
-        # Normalize input view names (case-insensitive)
-        selected_views_lower = [view.lower() for view in selected_views]
-
-        # Find matching views from base configuration for specified hemisphere
-        filtered_views = []
-        for view_name in selected_views_lower:
-            if view_name not in self._view_name_mapping:
-                available_views = list(self._view_name_mapping.keys())
-                raise ValueError(
-                    f"Invalid view name '{view_name}'. "
-                    f"Available options: {available_views}"
-                )
-
-            # Find matching view configurations for the specified hemisphere
-            target_titles = self._view_name_mapping[view_name]
-            for base_view in base_views:
+            elif valid_views[0] in self._list_single_views():
+                # Single view layout, take all the possible views
+                view_ids = list(self.views_conf.keys())
+                # Selecting the views based on the supplied names
+                view_ids = cltmisc.filter_by_substring(view_ids, valid_views)
                 # Filter views based on hemisphere
-                title = base_view["title"]
-                if view_name in ["lateral", "medial"]:
-                    # Hemisphere-specific views
-                    hemi_prefix = f"{hemi.upper()}:"
-                    if title in target_titles and title.startswith(hemi_prefix):
-                        view_copy = base_view.copy()
-                        view_copy["mesh"] = hemi  # Set mesh to hemisphere
-                        filtered_views.append(view_copy)
-                else:
-                    # Global views (dorsal, ventral, rostral, caudal)
-                    if title in target_titles:
-                        view_copy = base_view.copy()
-                        view_copy["mesh"] = hemi  # Set mesh to hemisphere
-                        filtered_views.append(view_copy)
+                if "lh" in hemi_id and "rh" not in hemi_id:
+                    view_ids = [v for v in view_ids if "rh-" not in v]
+                elif "rh" in hemi_id and "lh" not in hemi_id:
+                    view_ids = [v for v in view_ids if "lh-" not in v]
+        else:
+            # Multiple view names provided
+            view_ids = list(self.views_conf.keys())
+            # Selecting the views based on the supplied names
+            view_ids = cltmisc.filter_by_substring(view_ids, valid_views)
+            # Filter views based on hemisphere
+            if "lh" in hemi_id and "rh" not in hemi_id:
+                view_ids = [v for v in view_ids if "rh-" not in v]
+            elif "rh" in hemi_id and "lh" not in hemi_id:
+                view_ids = [v for v in view_ids if "lh-" not in v]
 
-        if not filtered_views:
-            raise ValueError("No valid views found for the provided selection")
+        return view_ids
 
-        # Calculate optimal grid layout
-        num_views = len(filtered_views)
-        optimal_shape = self._calculate_optimal_grid(num_views)
-
-        # Reassign subplot positions in optimal grid
-        for i, view in enumerate(filtered_views):
-            row = i // optimal_shape[1]
-            col = i % optimal_shape[1]
-            view["subplot"] = [row, col]
-
-        # Keep the same window size as the base configuration
-        base_window_size = base_config["window_size"]
-
-        # Create dynamic configuration
-        dynamic_config = {
-            "shape": optimal_shape,
-            "window_size": base_window_size,
-            "views": filtered_views,
-        }
-
-        return dynamic_config
-
-    ###############################################################################################
-    def _filter_config_for_hemisphere(
-        self, config: Dict[str, Any], hemi: str
-    ) -> Dict[str, Any]:
+    def _build_plotting_config(
+        self,
+        views: list,
+        hemi_id: str = ["lh", "rh"],
+        orientation: str = "horizontal",
+        maps_names: Union[str, List[str]] = ["surface"],
+        colormaps: Union[str, List[str]] = "viridis",
+        v_limits: Union[Tuple[float, float], List[Tuple[float, float]]] = (None, None),
+        surfaces: Union[Any, List[Any]] = None,  # cltsurf.Surface
+        colorbar: bool = False,
+        colorbar_titles: Union[str, List[str]] = None,
+        colormap_style: str = "individual",
+        colorbar_position: str = "right",
+    ):
         """
-        Filter a predefined configuration to show only views relevant to a single hemisphere.
-
-        Parameters
-        ----------
-        config : Dict[str, Any]
-            Original configuration with all views.
-
-        hemi : str
-            Hemisphere specification: "lh" or "rh".
+        Build the plotting configuration based on user inputs.
 
         Returns
         -------
-        Dict[str, Any]
-            Filtered configuration for single hemisphere.
-
-        Raises
-        ------
-        ValueError
-            If no valid views are found for the hemisphere.
-
-        Examples
-        --------
-        >>> filtered = plotter._filter_config_for_hemisphere(config_8_views, "lh")
-        >>> print(len(filtered["views"]))  # Reduced number of views for LH only
+        Tuple[List[int], List[float], List[float], List[Tuple], Dict, List[Dict]]
+            (shape, row_weights, col_weights, groups, brain_positions, colorbar_positions)
         """
 
-        # Filter views for the specified hemisphere
-        filtered_views = []
+        # Constants
+        COLORBAR_SIZE = 0.2
 
-        for view in config["views"]:
-            title = view["title"]
-            view_copy = view.copy()
+        # Normalize inputs
+        maps_names = self._normalize_to_list(maps_names)
+        colormaps = self._normalize_to_list(colormaps)
+        v_limits = self._normalize_to_list(v_limits)
+        colorbar_titles = (
+            self._normalize_to_list(colorbar_titles) if colorbar_titles else None
+        )
+        surfaces = self._normalize_to_list(surfaces) if surfaces else []
 
-            # Check if view is hemisphere-specific or global
-            if "LH:" in title or "RH:" in title:
-                # Hemisphere-specific view
-                hemi_prefix = f"{hemi.upper()}:"
-                if title.startswith(hemi_prefix):
-                    view_copy["mesh"] = hemi
-                    filtered_views.append(view_copy)
-            else:
-                # Global view (dorsal, ventral, rostral, caudal)
-                view_copy["mesh"] = hemi
-                filtered_views.append(view_copy)
+        n_maps = len(maps_names)
+        n_surfaces = len(surfaces)
 
-        if not filtered_views:
-            raise ValueError(f"No valid views found for hemisphere '{hemi}'")
+        # Force single view when both maps and surfaces > 1
+        if n_maps > 1 and n_surfaces > 1:
+            print(
+                "🔧 FORCING single view (dorsal) because both n_maps > 1 and n_surfaces > 1"
+            )
+            views = ["dorsal"]
 
-        # Recalculate optimal layout for filtered views
-        num_views = len(filtered_views)
+        # Get view configuration
+        view_ids = self._get_views_to_plot(views, hemi_id=hemi_id)
+        n_views = len(view_ids)
 
-        # If the views are not row or column aligned, we need to adjust the shape
-        if config["shape"][0] == 1 or config["shape"][1] == 1:
-            # Ensure at least 2 views per row/column for better visualization
+        if n_maps > 1 and n_surfaces > 1:
+            view_ids = ["merg-dorsal"]
+            n_views = 1
 
-            if config["shape"][0] == 1:
-                optimal_shape = (1, num_views)
-            else:
-                optimal_shape = (num_views, 1)
-
-            if config["shape"][0] == 1:
-                for i, view in enumerate(filtered_views):
-                    view["subplot"] = [0, i]
-            elif config["shape"][0] == 1:
-                for i, view in enumerate(filtered_views):
-                    view["subplot"] = [i, 0]
-        else:
-
-            optimal_shape = self._calculate_optimal_grid(num_views)
-            # Reassign subplot positions
-            for i, view in enumerate(filtered_views):
-                row = i // optimal_shape[1]
-                col = i % optimal_shape[1]
-                view["subplot"] = [row, col]
-
-        # Keep the same window size as the original configuration
-        base_window_size = config["window_size"]
-
-        # Create filtered configuration
-        filtered_config = {
-            "shape": optimal_shape,
-            "window_size": base_window_size,
-            "views": filtered_views,
-        }
-
-        return filtered_config
-
-    ###############################################################################################
-    def _calculate_optimal_grid(self, num_views: int) -> List[int]:
-        """
-        Calculate optimal grid dimensions for a given number of views.
-
-        Parameters
-        ----------
-        num_views : int
-            Number of views to arrange.
-
-        Returns
-        -------
-        List[int]
-            [rows, columns] for optimal grid layout.
-
-        Examples
-        --------
-        >>> plotter._calculate_optimal_grid(4)
-        [2, 2]
-        >>>
-        >>> plotter._calculate_optimal_grid(6)
-        [2, 3]
-        >>>
-        >>> plotter._calculate_optimal_grid(1)
-        [1, 1]
-        """
-
-        # Calculate optimal grid dimensions based on number of views
-        if num_views == 1:
-            return [1, 1]
-        elif num_views == 2:
-            return [1, 2]
-        elif num_views == 3:
-            return [1, 3]
-        elif num_views == 4:
-            return [2, 2]
-        elif num_views <= 6:
-            return [2, 3]
-        elif num_views <= 8:
-            return [2, 4]
-        else:
-            # For more than 8 views, try to keep roughly square
-            cols = math.ceil(math.sqrt(num_views))
-            rows = math.ceil(num_views / cols)
-            return [rows, cols]
-
-    ###############################################################################################
-    def _calculate_single_view_multi_map_layout(
-        self, n_maps: int, colorbar: bool, colorbar_style: str, colorbar_position: str
-    ) -> Tuple[
-        List[int],
-        List[float],
-        List[float],
-        List[Tuple],
-        Dict[Tuple[int, int], Tuple[int, int]],
-        Dict[str, Tuple[int, int]],
-    ]:
-        """
-        Calculate grid layout for single view with multiple maps.
-
-        Creates a compact grid layout where maps are distributed across rows
-        and columns rather than being arranged in a single row or column.
-
-        Parameters
-        ----------
-        n_maps : int
-            Number of maps to display.
-
-        colorbar : bool
-            Whether to show colorbars.
-
-        colorbar_style : str
-            Colorbar style: "individual" or "shared".
-
-        colorbar_position : str
-            Colorbar position: "right" or "bottom".
-
-        Returns
-        -------
-        Tuple
-            Grid layout information including shape, weights, and positions.
-        """
-
-        brain_positions = {}
-        colorbar_positions = {}
-        groups = []
-
-        # Calculate optimal grid shape for maps
-        map_grid_shape = self._calculate_optimal_grid(n_maps)
-        map_rows, map_cols = map_grid_shape
-
-        if not colorbar:
-            # Simple grid layout without colorbars
-            grid_shape = map_grid_shape
-            row_weights = [1] * map_rows
-            col_weights = [1] * map_cols
-
-            # Position maps in grid
-            for map_idx in range(n_maps):
-                row = map_idx // map_cols
-                col = map_idx % map_cols
-                brain_positions[(map_idx, 0)] = (row, col)  # view_idx is always 0
-
-        else:
-            if colorbar_style == "individual":
-                if colorbar_position == "right":
-                    # Each map gets a colorbar to its right: [map_rows, map_cols * 2]
-                    grid_shape = [map_rows, map_cols * 2]
-                    row_weights = [1] * map_rows
-                    col_weights = []
-                    for _ in range(map_cols):
-                        col_weights.extend([1, 0.2])  # map column, colorbar column
-
-                    # Position maps and colorbars
-                    for map_idx in range(n_maps):
-                        row = map_idx // map_cols
-                        col = map_idx % map_cols
-                        # Map position
-                        brain_positions[(map_idx, 0)] = (row, col * 2)
-                        # Colorbar position (next to map)
-                        colorbar_positions[f"individual_{map_idx}"] = (row, col * 2 + 1)
-
-                else:  # bottom
-                    # Each map gets a colorbar below it: [map_rows * 2, map_cols]
-                    grid_shape = [map_rows * 2, map_cols]
-                    row_weights = []
-                    for _ in range(map_rows):
-                        row_weights.extend([1, 0.2])  # map row, colorbar row
-                    col_weights = [1] * map_cols
-
-                    # Position maps and colorbars
-                    for map_idx in range(n_maps):
-                        row = map_idx // map_cols
-                        col = map_idx % map_cols
-                        # Map position
-                        brain_positions[(map_idx, 0)] = (row * 2, col)
-                        # Colorbar position (below map)
-                        colorbar_positions[f"individual_{map_idx}"] = (row * 2 + 1, col)
-
-            else:  # shared colorbar
-                if colorbar_position == "right":
-                    # Add one extra column for shared colorbar
-                    grid_shape = [map_rows, map_cols + 1]
-                    row_weights = [1] * map_rows
-                    col_weights = [1] * map_cols + [0.2]
-                    groups = [(slice(None), map_cols)]  # Span all rows in last column
-
-                    # Position maps
-                    for map_idx in range(n_maps):
-                        row = map_idx // map_cols
-                        col = map_idx % map_cols
-                        brain_positions[(map_idx, 0)] = (row, col)
-
-                    # Shared colorbar in last column
-                    colorbar_positions["shared"] = (0, map_cols)
-
-                else:  # bottom
-                    # Add one extra row for shared colorbar
-                    grid_shape = [map_rows + 1, map_cols]
-                    row_weights = [1] * map_rows + [0.2]
-                    col_weights = [1] * map_cols
-                    groups = [(map_rows, slice(None))]  # Span all columns in last row
-
-                    # Position maps
-                    for map_idx in range(n_maps):
-                        row = map_idx // map_cols
-                        col = map_idx % map_cols
-                        brain_positions[(map_idx, 0)] = (row, col)
-
-                    # Shared colorbar in last row
-                    colorbar_positions["shared"] = (map_rows, 0)
-
-        return (
-            grid_shape,
-            row_weights,
-            col_weights,
-            groups,
-            brain_positions,
-            colorbar_positions,
+        print(
+            f"Number of views: {n_views}, Number of maps: {n_maps}, Number of surfaces: {n_surfaces}"
         )
 
-    ###############################################################################################
-    def _calculate_multi_map_layout(
+        # Check if colorbar is needed
+        colorbar = colorbar and self._colorbar_needed(maps_names, surfaces)
+
+        # Build configuration based on dimensions
+        config, colorbar_list = self._build_layout_config(
+            view_ids,
+            maps_names,
+            surfaces,
+            v_limits,
+            colormaps,
+            orientation,
+            colorbar,
+            colormap_style,
+            colorbar_position,
+            colorbar_titles
+        )
+
+
+
+
+        return (
+            view_ids,
+            config,
+            colorbar_list,
+        )
+
+    def _normalize_to_list(self, item):
+        """Convert single items to lists for consistent handling."""
+        if not isinstance(item, list):
+            return [item]
+        return item
+
+    def _colorbar_needed(self, maps_names, surfaces):
+        """Check if colorbar is actually needed based on surface colortables."""
+        if not surfaces:
+            return True
+
+        # Check if any map is not already on the surface
+        for map_name in maps_names:
+            if map_name not in surfaces[0].colortables:
+                return True
+        return False
+
+    def _build_layout_config(
         self,
-        n_maps: int,
-        n_views: int,
-        views_orientation: str,
-        colorbar: bool,
-        colorbar_style: str,
-        colorbar_position: str,
-    ) -> Tuple[
-        List[int],
-        List[float],
-        List[float],
-        List[Tuple],
-        Dict[Tuple[int, int], Tuple[int, int]],
-        Dict[str, Tuple[int, int]],
-    ]:
-        """
-        Calculate the complete grid layout for multi-map visualization with colorbars.
+        valid_views,
+        maps_names,
+        surfaces,
+        v_limits,
+        colormaps,
+        orientation,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_titles
+    ):
+        """Build the basic layout configuration."""
 
-        Parameters
-        ----------
-        n_maps : int
-            Number of maps to display.
+        n_views = len(valid_views)
+        n_maps = len(maps_names)
+        n_surfaces = len(surfaces)
+        COLORBAR_SIZE = 0.2
 
-        n_views : int
-            Number of views per map.
+        if n_views == 1 and n_maps == 1 and n_surfaces == 1:  # Works fine
+            # Check if maps_names[0] is present in the surface
+            if colormap_style not in ["individual", "shared"]:
+                colormap_style = "individual"
 
-        views_orientation : str
-            Layout orientation: "horizontal" or "vertical".
+            if maps_names[0] in list(surfaces[0].colortables.keys()):
+                colorbar = False
 
-        colorbar : bool
-            Whether to show colorbars.
+            return self._single_element_layout(surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+                colorbar, colorbar_position, COLORBAR_SIZE
+            )
 
-        colorbar_style : str
-            Colorbar style: "individual" or "shared".
+        elif n_views == 1 and n_maps == 1 and n_surfaces > 1: # Works fine
+            if colormap_style not in ["individual", "shared"]:
+                colormap_style = "individual"
 
-        colorbar_position : str
-            Colorbar position: "right" or "bottom".
+            # Check if maps_names[0] is present in ALL surfaces
+            if all(maps_names[0] in surfaces[i].colortables.keys() for i in range(n_surfaces)):
+                colorbar = False
 
-        Returns
-        -------
-        Tuple
-            Grid layout information including shape, weights, groups, and positions.
-        """
+            return self._single_map_multi_surface_layout(
+                surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+                orientation,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                COLORBAR_SIZE,
+            )
 
-        brain_positions = {}
-        colorbar_positions = {}
-        groups = []
+        elif n_views == 1 and n_maps > 1 and n_surfaces == 1:  # Works fine
+            if colormap_style not in ["individual","shared"]:
+                colormap_style = "individual"
 
-        # Auto-correct invalid combinations for individual colorbars
-        original_position = colorbar_position
-        if colorbar and colorbar_style == "individual":
-            if views_orientation == "horizontal" and colorbar_position != "right":
-                print(
-                    f"Warning: Individual colorbars with horizontal orientation only support 'right' position. Changing from '{colorbar_position}' to 'right'."
-                )
-                colorbar_position = "right"
-            elif views_orientation == "vertical" and colorbar_position != "bottom":
-                print(
-                    f"Warning: Individual colorbars with vertical orientation only support 'bottom' position. Changing from '{colorbar_position}' to 'bottom'."
-                )
-                colorbar_position = "bottom"
+            return self._multi_map_single_surface_layout(
+                surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+                orientation,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                COLORBAR_SIZE,
+            )
 
-        # MANDATORY: Auto-correct problematic combinations for multi-view individual colorbars
-        if colorbar and colorbar_style == "individual" and n_views > 1:
-            if views_orientation == "horizontal" and original_position == "bottom":
-                print(
-                    f"🔧 FORCING: Horizontal orientation with {n_views} views requires RIGHT position. Changing from 'bottom' to 'right'."
-                )
-                colorbar_position = "right"
-            elif views_orientation == "vertical" and original_position == "right":
-                print(
-                    f"🔧 FORCING: Vertical orientation with {n_views} views requires BOTTOM position. Changing from 'right' to 'bottom'."
-                )
-                colorbar_position = "bottom"
+        elif n_views == 1 and n_maps > 1 and n_surfaces > 1: # Works fine
+            colorbar_data = any(
+                    map_name not in surface.colortables 
+                    for map_name in maps_names 
+                    for surface in surfaces
+)
+            if colorbar_data == False:
+                colorbar = False
 
-        if not colorbar:
-            # Simple case: no colorbars
-            if views_orientation == "horizontal":
-                # Maps as rows, views as columns
-                grid_shape = [n_maps, n_views]
-                row_weights = [1] * n_maps
-                col_weights = [1] * n_views
+            return self._multi_map_multi_surface_layout(
+                surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+                orientation,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                COLORBAR_SIZE,
+            )
 
-                # Fill brain positions
-                for map_idx in range(n_maps):
-                    for view_idx in range(n_views):
-                        brain_positions[(map_idx, view_idx)] = (map_idx, view_idx)
-            else:
-                # Views as rows, maps as columns
-                grid_shape = [n_views, n_maps]
-                row_weights = [1] * n_views
-                col_weights = [1] * n_maps
+        elif n_views > 1 and n_maps == 1 and n_surfaces == 1: # Works fine
+            if all(maps_names[0] in surfaces[i].colortables.keys() for i in range(n_surfaces)):
+                colorbar = False
+            return self._multi_view_single_element_layout(
+                surfaces[0], valid_views, maps_names[0], v_limits[0], colormaps[0], colorbar_titles[0], orientation, colorbar, colorbar_position, COLORBAR_SIZE
+            )
 
-                # Fill brain positions
-                for map_idx in range(n_maps):
-                    for view_idx in range(n_views):
-                        brain_positions[(map_idx, view_idx)] = (view_idx, map_idx)
+        elif n_views > 1 and n_maps == 1 and n_surfaces > 1: # Works fine
+            if all(maps_names[0] in surfaces[i].colortables.keys() for i in range(n_surfaces)):
+                colorbar = False
+            return self._multi_view_multi_surface_layout(surfaces, valid_views, maps_names, v_limits, colormaps, colorbar_titles,
+                orientation,
+                colorbar,
+                colorbar_position,
+                colormap_style,
+                COLORBAR_SIZE,
+            )
+
+        elif n_views > 1 and n_maps > 1 and n_surfaces == 1: # Works fine
+            colorbar_data = any(
+                    map_name not in surfaces[0].colortables 
+                    for map_name in maps_names 
+            )
+            if colorbar_data == False:
+                colorbar = False
+
+            return self._multi_view_multi_map_layout(
+                surfaces, valid_views, maps_names, v_limits, colormaps, colorbar_titles,
+                orientation,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                COLORBAR_SIZE,
+            )
 
         else:
-            # With colorbars
-            if views_orientation == "horizontal":
-                # Maps as rows, views as columns
-                if colorbar_style == "individual":
-                    # Individual colorbars: only RIGHT position makes sense
-                    # Add 1 extra column for individual colorbars
-                    grid_shape = [n_maps, n_views + 1]
-                    row_weights = [1] * n_maps
-                    col_weights = [1] * n_views + [
-                        0.2
-                    ]  # Give colorbars a bit more space
+            # Default fallback for any remaining cases
+            return {
+                "shape": [1, 1],
+                "row_weights": [1],
+                "col_weights": [1],
+                "groups": [],
+                "brain_positions": {(0, 0, 0): (0, 0)},
+            }
 
-                    # Brain positions (unchanged)
+    def _single_element_layout(self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colorbar_position, colorbar_size):
+        """Handle single view, single map, single surface case."""
+        brain_positions = {(0, 0, 0): (0, 0)}
+        colormap_limits = {}
+
+        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])
+        colormap_limits[(0, 0, 0)] = limits_list[0]
+
+        colobar_list = []
+
+        if maps_names[0] in surfaces[0].colortables:
+            colorbar = False
+
+        if not colorbar:
+            shape = [1, 1]
+            row_weights = [1]
+            col_weights = [1]
+            
+        else:
+            
+            cb_dict = {}
+            if colorbar_position == "right":
+                shape = [1, 2]
+                row_weights = [1]
+                col_weights = [1, colorbar_size]
+                cb_dict["position"] = (0, 1)
+                cb_dict["orientation"] = "vertical"
+
+
+            elif colorbar_position == "bottom":
+                shape = [2, 1]
+                row_weights = [1, colorbar_size]
+                col_weights = [1]
+                cb_dict["position"] = (1, 0)
+                cb_dict["orientation"] = "horizontal"
+
+            cb_dict["colormap"] = colormaps[0]
+            cb_dict["map_name"] = maps_names[0]
+
+            cb_dict["vmin"] = limits_list[0][0]
+            cb_dict["vmax"] = limits_list[0][1]
+
+            if colorbar_titles:
+                cb_dict["title"] = colorbar_titles[0]
+            else:
+                cb_dict["title"] = maps_names[0]
+
+            colobar_list.append(cb_dict)
+
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": [],
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+
+        return layout_config, colobar_list
+
+    def _multi_map_single_surface_layout(
+        self,
+        surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+        orientation,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
+    ):
+        """Handle multiple maps, single surface case."""
+        brain_positions = {}
+
+        if orientation == "horizontal":
+            return self._horizontal_multi_map_layout(
+                surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+            )
+        elif orientation == "vertical":
+            return self._vertical_multi_map_layout(
+                surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+            )
+        else:  # grid
+            return self._grid_multi_map_layout(
+                surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+            )
+
+    def _horizontal_multi_map_layout(
+        self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+    ):
+        """Handle horizontal layout for multiple maps."""
+
+        n_maps = len(maps_names)    
+
+        brain_positions = {}
+        colormap_limits = {}
+
+        for map_idx in range(n_maps):
+            brain_positions[(map_idx, 0, 0)] = (0, map_idx)
+            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+            colormap_limits[(map_idx, 0, 0)] = map_limits
+
+        colobar_list = []
+        if not colorbar:
+            shape = [1, n_maps]
+            row_weights = [1]
+            col_weights = [1] * n_maps
+            groups = []
+
+        else:
+            if colormap_style == "individual":
+                if colorbar_position == "right":
+                    shape = [1, n_maps * 2]
+                    row_weights = [1]
+                    col_weights = [1, colorbar_size] * n_maps
+                    groups = []
+
                     for map_idx in range(n_maps):
-                        for view_idx in range(n_views):
-                            brain_positions[(map_idx, view_idx)] = (map_idx, view_idx)
-                        # Each map gets its colorbar in the extra column at its row
-                        colorbar_positions[f"individual_{map_idx}"] = (map_idx, n_views)
+                        brain_positions[(map_idx, 0, 0)] = (0, map_idx * 2)
 
-                else:  # shared
-                    if colorbar_position == "right":
-                        # Add 1 extra column for shared colorbar
-                        grid_shape = [n_maps, n_views + 1]
-                        row_weights = [1] * n_maps
-                        col_weights = [1] * n_views + [0.2]
-                        groups = [
-                            (slice(None), n_views)
-                        ]  # Span all rows in last column
+                        cb_dict = {}
+                        cb_dict["position"] = (0, map_idx * 2 + 1)
+                        cb_dict["orientation"] = "vertical"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
 
-                        # Brain positions
-                        for map_idx in range(n_maps):
-                            for view_idx in range(n_views):
-                                brain_positions[(map_idx, view_idx)] = (
-                                    map_idx,
-                                    view_idx,
-                                )
-                        # Shared colorbar spans the entire extra column
-                        colorbar_positions["shared"] = (0, n_views)
+                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
 
-                    else:  # bottom
-                        # Add 1 extra row for shared colorbar
-                        grid_shape = [n_maps + 1, n_views]
-                        row_weights = [1] * n_maps + [0.2]
-                        col_weights = [1] * n_views
-                        groups = [(n_maps, slice(None))]  # Span all columns in last row
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
 
-                        # Brain positions
-                        for map_idx in range(n_maps):
-                            for view_idx in range(n_views):
-                                brain_positions[(map_idx, view_idx)] = (
-                                    map_idx,
-                                    view_idx,
-                                )
-                        # Shared colorbar spans the entire extra row
-                        colorbar_positions["shared"] = (n_maps, 0)
+                        colobar_list.append(cb_dict)
 
-            else:  # vertical orientation
-                # Views as rows, maps as columns
-                if colorbar_style == "individual":
-                    # Individual colorbars: only BOTTOM position makes sense
-                    # Add 1 extra row for individual colorbars
-                    grid_shape = [n_views + 1, n_maps]
-                    row_weights = [1] * n_views + [
-                        0.2
-                    ]  # Give colorbars a bit more space
+                else:  # bottom
+                    shape = [2, n_maps]
+                    row_weights = [1, colorbar_size]
+                    col_weights = [1] * n_maps
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        brain_positions[(map_idx, 0, 0)] = (0, map_idx)
+
+                        cb_dict = {}
+                        cb_dict["position"] = (1, map_idx)
+                        cb_dict["orientation"] = "horizontal"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+
+                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+
+                        colobar_list.append(cb_dict)
+            else:  # shared colorbar
+                cb_dict = {}
+                cb_dict["colormap"] = colormaps[0]
+                cb_dict["map_name"] = " + ".join(maps_names)
+                for map_idx in range(n_maps):
+                    map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                    if map_idx == 0:
+                        limits_list = map_limits
+                    else:
+                        limits_list= (min(limits_list[0], map_limits[0]), max(limits_list[1], map_limits[1]))
+
+                cb_dict["vmin"] = limits_list[0]
+                cb_dict["vmax"] = limits_list[1]
+
+                if colorbar_titles:
+                    cb_dict["title"] = colorbar_titles[0]
+                else:
+                    cb_dict["title"] = " + ".join(maps_names)
+                    
+                if colorbar_position == "right":
+                    shape = [1, n_maps + 1]
+                    row_weights = [1]
+                    col_weights = [1] * n_maps + [colorbar_size]
+                    groups = []
+
+                    cb_dict["position"] = (0, n_maps)
+                    cb_dict["orientation"] = "vertical"
+
+                else:  # bottom
+                    shape = [2, n_maps]
+                    row_weights = [1, colorbar_size]
                     col_weights = [1] * n_maps
 
-                    # Brain positions
+                    groups = [(1, slice(0, n_maps))]  # Colorbar in last row
+                    cb_dict["position"] = (1, 0)
+                    cb_dict["orientation"] = "horizontal"
+
+                    for map_idx in range(n_maps):
+                        brain_positions[(map_idx, 0, 0)] = (0, map_idx)
+
+                for map_idx in range(n_maps):
+                    colormap_limits[(map_idx, 0, 0)] = (cb_dict["vmin"], cb_dict["vmax"], maps_names[0])
+
+                colobar_list.append(cb_dict)
+
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+        return layout_config, colobar_list
+
+
+    def _vertical_multi_map_layout(
+        self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+    ):
+        """Handle vertical layout for multiple maps."""
+        n_maps = len(maps_names)    
+
+        brain_positions = {}
+        colormap_limits = {}
+
+        for map_idx in range(n_maps):
+            brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
+            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+            colormap_limits[(map_idx, 0, 0)] = map_limits
+
+        colobar_list = []
+        if not colorbar:
+            shape = [n_maps, 1]
+            row_weights = [1] * n_maps
+            col_weights = [1]
+            groups = []
+
+        else:
+            if colormap_style == "individual":
+                if colorbar_position == "right":
+                    shape = [n_maps, 2]
+                    row_weights = [1] * n_maps
+                    col_weights = [1, colorbar_size]
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
+
+                        cb_dict = {}
+                        cb_dict["position"] = (map_idx, 1)
+                        cb_dict["orientation"] = "vertical"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+
+                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+
+                        colobar_list.append(cb_dict)
+
+                else:  # bottom
+                    shape = [n_maps * 2, 1]
+                    row_weights = [1, colorbar_size] * n_maps
+                    col_weights = [1]
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        brain_positions[(map_idx, 0, 0)] = (map_idx * 2, 0)
+
+                        cb_dict = {}
+                        cb_dict["position"] = (map_idx * 2 + 1, 0)
+                        cb_dict["orientation"] = "horizontal"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+
+                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+
+                        colobar_list.append(cb_dict)
+            else:  # shared colorbar
+                cb_dict = {}
+                cb_dict["colormap"] = colormaps[0]
+                cb_dict["map_name"] = " + ".join(maps_names)
+                for map_idx in range(n_maps):
+                    map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                    if map_idx == 0:
+                        limits_list = map_limits
+                    else:
+                        limits_list= (min(limits_list[0], map_limits[0]), max(limits_list[1], map_limits[1]))
+                cb_dict["vmin"] = limits_list[0]
+                cb_dict["vmax"] = limits_list[1]
+                if colorbar_titles:
+                    cb_dict["title"] = colorbar_titles[0]
+                else:
+                    cb_dict["title"] = " + ".join(maps_names)
+                if colorbar_position == "right":
+                    shape = [n_maps, 2]
+                    row_weights = [1] * n_maps
+                    col_weights = [1, colorbar_size]
+                    groups = [(slice(0, n_maps), 1)]
+
+                    cb_dict["position"] = (0, 1)
+                    cb_dict["orientation"] = "vertical" 
+                else:  # bottom
+                    shape = [n_maps + 1, 1]
+                    row_weights = [1] * n_maps + [colorbar_size]
+                    col_weights = [1]
+                    groups = [(n_maps, 0)]
+                    cb_dict["position"] = (n_maps, 0)
+                    cb_dict["orientation"] = "horizontal"
+                    for map_idx in range(n_maps):
+                        brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
+                for map_idx in range(n_maps):
+                    colormap_limits[(map_idx, 0, 0)] = (cb_dict["vmin"], cb_dict["vmax"], maps_names[0])
+                colobar_list.append(cb_dict)
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+        return layout_config, colobar_list
+
+    def _grid_multi_map_layout(
+        self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+    ):
+        """Handle grid layout for multiple maps."""
+
+        n_maps = len(maps_names)
+        optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_maps)
+        brain_positions = {}
+        colormap_limits = {}
+
+        for map_idx in range(n_maps):
+            pos = positions[map_idx]
+            brain_positions[(map_idx, 0, 0)] = pos
+            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+            colormap_limits[(map_idx, 0, 0)] = map_limits
+
+        colobar_list = []
+        if not colorbar:
+            shape = list(optimal_grid)
+            row_weights = [1] * optimal_grid[0]
+            col_weights = [1] * optimal_grid[1]
+            groups = []
+        else:
+            if colormap_style == "individual":
+                if colorbar_position == "right":
+                    shape = [optimal_grid[0], optimal_grid[1] * 2]
+                    row_weights = [1] * optimal_grid[0]
+                    col_weights = [1, colorbar_size] * optimal_grid[1]
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        pos = positions[map_idx]
+                        brain_positions[(map_idx, 0, 0)] = (pos[0], pos[1] * 2)
+
+                        cb_dict = {}
+                        cb_dict["position"] = (pos[0], pos[1] * 2 + 1)
+                        cb_dict["orientation"] = "vertical"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+
+                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+
+                        colobar_list.append(cb_dict)
+
+                else:  # bottom
+                    shape = [optimal_grid[0] * 2, optimal_grid[1]]
+                    row_weights = [1, colorbar_size] * optimal_grid[0]
+                    col_weights = [1] * optimal_grid[1]
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        pos = positions[map_idx]
+                        brain_positions[(map_idx, 0, 0)] = (pos[0] * 2, pos[1])
+
+                        cb_dict = {}
+                        cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
+                        cb_dict["orientation"] = "horizontal"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+
+                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+
+                        colobar_list.append(cb_dict)
+            else:  # shared colorbar
+                cb_dict = {}
+                cb_dict["colormap"] = colormaps[0]
+                cb_dict["map_name"] = " + ".join(maps_names)
+                for map_idx in range(n_maps):
+                    map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                    if map_idx == 0:
+                        limits_list = map_limits
+                    else:
+                        limits_list= (min(limits_list[0], map_limits[0]), max(limits_list[1], map_limits[1]))
+                cb_dict["vmin"] = limits_list[0]
+                cb_dict["vmax"] = limits_list[1]
+                if colorbar_titles:
+                    cb_dict["title"] = colorbar_titles[0]
+                else:
+                    cb_dict["title"] = " + ".join(maps_names)
+                if colorbar_position == "right":
+                    shape = [optimal_grid[0], optimal_grid[1] + 1]
+                    row_weights = [1] * optimal_grid[0]
+                    col_weights = [1] * optimal_grid[1] + [colorbar_size]
+                    groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
+
+                    cb_dict["position"] = (0, optimal_grid[1])
+                    cb_dict["orientation"] = "vertical"
+                else:  # bottom
+                    shape = [optimal_grid[0] + 1, optimal_grid[1]]
+                    row_weights = [1] * optimal_grid[0] + [colorbar_size]
+                    col_weights = [1] * optimal_grid[1]
+                    groups = [(optimal_grid[0], slice(0, optimal_grid[1]))] 
+                    cb_dict["position"] = (optimal_grid[0], 0)
+                    cb_dict["orientation"] = "horizontal"
+                for map_idx in range(n_maps):
+                    colormap_limits[(map_idx, 0, 0)] = (cb_dict["vmin"], cb_dict["vmax"], maps_names[0])
+                for map_idx in range(n_maps):
+                    pos = positions[map_idx]
+                    brain_positions[(map_idx, 0, 0)] = pos
+                colobar_list.append(cb_dict)
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+        return layout_config, colobar_list
+
+
+    ################################################################################
+    # Multiple surfaces and multiple maps cases   
+    ################################################################################
+    def _multi_map_multi_surface_layout(
+        self,
+        surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+        orientation,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
+    ):
+        """Handle multiple maps and multiple surfaces case."""
+        
+        n_maps = len(maps_names)
+        n_surfaces = len(surfaces)
+        brain_positions = {}
+        colormap_limits = {}
+        colorbar_list = []
+        if orientation == "horizontal":
+
+            if not colorbar:
+                shape = [n_surfaces, n_maps]
+                row_weights = [1] * n_surfaces
+                col_weights = [1] * n_maps
+                groups = []
+
+                # Maps in columns, surfaces in rows
+                for map_idx in range(n_maps):
+                    for surf_idx in range(n_surfaces):
+                        brain_positions[(map_idx, surf_idx, 0)] = (surf_idx, map_idx)
+                        map_limits = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+                        colormap_limits[(map_idx, surf_idx, 0)] = map_limits 
+            else:
+
+                # Force colorbar to bottom for this case
+                if colormap_style == "individual":
+                    if colorbar_position == "right":
+                        shape = [n_surfaces, n_maps * 2]
+                        row_weights = [1] * n_surfaces
+                        col_weights = [1, colorbar_size] * n_maps
+                        groups = []
+
+                        for map_idx in range(n_maps):
+                            for surf_idx in range(n_surfaces):
+                                brain_positions[(map_idx, surf_idx, 0)] = (
+                                    surf_idx,
+                                    map_idx * 2,
+                                )
+
+
+                                cb_dict = {}
+                                cb_dict["position"] = (surf_idx, map_idx * 2 + 1)
+                                cb_dict["orientation"] = "vertical"
+                                cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                                cb_dict["map_name"] = maps_names[map_idx]
+                                if colorbar_titles:
+                                    cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                                else:
+                                    cb_dict["title"] = maps_names[map_idx]
+                                limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                                cb_dict["vmin"] = limits_list[0][0]
+                                cb_dict["vmax"] = limits_list[0][1]
+                                colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
+
+                                if maps_names[map_idx] not in surfaces[surf_idx].colortables:
+                                    colorbar_list.append(cb_dict)
+
+                    elif colorbar_position == "bottom":
+                        shape = [n_surfaces * 2, n_maps]
+                        row_weights = [1, colorbar_size] * n_surfaces
+                        col_weights = [1] * n_maps
+                        groups = []
+
+                        for map_idx in range(n_maps):
+                            for surf_idx in range(n_surfaces):
+                                brain_positions[(map_idx, surf_idx, 0)] = (
+                                    surf_idx * 2,
+                                    map_idx,
+                                )
+                                cb_dict = {}
+                                cb_dict["position"] = (surf_idx * 2 + 1, map_idx)
+                                cb_dict["orientation"] = "horizontal"
+                                cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                                cb_dict["map_name"] = maps_names[map_idx]
+                                if colorbar_titles:
+                                    cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                                else:
+                                    cb_dict["title"] = maps_names[map_idx]
+                                limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                                cb_dict["vmin"] = limits_list[0][0]
+                                cb_dict["vmax"] = limits_list[0][1]
+                                colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
+
+                                if maps_names[map_idx] not in surfaces[surf_idx].colortables:
+                                    colorbar_list.append(cb_dict)
+
+                else:
+
+                    # Map-wise limits
+                    maps_limits = []
+                    for map_idx in range(n_maps):
+                        if maps_names[map_idx] not in surfaces[0].colortables:
+                            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                            maps_limits.append(map_limits)
+                    
+                    if colormap_style == "shared":
+                        ######### Global colorbar #########
+                        # Compute the global limits
+                        global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                        cb_dict = {}
+                        cb_dict["colormap"] = colormaps[0]
+                        cb_dict["map_name"] = " + ".join(maps_names)
+                        cb_dict["vmin"] = global_limits[0]
+                        cb_dict["vmax"] = global_limits[1]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[0]
+                        else:
+                            cb_dict["title"] = " + ".join(maps_names)
+                        
+                        for map_idx in range(n_maps):
+                            for surf_idx in range(n_surfaces):
+                                brain_positions[(map_idx, surf_idx, 0)] = (surf_idx, map_idx)
+                                colormap_limits[(map_idx, surf_idx, 0)] = global_limits + (maps_names[0],)
+                            
+                        if colorbar_position == "right":
+                            shape = [n_surfaces, n_maps + 1]
+                            row_weights = [1] * n_surfaces
+                            col_weights = [1] * n_maps + [colorbar_size]
+                            groups = [(slice(0, n_surfaces), n_maps)]
+
+                            cb_dict["position"] = (0, n_maps)
+                            cb_dict["orientation"] = "vertical"
+
+                        elif colorbar_position == "bottom":
+                            shape = [n_surfaces + 1, n_maps]
+                            row_weights = [1] * n_surfaces + [colorbar_size]
+                            col_weights = [1] * n_maps
+                            groups = [(n_surfaces, slice(0, n_maps))]
+
+                            cb_dict["position"] = (n_surfaces, 0)
+                            cb_dict["orientation"] = "horizontal"
+
+                        colorbar_list.append(cb_dict)
+
+                    elif colormap_style == "shared_by_map":
+                        ######### One colorbar per map #########
+                        for map_idx in range(n_maps):
+                            map_limits = maps_limits[map_idx]
+                            for surf_idx in range(n_surfaces):
+                                brain_positions[(map_idx, surf_idx, 0)] = (surf_idx, map_idx)
+                                colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[map_idx]
+
+                        shape = [n_surfaces + 1, n_maps]
+                        row_weights = [1] * n_surfaces + [colorbar_size]
+                        col_weights = [1] * n_maps
+                        groups = []
+
+                        for map_idx in range(n_maps):
+                            cb_dict = {}
+                            cb_dict["position"] = (n_surfaces, map_idx)
+                            cb_dict["orientation"] = "horizontal"
+                            cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                            cb_dict["map_name"] = maps_names[map_idx]
+                            if colorbar_titles:
+                                cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            else:
+                                cb_dict["title"] = maps_names[map_idx]
+
+                            cb_dict["vmin"] = maps_limits[map_idx][0]
+                            cb_dict["vmax"] = maps_limits[map_idx][1]
+                            if maps_names[map_idx] not in surfaces[0].colortables:
+                                colorbar_list.append(cb_dict)   
+
+                    
+        else:  # vertical
+
+            if not colorbar:
+                # Maps in rows, surfaces in columns
+                shape = [n_maps, n_surfaces]
+                row_weights = [1] * n_maps
+                col_weights = [1] * n_surfaces
+                groups = []
+
+                for map_idx in range(n_maps):
+                    for surf_idx in range(n_surfaces):
+                        brain_positions[(map_idx, surf_idx, 0)] = (map_idx, surf_idx)
+
+            # Force colorbar to right for this case
+            if colormap_style == "individual":
+                if colorbar_position == "right":
+                    shape = [n_maps, n_surfaces * 2]
+                    row_weights = [1] * n_maps
+                    col_weights = [1, colorbar_size] * n_surfaces
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        for surf_idx in range(n_surfaces):
+                            brain_positions[(map_idx, surf_idx, 0)] = (
+                                map_idx,
+                                surf_idx * 2,
+                            )
+                            cb_dict = {}
+                            cb_dict["position"] = (map_idx, surf_idx * 2 + 1)
+                            cb_dict["orientation"] = "vertical"
+                            cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                            cb_dict["map_name"] = maps_names[map_idx]
+                            if colorbar_titles:
+                                cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            else:
+                                cb_dict["title"] = maps_names[map_idx]
+                            limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                            cb_dict["vmin"] = limits_list[0][0]
+                            cb_dict["vmax"] = limits_list[0][1]
+                            colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
+                            if maps_names[map_idx] not in surfaces[surf_idx].colortables:   
+                                colorbar_list.append(cb_dict)
+
+                elif colorbar_position == "bottom":
+                    shape = [n_maps * 2, n_surfaces]
+                    row_weights = [1, colorbar_size] * n_maps
+                    col_weights = [1] * n_surfaces
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        for surf_idx in range(n_surfaces):
+                            brain_positions[(map_idx, surf_idx, 0)] = (
+                                map_idx * 2,
+                                surf_idx,
+                            )
+                            cb_dict = {}
+                            cb_dict["position"] = (map_idx * 2 + 1, surf_idx)
+                            cb_dict["orientation"] = "horizontal"
+                            cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                            cb_dict["map_name"] = maps_names[map_idx]
+                            if colorbar_titles:
+                                cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            else:
+                                cb_dict["title"] = maps_names[map_idx]
+                            limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                            cb_dict["vmin"] = limits_list[0][0]
+                            cb_dict["vmax"] = limits_list[0][1]
+                            colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]  
+                            if maps_names[map_idx] not in surfaces[surf_idx].colortables:      
+                                colorbar_list.append(cb_dict)
+
+
+            else:
+                # Map-wise limits
+                maps_limits = []
+                for map_idx in range(n_maps):
+                    if any(
+                            maps_names[map_idx] not in surface.colortables 
+                            for surface in surfaces
+                        ):
+                        map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                        maps_limits.append(map_limits)
+
+                if colormap_style == "shared":
+                    ######### Global colorbar #########
+                    # Compute the global limits
+                    global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                    cb_dict = {}
+                    cb_dict["colormap"] = colormaps[0]
+                    cb_dict["map_name"] = " + ".join(maps_names)
+                    cb_dict["vmin"] = global_limits[0]
+                    cb_dict["vmax"] = global_limits[1]
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+                    else:
+                        cb_dict["title"] = " + ".join(maps_names)
+                    
+                    for map_idx in range(n_maps):
+                        for surf_idx in range(n_surfaces):
+                            brain_positions[(map_idx, surf_idx, 0)] = (map_idx, surf_idx)
+                            colormap_limits[(map_idx, surf_idx, 0)] = global_limits + (maps_names[0],)
+                            
+                    if colorbar_position == "right":
+                        shape = [n_maps, n_surfaces + 1]
+                        row_weights = [1] * n_maps
+                        col_weights = [1] * n_surfaces + [colorbar_size]
+                        groups = [(slice(0, n_maps), n_surfaces)]
+
+                        cb_dict["position"] = (0, n_surfaces)
+                        cb_dict["orientation"] = "vertical"
+
+                    elif colorbar_position == "bottom":
+                        shape = [n_maps + 1, n_surfaces]
+                        row_weights = [1] * n_maps + [colorbar_size]
+                        col_weights = [1] * n_surfaces
+                        groups = [(n_maps, slice(0, n_surfaces))]
+
+                        cb_dict["position"] = (n_maps, 0)
+                        cb_dict["orientation"] = "horizontal"
+                    
+                    if any(
+                            maps_names[map_idx] not in surface.colortables 
+                            for map_idx in range(n_maps)
+                            for surface in surfaces
+                        ):
+                        colorbar_list.append(cb_dict)
+
+                elif colormap_style == "shared_by_map":
+                    ######### One colorbar per map #########
+                    for map_idx in range(n_maps):
+                        map_limits = maps_limits[map_idx]
+                        for surf_idx in range(n_surfaces):
+                            brain_positions[(map_idx, surf_idx, 0)] = (map_idx, surf_idx)
+                            colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[map_idx]
+
+                    shape = [n_maps, n_surfaces + 1]
+                    row_weights = [1] * n_maps
+                    col_weights = [1] * n_surfaces + [colorbar_size]
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        cb_dict = {}
+                        cb_dict["position"] = (map_idx, n_surfaces)
+                        cb_dict["orientation"] = "vertical"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+
+                        cb_dict["vmin"] = maps_limits[map_idx][0]
+                        cb_dict["vmax"] = maps_limits[map_idx][1]
+                        colorbar_list.append(cb_dict)
+
+
+
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+        return layout_config, colorbar_list
+
+
+    def _multi_view_single_element_layout(
+        self, surface, view_ids, map_name, v_limits, colormap, colorbar_title, orientation, colorbar, colorbar_position, colorbar_size
+    ):
+        """Handle multiple views, single map, single surface case."""
+
+        if map_name in surface.colortables:
+            colorbar = False
+
+        n_views = len(view_ids)
+        brain_positions = {}
+        colormap_limits = {}
+        colorbar_list = []
+
+        map_limits = _get_map_limits(surfaces=surface, map_name=map_name, colormap_style = "individual", v_limits=v_limits)[0]
+        if orientation == "horizontal":
+            for view_idx in range(n_views):
+                brain_positions[(0, 0, view_idx)] = (0, view_idx)
+                colormap_limits[(0, 0, view_idx)] = map_limits
+
+            if not colorbar:
+                shape = [1, n_views]
+                row_weights = [1]
+                col_weights = [1] * n_views
+                groups = []
+
+            else:
+                shape = [1, n_views + 1]
+                row_weights = [1]
+                col_weights = [1] * n_views + [colorbar_size]
+                groups = []
+
+                cb_dict = {}
+                cb_dict["colormap"] = colormap
+                cb_dict["map_name"] = map_name
+                cb_dict["vmin"] = map_limits[0]
+                cb_dict["vmax"] = map_limits[1]
+                if colorbar_title:
+                    cb_dict["title"] = colorbar_title
+                else:
+                    cb_dict["title"] = map_name
+
+                if colorbar_position == "right":
+                    cb_dict["position"] = (0, n_views)
+                    cb_dict["orientation"] = "vertical"
+                else:  # bottom
+                    shape = [2, n_views]
+                    row_weights = [1, colorbar_size]
+                    col_weights = [1] * n_views
+                    groups = [(1, slice(0, n_views))]
+                    cb_dict["position"] = (1, 0)
+                    cb_dict["orientation"] = "horizontal"
+
+                colorbar_list.append(cb_dict)
+
+        elif orientation == "vertical":
+            for view_idx in range(n_views):
+                brain_positions[(0, 0, view_idx)] = (view_idx, 0)
+                colormap_limits[(0, 0, view_idx)] = map_limits
+
+            if not colorbar:
+                shape = [n_views, 1]
+                row_weights = [1] * n_views
+                col_weights = [1]
+                groups = []
+
+            else:
+                shape = [n_views, 2]
+                row_weights = [1] * n_views
+                col_weights = [1, colorbar_size]
+                groups = []
+
+                cb_dict = {}
+                cb_dict["colormap"] = colormap
+                cb_dict["map_name"] = map_name
+                cb_dict["vmin"] = map_limits[0]
+                cb_dict["vmax"] = map_limits[1]
+                if colorbar_title:
+                    cb_dict["title"] = colorbar_title
+                else:
+                    cb_dict["title"] = map_name
+
+                if colorbar_position == "right":
+                    cb_dict["position"] = (0, 1)
+                    cb_dict["orientation"] = "vertical"
+                    groups = [(slice(0, n_views), 1)]
+                else:
+                    shape = [n_views + 1, 1]
+                    row_weights = [1] * n_views + [colorbar_size]
+                    col_weights = [1]
+                    cb_dict["position"] = (n_views, 0)
+                    cb_dict["orientation"] = "horizontal"
+                colorbar_list.append(cb_dict)
+        else:
+            optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_views)
+            for view_idx in range(n_views):
+                pos = positions[view_idx]
+                brain_positions[(0, 0, view_idx)] = pos
+                colormap_limits[(0, 0, view_idx)] = map_limits
+            if not colorbar:
+                shape = list(optimal_grid)
+                row_weights = [1] * optimal_grid[0]
+                col_weights = [1] * optimal_grid[1]
+                groups = []
+            else:
+                shape = [optimal_grid[0], optimal_grid[1] + 1]
+                row_weights = [1] * optimal_grid[0]
+                col_weights = [1] * optimal_grid[1] + [colorbar_size]
+                groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
+
+                cb_dict = {}
+                cb_dict["colormap"] = colormap
+                cb_dict["map_name"] = map_name
+                cb_dict["vmin"] = map_limits[0]
+                cb_dict["vmax"] = map_limits[1]
+                if colorbar_title:
+                    cb_dict["title"] = colorbar_title
+                else:
+                    cb_dict["title"] = map_name
+
+                if colorbar_position == "right":
+                    cb_dict["position"] = (0, optimal_grid[1])
+                    cb_dict["orientation"] = "vertical"
+                    shape = [optimal_grid[0], optimal_grid[1] + 1]  
+                    row_weights = [1] * optimal_grid[0]
+                    col_weights = [1] * optimal_grid[1] + [colorbar_size]
+                    groups = [(slice(0, optimal_grid[0]), optimal_grid[1])] 
+
+
+                else:  # bottom
+                    shape = [optimal_grid[0] + 1, optimal_grid[1]]
+                    row_weights = [1] * optimal_grid[0] + [colorbar_size]
+                    col_weights = [1] * optimal_grid[1]
+                    groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
+                    cb_dict["position"] = (optimal_grid[0], 0)
+                    cb_dict["orientation"] = "horizontal"
+                colorbar_list.append(cb_dict)
+
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+        return layout_config, colorbar_list
+
+    def _multi_view_multi_surface_layout(
+        self,
+        surfaces, 
+        valid_views, 
+        maps_names, 
+        v_limits, 
+        colormaps, 
+        colorbar_titles,
+        orientation,
+        colorbar,
+        colorbar_position,
+        colormap_style,
+        colorbar_size,
+    ):
+        """Handle multiple views and multiple surfaces case."""
+        n_surfaces = len(surfaces)
+        n_views = len(valid_views)
+        brain_positions = {}
+        colormap_limits = {}
+        colorbar_list = []
+        if orientation == "horizontal":
+            if not colorbar:
+                shape = [n_surfaces, n_views]
+                row_weights = [1] * n_surfaces
+                col_weights = [1] * n_views
+                groups = []
+
+                # Views in columns, surfaces in rows
+                for view_idx in range(n_views):
+                    for surf_idx in range(n_surfaces):
+                        brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
+                        map_limits = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])[0]
+                        colormap_limits[(0, surf_idx, view_idx)] = map_limits
+            else:
+
+                if colormap_style == "individual":
+                    shape = [n_surfaces, n_views + 1]
+                    row_weights = [1] * n_surfaces
+                    col_weights = [1] * n_views + [colorbar_size]
+                    groups = []
+                    for surf_idx in range(n_surfaces):
+                        cb_dict = {}
+                        cb_dict["position"] = (surf_idx, n_views)
+                        cb_dict["orientation"] = "vertical"
+                        cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                        cb_dict["map_name"] = maps_names[0]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[0]
+                        else:
+                            cb_dict["title"] = maps_names[0]
+                        limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+                        
+                        for view_idx in range(n_views):
+                            brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
+                            colormap_limits[(0, surf_idx, view_idx)] = limits_list[0]
+                        colorbar_list.append(cb_dict)
+                else:
+                    # View-wise limits
+                    views_limits = []
+                    for view_idx in range(n_views):
+                        view_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = "shared", v_limits=v_limits[0])[0]
+                        views_limits.append(view_limits)
+                    
+                    ######### Global colorbar #########
+                    # Compute the global limits
+                    global_limits = (min(l[0] for l in views_limits), max(l[1] for l in views_limits))
+                    cb_dict = {}
+                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["map_name"] = maps_names[0]
+                    cb_dict["vmin"] = global_limits[0]
+                    cb_dict["vmax"] = global_limits[1]
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+                    else:
+                        cb_dict["title"] = maps_names[0]
+                    
+                    for view_idx in range(n_views):
+                        for surf_idx in range(n_surfaces):
+                            brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
+                            colormap_limits[(0, surf_idx, view_idx)] = global_limits + (maps_names[0],)
+                        
+                    if colorbar_position == "right":
+                        shape = [n_surfaces, n_views + 1]
+                        row_weights = [1] * n_surfaces
+                        col_weights = [1] * n_views + [colorbar_size]
+                        groups = [(slice(0, n_surfaces), n_views)]
+
+                        cb_dict["position"] = (0, n_views)
+                        cb_dict["orientation"] = "vertical"
+
+                    elif colorbar_position == "bottom":
+                        shape = [n_surfaces + 1, n_views]
+                        row_weights = [1] * n_surfaces + [colorbar_size]
+                        col_weights = [1] * n_views
+                        groups = [(n_surfaces, slice(0, n_views))]
+
+                        cb_dict["position"] = (n_surfaces, 0)
+                        cb_dict["orientation"] = "horizontal"
+                    colorbar_list.append(cb_dict)
+
+        else:  # vertical
+            if not colorbar:
+                # Views in rows, surfaces in columns
+                shape = [n_views, n_surfaces]
+                row_weights = [1] * n_views
+                col_weights = [1] * n_surfaces
+                groups = []
+
+                for view_idx in range(n_views):
+                    for surf_idx in range(n_surfaces):
+                        brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
+                        map_limits = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])[0]
+                        colormap_limits[(0, surf_idx, view_idx)] = map_limits
+            else:
+                
+                if colormap_style == "individual":
+                    shape = [n_views + 1, n_surfaces]
+                    row_weights = [1] * n_views + [colorbar_size]
+                    col_weights = [1] * n_surfaces 
+                    groups = []
+                    for surf_idx in range(n_surfaces):
+                        cb_dict = {}
+                        cb_dict["position"] = (n_views, surf_idx)
+                        cb_dict["orientation"] = "horizontal"
+                        cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                        cb_dict["map_name"] = maps_names[0]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[0]
+                        else:
+                            cb_dict["title"] = maps_names[0]
+                        limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        for view_idx in range(n_views):
+                            brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
+                            colormap_limits[(0, surf_idx, view_idx)] = limits_list[0]
+
+                        colorbar_list.append(cb_dict)
+                else:
+                    # View-wise limits
+                    views_limits = []
+                    for view_idx in range(n_views):
+                        view_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = "shared", v_limits=v_limits[0])[0]
+                        views_limits.append(view_limits)
+                    
+                    ######### Global colorbar #########
+                    # Compute the global limits
+                    global_limits = (min(l[0] for l in views_limits), max(l[1] for l in views_limits))
+                    cb_dict = {}
+                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["map_name"] = maps_names[0]
+                    cb_dict["vmin"] = global_limits[0]
+                    cb_dict["vmax"] = global_limits[1]
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+                    else:
+                        cb_dict["title"] = maps_names[0]
+
+                    for view_idx in range(n_views):
+                        for surf_idx in range(n_surfaces):
+                            brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
+                            colormap_limits[(0, surf_idx, view_idx)] = global_limits + (maps_names[0],)
+
+                    if colorbar_position == "right":
+                        shape = [n_views, n_surfaces + 1]
+                        row_weights = [1] * n_views
+                        col_weights = [1] * n_surfaces + [colorbar_size]
+                        groups = [(slice(0, n_views), n_surfaces)]
+
+                        cb_dict["position"] = (0, n_surfaces)
+                        cb_dict["orientation"] = "vertical"
+
+                    elif colorbar_position == "bottom":
+                        shape = [n_views + 1, n_surfaces]
+                        row_weights = [1] * n_views + [colorbar_size]
+                        col_weights = [1] * n_surfaces
+                        groups = [(n_views, slice(0, n_surfaces))]
+
+                        cb_dict["position"] = (n_views, 0)
+                        cb_dict["orientation"] = "horizontal"
+                    colorbar_list.append(cb_dict)
+
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+        return layout_config, colorbar_list
+
+
+    def _multi_view_multi_map_layout(
+        self,
+        surfaces, valid_views, maps_names, v_limits, colormaps, colorbar_titles,
+        orientation,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
+    ):
+        """Handle multiple views and multiple maps case."""
+
+        n_views = len(valid_views)
+        n_maps = len(maps_names)
+
+        brain_positions = {}
+        colormap_limits = {}
+        colorbar_list = []
+        if orientation == "horizontal":
+            if not colorbar:
+                shape = [n_maps, n_views]
+                row_weights = [1] * n_maps
+                col_weights = [1] * n_views
+                groups = []
+
+                # Views in columns, maps in rows
+                for view_idx in range(n_views):
+                    for map_idx in range(n_maps):
+                        brain_positions[(map_idx, 0, view_idx)] = (map_idx, view_idx)
+                        map_limits = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+                        colormap_limits[(map_idx, 0, view_idx)] = map_limits
+            else:
+                if colormap_style == "individual":
+                    shape = [n_maps, n_views + 1]
+                    row_weights = [1] * n_maps
+                    col_weights = [1] * n_views + [colorbar_size]
+                    groups = []
+                    for map_idx in range(n_maps):
+                        cb_dict = {}
+                        cb_dict["position"] = (map_idx, n_views)
+                        cb_dict["orientation"] = "vertical"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+                        limits_list = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        for view_idx in range(n_views):
+                            brain_positions[(map_idx, 0, view_idx)] = (map_idx, view_idx)
+                            colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
+                        if maps_names[map_idx] not in surfaces[0].colortables:
+                            colorbar_list.append(cb_dict)
+
+                else:
+                    # Get the global limits
+                    maps_limits = []
+                    for map_idx in range(n_maps):
+                        if maps_names[map_idx] not in surfaces[0].colortables:
+                            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                            maps_limits.append(map_limits)
+
+ 
+                    ######### Global colorbar #########
+                    # Compute the global limits
+                    global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                    cb_dict = {}
+                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["map_name"] = " + ".join(maps_names)
+                    cb_dict["vmin"] = global_limits[0]
+                    cb_dict["vmax"] = global_limits[1]
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+                    else:
+                        cb_dict["title"] = " + ".join(maps_names)
+                    
                     for map_idx in range(n_maps):
                         for view_idx in range(n_views):
-                            brain_positions[(map_idx, view_idx)] = (view_idx, map_idx)
-                        # Each map gets its colorbar in the extra row at its column
-                        colorbar_positions[f"individual_{map_idx}"] = (n_views, map_idx)
+                            brain_positions[(map_idx, 0, view_idx)] = (map_idx, view_idx)
+                            colormap_limits[(map_idx, 0, view_idx)] = global_limits + (maps_names[0],)
+                        
+                    if colorbar_position == "right":
+                        shape = [n_maps, n_views + 1]
+                        row_weights = [1] * n_maps
+                        col_weights = [1] * n_views + [colorbar_size]
+                        groups = [(slice(0, n_maps), n_views)]
 
-                else:  # shared
-                    if colorbar_position == "bottom":
-                        # Add 1 extra row for shared colorbar
-                        grid_shape = [n_views + 1, n_maps]
-                        row_weights = [1] * n_views + [0.2]
-                        col_weights = [1] * n_maps
-                        groups = [
-                            (n_views, slice(None))
-                        ]  # Span all columns in last row
+                        cb_dict["position"] = (0, n_views)
+                        cb_dict["orientation"] = "vertical"
 
-                        # Brain positions
-                        for map_idx in range(n_maps):
-                            for view_idx in range(n_views):
-                                brain_positions[(map_idx, view_idx)] = (
-                                    view_idx,
-                                    map_idx,
-                                )
-                        # Shared colorbar spans the entire extra row
-                        colorbar_positions["shared"] = (n_views, 0)
+                    elif colorbar_position == "bottom":
+                        shape = [n_maps + 1, n_views]
+                        row_weights = [1] * n_maps + [colorbar_size]
+                        col_weights = [1] * n_views
+                        groups = [(n_maps, slice(0, n_views))]
 
-                    else:  # right
-                        # Add 1 extra column for shared colorbar
-                        grid_shape = [n_views, n_maps + 1]
+                        cb_dict["position"] = (n_maps, 0)
+                        cb_dict["orientation"] = "horizontal"
+                    colorbar_list.append(cb_dict)
+        else:  # vertical
+            if not colorbar:
+                # Views in rows, maps in columns
+                shape = [n_views, n_maps]
+                row_weights = [1] * n_views
+                col_weights = [1] * n_maps
+                groups = []
+
+                for view_idx in range(n_views):
+                    for map_idx in range(n_maps):
+                        brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
+                        map_limits = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+                        colormap_limits[(map_idx, 0, view_idx)] = map_limits
+            else:
+                if colormap_style == "individual":
+                    shape = [n_views + 1, n_maps]
+                    row_weights = [1] * n_views + [colorbar_size]
+                    col_weights = [1] * n_maps 
+                    groups = []
+
+                    for map_idx in range(n_maps):
+                        cb_dict = {}
+                        cb_dict["position"] = (n_views, map_idx)
+                        cb_dict["orientation"] = "horizontal"
+                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["map_name"] = maps_names[map_idx]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                        else:
+                            cb_dict["title"] = maps_names[map_idx]
+                        limits_list = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        cb_dict["vmin"] = limits_list[0][0]
+                        cb_dict["vmax"] = limits_list[0][1]
+
+                        for view_idx in range(n_views):
+                            brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
+                            colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
+
+                        if maps_names[map_idx] not in surfaces[0].colortables:
+                            colorbar_list.append(cb_dict)
+                else:
+                    # Get the global limits
+                    maps_limits = []
+                    for map_idx in range(n_maps):
+                        if maps_names[map_idx] not in surfaces[0].colortables:
+                            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                            maps_limits.append(map_limits)
+
+ 
+                    ######### Global colorbar #########
+                    # Compute the global limits
+                    global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                    cb_dict = {}
+                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["map_name"] = " + ".join(maps_names)
+                    cb_dict["vmin"] = global_limits[0]
+                    cb_dict["vmax"] = global_limits[1]
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+                    else:
+                        cb_dict["title"] = " + ".join(maps_names)
+                    for map_idx in range(n_maps):
+                        for view_idx in range(n_views):
+                            brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
+                            colormap_limits[(map_idx, 0, view_idx)] = global_limits + (maps_names[0],)  
+                    if colorbar_position == "right":
+                        shape = [n_views, n_maps + 1]
                         row_weights = [1] * n_views
-                        col_weights = [1] * n_maps + [0.2]
-                        groups = [(slice(None), n_maps)]  # Span all rows in last column
+                        col_weights = [1] * n_maps + [colorbar_size]
+                        groups = [(slice(0, n_views), n_maps)]
 
-                        # Brain positions
-                        for map_idx in range(n_maps):
-                            for view_idx in range(n_views):
-                                brain_positions[(map_idx, view_idx)] = (
-                                    view_idx,
-                                    map_idx,
-                                )
-                        # Shared colorbar spans the entire extra column
-                        colorbar_positions["shared"] = (0, n_maps)
+                        cb_dict["position"] = (0, n_maps)
+                        cb_dict["orientation"] = "vertical"
 
-        return (
-            grid_shape,
-            row_weights,
-            col_weights,
-            groups,
-            brain_positions,
-            colorbar_positions,
-        )
+                    elif colorbar_position == "bottom":
+                        shape = [n_views + 1, n_maps]
+                        row_weights = [1] * n_views + [colorbar_size]
+                        col_weights = [1] * n_maps
+                        groups = [(n_views, slice(0, n_maps))]
 
-    ###############################################################################################
-    def _create_views(
+                        cb_dict["position"] = (n_views, 0)
+                        cb_dict["orientation"] = "horizontal"
+                    colorbar_list.append(cb_dict)
+        layout_config ={
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits
+        }
+        return layout_config, colorbar_list
+
+
+    
+
+    def _single_map_multi_surface_layout(
         self,
-        plotter: pv.Plotter,
-        config: Dict[str, Any],
-        surfaces: Dict[str, Any],
-        view_offset: Tuple[int, int],
-    ) -> Any:
-        """
-        Create all configured brain views in the plotter.
+        surfaces, 
+        maps_names, 
+        v_limits, 
+        colormaps, 
+        colorbar_titles,
+        orientation,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
+    ):
+        """Handle single map, multiple surfaces case."""
+        brain_positions = {}
+        n_surfaces = len(surfaces)
 
+        # Getting the limits for each surface and storing them in a list
+        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = colormap_style, v_limits=v_limits[0])
+
+        if orientation == "horizontal":
+            return self._horizontal_multi_surface_layout(
+                surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+            )
+        elif orientation == "vertical":
+            return self._vertical_multi_surface_layout(
+                surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+            )
+        else:  # grid
+            return self._grid_multi_surface_layout(
+                surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+            )
+
+    def _horizontal_multi_surface_layout(
+        self, surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+    ):
+        """Handle horizontal layout for multiple surfaces."""
+        brain_positions = {}
+        colormap_limits = {}
+
+        n_surfaces = len(surfaces)
+        for surf_idx in range(n_surfaces):
+            brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
+            colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+                
+
+        colorbar_list = []
+        if not colorbar:
+            shape = [1, n_surfaces]
+            row_weights = [1]
+            col_weights = [1] * n_surfaces
+            groups = []
+
+        else:
+            if colormap_style == "individual":
+                for surf_idx in range(n_surfaces):
+                    if maps_names[0] in surfaces[surf_idx].colortables:
+                        indiv_colorbar = False
+                    else:
+                        indiv_colorbar = True
+
+                    if indiv_colorbar:
+                        groups = []
+                        cb_dict = {}
+
+                        cb_dict["vmin"] = limits_list[surf_idx][0]
+                        cb_dict["vmax"] = limits_list[surf_idx][1]
+
+                        if colorbar_titles:
+                            if colorbar_titles[0]:
+                                cb_dict["title"] = colorbar_titles[0]
+                            else:
+                                cb_dict["title"] = maps_names[0]
+                        else:
+                            cb_dict["title"] = maps_names[0]
+
+                        cb_dict["colormap"] = colormaps[0]
+                        cb_dict["map_name"] = maps_names[0]
+
+                        if colorbar_position == "right":
+                            shape = [1, n_surfaces * 2]
+                            row_weights = [1]
+                            col_weights = [1, colorbar_size] * n_surfaces
+                            brain_positions[(0, surf_idx, 0)] = (0, surf_idx * 2)
+                            colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+                            cb_dict["position"] = (0, surf_idx * 2 + 1)
+                            cb_dict["orientation"] = "vertical"
+
+                        else:  # bottom
+                            shape = [2, n_surfaces]
+                            row_weights = [1, colorbar_size]
+                            col_weights = [1] * n_surfaces
+                            brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
+                            colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+                            cb_dict["position"] = (1, surf_idx)
+                            cb_dict["orientation"] = "horizontal"
+                    else:
+                        cb_dict = False
+
+                    colorbar_list.append(cb_dict)
+
+            else:  # shared colorbar
+                cb_dict = {}
+                if colorbar_titles:
+                    cb_dict["title"] = colorbar_titles[0]
+                else:
+                    cb_dict["title"] = maps_names[0]
+
+                cb_dict["colormap"] = colormaps[0]
+                cb_dict["map_name"] = maps_names[0]
+
+                cb_dict["vmin"] = limits_list[0][0]
+                cb_dict["vmax"] = limits_list[0][1]
+            
+                if colorbar_position == "right":
+                    shape = [1, n_surfaces + 1]
+                    row_weights = [1]
+                    col_weights = [1] * n_surfaces + [colorbar_size]
+                    groups = []
+                    cb_dict["position"] = (0, n_surfaces)  # Colorbar in last column
+                    cb_dict["orientation"] = "vertical"
+
+                    for surf_idx in range(n_surfaces):
+                        brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
+                        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+                else:  # bottom
+                    shape = [2, n_surfaces]
+                    row_weights = [1, colorbar_size]
+                    col_weights = [1] * n_surfaces
+                    groups = [(1, slice(0, n_surfaces))]  # Colorbar in last row
+                    cb_dict["position"] = (1, 0)  # Color
+                    cb_dict["orientation"] = "horizontal"
+
+                    for surf_idx in range(n_surfaces):
+                        brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
+                        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+
+                colorbar_list.append(cb_dict)
+
+        layout_config = {
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits,
+        }
+
+        return layout_config, colorbar_list
+
+    def _vertical_multi_surface_layout(
+        self, surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+    ):
+        """Handle vertical layout for multiple surfaces."""
+        brain_positions = {}
+        colormap_limits = {}
+
+        n_surfaces = len(surfaces)
+
+        for surf_idx in range(n_surfaces):
+            brain_positions[(0, surf_idx, 0)] = (surf_idx, 0)
+            colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+        colorbar_list = []
+        if not colorbar:
+            shape = [n_surfaces, 1]
+            row_weights = [1] * n_surfaces
+            col_weights = [1]
+            groups = []
+
+        else:
+            
+            if colormap_style == "individual":
+                for surf_idx in range(n_surfaces):
+                    cb_dict = {}
+
+                    cb_dict["vmin"] = limits_list[surf_idx][0]
+                    cb_dict["vmax"] = limits_list[surf_idx][1]
+
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+                    else:
+                        cb_dict["title"] = maps_names[0]
+
+                    cb_dict["colormap"] = colormaps[0]
+                    cb_dict["map_name"] = maps_names[0]
+
+                    if colorbar_position == "right":
+                        shape = [n_surfaces, 2]
+                        row_weights = [1] * n_surfaces
+                        col_weights = [1, colorbar_size]
+                        groups = []
+                        
+                        cb_dict ["position"] = (surf_idx, 1)
+                        cb_dict["orientation"] = "vertical"
+                        brain_positions[(0, surf_idx, 0)] = (surf_idx,  0)
+                        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+                    elif colorbar_position == "bottom":
+                        shape = [n_surfaces * 2, 1]
+                        row_weights = [1, colorbar_size] * n_surfaces
+                        col_weights = [1]
+                        groups = []
+
+                        cb_dict["position"] = (surf_idx * 2 + 1, 0)
+                        cb_dict["orientation"] = "horizontal"
+                        brain_positions[(0, surf_idx, 0)] = (surf_idx * 2, 0)
+                        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+                    colorbar_list.append(cb_dict)  
+
+            else:  # shared colorbar
+                cb_dict = {}
+                if colorbar_titles:
+                    cb_dict["title"] = colorbar_titles[0]
+                else:
+                    cb_dict["title"] = maps_names[0]
+
+                cb_dict["colormap"] = colormaps[0]
+                cb_dict["map_name"] = maps_names[0]
+                
+
+                cb_dict["vmin"] = limits_list[0][0]
+                cb_dict["vmax"] = limits_list[0][1]
+
+                if colorbar_position == "right":
+                    shape = [n_surfaces, 2]
+                    row_weights = [1] * n_surfaces
+                    col_weights = [1, colorbar_size]
+                    groups = [(slice(0, n_surfaces), 1)]
+                    cb_dict["position"] = (0, 1)
+                    cb_dict["orientation"] = "vertical"
+
+                elif colorbar_position == "bottom":
+                    shape = [n_surfaces + 1, 1]
+                    row_weights = [1] * n_surfaces + [colorbar_size]
+                    col_weights = [1]
+                    groups = [(n_surfaces, slice(0, 1))]
+                    cb_dict["position"] = (n_surfaces, 0)
+                    cb_dict["orientation"] = "horizontal"
+                
+                colorbar_list.append(cb_dict)
+                    
+        layout_config = {
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits,
+        }
+        return layout_config, colorbar_list
+                    
+
+    def _grid_multi_surface_layout(
+        self, surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+    ):
+        """Handle grid layout for multiple surfaces."""
+
+        n_surfaces = len(surfaces)
+        optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_surfaces)
+        brain_positions = {}
+        colormap_limits = {}
+
+        for surf_idx in range(n_surfaces):
+            brain_positions[(0, surf_idx, 0)] = positions[surf_idx]
+            colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+        colorbar_list = []
+        if not colorbar:
+            shape = optimal_grid
+            row_weights = [1] * optimal_grid[0]
+            col_weights = [1] * optimal_grid[1]
+            groups = []
+
+        else:
+            if colormap_style == "individual":
+                for surf_idx in range(n_surfaces):
+                    cb_dict = {}
+
+                    cb_dict["vmin"] = limits_list[surf_idx][0]
+                    cb_dict["vmax"] = limits_list[surf_idx][1]
+
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+                    else:
+                        cb_dict["title"] = maps_names[0]
+
+                    cb_dict["colormap"] = colormaps[0]
+                    cb_dict["map_name"] = maps_names[0]
+
+                    pos = positions[surf_idx]
+                    colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+                    if colorbar_position == "right":
+                        shape = [optimal_grid[0], optimal_grid[1] * 2]
+                        row_weights = [1] * optimal_grid[0]
+                        col_weights = [1, colorbar_size] * optimal_grid[1]
+                        groups = []
+
+                        brain_positions[(0, surf_idx, 0)] = (pos[0], pos[1] * 2)
+
+                        cb_dict["position"] = (pos[0], pos[1] * 2 + 1)
+                        cb_dict["orientation"] = "vertical"
+
+                    else:
+                        shape = [optimal_grid[0] * 2, optimal_grid[1]]
+                        row_weights = [1, colorbar_size] * optimal_grid[0]
+                        col_weights = [1] * optimal_grid[1]
+                        groups = []
+
+                        brain_positions[(0, surf_idx, 0)] = (pos[0] * 2, pos[1])
+                        
+                        cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
+                        cb_dict["orientation"] = "horizontal"
+
+                    colorbar_list.append(cb_dict)
+            else:  # shared colorbar
+                cb_dict = {}
+                if colorbar_titles:
+                    cb_dict["title"] = colorbar_titles[0]
+                else:
+                    cb_dict["title"] = maps_names[0]
+
+                cb_dict["colormap"] = colormaps[0]
+                cb_dict["map_name"] = maps_names[0]
+                cb_dict["vmin"] = limits_list[0][0]
+                cb_dict["vmax"] = limits_list[0][1]
+
+                if colorbar_position == "right":
+                    shape = [optimal_grid[0], optimal_grid[1] + 1]
+                    row_weights = [1] * optimal_grid[0]
+                    col_weights = [1] * optimal_grid[1] + [colorbar_size]
+                    groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
+                    cb_dict["position"] = (0, optimal_grid[1])
+                    cb_dict["orientation"] = "vertical"
+
+                else:  # bottom
+                    shape = [optimal_grid[0] + 1, optimal_grid[1]]
+                    row_weights = [1] * optimal_grid[0] + [colorbar_size]
+                    col_weights = [1] * optimal_grid[1]
+                    groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
+                    cb_dict["position"] = (optimal_grid[0], 0)
+                    cb_dict["orientation"] = "horizontal"
+
+                colorbar_list.append(cb_dict)
+
+        layout_config = {
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits,
+        }
+        return layout_config, colorbar_list
+
+
+
+    def _create_colorbar_configs(
+        self,
+        maps_names,
+        colormaps,
+        v_limits,
+        colorbar_titles,
+        surfaces,
+        config,
+        colormap_style,
+        colorbar_position,
+    ):
+        """Create colorbar configurations based on layout."""
+        colorbar_configs = []
+        brain_positions = config["brain_positions"]
+        shape = config["shape"]
+
+        # Determine the number of dimensions
+        n_maps = len(maps_names)
+        n_surfaces = len(surfaces) if surfaces else 1
+
+        # Get unique combinations that need colorbars
+        unique_maps = set()
+        unique_map_surface_pairs = set()
+
+        for map_idx, surf_idx, view_idx in brain_positions.keys():
+            unique_maps.add(map_idx)
+            unique_map_surface_pairs.add((map_idx, surf_idx))
+
+        if colormap_style == "individual":
+            colorbar_configs = self._create_individual_colorbar_configs(
+                maps_names,
+                colormaps,
+                v_limits,
+                colorbar_titles,
+                surfaces,
+                brain_positions,
+                colorbar_position,
+                shape,
+                unique_map_surface_pairs,
+            )
+        else:  # shared
+            colorbar_configs = self._create_shared_colorbar_configs(
+                maps_names,
+                colormaps,
+                v_limits,
+                colorbar_titles,
+                surfaces,
+                brain_positions,
+                colorbar_position,
+                shape,
+                unique_maps,
+            )
+
+        return colorbar_configs
+    
+    def _finalize_plot(
+        self, plotter: pv.Plotter, save_mode: bool, save_path: Optional[str], 
+        use_threading: bool = False
+    ) -> None:
+        """
+        Handle final rendering - either save or display the plot.
+        
         Parameters
         ----------
         plotter : pv.Plotter
-            PyVista plotter instance.
+            PyVista plotter instance ready for final rendering.
+        save_mode : bool
+            If True, save the plot; if False, display it.
+        save_path : str, optional
+            File path for saving (required if save_mode is True).
+        use_threading : bool, default False
+            If True, display plot in separate thread (non-blocking mode).
+            Only applies when save_mode is False.
+        """
+        if save_mode and save_path:
+            # Save mode - render and save without displaying
+            plotter.render()
+            try:
+                plotter.screenshot(save_path)
+                print(f"Figure saved to: {save_path}")
+            except Exception as e:
+                print(f"Error saving screenshot: {e}")
+                # Try alternative approach
+                try:
+                    img = plotter.screenshot(save_path, return_img=True)
+                    if img is not None:
+                        print(f"Figure saved to: {save_path} (alternative method)")
+                except Exception as e2:
+                    print(f"Alternative screenshot method also failed: {e2}")
+            finally:
+                plotter.close()
+        else:
+            # Display mode
+            if use_threading:
+                # Non-blocking mode - show in separate thread
+                self._create_threaded_plot(plotter)
+            else:
+                # Blocking mode - show normally
+                plotter.show()
 
-        config : Dict[str, Any]
-            View configuration with views list.
-
-        surfaces : Dict[str, Any]
-            Dictionary containing surface objects.
-
-        view_offset : Tuple[int, int]
-            Offset for subplot positioning due to colorbar.
-
-        Returns
-        -------
-        Any
-            Actor reference for colorbar creation.
-
-        Raises
-        ------
-        KeyError
-            If required surface mesh is not found in surfaces dictionary.
-
-        ValueError
-            If view configuration contains invalid parameters.
-
-        Examples
-        --------
-        >>> surfaces = {"lh": surf_lh, "rh": surf_rh, "merged": surf_merged}
-        >>> actor = self._create_views(plotter, config, surfaces, (0, 0))
-        >>> print(type(actor))  # PyVista actor object
+    def plot_surfaces(
+        self,
+        surfaces: Union[
+            cltsurf.Surface, List[cltsurf.Surface], List[List[cltsurf.Surface]]
+        ],
+        hemi_id: List[str] = ["lh"],
+        views: Union[str, List[str]] = "dorsal",
+        views_orientation: str = "horizontal",
+        notebook: bool = False,
+        map_names: Union[str, List[str]] = ["surface"],
+        v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
+            None,
+            None,
+        ),
+        colormaps: Union[str, List[str]] = "BrBG",
+        save_path: Optional[str] = None,
+        non_blocking: bool = True,
+        colorbar: bool = True,
+        colormap_style: str = "individual",
+        colorbar_titles: Union[str, List[str]] = None,
+        colorbar_position: str = "right",
+    ) -> None:
+        """
+        Plot brain surfaces with optional threading and screenshot support.
+        
+        Parameters
+        ----------
+        surfaces : Union[cltsurf.Surface, List[cltsurf.Surface], List[List[cltsurf.Surface]]]
+            Brain surface(s) to plot.
+        hemi_id : List[str], default ["lh"]
+            Hemisphere identifiers.
+        views : Union[str, List[str]], default "dorsal"
+            View angles for the surfaces.
+        views_orientation : str, default "horizontal"
+            Orientation of the views layout.
+        notebook : bool, default False
+            Whether running in Jupyter notebook environment.
+        map_names : Union[str, List[str]], default ["surface"]
+            Names of the surface maps to plot.
+        v_limits : Optional[Union[Tuple[float, float], List[Tuple[float, float]]]], default (None, None)
+            Value limits for colormapping.
+        colormaps : Union[str, List[str]], default "BrBG"
+            Colormaps to use for each map.
+        save_path : Optional[str], default None
+            File path for saving the figure. If None, plot is displayed.
+        non_blocking : bool, default False
+            If True, display the plot in a separate thread, allowing the terminal
+            or notebook to remain interactive. Only applies when save_path is None.
+        colorbar : bool, default True
+            Whether to show colorbars.
+        colormap_style : str, default "individual"
+            Style of colormap application.
+        colorbar_titles : Union[str, List[str]], optional
+            Titles for the colorbars.
+        colorbar_position : str, default "right"
+            Position of the colorbars.
         """
 
-        actor_for_colorbar = None
+        # Preparing the surfaces to be plotted
+        if isinstance(surfaces, cltsurf.Surface):
+            surf2plot = [copy.deepcopy(surfaces)]
 
-        for view_config in config["views"]:
-            # Apply offset for colorbar space
-            subplot_pos = (
-                view_config["subplot"][0] + view_offset[0],
-                view_config["subplot"][1] + view_offset[1],
-            )
-            plotter.subplot(*subplot_pos)
+        elif isinstance(surfaces, list):
+            # If all the elements are of type cltsurf.Surface
+            surf2plot = []
+            for surf in surfaces:
+                if isinstance(surf, cltsurf.Surface):
+                    surf2plot.append(copy.deepcopy(surf))
 
+                elif isinstance(surf, list) and all(
+                    isinstance(s, cltsurf.Surface) for s in surf
+                ):
+                    surf2plot.append(cltsurf.merge_surfaces_list(surf))
+
+                else:
+                    raise TypeError(
+                        "All elements must be of type cltsurf.Surface or a list of such."
+                    )
+
+        # Number of surfaces
+        n_surfaces = len(surf2plot)
+
+        # Filter to only available maps
+        if isinstance(map_names, str):
+            map_names = [map_names]
+        n_maps = len(map_names)
+
+        fin_map_names = []
+        for i, map_name in enumerate(map_names):
+            cont_map = 0
+            # Check if the map_name is available in any of the surfaces
+            for surf in surf2plot:
+                available_maps = list(surf.mesh.point_data.keys())
+                if map_name in available_maps:
+                    cont_map = cont_map + 1
+
+            #
+            if cont_map == n_surfaces:
+                fin_map_names.append(map_name)
+
+        # Available overlays
+        map_names = fin_map_names
+        n_maps = len(map_names)
+
+        if n_maps == 0:
+            raise ValueError("No valid maps found in the provided surfaces. The map_names must be present in all surfaces.")
+
+        # Process and validate v_limits parameter
+        if isinstance(v_limits, Tuple):
+            if len(v_limits) != 2:
+                v_limits = (None, None)
+            v_limits = [v_limits] * n_maps
+
+        elif isinstance(v_limits, List[Tuple[float, float]]):
+            if len(v_limits) != n_maps:
+                v_limits = [(None, None)] * n_maps
+
+        
+        if isinstance(colormaps, str):
+            colormaps = [colormaps]
+
+        if len(colormaps) >= n_maps:
+            colormaps = colormaps[:n_maps]
+
+        else:
+            # If not enough colormaps are provided, repeat the first one
+            colormaps = [colormaps[0]] * n_maps
+
+        if colorbar_titles is not None:
+            if isinstance(colorbar_titles, str):
+                colorbar_titles = [colorbar_titles]
+
+            if len(colorbar_titles) != n_maps:
+                # If not enough titles are provided, repeat the first one
+                colorbar_titles = [colorbar_titles[0]] * n_maps
+
+        else:
+            colorbar_titles = map_names
+
+        # Check if the is colortable at any of the surfaces for any of the maps
+        
+        (
+            view_ids,
+            config_dict,
+            colorbar_dict_list,
+        ) = self._build_plotting_config(
+            views=views,
+            maps_names=map_names,
+            surfaces=surf2plot,
+            colormaps=colormaps,
+            v_limits=v_limits,
+            orientation=views_orientation,
+            hemi_id=hemi_id,
+            colorbar=colorbar,
+            colorbar_titles=colorbar_titles,
+            colormap_style=colormap_style,
+            colorbar_position=colorbar_position,
+        )
+
+        # Determine rendering mode based on save_path, environment, and threading preference
+        save_mode, use_off_screen, use_notebook, use_threading = self._determine_render_mode(
+            save_path, notebook, non_blocking
+        )
+
+        # Detecting the screen size for the plotter
+        screen_size = cltplot.get_current_monitor_size()
+
+        # Create PyVista plotter with appropriate rendering mode
+        plotter_kwargs = {
+            "notebook": use_notebook,
+            "window_size": [screen_size[0], screen_size[1]],
+            "off_screen": use_off_screen,
+            "shape": config_dict["shape"],
+            "row_weights": config_dict["row_weights"],
+            "col_weights": config_dict["col_weights"],
+            "border": True,
+        }
+
+        groups = config_dict["groups"]
+        if groups:
+            plotter_kwargs["groups"] = groups
+
+        pv_plotter = pv.Plotter(**plotter_kwargs)
+
+        # Now you can place brain surfaces at specific positions
+        # pv_plotter.set_background(self.figure_conf["background_color"])
+
+        brain_positions = config_dict["brain_positions"]
+        map_limits = config_dict["colormap_limits"]
+        for (map_idx, surf_idx, view_idx), (row, col) in brain_positions.items():
+            pv_plotter.subplot(row, col)
             # Set background color from figure configuration
-            plotter.set_background(self.figure_conf["background_color"])
-
-            # Add view title using figure configuration
-            plotter.add_text(
-                view_config["title"],
+            pv_plotter.set_background(self.figure_conf["background_color"])
+            pv_plotter.add_text(
+                f"Map: {map_names[map_idx]}, Surface: {surf_idx}, View: {view_ids[view_idx]}",
                 font_size=self.figure_conf["title_font_size"],
                 position="upper_edge",
                 color=self.figure_conf["title_font_color"],
@@ -920,11 +2488,21 @@ class SurfacePlotter:
                 font=self.figure_conf["title_font_type"],
             )
 
-            # Add brain mesh using figure configuration
-            surface = surfaces[view_config["mesh"]]
-            actor = plotter.add_mesh(
-                surface.mesh,
-                scalars="RGB",
+            # Geting the vmin and vmax for the current map
+            vmin, vmax, map_name = map_limits[map_idx, surf_idx, view_idx]
+
+            # Select the colormap for the current map
+            idx = [i for i, name in enumerate(map_names) if name == map_name]   
+            colormap = colormaps[idx[0]] if idx else colormaps[0]
+
+            # Add the brain surface mesh
+            surf = surf2plot[surf_idx]
+            surf = self._prepare_surface(
+                surf, map_names[map_idx], colormap, vmin=vmin, vmax=vmax
+            )
+            pv_plotter.add_mesh(
+                copy.deepcopy(surf.mesh),
+                scalars="rgba",
                 rgb=True,
                 ambient=self.figure_conf["mesh_ambient"],
                 diffuse=self.figure_conf["mesh_diffuse"],
@@ -934,17 +2512,147 @@ class SurfacePlotter:
                 show_scalar_bar=False,
             )
 
-            # Store first actor for colorbar reference
-            if actor_for_colorbar is None:
-                actor_for_colorbar = actor
+            # Set the camera view
+            tmp_view = view_ids[view_idx]
 
-            # Configure camera view
-            getattr(plotter, f"view_{view_config['view']}")()
-            plotter.camera.azimuth = view_config["azimuth"]
-            plotter.camera.elevation = view_config["elevation"]
-            plotter.camera.zoom(view_config["zoom"])
+            # Replace merg from the view id if needed
+            if "merg" in tmp_view:
+                tmp_view = tmp_view.replace("merg", "lh")
 
-        return actor_for_colorbar
+            camera_params = self.views_conf[tmp_view]
+            pv_plotter.camera_position = camera_params["view"]
+            pv_plotter.camera.azimuth = camera_params["azimuth"]
+            pv_plotter.camera.elevation = camera_params["elevation"]
+            pv_plotter.camera.zoom(camera_params["zoom"])
+
+            # getattr(pv_plotter, f"view_{camera_params['view']}")()
+
+            # View title
+            view_title = camera_params["title"]
+
+            # Add your brain surface here
+            print(
+                f"Brain plot: Map {map_idx}, Surface {surf_idx}, View {view_idx} at position ({row}, {col})"
+            )
+
+        # And place colorbars at their positions
+        if len(colorbar_dict_list):
+
+            for colorbar_dict in colorbar_dict_list:
+                if colorbar_dict is not False:
+                    row, col = colorbar_dict["position"]
+                    orientation = colorbar_dict["orientation"]
+                    colorbar_id = colorbar_dict["map_name"]
+                    colormap = colorbar_dict["colormap"]
+                    colorbar_title = colorbar_dict["title"]
+                    vmin = colorbar_dict["vmin"]
+                    vmax = colorbar_dict["vmax"]
+                    pv_plotter.subplot(row, col)
+
+                    self._add_colorbar(
+                        plotter=pv_plotter,
+                        colorbar_subplot=(row, col),
+                        vmin=vmin,
+                        vmax=vmax,
+                        map_name=colorbar_id,
+                        colormap=colormap,
+                        colorbar_title=colorbar_title,
+                        colorbar_position=orientation,
+                    )
+
+        # Linking the cameras from the subplots with the same view
+        # Creating the grouping 
+        # One-liner for counting unique v_idx
+        num_unique_v_idx = len(set(key[2] for key in brain_positions.keys()))
+
+        # One-liner for grouping using dictionary comprehension
+        unique_v_indices = set(key[2] for key in brain_positions.keys())
+        grouped_by_v_idx = {
+            v_idx: [(row, col) for (m_idx, s_idx, v), (row, col) in brain_positions.items() if v == v_idx]
+            for v_idx in unique_v_indices
+        }
+        
+        # After all subplots are created and populated, link the views
+        for v_idx, positions in grouped_by_v_idx.items():
+            if len(positions) > 1:
+                # Get all subplot indices for this view group
+                subplot_indices = []
+                
+                # Get number of columns from plotter shape
+                n_cols = pv_plotter.shape[1]  # shape is (n_rows, n_cols)
+                
+                for row, col in positions:
+                    # Convert (row, col) to subplot index
+                    subplot_idx = row * n_cols + col
+                    subplot_indices.append(subplot_idx)
+                
+                # Link all views in this group
+                pv_plotter.link_views(subplot_indices)
+
+        # Handle final rendering - either save, display blocking, or display non-blocking
+        self._finalize_plot(pv_plotter, save_mode, save_path, use_threading)
+
+    def _create_threaded_plot(self, plotter: pv.Plotter) -> None:
+        """
+        Create and show plot in a separate thread for non-blocking visualization.
+        
+        Parameters
+        ----------
+        plotter : pv.Plotter
+            PyVista plotter instance ready for display.
+        """
+        def show_plot():
+            """Internal function to run in separate thread."""
+            try:
+                plotter.show()
+            except Exception as e:
+                print(f"Error displaying plot in thread: {e}")
+            finally:
+                # Clean up if needed
+                pass
+        
+        # Create and start the thread
+        plot_thread = threading.Thread(target=show_plot)
+        plot_thread.daemon = True  # Thread will close when main program closes
+        plot_thread.start()
+        
+        print("Plot opened in separate window. Terminal remains interactive.")
+        print("Note: Plot window may take a moment to appear.")
+
+    ################################################################################################
+    def _prepare_surface(
+        self,
+        surface: cltsurf.Surface,
+        map_name: str,
+        colormap: str,
+        vmin: Optional[float] = None,
+        vmax: Optional[float] = None,
+    ) -> cltsurf.Surface:
+        """ """
+
+        if vmin is None:
+            vmin = np.min(surface.mesh.point_data[map_name])
+
+        if vmax is None:
+            vmax = np.max(surface.mesh.point_data[map_name])
+
+        try:
+            vertex_values = surface.mesh.point_data[map_name]
+            vertex_values = np.nan_to_num(
+                vertex_values,
+                nan=0.0,
+            )  # Handle NaNs and infinities
+            surface.mesh.point_data[map_name] = vertex_values
+
+        except KeyError:
+            raise ValueError(f"Data array '{map_name}' not found in surface point_data")
+
+        # Apply colors to mesh data
+        surface.mesh.point_data["rgba"] = surface.get_vertexwise_colors(
+            map_name, colormap, vmin, vmax
+        )
+
+        return surface
 
     ################################################################################################
     def _process_v_limits(
@@ -1049,8 +2757,9 @@ class SurfacePlotter:
     def _add_colorbar(
         self,
         plotter: pv.Plotter,
-        config: Dict[str, Any],
-        surf_merged: Any,
+        colorbar_subplot: Tuple[int, int],
+        vmin: Any,
+        vmax: Any,
         map_name: str,
         colormap: str,
         colorbar_title: str,
@@ -1067,8 +2776,8 @@ class SurfacePlotter:
         config : Dict[str, Any]
             View configuration containing shape information.
 
-        surf_merged : Surface
-            Merged surface object containing data for colorbar range.
+        data_values : np.ndarray
+            Data values from the merged surface for color mapping.
 
         map_name : str
             Name of the data array to use for colorbar.
@@ -1099,28 +2808,17 @@ class SurfacePlotter:
         # Adds horizontal colorbar at bottom of plot
         """
 
-        # Determine colorbar subplot position
-        if colorbar_position == "top":
-            colorbar_subplot = (0, 0)
-        elif colorbar_position == "bottom":
-            colorbar_subplot = (config["shape"][0], 0)
-        elif colorbar_position == "left":
-            colorbar_subplot = (0, 0)
-        else:  # right
-            colorbar_subplot = (0, config["shape"][1])
+        if isinstance(map_name, list):
+            map_name = map_name[0]
 
         plotter.subplot(*colorbar_subplot)
-
         # Set background color for colorbar subplot
         plotter.set_background(self.figure_conf["background_color"])
-
-        # Get data range from merged surface
-        data_values = surf_merged.mesh.point_data[map_name]
 
         # Create colorbar mesh with proper data range
         n_points = 256
         colorbar_mesh = pv.Line((0, 0, 0), (1, 0, 0), resolution=n_points - 1)
-        scalar_values = np.linspace(np.min(data_values), np.max(data_values), n_points)
+        scalar_values = np.linspace(vmin, vmax, n_points)
         colorbar_mesh[map_name] = scalar_values
 
         # Add invisible mesh for colorbar reference
@@ -1128,27 +2826,35 @@ class SurfacePlotter:
             colorbar_mesh,
             scalars=map_name,
             cmap=colormap,
-            clim=[np.min(data_values), np.max(data_values)],
+            clim=[vmin, vmax],
             show_scalar_bar=False,
         )
         dummy_actor.visibility = False
 
-        # Configure and add scalar bar using figure configuration
-        scalar_bar_kwargs = {
-            "color": self.figure_conf["colorbar_font_color"],
-            "title": colorbar_title,
-            "outline": self.figure_conf["colorbar_outline"],
-            "title_font_size": self.figure_conf["colorbar_title_font_size"],
-            "label_font_size": self.figure_conf["colorbar_font_size"],
-            "n_labels": self.figure_conf["colorbar_n_labels"],
-        }
+        # Create scalar bar manually using VTK
+        import vtk
 
-        scalar_bar = plotter.add_scalar_bar(**scalar_bar_kwargs)
+        scalar_bar = vtk.vtkScalarBarActor()
         scalar_bar.SetLookupTable(dummy_actor.mapper.lookup_table)
+        scalar_bar.SetTitle(colorbar_title)
         scalar_bar.SetMaximumNumberOfColors(256)
+        scalar_bar.SetNumberOfLabels(self.figure_conf["colorbar_n_labels"])
+
+        # Configure appearance
+        scalar_bar.GetTitleTextProperty().SetColor(*pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb)
+        scalar_bar.GetLabelTextProperty().SetColor(*pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb)
+        scalar_bar.GetTitleTextProperty().SetFontSize(self.figure_conf["colorbar_title_font_size"])
+        scalar_bar.GetLabelTextProperty().SetFontSize(self.figure_conf["colorbar_font_size"])
+
+        # Set outline
+        if not self.figure_conf["colorbar_outline"]:
+            scalar_bar.DrawFrameOff()
+
+        # Add the scalar bar to the plotter
+        plotter.add_actor(scalar_bar)
 
         # Position colorbar appropriately
-        if colorbar_position in ["top", "bottom"]:
+        if colorbar_position == "horizontal":
             # Horizontal colorbar
             scalar_bar.SetPosition(0.05, 0.2)
             scalar_bar.SetPosition2(0.9, 0.6)
@@ -1159,706 +2865,44 @@ class SurfacePlotter:
             scalar_bar.SetPosition2(0.6, 0.9)
             scalar_bar.SetOrientationToVertical()
 
-    ###########################################################################################################
-    def _add_shared_colorbar(
-        self,
-        plotter: pv.Plotter,
-        combined_data: np.ndarray,
-        colormap: str,
-        title: str,
-        position: str,
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
-    ) -> None:
-        """
-        Add a shared colorbar for multiple maps.
-
-        Parameters
-        ----------
-        plotter : pv.Plotter
-            PyVista plotter instance.
-
-        combined_data : np.ndarray
-            Combined data from all maps for range calculation.
-
-        colormap : str
-            Colormap to use.
-
-        title : str
-            Colorbar title.
-
-        position : str
-            Colorbar position: "right" or "bottom".
-
-        vmin : float, optional
-            Minimum value for colormap scaling.
-
-        vmax : float, optional
-            Maximum value for colormap scaling.
-        """
-
-        # Calculate shared data range
-        if vmin is None:
-            vmin = np.min(combined_data)
-
-        if vmax is None:
-            vmax = np.max(combined_data)
-
-        # Create colorbar mesh
-        n_points = 256
-        if position == "right":
-            colorbar_mesh = pv.Line((0, 0, 0), (0, 1, 0), resolution=n_points - 1)
-        else:  # bottom
-            colorbar_mesh = pv.Line((0, 0, 0), (1, 0, 0), resolution=n_points - 1)
-
-        scalar_values = np.linspace(vmin, vmax, n_points)
-        colorbar_mesh["shared_data"] = scalar_values
-
-        # Add invisible mesh for colorbar reference
-        dummy_actor = plotter.add_mesh(
-            colorbar_mesh,
-            scalars="shared_data",
-            cmap=colormap,
-            clim=[vmin, vmax],
-            show_scalar_bar=False,
-        )
-        dummy_actor.visibility = False
-
-        # Configure and add scalar bar
-        scalar_bar_kwargs = {
-            "color": self.figure_conf["colorbar_font_color"],
-            "title": title,
-            "outline": self.figure_conf["colorbar_outline"],
-            "title_font_size": self.figure_conf["colorbar_title_font_size"],
-            "label_font_size": self.figure_conf["colorbar_font_size"],
-            "n_labels": self.figure_conf["colorbar_n_labels"],
-        }
-
-        scalar_bar = plotter.add_scalar_bar(**scalar_bar_kwargs)
-        scalar_bar.SetLookupTable(dummy_actor.mapper.lookup_table)
-        scalar_bar.SetMaximumNumberOfColors(256)
-
-        # Position colorbar appropriately
-        if position == "right":
-            scalar_bar.SetPosition(0.1, 0.1)
-            scalar_bar.SetPosition2(0.8, 0.8)
-            scalar_bar.SetOrientationToVertical()
-        else:  # bottom
-            scalar_bar.SetPosition(0.05, 0.2)
-            scalar_bar.SetPosition2(0.9, 0.6)
-            scalar_bar.SetOrientationToHorizontal()
-
-    ###############################################################################################
-    def _add_concatenated_colorbar(
-        self,
-        plotter: pv.Plotter,
-        map_data_list: List[Dict],
-        colorbar_position: str,
-    ) -> None:
-        """
-        Add a concatenated colorbar showing multiple colormaps separated by spaces.
-
-        Parameters
-        ----------
-        plotter : pv.Plotter
-            PyVista plotter instance with active subplot.
-
-        map_data_list : List[Dict]
-            List of dictionaries containing data, colormap, title, vmin, vmax
-            for each map.
-
-        colorbar_position : str
-            Position of colorbar: "right" or "bottom".
-        """
-
-        n_maps = len(map_data_list)
-        background_color = self.figure_conf["background_color"]
-
-        # Calculate segment parameters
-        if colorbar_position == "bottom":
-            # Horizontal concatenated colorbar
-            total_length = 1.0
-            separator_width = 0.05  # 5% of total length for separators
-            available_width = total_length - (n_maps - 1) * separator_width
-            segment_width = available_width / n_maps
-
-            print(
-                f"📏 Horizontal concatenated colorbar: {n_maps} segments of {segment_width:.3f} width each"
-            )
-
-            # Create each colorbar segment
-            current_x = 0.0
-            for i, map_data in enumerate(map_data_list):
-                # Create colorbar mesh for this segment
-                n_points = 128  # Fewer points per segment for performance
-                start_point = (current_x, 0, 0)
-                end_point = (current_x + segment_width, 0, 0)
-
-                segment_mesh = pv.Line(start_point, end_point, resolution=n_points - 1)
-                scalar_values = np.linspace(
-                    map_data["vmin"], map_data["vmax"], n_points
-                )
-                segment_mesh[f"segment_{i}"] = scalar_values
-
-                # Add the segment mesh (invisible, just for scalar bar generation)
-                segment_actor = plotter.add_mesh(
-                    segment_mesh,
-                    scalars=f"segment_{i}",
-                    cmap=map_data["colormap"],
-                    clim=[map_data["vmin"], map_data["vmax"]],
-                    show_scalar_bar=True,
-                    scalar_bar_args={
-                        "color": self.figure_conf["colorbar_font_color"],
-                        "title": map_data["title"],
-                        "outline": self.figure_conf["colorbar_outline"],
-                        "title_font_size": max(
-                            8, self.figure_conf["colorbar_title_font_size"] - 2
-                        ),  # Smaller font for multiple titles
-                        "label_font_size": max(
-                            6, self.figure_conf["colorbar_font_size"] - 2
-                        ),
-                        "n_labels": max(
-                            3, self.figure_conf["colorbar_n_labels"] - 2
-                        ),  # Fewer labels per segment
-                        "position_x": 0.05
-                        + current_x * 0.9,  # Position based on segment
-                        "position_y": 0.15,
-                        "width": segment_width * 0.8,  # Slightly smaller than segment
-                        "height": 0.4,
-                        "vertical": False,
-                    },
-                )
-
-                # Hide the actual mesh, keep only the colorbar
-                segment_actor.visibility = False
-
-                # Add separator (background-colored space) except after last segment
-                if i < n_maps - 1:
-                    current_x += segment_width + separator_width
-                else:
-                    current_x += segment_width
-
-        else:  # right position - vertical concatenated colorbar
-            # Vertical concatenated colorbar
-            total_length = 1.0
-            separator_height = 0.05  # 5% of total length for separators
-            available_height = total_length - (n_maps - 1) * separator_height
-            segment_height = available_height / n_maps
-
-            print(
-                f"📏 Vertical concatenated colorbar: {n_maps} segments of {segment_height:.3f} height each"
-            )
-
-            # Create each colorbar segment (from top to bottom)
-            current_y = total_length  # Start from top
-            for i, map_data in enumerate(map_data_list):
-                # Calculate segment position (from top)
-                segment_start_y = current_y - segment_height
-
-                # Create colorbar mesh for this segment
-                n_points = 128
-                start_point = (0, segment_start_y, 0)
-                end_point = (0, current_y, 0)
-
-                segment_mesh = pv.Line(start_point, end_point, resolution=n_points - 1)
-                scalar_values = np.linspace(
-                    map_data["vmin"], map_data["vmax"], n_points
-                )
-                segment_mesh[f"segment_{i}"] = scalar_values
-
-                # Add the segment mesh (invisible, just for scalar bar generation)
-                segment_actor = plotter.add_mesh(
-                    segment_mesh,
-                    scalars=f"segment_{i}",
-                    cmap=map_data["colormap"],
-                    clim=[map_data["vmin"], map_data["vmax"]],
-                    show_scalar_bar=True,
-                    scalar_bar_args={
-                        "color": self.figure_conf["colorbar_font_color"],
-                        "title": map_data["title"],
-                        "outline": self.figure_conf["colorbar_outline"],
-                        "title_font_size": max(
-                            8, self.figure_conf["colorbar_title_font_size"] - 2
-                        ),
-                        "label_font_size": max(
-                            6, self.figure_conf["colorbar_font_size"] - 2
-                        ),
-                        "n_labels": max(3, self.figure_conf["colorbar_n_labels"] - 2),
-                        "position_x": 0.15,
-                        "position_y": 0.05
-                        + segment_start_y * 0.8,  # Position based on segment
-                        "width": 0.7,
-                        "height": segment_height * 0.8,  # Slightly smaller than segment
-                        "vertical": True,
-                    },
-                )
-
-                # Hide the actual mesh, keep only the colorbar
-                segment_actor.visibility = False
-
-                # Move to next segment position
-                if i < n_maps - 1:
-                    current_y = segment_start_y - separator_height
-
-        # Set appropriate camera for the colorbar subplot
-        if colorbar_position == "bottom":
-            plotter.camera.position = (0.5, 0, 2)
-            plotter.camera.focal_point = (0.5, 0, 0)
-            plotter.camera.up = (0, 1, 0)
-            plotter.camera.zoom(0.8)
-        else:  # right
-            plotter.camera.position = (2, 0.5, 0)
-            plotter.camera.focal_point = (0, 0.5, 0)
-            plotter.camera.up = (0, 1, 0)
-            plotter.camera.zoom(1.2)
-
-        # Remove axes and grid for cleaner colorbar display
-        plotter.hide_axes()
-
-        print(
-            f"✅ Created concatenated {colorbar_position.upper()} colorbar with {n_maps} segments"
-        )
-
-    ###############################################################################################
-    def _add_individual_colorbar(
-        self,
-        plotter: pv.Plotter,
-        surf_merged: Any,
-        map_name: str,
-        colormap: str,
-        colorbar_title: str,
-        colorbar_position: str,
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
-        n_views: int = 1,
-        views_orientation: str = "horizontal",
-    ) -> None:
-        """
-        Add an individual colorbar to the current subplot for multi-map visualization.
-
-        Parameters
-        ----------
-        plotter : pv.Plotter
-            PyVista plotter instance with active subplot.
-
-        surf_merged : Surface
-            Merged surface object containing data for colorbar range.
-
-        map_name : str
-            Name of the data array to use for colorbar.
-
-        colormap : str
-            Matplotlib colormap name.
-
-        colorbar_title : str
-            Title text for the colorbar.
-
-        colorbar_position : str
-            Position of colorbar (already corrected).
-
-        vmin : float, optional
-            Minimum value for colormap scaling.
-
-        vmax : float, optional
-            Maximum value for colormap scaling.
-
-        n_views : int, default 1
-            Number of views (for debugging).
-
-        views_orientation : str, default "horizontal"
-            Views orientation (for debugging).
-        """
-
-        # Get data range from merged surface for this specific map
-        try:
-            data_values = surf_merged.mesh.point_data[map_name]
-        except KeyError:
-            print(f"Warning: Map '{map_name}' not found in surface data")
-            return
-
-        # Calculate symmetric range around zero (like in the main plotting method)
-        if vmin is None:
-            data_min = np.min(data_values)
-        else:
-            data_min = vmin
-
-        if vmax is None:
-            data_max = np.max(data_values)
-        else:
-            data_max = vmax
-
-        # SIMPLE POSITION-BASED ORIENTATION (position already corrected)
-        n_points = 256
-
-        if colorbar_position == "bottom":
-            # BOTTOM position → HORIZONTAL orientation
-            colorbar_mesh = pv.Line(
-                (0, 0, 0), (1, 0, 0), resolution=n_points - 1
-            )  # Horizontal line
-            orientation = "horizontal"
-            is_vertical = False
-            position_x = 0.05
-            position_y = 0.15
-            width = 0.9
-            height = 0.4
-            print(
-                f"📍 BOTTOM → HORIZONTAL colorbar for {map_name} (n_views={n_views}, orientation={views_orientation})"
-            )
-
-        else:  # right position (default)
-            # RIGHT position → VERTICAL orientation
-            colorbar_mesh = pv.Line(
-                (0, 0, 0), (0, 1, 0), resolution=n_points - 1
-            )  # Vertical line
-            orientation = "vertical"
-            is_vertical = True
-            position_x = 0.15
-            position_y = 0.05
-            width = 0.7
-            height = 0.9
-            print(
-                f"📍 RIGHT → VERTICAL colorbar for {map_name} (n_views={n_views}, orientation={views_orientation})"
-            )
-
-        # Add scalar data to the mesh
-        scalar_values = np.linspace(data_min, data_max, n_points)
-        colorbar_mesh[f"{map_name}_colorbar"] = scalar_values
-
-        # Add the colorbar mesh (invisible, just for scalar bar generation)
-        colorbar_actor = plotter.add_mesh(
-            colorbar_mesh,
-            scalars=f"{map_name}_colorbar",
-            cmap=colormap,
-            clim=[data_min, data_max],
-            show_scalar_bar=True,  # This will create the scalar bar
-            scalar_bar_args={
-                "color": self.figure_conf["colorbar_font_color"],
-                "title": colorbar_title,
-                "outline": self.figure_conf["colorbar_outline"],
-                "title_font_size": self.figure_conf["colorbar_title_font_size"],
-                "label_font_size": self.figure_conf["colorbar_font_size"],
-                "n_labels": self.figure_conf["colorbar_n_labels"],
-                "position_x": position_x,
-                "position_y": position_y,
-                "width": width,
-                "height": height,
-                "vertical": is_vertical,  # EXPLICIT enforcement of orientation
-            },
-        )
-
-        # Hide the actual mesh, keep only the colorbar
-        colorbar_actor.visibility = False
-
-        # Set appropriate camera for each orientation
-        if orientation == "vertical":
-            plotter.camera.position = (2, 0, 0)
-            plotter.camera.focal_point = (0, 0, 0)
-            plotter.camera.up = (0, 1, 0)
-            plotter.camera.zoom(1.2)
-        else:
-            plotter.camera.position = (0, 0, 2)
-            plotter.camera.focal_point = (0, 0, 0)
-            plotter.camera.up = (0, 1, 0)
-            plotter.camera.zoom(0.8)
-
-        # Remove axes and grid for cleaner colorbar display
-        plotter.hide_axes()
-
-        print(
-            f"✅ Created {orientation.upper()} colorbar for {map_name} at {colorbar_position.upper()} position"
-        )
-
-    ###############################################################################################
-    def _process_vertex_colors(
-        self,
-        surface: Any,
-        vertex_values: np.ndarray,
-        map_name: str,
-        colormap: str,
-        vmin: float,
-        vmax: float,
-    ) -> np.ndarray:
-        """
-        Process vertex values into RGB colors using colortables or colormaps.
-
-        Parameters
-        ----------
-        surface : Surface
-            Surface object containing colortables.
-
-        vertex_values : np.ndarray
-            Array of values to be colored.
-
-        map_name : str
-            Name of the data map.
-
-        colormap : str
-            Matplotlib colormap name.
-
-        vmin : float
-            Minimum value for color range.
-
-        vmax : float
-            Maximum value for color range.
-
-        Returns
-        -------
-        np.ndarray
-            RGB color array for vertices with shape (n_vertices, 3).
-
-        Raises
-        ------
-        KeyError
-            If map_name is not found in surface data or colortables.
-
-        ValueError
-            If vertex_values array is invalid or empty.
-
-        Examples
-        --------
-        >>> colors = plotter._process_vertex_colors(
-        ...     surf_lh, thickness_values, "thickness", "viridis", 0.0, 5.0
-        ... )
-        >>> print(colors.shape)  # (n_vertices, 3) for RGB values
-        """
-
-        overlay_dict = surface.list_overlays()
-
-        if overlay_dict[map_name] == "color":
-            vertex_colors = surface.mesh.point_data[map_name]
-        else:
-            dict_ctables = surface.colortables
-
-            if map_name in dict_ctables.keys():
-                # Use predefined colortable for parcellations
-                vertex_colors = cltfree.create_vertex_colors(
-                    vertex_values, surface.colortables[map_name]["color_table"]
-                )
-            else:
-                # Use matplotlib colormap for continuous data
-                vertex_colors = cltmisc.values2colors(
-                    vertex_values,
-                    cmap=colormap,
-                    output_format="rgb",
-                    vmin=vmin,
-                    vmax=vmax,
-                )
-
-        return vertex_colors
-
     ###############################################################################################
     def _determine_render_mode(
-        self, save_path: Optional[str], notebook: bool
-    ) -> Tuple[bool, bool, bool]:
+        self, save_path: Optional[str], notebook: bool, non_blocking: bool = False
+    ) -> Tuple[bool, bool, bool, bool]:
         """
         Determine rendering parameters based on save path and environment.
-
+        
         Parameters
         ----------
         save_path : str, optional
             File path for saving the figure, or None for display.
-
         notebook : bool
             Whether running in Jupyter notebook environment.
-
+        non_blocking : bool, default False
+            Whether to run the visualization in a separate thread (non-blocking mode).
+            
         Returns
         -------
-        Tuple[bool, bool, bool]
-            (save_mode, use_off_screen, use_notebook).
-
-        Examples
-        --------
-        >>> save_mode, off_screen, notebook = plotter._determine_render_mode(
-        ...     "output.png", False
-        ... )
-        >>> print(save_mode)  # True if directory exists, False otherwise
+        Tuple[bool, bool, bool, bool]
+            (save_mode, use_off_screen, use_notebook, use_threading).
         """
-
         if save_path is not None:
             save_dir = os.path.dirname(save_path)
             if save_dir == "":
                 save_dir = "."
-
             if os.path.exists(save_dir):
-                # Save mode - use off_screen rendering
-                return True, True, False
+                # Save mode - use off_screen rendering, no threading needed for saving
+                return True, True, False, False
             else:
                 # Directory doesn't exist, fall back to display mode
                 print(
                     f"Warning: Directory '{save_dir}' does not exist. "
                     f"Displaying plot instead of saving."
                 )
-                return False, False, notebook
+                return False, False, notebook, non_blocking
         else:
             # Display mode
-            return False, False, notebook
-
-    ###############################################################################################
-    def _setup_plotter(
-        self,
-        config: Dict[str, Any],
-        colorbar: bool,
-        colorbar_position: str,
-        use_notebook: bool,
-        use_off_screen: bool,
-    ) -> Tuple[pv.Plotter, Tuple[int, int]]:
-        """
-        Setup PyVista plotter with appropriate grid layout for colorbar.
-
-        Parameters
-        ----------
-        config : Dict[str, Any]
-            View configuration containing shape and window_size.
-
-        colorbar : bool
-            Whether to reserve space for colorbar.
-
-        colorbar_position : str
-            Position of colorbar: "top", "bottom", "left", "right".
-
-        use_notebook : bool
-            Whether to use notebook-optimized rendering.
-
-        use_off_screen : bool
-            Whether to use off-screen rendering.
-
-        Returns
-        -------
-        Tuple[pv.Plotter, Tuple[int, int]]
-            (plotter instance, view_offset).
-
-        Raises
-        ------
-        ValueError
-            If colorbar_position is not one of the valid options.
-
-        Examples
-        --------
-        >>> plotter, offset = self._setup_plotter(
-        ...     config, True, "bottom", False, False
-        ... )
-        >>> print(offset)  # (0, 0) for bottom colorbar
-        """
-        # Validate colorbar position
-        valid_positions = ["top", "bottom", "left", "right"]
-        if colorbar_position not in valid_positions:
-            colorbar_position = "bottom"
-
-        if colorbar:
-            original_shape = config["shape"]
-
-            if isinstance(config["window_size"], str):
-                screen_width, screen_height = get_screen_size()
-                config["window_size"] = [screen_width, screen_height]
-
-            if colorbar_position in ["top", "bottom"]:
-                # Add row for horizontal colorbar
-                if colorbar_position == "top":
-                    new_shape = (original_shape[0] + 1, original_shape[1])
-                    row_weights = [0.15] + [1] * original_shape[0]
-                    col_weights = [1] * original_shape[1]
-                    groups = [(0, slice(None))]
-                    view_offset = (1, 0)
-                else:  # bottom
-                    new_shape = (original_shape[0] + 1, original_shape[1])
-                    row_weights = [1] * original_shape[0] + [0.15]
-                    col_weights = [1] * original_shape[1]
-                    groups = [(original_shape[0], slice(None))]
-                    view_offset = (0, 0)
-            else:  # left or right
-                # Add column for vertical colorbar
-                if colorbar_position == "left":
-                    new_shape = (original_shape[0], original_shape[1] + 1)
-                    row_weights = [1] * original_shape[0]
-                    col_weights = [0.15] + [1] * original_shape[1]
-                    groups = [(slice(None), 0)]
-                    view_offset = (0, 1)
-                else:  # right
-                    new_shape = (original_shape[0], original_shape[1] + 1)
-                    row_weights = [1] * original_shape[0]
-                    col_weights = [1] * original_shape[1] + [0.15]
-                    groups = [(slice(None), original_shape[1])]
-                    view_offset = (0, 0)
-
-            # Create plotter with colorbar space
-            plotter = pv.Plotter(
-                notebook=use_notebook,
-                off_screen=use_off_screen,
-                window_size=config["window_size"],
-                shape=new_shape,
-                row_weights=row_weights,
-                col_weights=col_weights,
-                groups=groups,
-                border=False,
-            )
-        else:
-            # Create standard plotter
-            plotter = pv.Plotter(
-                notebook=use_notebook,
-                off_screen=use_off_screen,
-                window_size=config["window_size"],
-                shape=config["shape"],
-                border=False,
-            )
-            view_offset = (0, 0)
-
-        return plotter, view_offset
-
-    ###############################################################################################
-    def _finalize_plot(
-        self, plotter: pv.Plotter, save_mode: bool, save_path: Optional[str]
-    ) -> None:
-        """
-        Handle final rendering - either save or display the plot.
-
-        Parameters
-        ----------
-        plotter : pv.Plotter
-            PyVista plotter instance ready for final rendering.
-
-        save_mode : bool
-            If True, save the plot; if False, display it.
-
-        save_path : str, optional
-            File path for saving (required if save_mode is True).
-
-        Raises
-        ------
-        Exception
-            If screenshot saving fails (with fallback attempts).
-
-        IOError
-            If save path is invalid or write permissions are insufficient.
-
-        Examples
-        --------
-        >>> self._finalize_plot(plotter, True, "brain_plot.png")
-        # Saves plot to file and closes plotter
-        >>>
-        >>> self._finalize_plot(plotter, False, None)
-        # Displays plot in interactive window
-        """
-
-        if save_mode and save_path:
-            # Save mode - render and save without displaying
-            plotter.render()
-            try:
-                plotter.screenshot(save_path)
-                print(f"Figure saved to: {save_path}")
-            except Exception as e:
-                print(f"Error saving screenshot: {e}")
-                # Try alternative approach
-                try:
-                    img = plotter.screenshot(save_path, return_img=True)
-                    if img is not None:
-                        print(f"Figure saved to: {save_path} (alternative method)")
-                except Exception as e2:
-                    print(f"Alternative screenshot method also failed: {e2}")
-            finally:
-                plotter.close()
-        else:
-            # Display mode - show the plot
-            plotter.show()
+            return False, False, notebook, non_blocking
 
     ###############################################################################################
     def list_available_view_names(self) -> List[str]:
@@ -2110,980 +3154,786 @@ class SurfacePlotter:
         return self.figure_conf.copy()
 
     ###############################################################################################
-    def plot_surface(
-        self,
-        surface: Any,
-        hemi: str = "lh",
-        views: Union[str, List[str]] = "8_views",
-        map_name: str = "surface",
-        colormap: str = "BrBG",
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
-        notebook: bool = False,
-        colorbar: bool = True,
-        colorbar_title: str = "Value",
-        colorbar_position: str = "bottom",
-        save_path: Optional[str] = None,
-    ) -> None:
+    def _list_all_views_and_layouts(self) -> List[str]:
         """
-        Create brain surface plots for a single hemisphere.
+        List available layout configurations from the loaded JSON file.
 
-        Generates multi-view brain surface visualizations for one hemisphere
-        with customizable layouts, coloring schemes, and optional colorbar display.
-
-        Parameters
-        ----------
-        surface : Surface
-            Surface object with mesh data and point_data arrays for the
-            specified hemisphere.
-
-        hemi : str, default "lh"
-            Hemisphere specification: "lh" (left) or "rh" (right).
-
-        views : str or List[str], default "8_views"
-            Either configuration name from JSON file (e.g., "8_views", "6_views")
-            or list of view names (e.g., ["lateral", "medial", "dorsal"]).
-
-        map_name : str, default "surface"
-            Name of data array in point_data to use for surface coloring.
-
-        colormap : str, default "BrBG"
-            Matplotlib colormap name for continuous data.
-
-        vmin : float, optional
-            Minimum value for colormap scaling. Auto-computed if None.
-
-        vmax : float, optional
-            Maximum value for colormap scaling. Auto-computed if None.
-
-        notebook : bool, default False
-            Whether to optimize for Jupyter notebook display.
-
-        colorbar : bool, default True
-            Whether to display colorbar. Automatically disabled for parcellations.
-
-        colorbar_title : str, default "Value"
-            Title text for the colorbar.
-
-        colorbar_position : str, default "bottom"
-            Colorbar position: "right", "left", "top", or "bottom".
-
-        save_path : str, optional
-            File path to save figure. If None, displays interactively.
-
-        Raises
-        ------
-        ValueError
-            If invalid hemisphere specified, invalid view names provided, or
-            required data arrays are missing.
-
-        KeyError
-            If views configuration not found.
+        Returns
+        -------
+        List[str]
+            List of configuration names available for plotting.
 
         Examples
         --------
-        >>> # Basic usage with left hemisphere
         >>> plotter = SurfacePlotter("configs.json")
-        >>> plotter.plot_surface(surf_lh, hemi="lh", views="8_views")
-        >>>
-        >>> # Right hemisphere with dynamic view selection
-        >>> plotter.plot_surface(surf_rh, hemi="rh", views=["lateral", "medial", "dorsal"])
-        >>>
-        >>> # Advanced usage with custom settings
-        >>> plotter.plot_surface(
-        ...     surf_lh,
-        ...     hemi="lh",
-        ...     views=["lateral", "medial"],
-        ...     map_name="cortical_thickness",
-        ...     colorbar=True,
-        ...     colorbar_title="Thickness (mm)",
-        ...     colormap="viridis",
-        ...     save_path="left_hemisphere_thickness.png"
-        ... )
+        >>> layouts = plotter._list_all_views_and_layouts()
+        >>> print(layouts)
+        ['8_views', '8_views_8x1', '8_views_1x8', '6_views', '6_views_6x1', '6_views_1x6', '4_views', '4_views_4x1', '4_views_1x4', '2_views', 'lateral', 'medial', 'dorsal', 'ventral', 'rostral', 'caudal']
         """
 
-        # Validate hemisphere parameter
-        if hemi not in ["lh", "rh"]:
-            raise ValueError(
-                f"Invalid hemisphere '{hemi}'. Must be 'lh' (left) or 'rh' (right)"
-            )
-
-        # Handle dynamic view selection vs predefined configurations
-        if isinstance(views, list):
-            # Dynamic view selection - filter views relevant to single hemisphere
-            config = self._create_single_hemisphere_config(views, hemi)
-            print(
-                f"Created dynamic {hemi.upper()} hemisphere configuration with {len(config['views'])} views: {views}"
-            )
-        else:
-            # Predefined configuration - filter for single hemisphere
-            if views not in self.views_conf:
-                if views in [
-                    "lateral",
-                    "medial",
-                    "dorsal",
-                    "ventral",
-                    "rostral",
-                    "caudal",
-                ]:
-                    # Special case for global views
-                    config = self._create_single_hemisphere_config([views], hemi)
-                else:
-                    # Raise error for invalid configuration name
-                    available_configs = list(self.views_conf.keys())
-                    raise KeyError(
-                        f"Configuration '{views}' not found. "
-                        f"Available options: {available_configs}"
-                    )
-            else:
-                config = self._filter_config_for_hemisphere(
-                    self.views_conf[views], hemi
-                )
-                config_name = f"{views}_{hemi}"
-
-        # Set colorbar to False if the map_name is on the colortable
-        if map_name in surface.colortables:
-            colorbar = False
-
-        if vmin is None:
-            vmin = np.min(surface.mesh.point_data[map_name])
-
-        if vmax is None:
-            vmax = np.max(surface.mesh.point_data[map_name])
-
-        try:
-            vertex_values = surface.mesh.point_data[map_name]
-        except KeyError:
-            raise ValueError(f"Data array '{map_name}' not found in surface point_data")
-
-        # Process vertex colors
-        vertex_colors = self._process_vertex_colors(
-            surface, vertex_values, map_name, colormap, vmin, vmax
+        all_views_and_layouts = (
+            self._list_multiviews_layouts() + self._list_single_views()
         )
 
-        # Apply colors to mesh data
-        surface.mesh.point_data["RGB"] = vertex_colors
-
-        # Determine rendering mode (save vs display)
-        save_mode, use_off_screen, use_notebook = self._determine_render_mode(
-            save_path, notebook
-        )
-
-        # Setup plotter with optional colorbar space
-        plotter, view_offset = self._setup_plotter(
-            config, colorbar, colorbar_position, use_notebook, use_off_screen
-        )
-
-        # Create surface mapping for single hemisphere
-        surfaces = {
-            hemi: surface,
-            "merged": surface,  # For single hemisphere, merged is same as the surface
-        }
-
-        # Render each configured view
-        actor_for_colorbar = self._create_views(plotter, config, surfaces, view_offset)
-
-        # Add colorbar if requested
-        if colorbar:
-            self._add_colorbar(
-                plotter,
-                config,
-                surface,
-                map_name,
-                colormap,
-                colorbar_title,
-                colorbar_position,
-            )
-
-        # Execute final rendering/display
-        self._finalize_plot(plotter, save_mode, save_path)
+        return all_views_and_layouts
 
     ###############################################################################################
-    def plot_surface_multiple_maps(
-        self,
-        surface: Any,
-        hemi: str = "lh",
-        views: Union[str, List[str]] = "8_views",
-        map_name: str = "surface",
-        colormap: str = "BrBG",
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
-        notebook: bool = False,
-        colorbar: bool = True,
-        colorbar_title: str = "Value",
-        colorbar_position: str = "bottom",
-        save_path: Optional[str] = None,
-    ) -> None:
-
-        pass
-
-    ###############################################################################################
-    def plot_hemispheres(
-        self,
-        surf_lh: Any,
-        surf_rh: Any,
-        views: Union[str, List[str]] = "8_views",
-        notebook: bool = False,
-        map_name: str = "surface",
-        colormap: str = "BrBG",
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
-        save_path: Optional[str] = None,
-        colorbar: bool = True,
-        colorbar_title: str = "Value",
-        colorbar_position: str = "bottom",
-    ) -> None:
+    def _list_multiviews_layouts(self) -> List[str]:
         """
-        Create brain surface plots with flexible multi-view configurations.
+        List available multi-view configurations from the loaded JSON file.
 
-        Generates multi-view brain surface visualizations with customizable
-        layouts, coloring schemes, and optional colorbar display for both
-        hemispheres.
-
-        Parameters
-        ----------
-        surf_lh : Surface
-            Left hemisphere surface object with mesh data and point_data arrays.
-
-        surf_rh : Surface
-            Right hemisphere surface object with mesh data and point_data arrays.
-
-        views : str or List[str], default "8_views"
-            Either configuration name from JSON file (e.g., "8_views", "6_views")
-            or list of view names (e.g., ["lateral", "medial", "dorsal"]).
-
-        notebook : bool, default False
-            Whether to optimize for Jupyter notebook display.
-
-        map_name : str, default "surface"
-            Name of data array in point_data to use for surface coloring.
-
-        colormap : str, default "BrBG"
-            Matplotlib colormap name for continuous data.
-
-        vmin : float, optional
-            Minimum value for colormap scaling. Auto-computed if None.
-
-        vmax : float, optional
-            Maximum value for colormap scaling. Auto-computed if None.
-
-        save_path : str, optional
-            File path to save figure. If None, displays interactively.
-
-        colorbar : bool, default True
-            Whether to display colorbar. Automatically disabled for parcellations.
-
-        colorbar_title : str, default "Value"
-            Title text for the colorbar.
-
-        colorbar_position : str, default "bottom"
-            Colorbar position: "right", "left", "top", or "bottom".
-
-        Raises
-        ------
-        KeyError
-            If views configuration not found or data array missing.
-
-        ValueError
-            If invalid view names provided or data arrays not found.
+        Returns
+        -------
+        List[str]
+            List of multi-view configuration names available for plotting.
 
         Examples
         --------
-        >>> # Basic usage with predefined configuration
         >>> plotter = SurfacePlotter("configs.json")
-        >>> plotter.plot_hemispheres(surf_lh, surf_rh, views="8_views")
-        >>>
-        >>> # Dynamic view selection with list of view names
-        >>> plotter.plot_hemispheres(surf_lh, surf_rh, views=["lateral", "medial", "dorsal"])
-        >>>
-        >>> # Advanced usage with custom settings
-        >>> plotter.plot_hemispheres(
-        ...     surf_lh, surf_rh,
-        ...     views=["lateral", "medial"],
-        ...     map_name="cortical_thickness",
-        ...     colorbar=True,
-        ...     colorbar_title="Thickness (mm)",
-        ...     colormap="viridis",
-        ...     save_path="brain_thickness.png"
-        ... )
+        >>> multiviews = plotter._list_multiviews_layouts()
+        >>> print(multiviews)
+        ['8_views', '6_views', '4_views', '8_views_8x1', '6_views_6x1', '4_views_4x1', '8_views_1x8', '6_views_1x6', '4_views_1x4', '2_views']
         """
 
-        # Handle dynamic view selection vs predefined configurations
-        if isinstance(views, list):
-            # Dynamic view selection
-            config = self._create_dynamic_config(views)
-            config_name = f"dynamic_{len(views)}_views"
-            print(
-                f"Created dynamic configuration with {len(config['views'])} views: {views}"
-            )
-        else:
-            # Predefined configuration
-            if views not in self.views_conf:
-                available_configs = list(self.views_conf.keys())
-                raise KeyError(
-                    f"Configuration '{views}' not found. "
-                    f"Available options: {available_configs}"
-                )
-            config = self.views_conf[views]
-            config_name = views
-
-        # Set colorbar to False if the map_name is on the colortable
-        if map_name in surf_lh.colortables or map_name in surf_rh.colortables:
-            colorbar = False
-
-        # Extract vertex values for coloring
-        try:
-            vertex_values_lh = surf_lh.mesh.point_data[map_name]
-            vertex_values_rh = surf_rh.mesh.point_data[map_name]
-            vertex_values_lh = np.nan_to_num(vertex_values_lh, nan=0.0)
-            vertex_values_rh = np.nan_to_num(vertex_values_rh, nan=0.0)
-        except KeyError:
-            raise ValueError(f"Data array '{map_name}' not found in surface point_data")
-
-        if vmin is None:
-            vmin = np.min(np.concatenate((vertex_values_lh, vertex_values_rh)))
-
-        if vmax is None:
-            vmax = np.max(np.concatenate((vertex_values_lh, vertex_values_rh)))
-
-        # Process left hemisphere colors
-        vertex_colors_lh = self._process_vertex_colors(
-            surf_lh, vertex_values_lh, map_name, colormap, vmin, vmax
-        )
-
-        # Process right hemisphere colors
-        vertex_colors_rh = self._process_vertex_colors(
-            surf_rh, vertex_values_rh, map_name, colormap, vmin, vmax
-        )
-
-        # Apply colors to mesh data
-        surf_lh.mesh.point_data["RGB"] = vertex_colors_lh
-        surf_rh.mesh.point_data["RGB"] = vertex_colors_rh
-
-        # Create merged surface for colorbar data range
-        surf_merged = surf_lh.merge_surfaces([surf_rh])
-
-        # Determine rendering mode (save vs display)
-        save_mode, use_off_screen, use_notebook = self._determine_render_mode(
-            save_path, notebook
-        )
-
-        # Setup plotter with optional colorbar space
-        plotter, view_offset = self._setup_plotter(
-            config, colorbar, colorbar_position, use_notebook, use_off_screen
-        )
-
-        # Create surface mapping for easy access
-        surfaces = {"lh": surf_lh, "rh": surf_rh, "merged": surf_merged}
-
-        # Render each configured view
-        actor_for_colorbar = self._create_views(plotter, config, surfaces, view_offset)
-
-        # Add colorbar if requested
-        if colorbar:
-            self._add_colorbar(
-                plotter,
-                config,
-                surf_merged,
-                map_name,
-                colormap,
-                colorbar_title,
-                colorbar_position,
-            )
-
-        # Execute final rendering/display
-        self._finalize_plot(plotter, save_mode, save_path)
+        return [name for name in self.layouts_conf.keys()]
 
     ###############################################################################################
-    def plot_hemispheres_multiple_maps(
-        self,
-        surf_lh: Any,
-        surf_rh: Any,
-        views: Union[str, List[str]] = "dorsal",
-        views_orientation: str = "horizontal",
-        notebook: bool = False,
-        map_names: List[str] = ["surface"],
-        v_limits: Optional[
-            Union[Tuple[float, float], List[Tuple[float, float]]]
-        ] = None,
-        colormaps: Union[str, List[str]] = "BrBG",
-        save_path: Optional[str] = None,
-        colorbar: bool = True,
-        colorbar_style: str = "individual",
-        colorbar_title: Union[str, List[str]] = "Value",
-        colorbar_position: str = "right",
-    ) -> None:
+    def _list_single_views(self) -> List[str]:
         """
-        Create brain surface plots with multiple overlay maps.
+        List available single view names.
 
-        Generates multi-view visualizations with multiple overlay maps arranged
-        in a grid layout. Supports individual or shared colorbars with automatic
-        layout optimization.
+        """
+
+        all_single_views = self.views_conf.keys()
+
+        # Remove the hemisphere information from the view names
+        single_views = []
+        for i, view in enumerate(all_single_views):
+            # Remove the hemisphere information from the view names
+            if view.startswith("lh-"):
+                view = view.replace("lh-", "")
+
+                single_views.append(view)
+
+        return single_views
+
+    def _get_valid_views(self, views: Union[str, List[str]]) -> List[str]:
+        """
+        Get valid view names from the provided views parameter.
 
         Parameters
         ----------
-        surf_lh : Surface
-            Left hemisphere surface object with mesh data and point_data arrays.
+        views : str or List[str]
+            Either a single view name or a list of view names.
 
-        surf_rh : Surface
-            Right hemisphere surface object with mesh data and point_data arrays.
-
-        views : str or List[str], default "dorsal"
-            Either configuration name from JSON file or list of view names to
-            dynamically select.
-
-        views_orientation : str, default "horizontal"
-            Layout orientation: "horizontal" (maps as rows) or "vertical"
-            (maps as columns). Ignored when using grid layout.
-
-        notebook : bool, default False
-            Whether to optimize for Jupyter notebook display.
-
-        map_names : List[str], default ["surface"]
-            List of data arrays to use for surface coloring.
-
-        v_limits : tuple or List[tuple], optional
-            Colormap limits for the maps. Can be single tuple for all maps or
-            list of tuples for individual maps.
-
-        colormaps : str or List[str], default "BrBG"
-            Colormap(s) to use. Either single colormap for all maps or list
-            of colormaps.
-
-        save_path : str, optional
-            File path to save the figure.
-
-        colorbar : bool, default True
-            Whether to display colorbars.
-
-        colorbar_style : str, default "individual"
-            Colorbar style: "individual" (each map gets its own colorbar) or
-            "shared" (single colorbar for all maps).
-
-        colorbar_title : str or List[str], default "Value"
-            Title text for the colorbar(s). If string, same title used for all.
-            If list, each element is the title for the corresponding map.
-
-        colorbar_position : str, default "right"
-            Colorbar placement: "right" or "bottom". Invalid combinations
-            will be auto-corrected.
+        Returns
+        -------
+        List[str]
+            List of valid view names.
 
         Raises
         ------
-        TypeError
-            If map_names is not a string or list of strings, or v_limits format
-            is invalid.
-
         ValueError
-            If no valid maps found in both hemispheres, or v_limits list length
-            doesn't match maps.
+            If no valid views are found.
 
         Examples
         --------
-        >>> # Concatenated shared colorbar with different colormaps
-        >>> plotter.plot_hemispheres_multiple_maps(
-        ...     surf_lh, surf_rh,
-        ...     map_names=["thickness", "curvature", "area"],
-        ...     colormaps=["viridis", "coolwarm", "plasma"],
-        ...     colorbar_style="shared",
-        ...     colorbar_title=["Thickness (mm)", "Curvature", "Area (mm²)"]
-        ... )
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> valid_views = plotter._get_valid_views("8_views")
+        >>> print(valid_views)
+        ['lateral', 'medial', 'dorsal', 'ventral', 'rostral', 'caudal']
         """
-
-        # Validate inputs
-        if views_orientation not in ["horizontal", "vertical"]:
-            views_orientation = "horizontal"
-
-        if colorbar_position not in ["right", "bottom"]:
-            colorbar_position = "right"
-
-        if colorbar_style not in ["individual", "shared"]:
-            colorbar_style = "individual"
-
-        # Handle map_names input
-        if isinstance(map_names, str):
-            map_names = [map_names]
-        elif not isinstance(map_names, list):
-            raise TypeError("map_names must be a string or a list of strings")
-
-        # Get available maps on both hemispheres
-        lh_map_names = list(surf_lh.mesh.point_data.keys())
-        rh_map_names = list(surf_rh.mesh.point_data.keys())
-        available_maps = cltmisc.list_intercept(lh_map_names, rh_map_names)
-
-        # Filter to only available maps
-        map_names = [m for m in map_names if m in available_maps]
-        n_maps = len(map_names)
-
-        if n_maps == 0:
-            raise ValueError("No valid maps found in both hemispheres")
-
-        # Process and validate v_limits parameter
-        map_limits = self._process_v_limits(v_limits, n_maps)
-
-        # Handle colormaps
-        if isinstance(colormaps, str):
-            colormaps = [colormaps] * n_maps
-        elif len(colormaps) != n_maps:
-            # Extend or truncate colormaps to match number of maps
-            colormaps = (colormaps * ((n_maps // len(colormaps)) + 1))[:n_maps]
-
-        # Check if we have different colormaps for concatenated colorbar
-        has_different_colormaps = len(set(colormaps)) > 1
-
-        # Handle colorbar titles
-        if isinstance(colorbar_title, str):
-            colorbar_titles = [colorbar_title] * n_maps
-        elif isinstance(colorbar_title, list):
-            if len(colorbar_title) != n_maps:
-                if len(colorbar_title) == 0:
-                    colorbar_titles = ["Value"] * n_maps
-                else:
-                    # Use first title for all if lengths don't match
-                    colorbar_titles = [colorbar_title[0]] * n_maps
-                    print(
-                        f"Warning: colorbar_title list length ({len(colorbar_title)}) doesn't match number of maps ({n_maps}). Using '{colorbar_title[0]}' for all colorbars."
-                    )
-            else:
-                colorbar_titles = colorbar_title.copy()
-        else:
-            colorbar_titles = ["Value"] * n_maps
-
         # Configure views
         if isinstance(views, str):
-            if views.lower() in [
-                "lateral",
-                "medial",
-                "dorsal",
-                "ventral",
-                "rostral",
-                "caudal",
-            ]:
-                # Single view name - create dynamic config
-                config = self._create_dynamic_config([views])
-            elif views.lower() in self.views_conf:
-                # Predefined configuration
-                config = self.views_conf[views]
-            else:
-                # Default to lateral if invalid
-                config = self._create_dynamic_config(["dorsal"])
-        elif isinstance(views, list):
-            # Dynamic view selection
-            config = self._create_dynamic_config(views)
-        else:
-            raise TypeError("views must be a string or a list of view names")
+            views = [views]  # Convert single string to list for consistency
 
-        n_views = len(config["views"])
+        # Lowrcase views for consistency
+        views = [v.lower() for v in views]
 
-        if (
-            n_views > 1
-            and views_orientation == "vertical"
-            and colorbar_style == "individual"
-        ):
-            colorbar_position = "bottom"
-        elif (
-            n_views > 1
-            and views_orientation == "horizontal"
-            and colorbar_style == "individual"
-        ):
-            colorbar_position = "right"
+        # Get the multiviews layouts
+        multiviews_layouts = self._list_multiviews_layouts()
 
-        # Check for special case: single view with multiple maps
-        use_grid_layout = n_views == 1 and n_maps > 1
+        # Get the single views
+        single_views = self._list_single_views()
 
-        if use_grid_layout:
-            # Calculate grid layout and setup plotter parameters for single-view multi-map
-            (
-                grid_shape,
-                row_weights,
-                col_weights,
-                groups,
-                brain_positions,
-                colorbar_positions,
-            ) = self._calculate_single_view_multi_map_layout(
-                n_maps, colorbar, colorbar_style, colorbar_position
-            )
-        else:
-            # Use original multi-map layout for multiple views
-            (
-                grid_shape,
-                row_weights,
-                col_weights,
-                groups,
-                brain_positions,
-                colorbar_positions,
-            ) = self._calculate_multi_map_layout(
-                n_maps,
-                n_views,
-                views_orientation,
-                colorbar,
-                colorbar_style,
-                colorbar_position,
+        # Check if all the views are valid
+        valid_views = cltmisc.list_intercept(views, multiviews_layouts + single_views)
+
+        if len(valid_views) == 0:
+            raise ValueError(
+                f"No valid views found in '{views}'. "
+                f"Available options for multi-views layouts: {self._list_multiviews_layouts()}"
+                f" and for single views: {self._list_single_views()}"
             )
 
-        # Always use fullscreen - get actual screen size
-        window_size = list(get_screen_size())
+        multiv_cont = 0
+        for v_view in valid_views:
+            # Check it there are many multiple views. They are the one different from
+            # ["lateral", "medial", "dorsal", "ventral", "rostral", "caudal"]
+            if v_view not in single_views:
+                multiv_cont += 1
 
-        # Determine rendering mode
-        save_mode, use_off_screen, use_notebook = self._determine_render_mode(
-            save_path, notebook
-        )
-
-        # Create plotter with proper parameters
-        plotter_kwargs = {
-            "notebook": use_notebook,
-            "off_screen": use_off_screen,
-            "window_size": window_size,
-            "shape": grid_shape,
-            "row_weights": row_weights,
-            "col_weights": col_weights,
-            "border": False,
-        }
-
-        if groups:
-            plotter_kwargs["groups"] = groups
-
-        plotter = pv.Plotter(**plotter_kwargs)
-
-        # Store surfaces and data for colorbar
-        all_data_values = []
-        map_data_for_colorbar = (
-            []
-        )  # Store individual map data for concatenated colorbar
-
-        # Process and plot each map
-        for map_idx, map_name in enumerate(map_names):
-            colormap = colormaps[map_idx]
-            individual_colorbar_title = colorbar_titles[map_idx]
-            vmin, vmax = map_limits[map_idx]  # Get the limits for this specific map
-
-            # Extract vertex values for this map
-            try:
-                vertex_values_lh = surf_lh.mesh.point_data[map_name]
-                vertex_values_lh = np.nan_to_num(vertex_values_lh, nan=0.0)
-                vertex_values_rh = surf_rh.mesh.point_data[map_name]
-                vertex_values_rh = np.nan_to_num(vertex_values_rh, nan=0.0)
-
-            except KeyError:
-                print(f"Warning: Map '{map_name}' not found, skipping...")
-                continue
-
-            # Check if using colortables
-            use_colortable = (
-                map_name in surf_lh.colortables or map_name in surf_rh.colortables
+        if multiv_cont > 1:
+            # If there are multiple multi-view layouts, we cannot proceed
+            raise ValueError(
+                f"Different multi-views layout cannot be supplied together. "
+                "If you want to use a multi-views layout, please use only one multi-views layout "
+                "from the list: "
+                f"{self._list_multiviews_layouts()}. "
+                f"Received: {valid_views}"
             )
-            show_colorbar = colorbar and not use_colortable
-
-            # Calculate color range for this map if not provided
-            if not use_colortable:
-                if vmin is None or vmax is None:
-                    combined_values = np.concatenate(
-                        (vertex_values_lh, vertex_values_rh)
-                    )
-                    if vmin is None:
-                        vmin = np.min(combined_values)
-                    if vmax is None:
-                        vmax = np.max(combined_values)
-
-                    print(
-                        f"Auto-computed limits for '{map_name}': vmin={vmin:.3f}, vmax={vmax:.3f}"
-                    )
-                else:
-                    print(
-                        f"Using provided limits for '{map_name}': vmin={vmin:.3f}, vmax={vmax:.3f}"
-                    )
-
-                all_data_values.extend([vertex_values_lh, vertex_values_rh])
-
-                # Store data for concatenated colorbar
-                map_data_for_colorbar.append(
-                    {
-                        "data": np.concatenate((vertex_values_lh, vertex_values_rh)),
-                        "colormap": colormap,
-                        "title": individual_colorbar_title,
-                        "vmin": vmin,
-                        "vmax": vmax,
-                        "map_name": map_name,
-                    }
-                )
-            else:
-                vmin = vmax = None
-
-            # Process vertex colors using the same method as plot_hemispheres
-            vertex_colors_lh = self._process_vertex_colors(
-                surf_lh, vertex_values_lh, map_name, colormap, vmin, vmax
+        elif multiv_cont == 1 and len(valid_views) > 1:
+            # If there is only one multi-view layout, we can proceed
+            print(
+                f"Warning: Using a multi-views layout '{valid_views}' together with other views. "
+                "The multi-views layout will be used as the main layout, "
+                "and the other views will be ignored."
             )
-            vertex_colors_rh = self._process_vertex_colors(
-                surf_rh, vertex_values_rh, map_name, colormap, vmin, vmax
-            )
+            valid_views = cltmisc.list_intercept(valid_views, multiviews_layouts)
 
-            # Create temporary surfaces with unique color arrays to avoid interference
-            import copy
+        elif multiv_cont == 0 and len(valid_views) > 0:
 
-            temp_surf_lh = copy.deepcopy(surf_lh)
-            temp_surf_rh = copy.deepcopy(surf_rh)
+            # If there are no multi-view layouts, we can proceed with single views
+            valid_views = cltmisc.list_intercept(valid_views, single_views)
 
-            temp_surf_lh.mesh.point_data["RGB"] = vertex_colors_lh
-            temp_surf_rh.mesh.point_data["RGB"] = vertex_colors_rh
+        return valid_views
 
-            # Create merged surface for colorbar
-            temp_surf_merged = temp_surf_lh.merge_surfaces([temp_surf_rh])
-
-            # Create surface mapping for this map
-            surfaces = {
-                "lh": temp_surf_lh,
-                "rh": temp_surf_rh,
-                "merged": temp_surf_merged,
-            }
-
-            # Plot each view for this map
-            if use_grid_layout:
-                # Single view grid layout: only plot once per map
-                view_config = config["views"][0]  # Use the single view
-                brain_key = (map_idx, 0)  # view_idx is always 0
-                if brain_key in brain_positions:
-                    subplot_pos = brain_positions[brain_key]
-
-                    plotter.subplot(*subplot_pos)
-                    plotter.set_background(self.figure_conf["background_color"])
-
-                    # Add title
-                    title = f"{map_name}"  # Cleaner title for grid layout
-                    plotter.add_text(
-                        title,
-                        font_size=self.figure_conf["title_font_size"],
-                        position="upper_edge",
-                        color=self.figure_conf["title_font_color"],
-                        shadow=self.figure_conf["title_shadow"],
-                        font=self.figure_conf["title_font_type"],
-                    )
-
-                    # Add brain mesh
-                    surface = surfaces[view_config["mesh"]]
-                    plotter.add_mesh(
-                        surface.mesh,
-                        scalars="RGB",
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-
-                    # Configure camera view
-                    getattr(plotter, f"view_{view_config['view']}")()
-                    plotter.camera.azimuth = view_config["azimuth"]
-                    plotter.camera.elevation = view_config["elevation"]
-                    plotter.camera.zoom(view_config["zoom"])
-            else:
-                # Original multi-view layout: plot all views for this map
-                for view_idx, view_config in enumerate(config["views"]):
-                    # Get brain subplot position from pre-calculated positions
-                    brain_key = (map_idx, view_idx)
-                    if brain_key in brain_positions:
-                        subplot_pos = brain_positions[brain_key]
-
-                        plotter.subplot(*subplot_pos)
-                        plotter.set_background(self.figure_conf["background_color"])
-
-                        # Add title
-                        title = f"{map_name}: {view_config['title']}"
-                        plotter.add_text(
-                            title,
-                            font_size=self.figure_conf["title_font_size"],
-                            position="upper_edge",
-                            color=self.figure_conf["title_font_color"],
-                            shadow=self.figure_conf["title_shadow"],
-                            font=self.figure_conf["title_font_type"],
-                        )
-
-                        # Add brain mesh
-                        surface = surfaces[view_config["mesh"]]
-                        plotter.add_mesh(
-                            surface.mesh,
-                            scalars="RGB",
-                            rgb=True,
-                            ambient=self.figure_conf["mesh_ambient"],
-                            diffuse=self.figure_conf["mesh_diffuse"],
-                            specular=self.figure_conf["mesh_specular"],
-                            specular_power=self.figure_conf["mesh_specular_power"],
-                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                            show_scalar_bar=False,
-                        )
-
-                        # Configure camera view
-                        getattr(plotter, f"view_{view_config['view']}")()
-                        plotter.camera.azimuth = view_config["azimuth"]
-                        plotter.camera.elevation = view_config["elevation"]
-                        plotter.camera.zoom(view_config["zoom"])
-
-            # Add individual colorbar for this map
-            if show_colorbar and colorbar_style == "individual":
-                colorbar_key = f"individual_{map_idx}"
-                if colorbar_key in colorbar_positions:
-                    colorbar_pos = colorbar_positions[colorbar_key]
-
-                    plotter.subplot(*colorbar_pos)
-                    plotter.set_background(self.figure_conf["background_color"])
-
-                    # Add individual colorbar for this specific map
-                    self._add_individual_colorbar(
-                        plotter,
-                        temp_surf_merged,
-                        map_name,
-                        colormap,
-                        individual_colorbar_title,  # Use the title directly from the list
-                        colorbar_position,
-                        vmin,
-                        vmax,
-                        n_views,  # Pass number of views for multi-view enforcement
-                        views_orientation,  # Pass orientation for multi-view enforcement
-                    )
-
-        # Add shared colorbar if requested
-        if colorbar and colorbar_style == "shared" and map_data_for_colorbar:
-            colorbar_key = "shared"
-            if colorbar_key in colorbar_positions:
-                colorbar_pos = colorbar_positions[colorbar_key]
-
-                plotter.subplot(*colorbar_pos)
-                plotter.set_background(self.figure_conf["background_color"])
-
-                if has_different_colormaps:
-                    # Create concatenated colorbar with different colormaps
-                    print(
-                        f"🎨 Creating concatenated colorbar with {len(set(colormaps))} different colormaps"
-                    )
-                    self._add_concatenated_colorbar(
-                        plotter, map_data_for_colorbar, colorbar_position
-                    )
-                else:
-                    # Use traditional shared colorbar with single colormap
-                    combined_data = np.concatenate(all_data_values)
-                    shared_title = colorbar_titles[0] if colorbar_titles else "Value"
-
-                    # For shared colorbar, use the first map's limits or compute from all data
-                    shared_vmin, shared_vmax = map_limits[0]
-                    if shared_vmin is None or shared_vmax is None:
-                        if shared_vmin is None:
-                            shared_vmin = np.min(combined_data)
-                        if shared_vmax is None:
-                            shared_vmax = np.max(combined_data)
-
-                    # Create traditional shared colorbar
-                    self._add_shared_colorbar(
-                        plotter,
-                        combined_data,
-                        colormaps[0],
-                        shared_title,
-                        colorbar_position,
-                        shared_vmin,
-                        shared_vmax,
-                    )
-        if n_views == 1 and n_maps > 1:
-            plotter.link_views()
-
-        # Execute final rendering/display
-        self._finalize_plot(plotter, save_mode, save_path)
-
-    ################################################################################################
-    def plot_surfaces_list(
-        self,
-        surfaces: List[Any],
-        views: Union[str, List[str]] = "8_views",
-        notebook: bool = False,
-        map_names: str = "surface",
-        colormap: str = "BrBG",
-        v_limits: Optional[
-            Union[Tuple[float, float], List[Tuple[float, float]]]
-        ] = None,
-        save_path: Optional[str] = None,
-        colorbar: bool = True,
-        colorbar_title: str = "Value",
-        colorbar_position: str = "bottom",
-    ) -> None:
+    ###############################################################################################
+    def _get_config_for_views(
+        self, valid_views: list, views_orientation: str = "horizontal", n_maps: int = 1
+    ):
         """
-        Create a grid of brain surface plots from a list of surfaces.
+        Get the configuration for the specified views.
 
         Parameters
         ----------
-        surfaces : List[Surface]
-            List of surface objects with mesh data and point_data arrays.
+        valid_views : list
+            List of valid view names to filter the configuration.
 
-        views : str or List[str], default "8_views"
-            Either configuration name from JSON file or list of view names.
+        n_maps : int, default 1
+            Number of maps to determine the configuration. I
 
-        notebook : bool, default False
-            Whether to optimize for Jupyter notebook display.
-
-        map_name : str, default "surface"
-            Name of data array in point_data to use for surface coloring.
-
-        colormap : str, default "BrBG"
-            Matplotlib colormap name for continuous data.
-
-        vmin : float, optional
-            Minimum value for colormap scaling. Auto-computed if None.
-
-        vmax : float, optional
-            Maximum value for colormap scaling. Auto-computed if None.
-
-        save_path : str, optional
-            File path to save figure. If None, displays interactively.
-
-        colorbar : bool, default True
-            Whether to display colorbar. Automatically disabled for parcellations.
-
-        colorbar_title : str, default "Value"
-            Title text for the colorbar.
-
-        colorbar_position : str, default "bottom"
-            Colorbar position: "right", "left", "top", or "bottom".
+        Returns
+        -------
+        Dict[str, Any]
+            Configuration dictionary containing shape, window_size, and views.
 
         Raises
         ------
         KeyError
-            If views configuration not found or data array missing.
-
-        ValueError
-            If invalid view names provided or data arrays not found.
+            If the specified views configuration is not found.
 
         Examples
         --------
-        >>> # Basic usage with predefined configuration
         >>> plotter = SurfacePlotter("configs.json")
-        >>> plotter.plot_surfaces_list(surfaces)
-
-        >>> # Dynamic view selection with list of view names
-        >>> plotter.plot_surfaces_list(surfaces, views=["lateral", "medial", "dorsal"])
-
-        >>>
+        >>> config = plotter._get_config_for_views("8_views")
+        >>> print(config["shape"])  # Output: (2, 4)
         """
-        pass
 
+        # Get the list of available multiviews layouts
+        multiviews_layouts = self._list_multiviews_layouts()
 
-#####################################################################################################
-def get_screen_size() -> Tuple[int, int]:
-    """
-    Get the current screen size in pixels.
+        # Get the list of available single views
+        multi_views = cltmisc.list_intercept(valid_views, multiviews_layouts)
 
-    Returns
-    -------
-    tuple of int
-        Screen width and height in pixels (width, height).
+        if len(multi_views) > 0:
 
-    Examples
-    --------
-    >>> width, height = get_screen_size()
-    >>> print(f"Screen size: {width}x{height}")
-    """
+            if n_maps > 1:
+                if views_orientation == "horizontal":
+                    # Use the first multi-views layout with 1x on the name
+                    config_name = [v for v in multi_views if "1x" in v]
 
-    import tkinter as tk
+                    if len(config_name) == 0:
+                        # If no 1x layout found, use the first multi-views layout
+                        config_name = (
+                            "6_views_1x6" if "6_views" in multi_views else "8_views_1x8"
+                        )
+                    else:
+                        config_name = config_name[0]
 
-    root = tk.Tk()
-    root.withdraw()  # Hide the main window
-    width = root.winfo_screenwidth()
-    height = root.winfo_screenheight()
-    return width, height
+                else:
+                    # Use the first multi-views layout with x1 on the name
+                    config_name = [v for v in multi_views if "x1" in v]
+
+                    if len(config_name) == 0:
+                        # If no x1 layout found, use the first multi-views layout
+                        config_name = (
+                            "6_views_6x1" if "6_views" in multi_views else "8_views_8x1"
+                        )
+                    else:
+                        config_name = config_name[0]
+
+            else:
+                # Use the first multi-views layout without 1x or x1 on the name
+                config_name = multi_views[0]
+
+            config = self.views_conf[config_name]
+
+        else:
+            if views_orientation == "horizontal":
+                reference_view = "8_views_1x8"
+            else:
+                reference_view = "8_views_8x1"
+
+            # Create a dynamic configuration based on the valid views
+            valid_views = cltmisc.list_intercept(valid_views, self._list_single_views())
+            config = self._create_dynamic_config_for_hemisphere(
+                valid_views, reference_view
+            )
+
+        return config
+
+    ###############################################################################################
+    def update_figure_config(self, auto_save: bool = True, **kwargs) -> None:
+        """
+        Update figure configuration parameters with validation and automatic saving.
+
+        This method allows you to easily customize the visual appearance of your
+        brain plots by updating styling parameters like colors, fonts, and mesh properties.
+
+        Parameters
+        ----------
+        auto_save : bool, default True
+            Whether to automatically save changes to the JSON configuration file.
+
+        **kwargs : dict
+            Figure configuration parameters to update. Valid parameters include:
+
+            **Background & Colors:**
+            - background_color : str (e.g., "black", "white", "#1e1e1e")
+            - title_font_color : str (e.g., "white", "black", "#ffffff")
+            - colorbar_font_color : str (e.g., "white", "black", "#ffffff")
+
+            **Title Settings:**
+            - title_font_type : str (e.g., "arial", "times", "courier")
+            - title_font_size : int (6-30, default: 10)
+            - title_shadow : bool (True/False)
+
+            **Colorbar Settings:**
+            - colorbar_font_type : str (e.g., "arial", "times", "courier")
+            - colorbar_font_size : int (6-20, default: 10)
+            - colorbar_title_font_size : int (8-25, default: 15)
+            - colorbar_outline : bool (True/False)
+            - colorbar_n_labels : int (3-15, default: 11)
+
+            **Mesh Properties:**
+            - mesh_ambient : float (0.0-1.0, default: 0.2)
+            - mesh_diffuse : float (0.0-1.0, default: 0.5)
+            - mesh_specular : float (0.0-1.0, default: 0.5)
+            - mesh_specular_power : int (1-100, default: 50)
+            - mesh_smooth_shading : bool (True/False)
+
+        Raises
+        ------
+        ValueError
+            If invalid parameter names or values are provided.
+
+        TypeError
+            If parameter values are of incorrect type.
+
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>>
+        >>> # Change background to white with black text
+        >>> plotter.update_figure_config(
+        ...     background_color="white",
+        ...     title_font_color="black",
+        ...     colorbar_font_color="black"
+        ... )
+        >>>
+        >>> # Increase font sizes
+        >>> plotter.update_figure_config(
+        ...     title_font_size=14,
+        ...     colorbar_font_size=12,
+        ...     colorbar_title_font_size=18
+        ... )
+        >>>
+        >>> # Adjust mesh lighting for better visibility
+        >>> plotter.update_figure_config(
+        ...     mesh_ambient=0.3,
+        ...     mesh_diffuse=0.7,
+        ...     mesh_specular=0.2
+        ... )
+        """
+
+        # Define valid parameters with their types and ranges
+        valid_params = {
+            # Background & Colors
+            "background_color": {"type": str, "example": '"black", "white", "#1e1e1e"'},
+            "title_font_color": {"type": str, "example": '"white", "black", "#ffffff"'},
+            "colorbar_font_color": {
+                "type": str,
+                "example": '"white", "black", "#ffffff"',
+            },
+            # Title Settings
+            "title_font_type": {"type": str, "example": '"arial", "times", "courier"'},
+            "title_font_size": {"type": int, "range": (6, 30), "default": 10},
+            "title_shadow": {"type": bool, "example": "True, False"},
+            # Colorbar Settings
+            "colorbar_font_type": {
+                "type": str,
+                "example": '"arial", "times", "courier"',
+            },
+            "colorbar_font_size": {"type": int, "range": (6, 20), "default": 10},
+            "colorbar_title_font_size": {"type": int, "range": (8, 25), "default": 15},
+            "colorbar_outline": {"type": bool, "example": "True, False"},
+            "colorbar_n_labels": {"type": int, "range": (3, 15), "default": 11},
+            # Mesh Properties
+            "mesh_ambient": {"type": float, "range": (0.0, 1.0), "default": 0.2},
+            "mesh_diffuse": {"type": float, "range": (0.0, 1.0), "default": 0.5},
+            "mesh_specular": {"type": float, "range": (0.0, 1.0), "default": 0.5},
+            "mesh_specular_power": {"type": int, "range": (1, 100), "default": 50},
+            "mesh_smooth_shading": {"type": bool, "example": "True, False"},
+        }
+
+        if not kwargs:
+            print("No parameters provided to update.")
+            print(
+                "Use plotter.list_figure_config_options() to see available parameters."
+            )
+            return
+
+        # Validate and update parameters
+        updated_params = []
+        for param, value in kwargs.items():
+            if param not in valid_params:
+                available_params = list(valid_params.keys())
+                raise ValueError(
+                    f"Invalid parameter '{param}'. "
+                    f"Available parameters: {available_params}"
+                )
+
+            # Type validation
+            expected_type = valid_params[param]["type"]
+            if not isinstance(value, expected_type):
+                raise TypeError(
+                    f"Parameter '{param}' must be of type {expected_type.__name__}, "
+                    f"got {type(value).__name__}"
+                )
+
+            # Range validation for numeric types
+            if "range" in valid_params[param]:
+                min_val, max_val = valid_params[param]["range"]
+                if not (min_val <= value <= max_val):
+                    raise ValueError(
+                        f"Parameter '{param}' must be between {min_val} and {max_val}, "
+                        f"got {value}"
+                    )
+
+            # Update the configuration
+            old_value = self.figure_conf.get(param, "Not set")
+            self.figure_conf[param] = value
+            updated_params.append(f"  {param}: {old_value} → {value}")
+
+        # Display update summary
+        print("✅ Figure configuration updated:")
+        print("\n".join(updated_params))
+
+        # Auto-save if requested
+        if auto_save:
+            self.save_config()
+            print(f"💾 Changes saved to: {self.config_file}")
+
+    def apply_theme(self, theme_name: str, auto_save: bool = True) -> None:
+        """
+        Apply predefined visual themes to quickly customize plot appearance.
+
+        Parameters
+        ----------
+        theme_name : str
+            Name of the theme to apply. Available themes:
+            - "dark" : Dark background with white text (default)
+            - "light" : Light background with dark text
+            - "high_contrast" : Maximum contrast for presentations
+            - "minimal" : Clean, minimal styling
+            - "publication" : Optimized for academic publications
+            - "colorful" : Vibrant colors for engaging visuals
+
+        auto_save : bool, default True
+            Whether to automatically save theme to configuration file.
+
+        Raises
+        ------
+        ValueError
+            If theme_name is not recognized.
+
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>>
+        >>> # Apply light theme for presentations
+        >>> plotter.apply_theme("light")
+        >>>
+        >>> # Use high contrast for better visibility
+        >>> plotter.apply_theme("high_contrast")
+        >>>
+        >>> # Publication-ready styling
+        >>> plotter.apply_theme("publication")
+        """
+
+        themes = self.themes_conf
+
+        if theme_name not in themes:
+            available_themes = list(themes.keys())
+            raise ValueError(
+                f"Theme '{theme_name}' not recognized. "
+                f"Available themes: {available_themes}"
+            )
+
+        theme = themes[theme_name].copy()
+        description = theme.pop("description")
+
+        # Apply theme parameters (excluding description)
+        print(f"🎨 Applying '{theme_name}' theme: {description}")
+
+        updated_params = []
+        for param, value in theme.items():
+            old_value = self.figure_conf.get(param, "Not set")
+            self.figure_conf[param] = value
+            updated_params.append(f"  {param}: {old_value} → {value}")
+
+        print("Updated parameters:")
+        print("\n".join(updated_params))
+
+        if auto_save:
+            self.save_config()
+            print(f"💾 Theme saved to: {self.config_file}")
+
+    def list_available_themes(self) -> None:
+        """
+        Display all available themes with descriptions and previews.
+
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter.list_available_themes()
+        """
+
+        themes = {
+            "dark": "Dark background with white text (default)",
+            "light": "Light background with dark text",
+            "high_contrast": "Maximum contrast for presentations",
+            "minimal": "Clean, minimal styling",
+            "publication": "Optimized for academic publications",
+            "colorful": "Vibrant colors for engaging visuals",
+        }
+
+        print("🎨 Available Themes:")
+        print("=" * 50)
+        for i, (theme_name, description) in enumerate(themes.items(), 1):
+            print(f"{i:2d}. {theme_name:12s} - {description}")
+
+        print("\n💡 Usage:")
+        print("   plotter.apply_theme('light')     # Apply light theme")
+        print("   plotter.apply_theme('publication', auto_save=False)  # Don't save")
+        print("=" * 50)
+
+    def list_figure_config_options(self) -> None:
+        """
+        Display all available figure configuration parameters with descriptions.
+
+        Shows parameter names, types, valid ranges, and examples to help users
+        understand what can be customized.
+
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter.list_figure_config_options()
+        """
+
+        print("🎛️  Available Figure Configuration Parameters:")
+        print("=" * 60)
+
+        categories = {
+            "Background & Colors": [
+                (
+                    "background_color",
+                    "str",
+                    "Background color",
+                    '"black", "white", "#1e1e1e"',
+                ),
+                (
+                    "title_font_color",
+                    "str",
+                    "Title text color",
+                    '"white", "black", "#ffffff"',
+                ),
+                (
+                    "colorbar_font_color",
+                    "str",
+                    "Colorbar text color",
+                    '"white", "black", "#ffffff"',
+                ),
+            ],
+            "Title Settings": [
+                (
+                    "title_font_type",
+                    "str",
+                    "Title font family",
+                    '"arial", "times", "courier"',
+                ),
+                ("title_font_size", "int", "Title font size (6-30)", "10, 12, 14"),
+                ("title_shadow", "bool", "Enable title shadow", "True, False"),
+            ],
+            "Colorbar Settings": [
+                (
+                    "colorbar_font_type",
+                    "str",
+                    "Colorbar font family",
+                    '"arial", "times", "courier"',
+                ),
+                (
+                    "colorbar_font_size",
+                    "int",
+                    "Colorbar font size (6-20)",
+                    "10, 12, 14",
+                ),
+                (
+                    "colorbar_title_font_size",
+                    "int",
+                    "Colorbar title size (8-25)",
+                    "15, 18, 20",
+                ),
+                ("colorbar_outline", "bool", "Show colorbar outline", "True, False"),
+                (
+                    "colorbar_n_labels",
+                    "int",
+                    "Number of colorbar labels (3-15)",
+                    "11, 7, 5",
+                ),
+            ],
+            "Mesh Properties": [
+                (
+                    "mesh_ambient",
+                    "float",
+                    "Ambient lighting (0.0-1.0)",
+                    "0.2, 0.3, 0.4",
+                ),
+                (
+                    "mesh_diffuse",
+                    "float",
+                    "Diffuse lighting (0.0-1.0)",
+                    "0.5, 0.6, 0.7",
+                ),
+                (
+                    "mesh_specular",
+                    "float",
+                    "Specular reflection (0.0-1.0)",
+                    "0.5, 0.3, 0.7",
+                ),
+                ("mesh_specular_power", "int", "Specular power (1-100)", "50, 30, 80"),
+                ("mesh_smooth_shading", "bool", "Enable smooth shading", "True, False"),
+            ],
+        }
+
+        for category, params in categories.items():
+            print(f"\n📁 {category}:")
+            print("-" * 40)
+            for param, param_type, description, examples in params:
+                current_value = self.figure_conf.get(param, "Not set")
+                print(f"  {param:25s} ({param_type:5s}) - {description}")
+                print(f"  {'':25s} Current: {current_value}, Examples: {examples}")
+                print()
+
+        print("💡 Usage Examples:")
+        print("   plotter.update_figure_config(background_color='white')")
+        print("   plotter.update_figure_config(title_font_size=14, mesh_ambient=0.3)")
+        print("   plotter.update_figure_config(auto_save=False, **params)")
+        print("=" * 60)
+
+    def reset_figure_config(self, auto_save: bool = True) -> None:
+        """
+        Reset figure configuration to default values.
+
+        Parameters
+        ----------
+        auto_save : bool, default True
+            Whether to automatically save reset configuration to file.
+
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter.reset_figure_config()  # Reset to defaults
+        """
+
+        default_config = {
+            "background_color": "black",
+            "title_font_type": "arial",
+            "title_font_size": 10,
+            "title_font_color": "white",
+            "title_shadow": True,
+            "colorbar_font_type": "arial",
+            "colorbar_font_size": 10,
+            "colorbar_title_font_size": 15,
+            "colorbar_font_color": "white",
+            "colorbar_outline": False,
+            "colorbar_n_labels": 11,
+            "mesh_ambient": 0.2,
+            "mesh_diffuse": 0.5,
+            "mesh_specular": 0.5,
+            "mesh_specular_power": 50,
+            "mesh_smooth_shading": True,
+        }
+
+        print("🔄 Resetting figure configuration to defaults...")
+
+        # Show what's changing
+        changes = []
+        for param, default_value in default_config.items():
+            old_value = self.figure_conf.get(param, "Not set")
+            if old_value != default_value:
+                changes.append(f"  {param}: {old_value} → {default_value}")
+
+        if changes:
+            print("Changes:")
+            print("\n".join(changes))
+        else:
+            print("Configuration already at default values.")
+
+        # Apply defaults
+        self.figure_conf.update(default_config)
+
+        if auto_save:
+            self.save_config()
+            print(f"💾 Default configuration saved to: {self.config_file}")
+
+    def save_config(self) -> None:
+        """
+        Save current configuration (both figure_conf and views_conf) to JSON file.
+
+        Raises
+        ------
+        IOError
+            If unable to write to configuration file.
+
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter.update_figure_config(background_color="white", auto_save=False)
+        >>> plotter.save_config()  # Manually save changes
+        """
+
+        try:
+            # Combine both configurations
+            complete_config = {
+                "figure_conf": self.figure_conf,
+                "views_conf": self.views_conf,
+            }
+
+            # Write to file with proper formatting
+            with open(self.config_file, "w") as f:
+                json.dump(complete_config, f, indent=4, sort_keys=False)
+
+            print(f"✅ Configuration saved successfully to: {self.config_file}")
+
+        except Exception as e:
+            raise IOError(f"Failed to save configuration: {e}")
+
+    def preview_theme(self, theme_name: str) -> None:
+        """
+        Preview a theme's parameters without applying them.
+
+        Parameters
+        ----------
+        theme_name : str
+            Name of the theme to preview.
+
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter.preview_theme("light")  # See what light theme would change
+        """
+
+        themes = {
+            "dark": {
+                "background_color": "black",
+                "title_font_color": "white",
+                "colorbar_font_color": "white",
+                "title_shadow": True,
+                "colorbar_outline": False,
+                "mesh_ambient": 0.2,
+                "description": "Dark background with white text (default)",
+            },
+            "light": {
+                "background_color": "white",
+                "title_font_color": "black",
+                "colorbar_font_color": "black",
+                "title_shadow": False,
+                "colorbar_outline": True,
+                "mesh_ambient": 0.3,
+                "description": "Light background with dark text",
+            },
+            # ... (other themes would be included here)
+        }
+
+        if theme_name not in themes:
+            available_themes = list(themes.keys())
+            raise ValueError(
+                f"Theme '{theme_name}' not found. Available: {available_themes}"
+            )
+
+        theme = themes[theme_name].copy()
+        description = theme.pop("description")
+
+        print(f"👀 Preview of '{theme_name}' theme: {description}")
+        print("=" * 50)
+        print("Would change:")
+
+        for param, new_value in theme.items():
+            current_value = self.figure_conf.get(param, "Not set")
+            if current_value != new_value:
+                print(f"  {param:25s}: {current_value} → {new_value}")
+
+        print("\n💡 To apply: plotter.apply_theme('{}')".format(theme_name))
+        print("=" * 50)
+
+################################# Helper Functions ################################
+def _get_shared_limits(surfaces, map_name, vmin, vmax):
+    """Get shared vmin and vmax from surfaces if not provided."""
+
+    # Concatenate data from all surfaces
+    for i, surf in enumerate(surfaces):
+        if map_name in surf.mesh.point_data:
+            if i == 0:
+                data = surf.mesh.point_data[map_name]
+            else:
+                data = np.concatenate((data, surf.mesh.point_data[map_name]))
+
+    if vmin is None:
+        vmin = np.min(data)
+
+    if vmax is None:
+        vmax = np.max(data)
+
+    return vmin, vmax
+
+def _get_map_limits(surfaces, map_name, colormap_style, v_limits):
+    """Get real vmin and vmax from surfaces if not provided."""
+    vmin, vmax = v_limits
+    real_limits = []
+
+    if not isinstance(surfaces, list):
+        surfaces = [surfaces]
+
+    if isinstance(map_name, list):
+        map_name = map_name[0]
+
+    if colormap_style == "individual":
+        for surf in surfaces:
+            data = surf.mesh.point_data[map_name]
+            if vmin is None:
+                real_vmin = np.min(data)
+            else:
+                real_vmin = vmin
+
+            if vmax is None:
+                real_vmax = np.max(data)
+            else:
+                real_vmax = vmax
+
+            real_limits.append((real_vmin, real_vmax, map_name))
+        return real_limits
+    else:  # shared
+        vmin, vmax = _get_shared_limits(surfaces, map_name, vmin, vmax)
+        return [(vmin, vmax, map_name)] * len(surfaces)
