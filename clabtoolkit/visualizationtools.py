@@ -2184,7 +2184,475 @@ class SurfacePlotter:
         }
         return layout_config, colorbar_list
 
+    def _hemispheres_multi_map_layout(
+        self,
+        surf_lh,
+        surf_rh,
+        surf_merg,
+        valid_views,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
+        orientation,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+    ):
+        """Handle multiple views and multiple maps case."""
 
+        colorbar_size = self.figure_conf["colorbar_size"]
+
+        n_views = len(valid_views)
+        n_maps = len(maps_names)
+
+        brain_positions = {}
+        colormap_limits = {}
+        colorbar_list = []
+
+        if len(maps_names) == 1:
+            map_name = maps_names[0]
+            vmin, vmax = v_limits[0]
+            colormap = colormaps[0]
+
+            colorbar_data = any(
+                map_name not in surface.colortables
+                for map_name in maps_names
+                for surface in [surf_lh, surf_rh, surf_merg]
+            )
+            if colorbar_data == False:
+                colorbar = False
+
+            map_limits = _get_map_limits(
+                surfaces=[surf_lh, surf_rh, surf_merg],
+                map_name=map_name,
+                colormap_style="individual",
+                v_limits=(vmin, vmax),
+            )
+
+            optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_views)
+            brain_positions = {}
+            colormap_limits = {}
+
+            for view_idx in range(n_views):
+                pos = positions[view_idx]
+                brain_positions[(0, 0, view_idx)] = pos
+                if valid_views[view_idx].startswith("lh"):
+                    colormap_limits[(0, 0, view_idx)] = map_limits[0]
+
+                elif valid_views[view_idx].startswith("rh"):
+                    colormap_limits[(0, 0, view_idx)] = map_limits[1]
+
+                elif valid_views[view_idx].startswith("merg"):
+                    colormap_limits[(0, 0, view_idx)] = map_limits[2]
+
+            colorbar_list = []
+            if not colorbar:
+                shape = list(optimal_grid)
+                row_weights = [1] * optimal_grid[0]
+                col_weights = [1] * optimal_grid[1]
+                groups = []
+
+            else:
+                if colormap_style == "individual":
+                    if colorbar_position == "right":
+                        shape = [optimal_grid[0], optimal_grid[1] * 2]
+                        row_weights = [1] * optimal_grid[0]
+                        col_weights = [1, colorbar_size] * optimal_grid[1]
+
+                    elif colorbar_position == "bottom":
+                        shape = [optimal_grid[0] * 2, optimal_grid[1]]
+                        row_weights = [1, colorbar_size] * optimal_grid[0]
+                        col_weights = [1] * optimal_grid[1]
+                    groups = []
+
+                    for view_idx in range(n_views):
+                        pos = positions[view_idx]
+
+                        cb_dict = {}
+                        if colorbar_position == "right":
+                            brain_positions[(0, 0, view_idx)] = (pos[0], pos[1] * 2)
+                            cb_dict["position"] = (pos[0], pos[1] * 2 + 1)
+                            cb_dict["orientation"] = "vertical"
+
+                        elif colorbar_position == "bottom":
+                            brain_positions[(0, 0, view_idx)] = (pos[0] * 2, pos[1])
+                            cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
+                            cb_dict["orientation"] = "horizontal"
+
+                        cb_dict["colormap"] = colormap
+                        cb_dict["map_name"] = map_name
+
+                        if valid_views[view_idx].startswith("lh"):
+                            cb_dict["vmin"] = map_limits[0][0]
+                            cb_dict["vmax"] = map_limits[0][1]
+
+                        elif valid_views[view_idx].startswith("rh"):
+                            cb_dict["vmin"] = map_limits[1][0]
+                            cb_dict["vmax"] = map_limits[1][1]
+
+                        elif valid_views[view_idx].startswith("merg"):
+                            cb_dict["vmin"] = map_limits[2][0]
+                            cb_dict["vmax"] = map_limits[2][1]
+
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[0]
+
+                        else:
+                            cb_dict["title"] = map_name
+
+                        colorbar_list.append(cb_dict)
+
+                else:  # shared colorbar
+                    cb_dict = {}
+                    cb_dict["colormap"] = colormap
+                    cb_dict["map_name"] = map_name
+
+                    # Compute the global limits
+                    global_limits = (
+                        min(l[0] for l in map_limits),
+                        max(l[1] for l in map_limits),
+                    )
+
+                    cb_dict["vmin"] = global_limits[0]
+                    cb_dict["vmax"] = global_limits[1]
+
+                    if colorbar_titles:
+                        cb_dict["title"] = colorbar_titles[0]
+
+                    else:
+                        cb_dict["title"] = map_name
+
+                    if colorbar_position == "right":
+                        shape = [optimal_grid[0], optimal_grid[1] + 1]
+                        row_weights = [1] * optimal_grid[0]
+                        col_weights = [1] * optimal_grid[1] + [colorbar_size]
+                        groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
+                        cb_dict["position"] = (0, optimal_grid[1])
+                        cb_dict["orientation"] = "vertical"
+
+                    else:  # bottom
+                        shape = [optimal_grid[0] + 1, optimal_grid[1]]
+                        row_weights = [1] * optimal_grid[0] + [colorbar_size]
+                        col_weights = [1] * optimal_grid[1]
+                        groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
+                        cb_dict["position"] = (optimal_grid[0], 0)
+                        cb_dict["orientation"] = "horizontal"
+
+                    for view_idx in range(n_views):
+                        pos = positions[view_idx]
+                        brain_positions[(0, 0, view_idx)] = pos
+                        if valid_views[view_idx].startswith("lh"):
+                            colormap_limits[(0, 0, view_idx)] = map_limits[0]
+
+                        elif valid_views[view_idx].startswith("rh"):
+                            colormap_limits[(0, 0, view_idx)] = map_limits[1]
+
+                        elif valid_views[view_idx].startswith("merg"):
+                            colormap_limits[(0, 0, view_idx)] = map_limits[2]
+
+                    # Append colorbar dictionary to the list
+                    colorbar_list.append(cb_dict)
+
+        else:
+            if orientation == "horizontal":
+                if not colorbar:
+                    shape = [n_maps, n_views]
+                    row_weights = [1] * n_maps
+                    col_weights = [1] * n_views
+                    groups = []
+
+                    # Views in columns, maps in rows
+                    for view_idx in range(n_views):
+                        if valid_views[view_idx].startswith("lh"):
+                            tmp_surface = copy.deepcopy(surf_lh)
+
+                        elif valid_views[view_idx].startswith("rh"):
+                            tmp_surface = copy.deepcopy(surf_rh)
+
+                        elif valid_views[view_idx].startswith("merg"):
+                            tmp_surface = copy.deepcopy(surf_merg)
+
+                        for map_idx in range(n_maps):
+                            brain_positions[(map_idx, 0, view_idx)] = (
+                                map_idx,
+                                view_idx,
+                            )
+                            map_limits = _get_map_limits(
+                                surfaces=tmp_surface,
+                                map_name=maps_names[map_idx],
+                                colormap_style="individual",
+                                v_limits=v_limits[map_idx],
+                            )[0]
+                            colormap_limits[(map_idx, 0, view_idx)] = map_limits
+                else:
+                    if colormap_style == "individual":
+                        shape = [n_maps, n_views + 1]
+                        row_weights = [1] * n_maps
+                        col_weights = [1] * n_views + [colorbar_size]
+                        groups = []
+                        for map_idx in range(n_maps):
+                            cb_dict = {}
+                            cb_dict["position"] = (map_idx, n_views)
+                            cb_dict["orientation"] = "vertical"
+                            cb_dict["colormap"] = (
+                                colormaps[map_idx]
+                                if map_idx < len(colormaps)
+                                else colormaps[-1]
+                            )
+                            cb_dict["map_name"] = maps_names[map_idx]
+                            if colorbar_titles:
+                                cb_dict["title"] = (
+                                    colorbar_titles[map_idx]
+                                    if map_idx < len(colorbar_titles)
+                                    else colorbar_titles[-1]
+                                )
+                            else:
+                                cb_dict["title"] = maps_names[map_idx]
+
+                            if valid_views[view_idx].startswith("lh"):
+                                tmp_surface = copy.deepcopy(surf_lh)
+
+                            elif valid_views[view_idx].startswith("rh"):
+                                tmp_surface = copy.deepcopy(surf_rh)
+
+                            elif valid_views[view_idx].startswith("merg"):
+                                tmp_surface = copy.deepcopy(surf_merg)
+
+                            limits_list = _get_map_limits(
+                                surfaces=tmp_surface,
+                                map_name=maps_names[map_idx],
+                                colormap_style="individual",
+                                v_limits=v_limits[map_idx],
+                            )
+                            cb_dict["vmin"] = limits_list[0][0]
+                            cb_dict["vmax"] = limits_list[0][1]
+
+                            for view_idx in range(n_views):
+                                brain_positions[(map_idx, 0, view_idx)] = (
+                                    map_idx,
+                                    view_idx,
+                                )
+                                colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
+
+                            if maps_names[map_idx] not in surf_merg.colortables:
+                                colorbar_list.append(cb_dict)
+
+                    else:
+                        # Get the global limits
+                        maps_limits = []
+                        for map_idx in range(n_maps):
+                            if maps_names[map_idx] not in surf_merg.colortables:
+                                map_limits = _get_map_limits(
+                                    surfaces=surf_merg,
+                                    map_name=maps_names[map_idx],
+                                    colormap_style="shared",
+                                    v_limits=v_limits[map_idx],
+                                )[0]
+                                maps_limits.append(map_limits)
+
+                        ######### Global colorbar #########
+                        # Compute the global limits
+                        global_limits = (
+                            min(l[0] for l in maps_limits),
+                            max(l[1] for l in maps_limits),
+                        )
+                        cb_dict = {}
+                        cb_dict["colormap"] = (
+                            colormaps[0] if 0 < len(colormaps) else "viridis"
+                        )
+                        cb_dict["map_name"] = " + ".join(maps_names)
+                        cb_dict["vmin"] = global_limits[0]
+                        cb_dict["vmax"] = global_limits[1]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[0]
+                        else:
+                            cb_dict["title"] = " + ".join(maps_names)
+
+                        for map_idx in range(n_maps):
+                            for view_idx in range(n_views):
+                                brain_positions[(map_idx, 0, view_idx)] = (
+                                    map_idx,
+                                    view_idx,
+                                )
+                                colormap_limits[(map_idx, 0, view_idx)] = (
+                                    global_limits + (maps_names[0],)
+                                )
+
+                        if colorbar_position == "right":
+                            shape = [n_maps, n_views + 1]
+                            row_weights = [1] * n_maps
+                            col_weights = [1] * n_views + [colorbar_size]
+                            groups = [(slice(0, n_maps), n_views)]
+
+                            cb_dict["position"] = (0, n_views)
+                            cb_dict["orientation"] = "vertical"
+
+                        elif colorbar_position == "bottom":
+                            shape = [n_maps + 1, n_views]
+                            row_weights = [1] * n_maps + [colorbar_size]
+                            col_weights = [1] * n_views
+                            groups = [(n_maps, slice(0, n_views))]
+
+                            cb_dict["position"] = (n_maps, 0)
+                            cb_dict["orientation"] = "horizontal"
+                        colorbar_list.append(cb_dict)
+
+            elif orientation == "vertical":  # vertical
+                if not colorbar:
+                    # Views in rows, maps in columns
+                    shape = [n_views, n_maps]
+                    row_weights = [1] * n_views
+                    col_weights = [1] * n_maps
+                    groups = []
+
+                    for view_idx in range(n_views):
+                        for map_idx in range(n_maps):
+                            brain_positions[(map_idx, 0, view_idx)] = (
+                                view_idx,
+                                map_idx,
+                            )
+
+                            if valid_views[view_idx].startswith("lh"):
+                                tmp_surface = copy.deepcopy(surf_lh)
+
+                            elif valid_views[view_idx].startswith("rh"):
+                                tmp_surface = copy.deepcopy(surf_rh)
+
+                            elif valid_views[view_idx].startswith("merg"):
+                                tmp_surface = copy.deepcopy(surf_merg)
+
+                            for map_idx in range(n_maps):
+                                brain_positions[(map_idx, 0, view_idx)] = (
+                                    map_idx,
+                                    view_idx,
+                                )
+                                map_limits = _get_map_limits(
+                                    surfaces=tmp_surface,
+                                    map_name=maps_names[map_idx],
+                                    colormap_style="individual",
+                                    v_limits=v_limits[map_idx],
+                                )[0]
+                            colormap_limits[(map_idx, 0, view_idx)] = map_limits
+                else:
+                    if colormap_style == "individual":
+                        shape = [n_views + 1, n_maps]
+                        row_weights = [1] * n_views + [colorbar_size]
+                        col_weights = [1] * n_maps
+                        groups = []
+
+                        for map_idx in range(n_maps):
+                            cb_dict = {}
+                            cb_dict["position"] = (n_views, map_idx)
+                            cb_dict["orientation"] = "horizontal"
+                            cb_dict["colormap"] = (
+                                colormaps[map_idx]
+                                if map_idx < len(colormaps)
+                                else colormaps[-1]
+                            )
+                            cb_dict["map_name"] = maps_names[map_idx]
+                            if colorbar_titles:
+                                cb_dict["title"] = (
+                                    colorbar_titles[map_idx]
+                                    if map_idx < len(colorbar_titles)
+                                    else colorbar_titles[-1]
+                                )
+                            else:
+                                cb_dict["title"] = maps_names[map_idx]
+                                if valid_views[view_idx].startswith("lh"):
+                                    tmp_surface = copy.deepcopy(surf_lh)
+
+                                elif valid_views[view_idx].startswith("rh"):
+                                    tmp_surface = copy.deepcopy(surf_rh)
+
+                                elif valid_views[view_idx].startswith("merg"):
+                                    tmp_surface = copy.deepcopy(surf_merg)
+
+                            limits_list = _get_map_limits(
+                                surfaces=tmp_surface,
+                                map_name=maps_names[map_idx],
+                                colormap_style="individual",
+                                v_limits=v_limits[map_idx],
+                            )
+                            cb_dict["vmin"] = limits_list[0][0]
+                            cb_dict["vmax"] = limits_list[0][1]
+
+                            for view_idx in range(n_views):
+                                brain_positions[(map_idx, 0, view_idx)] = (
+                                    view_idx,
+                                    map_idx,
+                                )
+                                colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
+
+                            if maps_names[map_idx] not in surf_merg.colortables:
+                                colorbar_list.append(cb_dict)
+                    else:
+                        # Get the global limits
+                        maps_limits = []
+                        for map_idx in range(n_maps):
+                            if maps_names[map_idx] not in surf_merg.colortables:
+                                map_limits = _get_map_limits(
+                                    surfaces=surf_merg,
+                                    map_name=maps_names[map_idx],
+                                    colormap_style="shared",
+                                    v_limits=v_limits[map_idx],
+                                )[0]
+                                maps_limits.append(map_limits)
+
+                        ######### Global colorbar #########
+                        # Compute the global limits
+                        global_limits = (
+                            min(l[0] for l in maps_limits),
+                            max(l[1] for l in maps_limits),
+                        )
+                        cb_dict = {}
+                        cb_dict["colormap"] = (
+                            colormaps[0] if 0 < len(colormaps) else "viridis"
+                        )
+                        cb_dict["map_name"] = " + ".join(maps_names)
+                        cb_dict["vmin"] = global_limits[0]
+                        cb_dict["vmax"] = global_limits[1]
+                        if colorbar_titles:
+                            cb_dict["title"] = colorbar_titles[0]
+                        else:
+                            cb_dict["title"] = " + ".join(maps_names)
+                        for map_idx in range(n_maps):
+                            for view_idx in range(n_views):
+                                brain_positions[(map_idx, 0, view_idx)] = (
+                                    view_idx,
+                                    map_idx,
+                                )
+                                colormap_limits[(map_idx, 0, view_idx)] = (
+                                    global_limits + (maps_names[0],)
+                                )
+                        if colorbar_position == "right":
+                            shape = [n_views, n_maps + 1]
+                            row_weights = [1] * n_views
+                            col_weights = [1] * n_maps + [colorbar_size]
+                            groups = [(slice(0, n_views), n_maps)]
+
+                            cb_dict["position"] = (0, n_maps)
+                            cb_dict["orientation"] = "vertical"
+
+                        elif colorbar_position == "bottom":
+                            shape = [n_views + 1, n_maps]
+                            row_weights = [1] * n_views + [colorbar_size]
+                            col_weights = [1] * n_maps
+                            groups = [(n_views, slice(0, n_maps))]
+
+                            cb_dict["position"] = (n_views, 0)
+                            cb_dict["orientation"] = "horizontal"
+                        colorbar_list.append(cb_dict)
+
+        layout_config = {
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits,
+        }
+        return layout_config, colorbar_list
 
     def _create_colorbar_configs(
         self,
@@ -2285,6 +2753,270 @@ class SurfacePlotter:
             else:
                 # Blocking mode - show normally
                 plotter.show()
+
+    def plot_hemispheres(
+        self,
+        surf_rh: cltsurf.Surface,
+        surf_lh: cltsurf.Surface,
+        maps_names: Union[str, List[str]] = ["surface"],
+        views: Union[str, List[str]] = "dorsal",
+        views_orientation: str = "horizontal",
+        v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
+            None,
+            None,
+        ),
+        colormaps: Union[str, List[str]] = "BrBG",
+        colorbar: bool = True,
+        colorbar_titles: Union[str, List[str]] = None,
+        colormap_style: str = "individual",
+        colorbar_position: str = "right",
+        notebook: bool = False,
+        non_blocking: bool = False,
+        save_path: Optional[str] = None,
+    ):
+        # Implementation for plotting hemispheres
+
+        # Creating the merge surface
+        surf_merg = cltsurf.merge_surfaces_list([surf_lh, surf_rh])
+
+        # Filter to only available maps
+        if isinstance(maps_names, str):
+            maps_names = [maps_names]
+        n_maps = len(maps_names)
+
+        fin_map_names = []
+        for i, map_name in enumerate(maps_names):
+            cont_map = 0
+            # Check if the map_name is available in any of the surfaces
+            for surf in [surf_lh, surf_rh, surf_merg]:
+                available_maps = list(surf.mesh.point_data.keys())
+                if map_name in available_maps:
+                    cont_map = cont_map + 1
+
+            #
+            if cont_map == 3:
+                fin_map_names.append(map_name)
+
+        # Available overlays
+        maps_names = fin_map_names
+        n_maps = len(maps_names)
+
+        if n_maps == 0:
+            raise ValueError(
+                "No valid maps found in the provided surfaces. The maps_names must be present in all surfaces."
+            )
+
+        # Process and validate v_limits parameter
+        if isinstance(v_limits, Tuple):
+            if len(v_limits) != 2:
+                v_limits = (None, None)
+            v_limits = [v_limits] * n_maps
+
+        elif isinstance(v_limits, List[Tuple[float, float]]):
+            if len(v_limits) != n_maps:
+                v_limits = [(None, None)] * n_maps
+
+        if isinstance(colormaps, str):
+            colormaps = [colormaps]
+
+        if len(colormaps) >= n_maps:
+            colormaps = colormaps[:n_maps]
+
+        else:
+            # If not enough colormaps are provided, repeat the first one
+            colormaps = [colormaps[0]] * n_maps
+
+        if colorbar_titles is not None:
+            if isinstance(colorbar_titles, str):
+                colorbar_titles = [colorbar_titles]
+
+            if len(colorbar_titles) != n_maps:
+                # If not enough titles are provided, repeat the first one
+                colorbar_titles = [colorbar_titles[0]] * n_maps
+
+        else:
+            colorbar_titles = maps_names
+
+        # Get view configuration
+        view_ids = self._get_views_to_plot(views, ["lh", "rh"])
+
+        # Determine rendering mode based on save_path, environment, and threading preference
+        save_mode, use_off_screen, use_notebook, use_threading = (
+            self._determine_render_mode(save_path, notebook, non_blocking)
+        )
+
+        # Detecting the screen size for the plotter
+        screen_size = cltplot.get_current_monitor_size()
+
+        config_dict, colorbar_dict_list = self._hemispheres_multi_map_layout(
+            surf_lh,
+            surf_rh,
+            surf_merg,
+            view_ids,
+            maps_names,
+            v_limits,
+            colormaps,
+            colorbar_titles=colorbar_titles,
+            orientation=views_orientation,
+            colorbar=colorbar,
+            colormap_style=colormap_style,
+            colorbar_position=colorbar_position,
+        )
+
+        # Determine rendering mode based on save_path, environment, and threading preference
+        save_mode, use_off_screen, use_notebook, use_threading = (
+            self._determine_render_mode(save_path, notebook, non_blocking)
+        )
+
+        # Detecting the screen size for the plotter
+        screen_size = cltplot.get_current_monitor_size()
+
+        # Create PyVista plotter with appropriate rendering mode
+        plotter_kwargs = {
+            "notebook": use_notebook,
+            "window_size": [screen_size[0], screen_size[1]],
+            "off_screen": use_off_screen,
+            "shape": config_dict["shape"],
+            "row_weights": config_dict["row_weights"],
+            "col_weights": config_dict["col_weights"],
+            "border": True,
+        }
+
+        groups = config_dict["groups"]
+        if groups:
+            plotter_kwargs["groups"] = groups
+
+        pv_plotter = pv.Plotter(**plotter_kwargs)
+
+        # Now you can place brain surfaces at specific positions
+        # pv_plotter.set_background(self.figure_conf["background_color"])
+
+        brain_positions = config_dict["brain_positions"]
+        map_limits = config_dict["colormap_limits"]
+        for (map_idx, surf_idx, view_idx), (row, col) in brain_positions.items():
+            pv_plotter.subplot(row, col)
+            # Set background color from figure configuration
+            pv_plotter.set_background(self.figure_conf["background_color"])
+            pv_plotter.add_text(
+                f"Map: {maps_names[map_idx]}, Surface: {surf_idx}, View: {view_ids[view_idx]}",
+                font_size=self.figure_conf["title_font_size"],
+                position="upper_edge",
+                color=self.figure_conf["title_font_color"],
+                shadow=self.figure_conf["title_shadow"],
+                font=self.figure_conf["title_font_type"],
+            )
+
+            # Geting the vmin and vmax for the current map
+            vmin, vmax, map_name = map_limits[map_idx, surf_idx, view_idx]
+
+            # Select the colormap for the current map
+            idx = [i for i, name in enumerate(maps_names) if name == map_name]
+            colormap = colormaps[idx[0]] if idx else colormaps[0]
+
+            # Add the brain surface mesh
+            if "lh" in view_ids[view_idx]:
+                surf = copy.deepcopy(surf_lh)
+
+            elif "rh" in view_ids[view_idx]:
+                surf = copy.deepcopy(surf_rh)
+
+            elif "merg" in view_ids[view_idx]:
+                surf = copy.deepcopy(surf_merg)
+
+            surf = self._prepare_surface(
+                surf, maps_names[map_idx], colormap, vmin=vmin, vmax=vmax
+            )
+            pv_plotter.add_mesh(
+                copy.deepcopy(surf.mesh),
+                scalars="rgba",
+                rgb=True,
+                ambient=self.figure_conf["mesh_ambient"],
+                diffuse=self.figure_conf["mesh_diffuse"],
+                specular=self.figure_conf["mesh_specular"],
+                specular_power=self.figure_conf["mesh_specular_power"],
+                smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                show_scalar_bar=False,
+            )
+
+            # Set the camera view
+            tmp_view = view_ids[view_idx]
+            if tmp_view.startswith("merg"):
+                tmp_view = tmp_view.replace("merg", "lh")
+
+            camera_params = self.views_conf[tmp_view]
+            pv_plotter.camera_position = camera_params["view"]
+            pv_plotter.camera.azimuth = camera_params["azimuth"]
+            pv_plotter.camera.elevation = camera_params["elevation"]
+            pv_plotter.camera.zoom(camera_params["zoom"])
+
+            # getattr(pv_plotter, f"view_{camera_params['view']}")()
+
+            # View title
+            view_title = camera_params["title"]
+
+            # Add your brain surface here
+            print(
+                f"Brain plot: Map {map_idx}, Surface {surf_idx}, View {view_idx} at position ({row}, {col})"
+            )
+
+        # And place colorbars at their positions
+        if len(colorbar_dict_list):
+
+            for colorbar_dict in colorbar_dict_list:
+                if colorbar_dict is not False:
+                    row, col = colorbar_dict["position"]
+                    orientation = colorbar_dict["orientation"]
+                    colorbar_id = colorbar_dict["map_name"]
+                    colormap = colorbar_dict["colormap"]
+                    colorbar_title = colorbar_dict["title"]
+                    vmin = colorbar_dict["vmin"]
+                    vmax = colorbar_dict["vmax"]
+                    pv_plotter.subplot(row, col)
+
+                    self._add_colorbar(
+                        plotter=pv_plotter,
+                        colorbar_subplot=(row, col),
+                        vmin=vmin,
+                        vmax=vmax,
+                        map_name=colorbar_id,
+                        colormap=colormap,
+                        colorbar_title=colorbar_title,
+                        colorbar_position=orientation,
+                    )
+
+        # Linking the cameras from the subplots with the same view
+        # Creating the grouping
+
+        # One-liner for grouping using dictionary comprehension
+        unique_v_indices = set(key[2] for key in brain_positions.keys())
+        grouped_by_v_idx = {
+            v_idx: [
+                (row, col)
+                for (m_idx, s_idx, v), (row, col) in brain_positions.items()
+                if v == v_idx
+            ]
+            for v_idx in unique_v_indices
+        }
+
+        # After all subplots are created and populated, link the views
+        for v_idx, positions in grouped_by_v_idx.items():
+            if len(positions) > 1:
+                # Get all subplot indices for this view group
+                subplot_indices = []
+
+                # Get number of columns from plotter shape
+                n_cols = pv_plotter.shape[1]  # shape is (n_rows, n_cols)
+
+                for row, col in positions:
+                    # Convert (row, col) to subplot index
+                    subplot_idx = row * n_cols + col
+                    subplot_indices.append(subplot_idx)
+
+                # Link all views in this group
+                pv_plotter.link_views(subplot_indices)
+
+        # Handle final rendering - either save, display blocking, or display non-blocking
+        self._finalize_plot(pv_plotter, save_mode, save_path, use_threading)
 
     def plot_surfaces(
         self,
