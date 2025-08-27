@@ -2921,7 +2921,7 @@ class FreeSurferSubject:
         ... )
         """
 
-        import morphometrytools as morpho
+        from . import morphometrytools as morpho
 
         # Compute morphometric statistics
         lh_surf_df = self.surface_hemi_morpho(hemi="lh", lobes_grouping=lobes_grouping)
