@@ -2667,17 +2667,17 @@ class Surface:
         from . import visualizationtools as cltvis
 
         plotter = cltvis.SurfacePlotter()
-        plotter.plot_surface(
+
+        plotter.plot_surfaces(
             self,
-            hemi=hemi,
+            hemi_id=hemi,
             views=views,
-            map_name=overlay_name,
-            colormap=cmap,
-            vmin=vmin,
-            vmax=vmax,
+            map_names=overlay_name,
+            colormaps=cmap,
+            v_limits=(vmin, vmax),
             notebook=notebook,
             colorbar=show_colorbar,
-            colorbar_title=colorbar_title,
+            colorbar_titles=colorbar_title,
             colorbar_position=colorbar_position,
             save_path=save_path,
         )
