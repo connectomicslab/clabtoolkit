@@ -2947,7 +2947,7 @@ class FreeSurferSubject:
 
         # Adding the entities related to BIDs
         if add_bids_entities:
-            ent_list = morpho.entities4table(selected_entities=self.subj_id)
+            ent_list = cltbids.entities4table(selected_entities=self.subj_id)
 
             df_add = cltbids.entities_to_table(
                 filepath=self.subj_id, entities_to_extract=ent_list
