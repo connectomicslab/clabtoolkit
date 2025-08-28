@@ -27,6 +27,102 @@ from rich.panel import Panel
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                     Section 1: Utility methods                             ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def get_ids2process(
+    ids: Union[str, List[str], None] = None, in_dir: str = None
+) -> List[str]:
+    """
+    Get list of subject IDs to process from various input sources.
+
+    Parameters
+    ----------
+    ids : str, list of str, or None, optional
+        Subject IDs specification. Can be:
+        - None: discover all subjects in `in_dir` (default)
+        - list: list of subject ID strings
+        - str: comma-separated IDs, single ID, or path to text file
+
+    in_dir : str, optional
+        Directory path to scan for subjects when `ids` is None.
+        Only used when `ids` is None.
+
+    Returns
+    -------
+    list of str
+        List of subject ID strings, with empty entries filtered out.
+
+    Raises
+    ------
+    ValueError
+        If `ids` is not None/list/str, or if `in_dir` is invalid when `ids` is None.
+    FileNotFoundError
+        If specified file path in `ids` does not exist.
+    IOError
+        If file cannot be read due to permissions or other IO issues.
+
+    Examples
+    --------
+    >>> # Discover subjects from directory
+    >>> get_ids2process(ids=None, in_dir='/data/subjects')
+    ['sub-001', 'sub-002', 'sub-003']
+
+    >>> # From list
+    >>> get_ids2process(['sub-001', 'sub-002'])
+    ['sub-001', 'sub-002']
+
+    >>> # From comma-separated string
+    >>> get_ids2process('sub-001, sub-002, sub-003')
+    ['sub-001', 'sub-002', 'sub-003']
+
+    >>> # Single subject ID
+    >>> get_ids2process('sub-001')
+    ['sub-001']
+
+    >>> # From text file
+    >>> get_ids2process('/path/to/subjects.txt')
+    ['sub-001', 'sub-002', 'sub-003']
+
+    Notes
+    -----
+    When scanning directories (ids=None), only directories starting with 'sub-'
+    are considered valid subject directories.
+
+    Text files should contain one subject ID per line. Empty lines and
+    whitespace are automatically filtered out.
+    """
+    # Handle None case - discover from directory
+    if ids is None:
+        if not in_dir or not os.path.isdir(in_dir):
+            raise ValueError(f"Valid in_dir required when ids is None. Got: {in_dir}")
+        return [d for d in os.listdir(in_dir) if d.startswith("sub-")]
+
+    # Handle list case
+    if isinstance(ids, list):
+        return [str(id_).strip() for id_ in ids if str(id_).strip()]
+
+    # Handle string case
+    if isinstance(ids, str):
+        ids = ids.strip()
+        if not ids:
+            return []
+
+        # File path
+        if os.path.isfile(ids):
+            with open(ids, "r", encoding="utf-8") as f:
+                return [line.strip() for line in f if line.strip()]
+
+        # Comma-separated or single ID
+        return [id_.strip() for id_ in ids.split(",") if id_.strip()]
+
+    raise ValueError(f"ids must be None, list, or string, got {type(ids)}")
 
 ####################################################################################################
 ####################################################################################################
