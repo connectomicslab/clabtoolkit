@@ -487,7 +487,7 @@ def get_processing_status_details_json(
         pipe_dirs = all_pipe_dirs
 
     # All entities
-    ent_list = cltmorpho.entities4table()
+    ent_list = cltbids.entities4table()
 
     # Get all the columns names
     col_names = proc_status_df.columns.tolist()
