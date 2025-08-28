@@ -5,6 +5,7 @@
         "title_font_size": 11,
         "title_font_color": "black",
         "title_shadow": false,
+        "colorbar_size": 0.2,
         "colorbar_font_type": "times",
         "colorbar_font_size": 10,
         "colorbar_title_font_size": 12,
