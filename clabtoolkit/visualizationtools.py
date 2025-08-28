@@ -279,7 +279,7 @@ class SurfacePlotter:
         """
 
         # Constants
-        COLORBAR_SIZE = 0.2
+        colorbar_size = self.figure_conf["colorbar_size"]
 
         # Normalize inputs
         maps_names = self._normalize_to_list(maps_names)
@@ -326,11 +326,8 @@ class SurfacePlotter:
             colorbar,
             colormap_style,
             colorbar_position,
-            colorbar_titles
+            colorbar_titles,
         )
-
-
-
 
         return (
             view_ids,
@@ -366,14 +363,14 @@ class SurfacePlotter:
         colorbar,
         colormap_style,
         colorbar_position,
-        colorbar_titles
+        colorbar_titles,
     ):
         """Build the basic layout configuration."""
 
         n_views = len(valid_views)
         n_maps = len(maps_names)
         n_surfaces = len(surfaces)
-        COLORBAR_SIZE = 0.2
+        colorbar_size = self.figure_conf["colorbar_size"]
 
         if n_views == 1 and n_maps == 1 and n_surfaces == 1:  # Works fine
             # Check if maps_names[0] is present in the surface
@@ -383,91 +380,138 @@ class SurfacePlotter:
             if maps_names[0] in list(surfaces[0].colortables.keys()):
                 colorbar = False
 
-            return self._single_element_layout(surfaces, maps_names, v_limits, colormaps, colorbar_titles,
-                colorbar, colorbar_position, COLORBAR_SIZE
+            return self._single_element_layout(
+                surfaces,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
+                colorbar,
+                colorbar_position,
+                colorbar_size,
             )
 
-        elif n_views == 1 and n_maps == 1 and n_surfaces > 1: # Works fine
+        elif n_views == 1 and n_maps == 1 and n_surfaces > 1:  # Works fine
             if colormap_style not in ["individual", "shared"]:
                 colormap_style = "individual"
 
             # Check if maps_names[0] is present in ALL surfaces
-            if all(maps_names[0] in surfaces[i].colortables.keys() for i in range(n_surfaces)):
+            if all(
+                maps_names[0] in surfaces[i].colortables.keys()
+                for i in range(n_surfaces)
+            ):
                 colorbar = False
 
             return self._single_map_multi_surface_layout(
-                surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+                surfaces,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
                 orientation,
                 colorbar,
                 colormap_style,
                 colorbar_position,
-                COLORBAR_SIZE,
+                colorbar_size,
             )
 
         elif n_views == 1 and n_maps > 1 and n_surfaces == 1:  # Works fine
-            if colormap_style not in ["individual","shared"]:
+            if colormap_style not in ["individual", "shared"]:
                 colormap_style = "individual"
 
             return self._multi_map_single_surface_layout(
-                surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+                surfaces,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
                 orientation,
                 colorbar,
                 colormap_style,
                 colorbar_position,
-                COLORBAR_SIZE,
+                colorbar_size,
             )
 
-        elif n_views == 1 and n_maps > 1 and n_surfaces > 1: # Works fine
+        elif n_views == 1 and n_maps > 1 and n_surfaces > 1:  # Works fine
             colorbar_data = any(
-                    map_name not in surface.colortables 
-                    for map_name in maps_names 
-                    for surface in surfaces
-)
+                map_name not in surface.colortables
+                for map_name in maps_names
+                for surface in surfaces
+            )
             if colorbar_data == False:
                 colorbar = False
 
             return self._multi_map_multi_surface_layout(
-                surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+                surfaces,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
                 orientation,
                 colorbar,
                 colormap_style,
                 colorbar_position,
-                COLORBAR_SIZE,
+                colorbar_size,
             )
 
-        elif n_views > 1 and n_maps == 1 and n_surfaces == 1: # Works fine
-            if all(maps_names[0] in surfaces[i].colortables.keys() for i in range(n_surfaces)):
+        elif n_views > 1 and n_maps == 1 and n_surfaces == 1:  # Works fine
+            if all(
+                maps_names[0] in surfaces[i].colortables.keys()
+                for i in range(n_surfaces)
+            ):
                 colorbar = False
             return self._multi_view_single_element_layout(
-                surfaces[0], valid_views, maps_names[0], v_limits[0], colormaps[0], colorbar_titles[0], orientation, colorbar, colorbar_position, COLORBAR_SIZE
+                surfaces[0],
+                valid_views,
+                maps_names[0],
+                v_limits[0],
+                colormaps[0],
+                colorbar_titles[0],
+                orientation,
+                colorbar,
+                colorbar_position,
+                colorbar_size,
             )
 
-        elif n_views > 1 and n_maps == 1 and n_surfaces > 1: # Works fine
-            if all(maps_names[0] in surfaces[i].colortables.keys() for i in range(n_surfaces)):
+        elif n_views > 1 and n_maps == 1 and n_surfaces > 1:  # Works fine
+            if all(
+                maps_names[0] in surfaces[i].colortables.keys()
+                for i in range(n_surfaces)
+            ):
                 colorbar = False
-            return self._multi_view_multi_surface_layout(surfaces, valid_views, maps_names, v_limits, colormaps, colorbar_titles,
+            return self._multi_view_multi_surface_layout(
+                surfaces,
+                valid_views,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
                 orientation,
                 colorbar,
                 colorbar_position,
                 colormap_style,
-                COLORBAR_SIZE,
+                colorbar_size,
             )
 
-        elif n_views > 1 and n_maps > 1 and n_surfaces == 1: # Works fine
+        elif n_views > 1 and n_maps > 1 and n_surfaces == 1:  # Works fine
             colorbar_data = any(
-                    map_name not in surfaces[0].colortables 
-                    for map_name in maps_names 
+                map_name not in surfaces[0].colortables for map_name in maps_names
             )
             if colorbar_data == False:
                 colorbar = False
 
             return self._multi_view_multi_map_layout(
-                surfaces, valid_views, maps_names, v_limits, colormaps, colorbar_titles,
+                surfaces,
+                valid_views,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
                 orientation,
                 colorbar,
                 colormap_style,
                 colorbar_position,
-                COLORBAR_SIZE,
+                colorbar_size,
             )
 
         else:
@@ -480,15 +524,30 @@ class SurfacePlotter:
                 "brain_positions": {(0, 0, 0): (0, 0)},
             }
 
-    def _single_element_layout(self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colorbar_position, colorbar_size):
+    def _single_element_layout(
+        self,
+        surfaces,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
+        colorbar,
+        colorbar_position,
+        colorbar_size,
+    ):
         """Handle single view, single map, single surface case."""
         brain_positions = {(0, 0, 0): (0, 0)}
         colormap_limits = {}
 
-        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])
+        limits_list = _get_map_limits(
+            surfaces=surfaces,
+            map_name=maps_names[0],
+            colormap_style="individual",
+            v_limits=v_limits[0],
+        )
         colormap_limits[(0, 0, 0)] = limits_list[0]
 
-        colobar_list = []
+        colorbar_list = []
 
         if maps_names[0] in surfaces[0].colortables:
             colorbar = False
@@ -497,9 +556,9 @@ class SurfacePlotter:
             shape = [1, 1]
             row_weights = [1]
             col_weights = [1]
-            
+
         else:
-            
+
             cb_dict = {}
             if colorbar_position == "right":
                 shape = [1, 2]
@@ -507,7 +566,6 @@ class SurfacePlotter:
                 col_weights = [1, colorbar_size]
                 cb_dict["position"] = (0, 1)
                 cb_dict["orientation"] = "vertical"
-
 
             elif colorbar_position == "bottom":
                 shape = [2, 1]
@@ -527,22 +585,26 @@ class SurfacePlotter:
             else:
                 cb_dict["title"] = maps_names[0]
 
-            colobar_list.append(cb_dict)
+            colorbar_list.append(cb_dict)
 
-        layout_config ={
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": [],
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
 
-        return layout_config, colobar_list
+        return layout_config, colorbar_list
 
     def _multi_map_single_surface_layout(
         self,
-        surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+        surfaces,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
         orientation,
         colorbar,
         colormap_style,
@@ -554,33 +616,71 @@ class SurfacePlotter:
 
         if orientation == "horizontal":
             return self._horizontal_multi_map_layout(
-                surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+                surfaces,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                colorbar_size,
             )
         elif orientation == "vertical":
             return self._vertical_multi_map_layout(
-                surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+                surfaces,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                colorbar_size,
             )
         else:  # grid
             return self._grid_multi_map_layout(
-                surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+                surfaces,
+                maps_names,
+                v_limits,
+                colormaps,
+                colorbar_titles,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                colorbar_size,
             )
 
     def _horizontal_multi_map_layout(
-        self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+        self,
+        surfaces,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
     ):
         """Handle horizontal layout for multiple maps."""
 
-        n_maps = len(maps_names)    
+        n_maps = len(maps_names)
 
         brain_positions = {}
         colormap_limits = {}
 
         for map_idx in range(n_maps):
             brain_positions[(map_idx, 0, 0)] = (0, map_idx)
-            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+            map_limits = _get_map_limits(
+                surfaces=surfaces,
+                map_name=maps_names[map_idx],
+                colormap_style="individual",
+                v_limits=v_limits[map_idx],
+            )[0]
             colormap_limits[(map_idx, 0, 0)] = map_limits
 
-        colobar_list = []
+        colorbar_list = []
         if not colorbar:
             shape = [1, n_maps]
             row_weights = [1]
@@ -601,19 +701,32 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (0, map_idx * 2 + 1)
                         cb_dict["orientation"] = "vertical"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
 
-                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
 
-                        colobar_list.append(cb_dict)
+                        colorbar_list.append(cb_dict)
 
                 else:  # bottom
                     shape = [2, n_maps]
@@ -627,29 +740,50 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (1, map_idx)
                         cb_dict["orientation"] = "horizontal"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
 
-                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
 
-                        colobar_list.append(cb_dict)
+                        colorbar_list.append(cb_dict)
             else:  # shared colorbar
                 cb_dict = {}
                 cb_dict["colormap"] = colormaps[0]
                 cb_dict["map_name"] = " + ".join(maps_names)
                 for map_idx in range(n_maps):
-                    map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                    map_limits = _get_map_limits(
+                        surfaces=surfaces,
+                        map_name=maps_names[map_idx],
+                        colormap_style="shared",
+                        v_limits=v_limits[map_idx],
+                    )[0]
                     if map_idx == 0:
                         limits_list = map_limits
                     else:
-                        limits_list= (min(limits_list[0], map_limits[0]), max(limits_list[1], map_limits[1]))
+                        limits_list = (
+                            min(limits_list[0], map_limits[0]),
+                            max(limits_list[1], map_limits[1]),
+                        )
 
                 cb_dict["vmin"] = limits_list[0]
                 cb_dict["vmax"] = limits_list[1]
@@ -658,7 +792,7 @@ class SurfacePlotter:
                     cb_dict["title"] = colorbar_titles[0]
                 else:
                     cb_dict["title"] = " + ".join(maps_names)
-                    
+
                 if colorbar_position == "right":
                     shape = [1, n_maps + 1]
                     row_weights = [1]
@@ -681,36 +815,53 @@ class SurfacePlotter:
                         brain_positions[(map_idx, 0, 0)] = (0, map_idx)
 
                 for map_idx in range(n_maps):
-                    colormap_limits[(map_idx, 0, 0)] = (cb_dict["vmin"], cb_dict["vmax"], maps_names[0])
+                    colormap_limits[(map_idx, 0, 0)] = (
+                        cb_dict["vmin"],
+                        cb_dict["vmax"],
+                        maps_names[0],
+                    )
 
-                colobar_list.append(cb_dict)
+                colorbar_list.append(cb_dict)
 
-        layout_config ={
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": groups,
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
-        return layout_config, colobar_list
-
+        return layout_config, colorbar_list
 
     def _vertical_multi_map_layout(
-        self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+        self,
+        surfaces,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
     ):
         """Handle vertical layout for multiple maps."""
-        n_maps = len(maps_names)    
+        n_maps = len(maps_names)
 
         brain_positions = {}
         colormap_limits = {}
 
         for map_idx in range(n_maps):
             brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
-            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+            map_limits = _get_map_limits(
+                surfaces=surfaces,
+                map_name=maps_names[map_idx],
+                colormap_style="individual",
+                v_limits=v_limits[map_idx],
+            )[0]
             colormap_limits[(map_idx, 0, 0)] = map_limits
 
-        colobar_list = []
+        colorbar_list = []
         if not colorbar:
             shape = [n_maps, 1]
             row_weights = [1] * n_maps
@@ -731,19 +882,32 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (map_idx, 1)
                         cb_dict["orientation"] = "vertical"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
 
-                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
 
-                        colobar_list.append(cb_dict)
+                        colorbar_list.append(cb_dict)
 
                 else:  # bottom
                     shape = [n_maps * 2, 1]
@@ -757,29 +921,50 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (map_idx * 2 + 1, 0)
                         cb_dict["orientation"] = "horizontal"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
 
-                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
 
-                        colobar_list.append(cb_dict)
+                        colorbar_list.append(cb_dict)
             else:  # shared colorbar
                 cb_dict = {}
                 cb_dict["colormap"] = colormaps[0]
                 cb_dict["map_name"] = " + ".join(maps_names)
                 for map_idx in range(n_maps):
-                    map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                    map_limits = _get_map_limits(
+                        surfaces=surfaces,
+                        map_name=maps_names[map_idx],
+                        colormap_style="shared",
+                        v_limits=v_limits[map_idx],
+                    )[0]
                     if map_idx == 0:
                         limits_list = map_limits
                     else:
-                        limits_list= (min(limits_list[0], map_limits[0]), max(limits_list[1], map_limits[1]))
+                        limits_list = (
+                            min(limits_list[0], map_limits[0]),
+                            max(limits_list[1], map_limits[1]),
+                        )
                 cb_dict["vmin"] = limits_list[0]
                 cb_dict["vmax"] = limits_list[1]
                 if colorbar_titles:
@@ -793,7 +978,7 @@ class SurfacePlotter:
                     groups = [(slice(0, n_maps), 1)]
 
                     cb_dict["position"] = (0, 1)
-                    cb_dict["orientation"] = "vertical" 
+                    cb_dict["orientation"] = "vertical"
                 else:  # bottom
                     shape = [n_maps + 1, 1]
                     row_weights = [1] * n_maps + [colorbar_size]
@@ -804,20 +989,33 @@ class SurfacePlotter:
                     for map_idx in range(n_maps):
                         brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
                 for map_idx in range(n_maps):
-                    colormap_limits[(map_idx, 0, 0)] = (cb_dict["vmin"], cb_dict["vmax"], maps_names[0])
-                colobar_list.append(cb_dict)
-        layout_config ={
+                    colormap_limits[(map_idx, 0, 0)] = (
+                        cb_dict["vmin"],
+                        cb_dict["vmax"],
+                        maps_names[0],
+                    )
+                colorbar_list.append(cb_dict)
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": groups,
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
-        return layout_config, colobar_list
+        return layout_config, colorbar_list
 
     def _grid_multi_map_layout(
-        self, surfaces, maps_names, v_limits, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+        self,
+        surfaces,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
     ):
         """Handle grid layout for multiple maps."""
 
@@ -829,10 +1027,15 @@ class SurfacePlotter:
         for map_idx in range(n_maps):
             pos = positions[map_idx]
             brain_positions[(map_idx, 0, 0)] = pos
-            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+            map_limits = _get_map_limits(
+                surfaces=surfaces,
+                map_name=maps_names[map_idx],
+                colormap_style="individual",
+                v_limits=v_limits[map_idx],
+            )[0]
             colormap_limits[(map_idx, 0, 0)] = map_limits
 
-        colobar_list = []
+        colorbar_list = []
         if not colorbar:
             shape = list(optimal_grid)
             row_weights = [1] * optimal_grid[0]
@@ -853,19 +1056,32 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (pos[0], pos[1] * 2 + 1)
                         cb_dict["orientation"] = "vertical"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
 
-                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
 
-                        colobar_list.append(cb_dict)
+                        colorbar_list.append(cb_dict)
 
                 else:  # bottom
                     shape = [optimal_grid[0] * 2, optimal_grid[1]]
@@ -880,29 +1096,50 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
                         cb_dict["orientation"] = "horizontal"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
 
-                        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
 
-                        colobar_list.append(cb_dict)
+                        colorbar_list.append(cb_dict)
             else:  # shared colorbar
                 cb_dict = {}
                 cb_dict["colormap"] = colormaps[0]
                 cb_dict["map_name"] = " + ".join(maps_names)
                 for map_idx in range(n_maps):
-                    map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                    map_limits = _get_map_limits(
+                        surfaces=surfaces,
+                        map_name=maps_names[map_idx],
+                        colormap_style="shared",
+                        v_limits=v_limits[map_idx],
+                    )[0]
                     if map_idx == 0:
                         limits_list = map_limits
                     else:
-                        limits_list= (min(limits_list[0], map_limits[0]), max(limits_list[1], map_limits[1]))
+                        limits_list = (
+                            min(limits_list[0], map_limits[0]),
+                            max(limits_list[1], map_limits[1]),
+                        )
                 cb_dict["vmin"] = limits_list[0]
                 cb_dict["vmax"] = limits_list[1]
                 if colorbar_titles:
@@ -921,32 +1158,39 @@ class SurfacePlotter:
                     shape = [optimal_grid[0] + 1, optimal_grid[1]]
                     row_weights = [1] * optimal_grid[0] + [colorbar_size]
                     col_weights = [1] * optimal_grid[1]
-                    groups = [(optimal_grid[0], slice(0, optimal_grid[1]))] 
+                    groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
                     cb_dict["position"] = (optimal_grid[0], 0)
                     cb_dict["orientation"] = "horizontal"
                 for map_idx in range(n_maps):
-                    colormap_limits[(map_idx, 0, 0)] = (cb_dict["vmin"], cb_dict["vmax"], maps_names[0])
+                    colormap_limits[(map_idx, 0, 0)] = (
+                        cb_dict["vmin"],
+                        cb_dict["vmax"],
+                        maps_names[0],
+                    )
                 for map_idx in range(n_maps):
                     pos = positions[map_idx]
                     brain_positions[(map_idx, 0, 0)] = pos
-                colobar_list.append(cb_dict)
-        layout_config ={
+                colorbar_list.append(cb_dict)
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": groups,
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
-        return layout_config, colobar_list
-
+        return layout_config, colorbar_list
 
     ################################################################################
-    # Multiple surfaces and multiple maps cases   
+    # Multiple surfaces and multiple maps cases
     ################################################################################
     def _multi_map_multi_surface_layout(
         self,
-        surfaces, maps_names, v_limits, colormaps, colorbar_titles,
+        surfaces,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
         orientation,
         colorbar,
         colormap_style,
@@ -954,7 +1198,7 @@ class SurfacePlotter:
         colorbar_size,
     ):
         """Handle multiple maps and multiple surfaces case."""
-        
+
         n_maps = len(maps_names)
         n_surfaces = len(surfaces)
         brain_positions = {}
@@ -972,8 +1216,13 @@ class SurfacePlotter:
                 for map_idx in range(n_maps):
                     for surf_idx in range(n_surfaces):
                         brain_positions[(map_idx, surf_idx, 0)] = (surf_idx, map_idx)
-                        map_limits = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
-                        colormap_limits[(map_idx, surf_idx, 0)] = map_limits 
+                        map_limits = _get_map_limits(
+                            surfaces=surfaces[surf_idx],
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )[0]
+                        colormap_limits[(map_idx, surf_idx, 0)] = map_limits
             else:
 
                 # Force colorbar to bottom for this case
@@ -991,22 +1240,37 @@ class SurfacePlotter:
                                     map_idx * 2,
                                 )
 
-
                                 cb_dict = {}
                                 cb_dict["position"] = (surf_idx, map_idx * 2 + 1)
                                 cb_dict["orientation"] = "vertical"
-                                cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                                cb_dict["colormap"] = (
+                                    colormaps[map_idx]
+                                    if map_idx < len(colormaps)
+                                    else colormaps[-1]
+                                )
                                 cb_dict["map_name"] = maps_names[map_idx]
                                 if colorbar_titles:
-                                    cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                                    cb_dict["title"] = (
+                                        colorbar_titles[map_idx]
+                                        if map_idx < len(colorbar_titles)
+                                        else colorbar_titles[-1]
+                                    )
                                 else:
                                     cb_dict["title"] = maps_names[map_idx]
-                                limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                                limits_list = _get_map_limits(
+                                    surfaces=surfaces[surf_idx],
+                                    map_name=maps_names[map_idx],
+                                    colormap_style="individual",
+                                    v_limits=v_limits[map_idx],
+                                )
                                 cb_dict["vmin"] = limits_list[0][0]
                                 cb_dict["vmax"] = limits_list[0][1]
                                 colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
 
-                                if maps_names[map_idx] not in surfaces[surf_idx].colortables:
+                                if (
+                                    maps_names[map_idx]
+                                    not in surfaces[surf_idx].colortables
+                                ):
                                     colorbar_list.append(cb_dict)
 
                     elif colorbar_position == "bottom":
@@ -1024,18 +1288,34 @@ class SurfacePlotter:
                                 cb_dict = {}
                                 cb_dict["position"] = (surf_idx * 2 + 1, map_idx)
                                 cb_dict["orientation"] = "horizontal"
-                                cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                                cb_dict["colormap"] = (
+                                    colormaps[map_idx]
+                                    if map_idx < len(colormaps)
+                                    else colormaps[-1]
+                                )
                                 cb_dict["map_name"] = maps_names[map_idx]
                                 if colorbar_titles:
-                                    cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                                    cb_dict["title"] = (
+                                        colorbar_titles[map_idx]
+                                        if map_idx < len(colorbar_titles)
+                                        else colorbar_titles[-1]
+                                    )
                                 else:
                                     cb_dict["title"] = maps_names[map_idx]
-                                limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                                limits_list = _get_map_limits(
+                                    surfaces=surfaces[surf_idx],
+                                    map_name=maps_names[map_idx],
+                                    colormap_style="individual",
+                                    v_limits=v_limits[map_idx],
+                                )
                                 cb_dict["vmin"] = limits_list[0][0]
                                 cb_dict["vmax"] = limits_list[0][1]
                                 colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
 
-                                if maps_names[map_idx] not in surfaces[surf_idx].colortables:
+                                if (
+                                    maps_names[map_idx]
+                                    not in surfaces[surf_idx].colortables
+                                ):
                                     colorbar_list.append(cb_dict)
 
                 else:
@@ -1044,13 +1324,21 @@ class SurfacePlotter:
                     maps_limits = []
                     for map_idx in range(n_maps):
                         if maps_names[map_idx] not in surfaces[0].colortables:
-                            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                            map_limits = _get_map_limits(
+                                surfaces=surfaces,
+                                map_name=maps_names[map_idx],
+                                colormap_style="shared",
+                                v_limits=v_limits[map_idx],
+                            )[0]
                             maps_limits.append(map_limits)
-                    
+
                     if colormap_style == "shared":
                         ######### Global colorbar #########
                         # Compute the global limits
-                        global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                        global_limits = (
+                            min(l[0] for l in maps_limits),
+                            max(l[1] for l in maps_limits),
+                        )
                         cb_dict = {}
                         cb_dict["colormap"] = colormaps[0]
                         cb_dict["map_name"] = " + ".join(maps_names)
@@ -1060,12 +1348,17 @@ class SurfacePlotter:
                             cb_dict["title"] = colorbar_titles[0]
                         else:
                             cb_dict["title"] = " + ".join(maps_names)
-                        
+
                         for map_idx in range(n_maps):
                             for surf_idx in range(n_surfaces):
-                                brain_positions[(map_idx, surf_idx, 0)] = (surf_idx, map_idx)
-                                colormap_limits[(map_idx, surf_idx, 0)] = global_limits + (maps_names[0],)
-                            
+                                brain_positions[(map_idx, surf_idx, 0)] = (
+                                    surf_idx,
+                                    map_idx,
+                                )
+                                colormap_limits[(map_idx, surf_idx, 0)] = (
+                                    global_limits + (maps_names[0],)
+                                )
+
                         if colorbar_position == "right":
                             shape = [n_surfaces, n_maps + 1]
                             row_weights = [1] * n_surfaces
@@ -1091,8 +1384,13 @@ class SurfacePlotter:
                         for map_idx in range(n_maps):
                             map_limits = maps_limits[map_idx]
                             for surf_idx in range(n_surfaces):
-                                brain_positions[(map_idx, surf_idx, 0)] = (surf_idx, map_idx)
-                                colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[map_idx]
+                                brain_positions[(map_idx, surf_idx, 0)] = (
+                                    surf_idx,
+                                    map_idx,
+                                )
+                                colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
+                                    map_idx
+                                ]
 
                         shape = [n_surfaces + 1, n_maps]
                         row_weights = [1] * n_surfaces + [colorbar_size]
@@ -1103,19 +1401,26 @@ class SurfacePlotter:
                             cb_dict = {}
                             cb_dict["position"] = (n_surfaces, map_idx)
                             cb_dict["orientation"] = "horizontal"
-                            cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                            cb_dict["colormap"] = (
+                                colormaps[map_idx]
+                                if map_idx < len(colormaps)
+                                else colormaps[-1]
+                            )
                             cb_dict["map_name"] = maps_names[map_idx]
                             if colorbar_titles:
-                                cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                                cb_dict["title"] = (
+                                    colorbar_titles[map_idx]
+                                    if map_idx < len(colorbar_titles)
+                                    else colorbar_titles[-1]
+                                )
                             else:
                                 cb_dict["title"] = maps_names[map_idx]
 
                             cb_dict["vmin"] = maps_limits[map_idx][0]
                             cb_dict["vmax"] = maps_limits[map_idx][1]
                             if maps_names[map_idx] not in surfaces[0].colortables:
-                                colorbar_list.append(cb_dict)   
+                                colorbar_list.append(cb_dict)
 
-                    
         else:  # vertical
 
             if not colorbar:
@@ -1146,17 +1451,33 @@ class SurfacePlotter:
                             cb_dict = {}
                             cb_dict["position"] = (map_idx, surf_idx * 2 + 1)
                             cb_dict["orientation"] = "vertical"
-                            cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                            cb_dict["colormap"] = (
+                                colormaps[map_idx]
+                                if map_idx < len(colormaps)
+                                else colormaps[-1]
+                            )
                             cb_dict["map_name"] = maps_names[map_idx]
                             if colorbar_titles:
-                                cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                                cb_dict["title"] = (
+                                    colorbar_titles[map_idx]
+                                    if map_idx < len(colorbar_titles)
+                                    else colorbar_titles[-1]
+                                )
                             else:
                                 cb_dict["title"] = maps_names[map_idx]
-                            limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                            limits_list = _get_map_limits(
+                                surfaces=surfaces[surf_idx],
+                                map_name=maps_names[map_idx],
+                                colormap_style="individual",
+                                v_limits=v_limits[map_idx],
+                            )
                             cb_dict["vmin"] = limits_list[0][0]
                             cb_dict["vmax"] = limits_list[0][1]
                             colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
-                            if maps_names[map_idx] not in surfaces[surf_idx].colortables:   
+                            if (
+                                maps_names[map_idx]
+                                not in surfaces[surf_idx].colortables
+                            ):
                                 colorbar_list.append(cb_dict)
 
                 elif colorbar_position == "bottom":
@@ -1174,35 +1495,58 @@ class SurfacePlotter:
                             cb_dict = {}
                             cb_dict["position"] = (map_idx * 2 + 1, surf_idx)
                             cb_dict["orientation"] = "horizontal"
-                            cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                            cb_dict["colormap"] = (
+                                colormaps[map_idx]
+                                if map_idx < len(colormaps)
+                                else colormaps[-1]
+                            )
                             cb_dict["map_name"] = maps_names[map_idx]
                             if colorbar_titles:
-                                cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                                cb_dict["title"] = (
+                                    colorbar_titles[map_idx]
+                                    if map_idx < len(colorbar_titles)
+                                    else colorbar_titles[-1]
+                                )
                             else:
                                 cb_dict["title"] = maps_names[map_idx]
-                            limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                            limits_list = _get_map_limits(
+                                surfaces=surfaces[surf_idx],
+                                map_name=maps_names[map_idx],
+                                colormap_style="individual",
+                                v_limits=v_limits[map_idx],
+                            )
                             cb_dict["vmin"] = limits_list[0][0]
                             cb_dict["vmax"] = limits_list[0][1]
-                            colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]  
-                            if maps_names[map_idx] not in surfaces[surf_idx].colortables:      
+                            colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
+                            if (
+                                maps_names[map_idx]
+                                not in surfaces[surf_idx].colortables
+                            ):
                                 colorbar_list.append(cb_dict)
-
 
             else:
                 # Map-wise limits
                 maps_limits = []
                 for map_idx in range(n_maps):
                     if any(
-                            maps_names[map_idx] not in surface.colortables 
-                            for surface in surfaces
-                        ):
-                        map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                        maps_names[map_idx] not in surface.colortables
+                        for surface in surfaces
+                    ):
+                        map_limits = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[map_idx],
+                            colormap_style="shared",
+                            v_limits=v_limits[map_idx],
+                        )[0]
                         maps_limits.append(map_limits)
 
                 if colormap_style == "shared":
                     ######### Global colorbar #########
                     # Compute the global limits
-                    global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                    global_limits = (
+                        min(l[0] for l in maps_limits),
+                        max(l[1] for l in maps_limits),
+                    )
                     cb_dict = {}
                     cb_dict["colormap"] = colormaps[0]
                     cb_dict["map_name"] = " + ".join(maps_names)
@@ -1212,12 +1556,17 @@ class SurfacePlotter:
                         cb_dict["title"] = colorbar_titles[0]
                     else:
                         cb_dict["title"] = " + ".join(maps_names)
-                    
+
                     for map_idx in range(n_maps):
                         for surf_idx in range(n_surfaces):
-                            brain_positions[(map_idx, surf_idx, 0)] = (map_idx, surf_idx)
-                            colormap_limits[(map_idx, surf_idx, 0)] = global_limits + (maps_names[0],)
-                            
+                            brain_positions[(map_idx, surf_idx, 0)] = (
+                                map_idx,
+                                surf_idx,
+                            )
+                            colormap_limits[(map_idx, surf_idx, 0)] = global_limits + (
+                                maps_names[0],
+                            )
+
                     if colorbar_position == "right":
                         shape = [n_maps, n_surfaces + 1]
                         row_weights = [1] * n_maps
@@ -1235,12 +1584,12 @@ class SurfacePlotter:
 
                         cb_dict["position"] = (n_maps, 0)
                         cb_dict["orientation"] = "horizontal"
-                    
+
                     if any(
-                            maps_names[map_idx] not in surface.colortables 
-                            for map_idx in range(n_maps)
-                            for surface in surfaces
-                        ):
+                        maps_names[map_idx] not in surface.colortables
+                        for map_idx in range(n_maps)
+                        for surface in surfaces
+                    ):
                         colorbar_list.append(cb_dict)
 
                 elif colormap_style == "shared_by_map":
@@ -1248,8 +1597,13 @@ class SurfacePlotter:
                     for map_idx in range(n_maps):
                         map_limits = maps_limits[map_idx]
                         for surf_idx in range(n_surfaces):
-                            brain_positions[(map_idx, surf_idx, 0)] = (map_idx, surf_idx)
-                            colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[map_idx]
+                            brain_positions[(map_idx, surf_idx, 0)] = (
+                                map_idx,
+                                surf_idx,
+                            )
+                            colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
+                                map_idx
+                            ]
 
                     shape = [n_maps, n_surfaces + 1]
                     row_weights = [1] * n_maps
@@ -1260,10 +1614,18 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (map_idx, n_surfaces)
                         cb_dict["orientation"] = "vertical"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
 
@@ -1271,21 +1633,28 @@ class SurfacePlotter:
                         cb_dict["vmax"] = maps_limits[map_idx][1]
                         colorbar_list.append(cb_dict)
 
-
-
-        layout_config ={
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": groups,
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
         return layout_config, colorbar_list
 
-
     def _multi_view_single_element_layout(
-        self, surface, view_ids, map_name, v_limits, colormap, colorbar_title, orientation, colorbar, colorbar_position, colorbar_size
+        self,
+        surface,
+        view_ids,
+        map_name,
+        v_limits,
+        colormap,
+        colorbar_title,
+        orientation,
+        colorbar,
+        colorbar_position,
+        colorbar_size,
     ):
         """Handle multiple views, single map, single surface case."""
 
@@ -1297,7 +1666,12 @@ class SurfacePlotter:
         colormap_limits = {}
         colorbar_list = []
 
-        map_limits = _get_map_limits(surfaces=surface, map_name=map_name, colormap_style = "individual", v_limits=v_limits)[0]
+        map_limits = _get_map_limits(
+            surfaces=surface,
+            map_name=map_name,
+            colormap_style="individual",
+            v_limits=v_limits,
+        )[0]
         if orientation == "horizontal":
             for view_idx in range(n_views):
                 brain_positions[(0, 0, view_idx)] = (0, view_idx)
@@ -1406,11 +1780,10 @@ class SurfacePlotter:
                 if colorbar_position == "right":
                     cb_dict["position"] = (0, optimal_grid[1])
                     cb_dict["orientation"] = "vertical"
-                    shape = [optimal_grid[0], optimal_grid[1] + 1]  
+                    shape = [optimal_grid[0], optimal_grid[1] + 1]
                     row_weights = [1] * optimal_grid[0]
                     col_weights = [1] * optimal_grid[1] + [colorbar_size]
-                    groups = [(slice(0, optimal_grid[0]), optimal_grid[1])] 
-
+                    groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
 
                 else:  # bottom
                     shape = [optimal_grid[0] + 1, optimal_grid[1]]
@@ -1421,23 +1794,23 @@ class SurfacePlotter:
                     cb_dict["orientation"] = "horizontal"
                 colorbar_list.append(cb_dict)
 
-        layout_config ={
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": groups,
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
         return layout_config, colorbar_list
 
     def _multi_view_multi_surface_layout(
         self,
-        surfaces, 
-        valid_views, 
-        maps_names, 
-        v_limits, 
-        colormaps, 
+        surfaces,
+        valid_views,
+        maps_names,
+        v_limits,
+        colormaps,
         colorbar_titles,
         orientation,
         colorbar,
@@ -1462,7 +1835,12 @@ class SurfacePlotter:
                 for view_idx in range(n_views):
                     for surf_idx in range(n_surfaces):
                         brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
-                        map_limits = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])[0]
+                        map_limits = _get_map_limits(
+                            surfaces=surfaces[surf_idx],
+                            map_name=maps_names[0],
+                            colormap_style="individual",
+                            v_limits=v_limits[0],
+                        )[0]
                         colormap_limits[(0, surf_idx, view_idx)] = map_limits
             else:
 
@@ -1475,32 +1853,52 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (surf_idx, n_views)
                         cb_dict["orientation"] = "vertical"
-                        cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                        cb_dict["colormap"] = (
+                            colormaps[0] if 0 < len(colormaps) else "viridis"
+                        )
                         cb_dict["map_name"] = maps_names[0]
                         if colorbar_titles:
                             cb_dict["title"] = colorbar_titles[0]
                         else:
                             cb_dict["title"] = maps_names[0]
-                        limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces[surf_idx],
+                            map_name=maps_names[0],
+                            colormap_style="individual",
+                            v_limits=v_limits[0],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
-                        
+
                         for view_idx in range(n_views):
-                            brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
+                            brain_positions[(0, surf_idx, view_idx)] = (
+                                surf_idx,
+                                view_idx,
+                            )
                             colormap_limits[(0, surf_idx, view_idx)] = limits_list[0]
                         colorbar_list.append(cb_dict)
                 else:
                     # View-wise limits
                     views_limits = []
                     for view_idx in range(n_views):
-                        view_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = "shared", v_limits=v_limits[0])[0]
+                        view_limits = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[0],
+                            colormap_style="shared",
+                            v_limits=v_limits[0],
+                        )[0]
                         views_limits.append(view_limits)
-                    
+
                     ######### Global colorbar #########
                     # Compute the global limits
-                    global_limits = (min(l[0] for l in views_limits), max(l[1] for l in views_limits))
+                    global_limits = (
+                        min(l[0] for l in views_limits),
+                        max(l[1] for l in views_limits),
+                    )
                     cb_dict = {}
-                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["colormap"] = (
+                        colormaps[0] if 0 < len(colormaps) else "viridis"
+                    )
                     cb_dict["map_name"] = maps_names[0]
                     cb_dict["vmin"] = global_limits[0]
                     cb_dict["vmax"] = global_limits[1]
@@ -1508,12 +1906,17 @@ class SurfacePlotter:
                         cb_dict["title"] = colorbar_titles[0]
                     else:
                         cb_dict["title"] = maps_names[0]
-                    
+
                     for view_idx in range(n_views):
                         for surf_idx in range(n_surfaces):
-                            brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
-                            colormap_limits[(0, surf_idx, view_idx)] = global_limits + (maps_names[0],)
-                        
+                            brain_positions[(0, surf_idx, view_idx)] = (
+                                surf_idx,
+                                view_idx,
+                            )
+                            colormap_limits[(0, surf_idx, view_idx)] = global_limits + (
+                                maps_names[0],
+                            )
+
                     if colorbar_position == "right":
                         shape = [n_surfaces, n_views + 1]
                         row_weights = [1] * n_surfaces
@@ -1544,31 +1947,46 @@ class SurfacePlotter:
                 for view_idx in range(n_views):
                     for surf_idx in range(n_surfaces):
                         brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
-                        map_limits = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])[0]
+                        map_limits = _get_map_limits(
+                            surfaces=surfaces[surf_idx],
+                            map_name=maps_names[0],
+                            colormap_style="individual",
+                            v_limits=v_limits[0],
+                        )[0]
                         colormap_limits[(0, surf_idx, view_idx)] = map_limits
             else:
-                
+
                 if colormap_style == "individual":
                     shape = [n_views + 1, n_surfaces]
                     row_weights = [1] * n_views + [colorbar_size]
-                    col_weights = [1] * n_surfaces 
+                    col_weights = [1] * n_surfaces
                     groups = []
                     for surf_idx in range(n_surfaces):
                         cb_dict = {}
                         cb_dict["position"] = (n_views, surf_idx)
                         cb_dict["orientation"] = "horizontal"
-                        cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                        cb_dict["colormap"] = (
+                            colormaps[0] if 0 < len(colormaps) else "viridis"
+                        )
                         cb_dict["map_name"] = maps_names[0]
                         if colorbar_titles:
                             cb_dict["title"] = colorbar_titles[0]
                         else:
                             cb_dict["title"] = maps_names[0]
-                        limits_list = _get_map_limits(surfaces=surfaces[surf_idx], map_name=maps_names[0], colormap_style = "individual", v_limits=v_limits[0])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces[surf_idx],
+                            map_name=maps_names[0],
+                            colormap_style="individual",
+                            v_limits=v_limits[0],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         for view_idx in range(n_views):
-                            brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
+                            brain_positions[(0, surf_idx, view_idx)] = (
+                                view_idx,
+                                surf_idx,
+                            )
                             colormap_limits[(0, surf_idx, view_idx)] = limits_list[0]
 
                         colorbar_list.append(cb_dict)
@@ -1576,14 +1994,24 @@ class SurfacePlotter:
                     # View-wise limits
                     views_limits = []
                     for view_idx in range(n_views):
-                        view_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = "shared", v_limits=v_limits[0])[0]
+                        view_limits = _get_map_limits(
+                            surfaces=surfaces,
+                            map_name=maps_names[0],
+                            colormap_style="shared",
+                            v_limits=v_limits[0],
+                        )[0]
                         views_limits.append(view_limits)
-                    
+
                     ######### Global colorbar #########
                     # Compute the global limits
-                    global_limits = (min(l[0] for l in views_limits), max(l[1] for l in views_limits))
+                    global_limits = (
+                        min(l[0] for l in views_limits),
+                        max(l[1] for l in views_limits),
+                    )
                     cb_dict = {}
-                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["colormap"] = (
+                        colormaps[0] if 0 < len(colormaps) else "viridis"
+                    )
                     cb_dict["map_name"] = maps_names[0]
                     cb_dict["vmin"] = global_limits[0]
                     cb_dict["vmax"] = global_limits[1]
@@ -1594,8 +2022,13 @@ class SurfacePlotter:
 
                     for view_idx in range(n_views):
                         for surf_idx in range(n_surfaces):
-                            brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
-                            colormap_limits[(0, surf_idx, view_idx)] = global_limits + (maps_names[0],)
+                            brain_positions[(0, surf_idx, view_idx)] = (
+                                view_idx,
+                                surf_idx,
+                            )
+                            colormap_limits[(0, surf_idx, view_idx)] = global_limits + (
+                                maps_names[0],
+                            )
 
                     if colorbar_position == "right":
                         shape = [n_views, n_surfaces + 1]
@@ -1616,20 +2049,24 @@ class SurfacePlotter:
                         cb_dict["orientation"] = "horizontal"
                     colorbar_list.append(cb_dict)
 
-        layout_config ={
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": groups,
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
         return layout_config, colorbar_list
 
-
     def _multi_view_multi_map_layout(
         self,
-        surfaces, valid_views, maps_names, v_limits, colormaps, colorbar_titles,
+        surfaces,
+        valid_views,
+        maps_names,
+        v_limits,
+        colormaps,
+        colorbar_titles,
         orientation,
         colorbar,
         colormap_style,
@@ -1655,7 +2092,12 @@ class SurfacePlotter:
                 for view_idx in range(n_views):
                     for map_idx in range(n_maps):
                         brain_positions[(map_idx, 0, view_idx)] = (map_idx, view_idx)
-                        map_limits = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+                        map_limits = _get_map_limits(
+                            surfaces=surfaces[0],
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )[0]
                         colormap_limits[(map_idx, 0, view_idx)] = map_limits
             else:
                 if colormap_style == "individual":
@@ -1667,18 +2109,34 @@ class SurfacePlotter:
                         cb_dict = {}
                         cb_dict["position"] = (map_idx, n_views)
                         cb_dict["orientation"] = "vertical"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
-                        limits_list = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces[0],
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         for view_idx in range(n_views):
-                            brain_positions[(map_idx, 0, view_idx)] = (map_idx, view_idx)
+                            brain_positions[(map_idx, 0, view_idx)] = (
+                                map_idx,
+                                view_idx,
+                            )
                             colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
                         if maps_names[map_idx] not in surfaces[0].colortables:
                             colorbar_list.append(cb_dict)
@@ -1688,15 +2146,24 @@ class SurfacePlotter:
                     maps_limits = []
                     for map_idx in range(n_maps):
                         if maps_names[map_idx] not in surfaces[0].colortables:
-                            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                            map_limits = _get_map_limits(
+                                surfaces=surfaces,
+                                map_name=maps_names[map_idx],
+                                colormap_style="shared",
+                                v_limits=v_limits[map_idx],
+                            )[0]
                             maps_limits.append(map_limits)
 
- 
                     ######### Global colorbar #########
                     # Compute the global limits
-                    global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                    global_limits = (
+                        min(l[0] for l in maps_limits),
+                        max(l[1] for l in maps_limits),
+                    )
                     cb_dict = {}
-                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["colormap"] = (
+                        colormaps[0] if 0 < len(colormaps) else "viridis"
+                    )
                     cb_dict["map_name"] = " + ".join(maps_names)
                     cb_dict["vmin"] = global_limits[0]
                     cb_dict["vmax"] = global_limits[1]
@@ -1704,12 +2171,17 @@ class SurfacePlotter:
                         cb_dict["title"] = colorbar_titles[0]
                     else:
                         cb_dict["title"] = " + ".join(maps_names)
-                    
+
                     for map_idx in range(n_maps):
                         for view_idx in range(n_views):
-                            brain_positions[(map_idx, 0, view_idx)] = (map_idx, view_idx)
-                            colormap_limits[(map_idx, 0, view_idx)] = global_limits + (maps_names[0],)
-                        
+                            brain_positions[(map_idx, 0, view_idx)] = (
+                                map_idx,
+                                view_idx,
+                            )
+                            colormap_limits[(map_idx, 0, view_idx)] = global_limits + (
+                                maps_names[0],
+                            )
+
                     if colorbar_position == "right":
                         shape = [n_maps, n_views + 1]
                         row_weights = [1] * n_maps
@@ -1739,31 +2211,52 @@ class SurfacePlotter:
                 for view_idx in range(n_views):
                     for map_idx in range(n_maps):
                         brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
-                        map_limits = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])[0]
+                        map_limits = _get_map_limits(
+                            surfaces=surfaces[0],
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )[0]
                         colormap_limits[(map_idx, 0, view_idx)] = map_limits
             else:
                 if colormap_style == "individual":
                     shape = [n_views + 1, n_maps]
                     row_weights = [1] * n_views + [colorbar_size]
-                    col_weights = [1] * n_maps 
+                    col_weights = [1] * n_maps
                     groups = []
 
                     for map_idx in range(n_maps):
                         cb_dict = {}
                         cb_dict["position"] = (n_views, map_idx)
                         cb_dict["orientation"] = "horizontal"
-                        cb_dict["colormap"] = colormaps[map_idx] if map_idx < len(colormaps) else colormaps[-1]
+                        cb_dict["colormap"] = (
+                            colormaps[map_idx]
+                            if map_idx < len(colormaps)
+                            else colormaps[-1]
+                        )
                         cb_dict["map_name"] = maps_names[map_idx]
                         if colorbar_titles:
-                            cb_dict["title"] = colorbar_titles[map_idx] if map_idx < len(colorbar_titles) else colorbar_titles[-1]
+                            cb_dict["title"] = (
+                                colorbar_titles[map_idx]
+                                if map_idx < len(colorbar_titles)
+                                else colorbar_titles[-1]
+                            )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
-                        limits_list = _get_map_limits(surfaces=surfaces[0], map_name=maps_names[map_idx], colormap_style = "individual", v_limits=v_limits[map_idx])
+                        limits_list = _get_map_limits(
+                            surfaces=surfaces[0],
+                            map_name=maps_names[map_idx],
+                            colormap_style="individual",
+                            v_limits=v_limits[map_idx],
+                        )
                         cb_dict["vmin"] = limits_list[0][0]
                         cb_dict["vmax"] = limits_list[0][1]
 
                         for view_idx in range(n_views):
-                            brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
+                            brain_positions[(map_idx, 0, view_idx)] = (
+                                view_idx,
+                                map_idx,
+                            )
                             colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
 
                         if maps_names[map_idx] not in surfaces[0].colortables:
@@ -1773,15 +2266,24 @@ class SurfacePlotter:
                     maps_limits = []
                     for map_idx in range(n_maps):
                         if maps_names[map_idx] not in surfaces[0].colortables:
-                            map_limits = _get_map_limits(surfaces=surfaces, map_name=maps_names[map_idx], colormap_style = "shared", v_limits=v_limits[map_idx])[0]
+                            map_limits = _get_map_limits(
+                                surfaces=surfaces,
+                                map_name=maps_names[map_idx],
+                                colormap_style="shared",
+                                v_limits=v_limits[map_idx],
+                            )[0]
                             maps_limits.append(map_limits)
 
- 
                     ######### Global colorbar #########
                     # Compute the global limits
-                    global_limits = (min(l[0] for l in maps_limits), max(l[1] for l in maps_limits))
+                    global_limits = (
+                        min(l[0] for l in maps_limits),
+                        max(l[1] for l in maps_limits),
+                    )
                     cb_dict = {}
-                    cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                    cb_dict["colormap"] = (
+                        colormaps[0] if 0 < len(colormaps) else "viridis"
+                    )
                     cb_dict["map_name"] = " + ".join(maps_names)
                     cb_dict["vmin"] = global_limits[0]
                     cb_dict["vmax"] = global_limits[1]
@@ -1791,8 +2293,13 @@ class SurfacePlotter:
                         cb_dict["title"] = " + ".join(maps_names)
                     for map_idx in range(n_maps):
                         for view_idx in range(n_views):
-                            brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
-                            colormap_limits[(map_idx, 0, view_idx)] = global_limits + (maps_names[0],)  
+                            brain_positions[(map_idx, 0, view_idx)] = (
+                                view_idx,
+                                map_idx,
+                            )
+                            colormap_limits[(map_idx, 0, view_idx)] = global_limits + (
+                                maps_names[0],
+                            )
                     if colorbar_position == "right":
                         shape = [n_views, n_maps + 1]
                         row_weights = [1] * n_views
@@ -1811,25 +2318,22 @@ class SurfacePlotter:
                         cb_dict["position"] = (n_views, 0)
                         cb_dict["orientation"] = "horizontal"
                     colorbar_list.append(cb_dict)
-        layout_config ={
+        layout_config = {
             "shape": shape,
             "row_weights": row_weights,
             "col_weights": col_weights,
             "groups": groups,
             "brain_positions": brain_positions,
-            "colormap_limits": colormap_limits
+            "colormap_limits": colormap_limits,
         }
         return layout_config, colorbar_list
 
-
-    
-
     def _single_map_multi_surface_layout(
         self,
-        surfaces, 
-        maps_names, 
-        v_limits, 
-        colormaps, 
+        surfaces,
+        maps_names,
+        v_limits,
+        colormaps,
         colorbar_titles,
         orientation,
         colorbar,
@@ -1842,23 +2346,61 @@ class SurfacePlotter:
         n_surfaces = len(surfaces)
 
         # Getting the limits for each surface and storing them in a list
-        limits_list = _get_map_limits(surfaces=surfaces, map_name=maps_names[0], colormap_style = colormap_style, v_limits=v_limits[0])
+        limits_list = _get_map_limits(
+            surfaces=surfaces,
+            map_name=maps_names[0],
+            colormap_style=colormap_style,
+            v_limits=v_limits[0],
+        )
 
         if orientation == "horizontal":
             return self._horizontal_multi_surface_layout(
-                surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+                surfaces,
+                maps_names,
+                limits_list,
+                colormaps,
+                colorbar_titles,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                colorbar_size,
             )
         elif orientation == "vertical":
             return self._vertical_multi_surface_layout(
-                surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+                surfaces,
+                maps_names,
+                limits_list,
+                colormaps,
+                colorbar_titles,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                colorbar_size,
             )
         else:  # grid
             return self._grid_multi_surface_layout(
-                surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+                surfaces,
+                maps_names,
+                limits_list,
+                colormaps,
+                colorbar_titles,
+                colorbar,
+                colormap_style,
+                colorbar_position,
+                colorbar_size,
             )
 
     def _horizontal_multi_surface_layout(
-        self, surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+        self,
+        surfaces,
+        maps_names,
+        limits_list,
+        colormaps,
+        colorbar_titles,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
     ):
         """Handle horizontal layout for multiple surfaces."""
         brain_positions = {}
@@ -1868,7 +2410,6 @@ class SurfacePlotter:
         for surf_idx in range(n_surfaces):
             brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
             colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
-                
 
         colorbar_list = []
         if not colorbar:
@@ -1939,7 +2480,7 @@ class SurfacePlotter:
 
                 cb_dict["vmin"] = limits_list[0][0]
                 cb_dict["vmax"] = limits_list[0][1]
-            
+
                 if colorbar_position == "right":
                     shape = [1, n_surfaces + 1]
                     row_weights = [1]
@@ -1964,7 +2505,6 @@ class SurfacePlotter:
                         brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
                         colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
 
-
                 colorbar_list.append(cb_dict)
 
         layout_config = {
@@ -1979,7 +2519,16 @@ class SurfacePlotter:
         return layout_config, colorbar_list
 
     def _vertical_multi_surface_layout(
-        self, surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+        self,
+        surfaces,
+        maps_names,
+        limits_list,
+        colormaps,
+        colorbar_titles,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
     ):
         """Handle vertical layout for multiple surfaces."""
         brain_positions = {}
@@ -1999,7 +2548,7 @@ class SurfacePlotter:
             groups = []
 
         else:
-            
+
             if colormap_style == "individual":
                 for surf_idx in range(n_surfaces):
                     cb_dict = {}
@@ -2020,10 +2569,10 @@ class SurfacePlotter:
                         row_weights = [1] * n_surfaces
                         col_weights = [1, colorbar_size]
                         groups = []
-                        
-                        cb_dict ["position"] = (surf_idx, 1)
+
+                        cb_dict["position"] = (surf_idx, 1)
                         cb_dict["orientation"] = "vertical"
-                        brain_positions[(0, surf_idx, 0)] = (surf_idx,  0)
+                        brain_positions[(0, surf_idx, 0)] = (surf_idx, 0)
                         colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
 
                     elif colorbar_position == "bottom":
@@ -2037,7 +2586,7 @@ class SurfacePlotter:
                         brain_positions[(0, surf_idx, 0)] = (surf_idx * 2, 0)
                         colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
 
-                    colorbar_list.append(cb_dict)  
+                    colorbar_list.append(cb_dict)
 
             else:  # shared colorbar
                 cb_dict = {}
@@ -2048,7 +2597,6 @@ class SurfacePlotter:
 
                 cb_dict["colormap"] = colormaps[0]
                 cb_dict["map_name"] = maps_names[0]
-                
 
                 cb_dict["vmin"] = limits_list[0][0]
                 cb_dict["vmax"] = limits_list[0][1]
@@ -2068,9 +2616,9 @@ class SurfacePlotter:
                     groups = [(n_surfaces, slice(0, 1))]
                     cb_dict["position"] = (n_surfaces, 0)
                     cb_dict["orientation"] = "horizontal"
-                
+
                 colorbar_list.append(cb_dict)
-                    
+
         layout_config = {
             "shape": shape,
             "row_weights": row_weights,
@@ -2080,10 +2628,18 @@ class SurfacePlotter:
             "colormap_limits": colormap_limits,
         }
         return layout_config, colorbar_list
-                    
 
     def _grid_multi_surface_layout(
-        self, surfaces, maps_names, limits_list, colormaps, colorbar_titles, colorbar, colormap_style, colorbar_position, colorbar_size
+        self,
+        surfaces,
+        maps_names,
+        limits_list,
+        colormaps,
+        colorbar_titles,
+        colorbar,
+        colormap_style,
+        colorbar_position,
+        colorbar_size,
     ):
         """Handle grid layout for multiple surfaces."""
 
@@ -2139,7 +2695,7 @@ class SurfacePlotter:
                         groups = []
 
                         brain_positions[(0, surf_idx, 0)] = (pos[0] * 2, pos[1])
-                        
+
                         cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
                         cb_dict["orientation"] = "horizontal"
 
@@ -2387,56 +2943,71 @@ class SurfacePlotter:
                             colormap_limits[(map_idx, 0, view_idx)] = map_limits
                 else:
                     if colormap_style == "individual":
-                        shape = [n_maps, n_views + 1]
-                        row_weights = [1] * n_maps
-                        col_weights = [1] * n_views + [colorbar_size]
+                        if colorbar_position == "right":
+                            shape = [n_maps, n_views * 2]
+                            row_weights = [1] * n_maps
+                            col_weights = [1, colorbar_size] * n_views
+                        elif colorbar_position == "bottom":
+                            shape = [n_maps * 2, n_views]
+                            row_weights = [1, colorbar_size] * n_maps
+                            col_weights = [1] * n_views
                         groups = []
+
+
                         for map_idx in range(n_maps):
-                            cb_dict = {}
-                            cb_dict["position"] = (map_idx, n_views)
-                            cb_dict["orientation"] = "vertical"
-                            cb_dict["colormap"] = (
-                                colormaps[map_idx]
-                                if map_idx < len(colormaps)
-                                else colormaps[-1]
-                            )
-                            cb_dict["map_name"] = maps_names[map_idx]
-                            if colorbar_titles:
-                                cb_dict["title"] = (
-                                    colorbar_titles[map_idx]
-                                    if map_idx < len(colorbar_titles)
-                                    else colorbar_titles[-1]
-                                )
-                            else:
-                                cb_dict["title"] = maps_names[map_idx]
-
-                            if valid_views[view_idx].startswith("lh"):
-                                tmp_surface = copy.deepcopy(surf_lh)
-
-                            elif valid_views[view_idx].startswith("rh"):
-                                tmp_surface = copy.deepcopy(surf_rh)
-
-                            elif valid_views[view_idx].startswith("merg"):
-                                tmp_surface = copy.deepcopy(surf_merg)
-
-                            limits_list = _get_map_limits(
-                                surfaces=tmp_surface,
-                                map_name=maps_names[map_idx],
-                                colormap_style="individual",
-                                v_limits=v_limits[map_idx],
-                            )
-                            cb_dict["vmin"] = limits_list[0][0]
-                            cb_dict["vmax"] = limits_list[0][1]
-
                             for view_idx in range(n_views):
-                                brain_positions[(map_idx, 0, view_idx)] = (
-                                    map_idx,
-                                    view_idx,
+                                cb_dict = {}
+                                if colorbar_position == "right":
+                                    cb_dict["position"] = (map_idx, view_idx * 2 + 1)
+                                    cb_dict["orientation"] = "vertical"
+                                    brain_positions[(map_idx, 0, view_idx)] = (
+                                        map_idx,
+                                        view_idx * 2,)
+
+                                elif colorbar_position == "bottom":
+                                    cb_dict["position"] = (map_idx * 2 + 1, view_idx)
+                                    cb_dict["orientation"] = "horizontal"
+                                    brain_positions[(map_idx, 0, view_idx)] = (
+                                        map_idx * 2, view_idx)
+
+                                cb_dict["colormap"] = (
+                                    colormaps[map_idx]
+                                    if map_idx < len(colormaps)
+                                    else colormaps[-1]
                                 )
+                                cb_dict["map_name"] = maps_names[map_idx]
+                                if colorbar_titles:
+                                    cb_dict["title"] = (
+                                        colorbar_titles[map_idx]
+                                        if map_idx < len(colorbar_titles)
+                                        else colorbar_titles[-1]
+                                    )
+                                else:
+                                    cb_dict["title"] = maps_names[map_idx]
+
+                                if valid_views[view_idx].startswith("lh"):
+                                    tmp_surface = copy.deepcopy(surf_lh)
+
+                                elif valid_views[view_idx].startswith("rh"):
+                                    tmp_surface = copy.deepcopy(surf_rh)
+
+                                elif valid_views[view_idx].startswith("merg"):
+                                    tmp_surface = copy.deepcopy(surf_merg)
+
+                                limits_list = _get_map_limits(
+                                    surfaces=tmp_surface,
+                                    map_name=maps_names[map_idx],
+                                    colormap_style="individual",
+                                    v_limits=v_limits[map_idx],
+                                )
+                                cb_dict["vmin"] = limits_list[0][0]
+                                cb_dict["vmax"] = limits_list[0][1]
+
+
                                 colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
 
-                            if maps_names[map_idx] not in surf_merg.colortables:
-                                colorbar_list.append(cb_dict)
+                                if maps_names[map_idx] not in tmp_surface.colortables:
+                                    colorbar_list.append(cb_dict)
 
                     else:
                         # Get the global limits
@@ -2468,7 +3039,6 @@ class SurfacePlotter:
                             cb_dict["title"] = colorbar_titles[0]
                         else:
                             cb_dict["title"] = " + ".join(maps_names)
-
                         for map_idx in range(n_maps):
                             for view_idx in range(n_views):
                                 brain_positions[(map_idx, 0, view_idx)] = (
@@ -2536,29 +3106,46 @@ class SurfacePlotter:
                             colormap_limits[(map_idx, 0, view_idx)] = map_limits
                 else:
                     if colormap_style == "individual":
-                        shape = [n_views + 1, n_maps]
-                        row_weights = [1] * n_views + [colorbar_size]
-                        col_weights = [1] * n_maps
+                        if colorbar_position == "right":
+                            shape = [n_views, n_maps * 2]
+                            row_weights = [1] * n_views
+                            col_weights = [1, colorbar_size] * n_maps
+                        elif colorbar_position == "bottom":
+                            shape = [n_views * 2, n_maps]
+                            row_weights = [1, colorbar_size] * n_views
+                            col_weights = [1] * n_maps
                         groups = []
+                        for view_idx in range(n_views):
+                            for map_idx in range(n_maps):
+                                cb_dict = {}
+                                if colorbar_position == "right":
+                                    cb_dict["position"] = (view_idx, map_idx * 2 + 1)
+                                    cb_dict["orientation"] = "vertical"
+                                    brain_positions[(map_idx, 0, view_idx)] = (
+                                        view_idx,
+                                        map_idx * 2,)
 
-                        for map_idx in range(n_maps):
-                            cb_dict = {}
-                            cb_dict["position"] = (n_views, map_idx)
-                            cb_dict["orientation"] = "horizontal"
-                            cb_dict["colormap"] = (
-                                colormaps[map_idx]
-                                if map_idx < len(colormaps)
-                                else colormaps[-1]
-                            )
-                            cb_dict["map_name"] = maps_names[map_idx]
-                            if colorbar_titles:
-                                cb_dict["title"] = (
-                                    colorbar_titles[map_idx]
-                                    if map_idx < len(colorbar_titles)
-                                    else colorbar_titles[-1]
+                                elif colorbar_position == "bottom":
+                                    cb_dict["position"] = (view_idx * 2 + 1, map_idx)
+                                    cb_dict["orientation"] = "horizontal"
+                                    brain_positions[(map_idx, 0, view_idx)] = (
+                                        view_idx * 2, map_idx)
+
+                                cb_dict["colormap"] = (
+                                    colormaps[map_idx]
+                                    if map_idx < len(colormaps)
+                                    else colormaps[-1]
                                 )
-                            else:
-                                cb_dict["title"] = maps_names[map_idx]
+                                cb_dict["map_name"] = maps_names[map_idx]
+                                if colorbar_titles:
+                                    cb_dict["title"] = (
+                                        colorbar_titles[map_idx]
+                                        if map_idx < len(colorbar_titles)
+                                        else colorbar_titles[-1]
+                                    )
+                                else:
+                                    cb_dict["title"] = maps_names[map_idx]
+
                                 if valid_views[view_idx].startswith("lh"):
                                     tmp_surface = copy.deepcopy(surf_lh)
 
@@ -2568,24 +3155,17 @@ class SurfacePlotter:
                                 elif valid_views[view_idx].startswith("merg"):
                                     tmp_surface = copy.deepcopy(surf_merg)
 
-                            limits_list = _get_map_limits(
-                                surfaces=tmp_surface,
-                                map_name=maps_names[map_idx],
-                                colormap_style="individual",
-                                v_limits=v_limits[map_idx],
-                            )
-                            cb_dict["vmin"] = limits_list[0][0]
-                            cb_dict["vmax"] = limits_list[0][1]
-
-                            for view_idx in range(n_views):
-                                brain_positions[(map_idx, 0, view_idx)] = (
-                                    view_idx,
-                                    map_idx,
+                                limits_list = _get_map_limits(
+                                    surfaces=tmp_surface,
+                                    map_name=maps_names[map_idx],
+                                    colormap_style="individual",
+                                    v_limits=v_limits[map_idx],
                                 )
+                                cb_dict["vmin"] = limits_list[0][0]
+                                cb_dict["vmax"] = limits_list[0][1]
                                 colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
-
-                            if maps_names[map_idx] not in surf_merg.colortables:
-                                colorbar_list.append(cb_dict)
+                                if maps_names[map_idx] not in tmp_surface.colortables:
+                                    colorbar_list.append(cb_dict)
                     else:
                         # Get the global limits
                         maps_limits = []
@@ -2616,8 +3196,8 @@ class SurfacePlotter:
                             cb_dict["title"] = colorbar_titles[0]
                         else:
                             cb_dict["title"] = " + ".join(maps_names)
-                        for map_idx in range(n_maps):
-                            for view_idx in range(n_views):
+                        for view_idx in range(n_views):
+                            for map_idx in range(n_maps):
                                 brain_positions[(map_idx, 0, view_idx)] = (
                                     view_idx,
                                     map_idx,
@@ -2625,6 +3205,7 @@ class SurfacePlotter:
                                 colormap_limits[(map_idx, 0, view_idx)] = (
                                     global_limits + (maps_names[0],)
                                 )
+
                         if colorbar_position == "right":
                             shape = [n_views, n_maps + 1]
                             row_weights = [1] * n_views
@@ -2642,7 +3223,7 @@ class SurfacePlotter:
 
                             cb_dict["position"] = (n_views, 0)
                             cb_dict["orientation"] = "horizontal"
-                        colorbar_list.append(cb_dict)
+                        colorbar_list.append(cb_dict)   
 
         layout_config = {
             "shape": shape,
@@ -2708,14 +3289,17 @@ class SurfacePlotter:
             )
 
         return colorbar_configs
-    
+
     def _finalize_plot(
-        self, plotter: pv.Plotter, save_mode: bool, save_path: Optional[str], 
-        use_threading: bool = False
+        self,
+        plotter: pv.Plotter,
+        save_mode: bool,
+        save_path: Optional[str],
+        use_threading: bool = False,
     ) -> None:
         """
         Handle final rendering - either save or display the plot.
-        
+
         Parameters
         ----------
         plotter : pv.Plotter
@@ -2774,7 +3358,68 @@ class SurfacePlotter:
         non_blocking: bool = False,
         save_path: Optional[str] = None,
     ):
-        # Implementation for plotting hemispheres
+        """
+        Plot brain hemispheres with multiple views and multiple maps.
+
+        Parameters
+        ----------
+        surf_rh : cltsurf.Surface
+            Right hemisphere surface with associated data.
+
+        surf_lh : cltsurf.Surface
+            Left hemisphere surface with associated data.
+
+        maps_names : str or list of str, default ["surface"]
+            Name(s) of the data maps to visualize. Must be present in both surfaces.
+
+        views : str or list of str, default "dorsal"
+            View(s) to display. Options include 'dorsal', 'ventral', 'lateral', 'medial', 'anterior', 'posterior'.
+            Can be a single view or a list of views. It can also include different multiple views specified as layouts:
+            >>> plotter = SurfacePlotter("configs.json")
+            >>> layouts = plotter.list_available_layouts()
+
+        views_orientation : str, default "horizontal"
+            Orientation of views when multiple views are provided. Options are 'horizontal' or 'vertical'.
+
+        v_limits : tuple or list of tuples, optional
+            Value limits for color mapping. If a single tuple is provided, it applies to all maps
+            (e.g., (vmin, vmax)). If a list is provided, it should match the number of maps.
+            If None, limits are determined from the data.
+
+        colormaps : str or list of str, default "BrBG"
+            Colormap(s) to use for visualization. If a single colormap is provided, it applies to all maps.
+            If a list is provided, it should match the number of maps.
+
+        colorbar : bool, default True
+            Whether to display colorbars for the maps.
+
+        colorbar_titles : str or list of str, optional
+            Title(s) for the colorbars. If a single title is provided, it applies to all maps.
+            If a list is provided, it should match the number of maps. If None, map names are used.
+
+        colormap_style : str, default "individual"
+            Style of colormap application. Options are 'individual' (each map has its own colormap)
+            or 'shared' (all maps share the same colormap).
+
+        colorbar_position : str, default "right"
+            Position of the colorbars. Options are 'right' or 'bottom'.
+
+        notebook : bool, default False
+            Whether to render the plot in a Jupyter notebook environment.
+            If True, uses notebook-compatible rendering.
+
+        non_blocking : bool, default False
+            If True, displays the plot in a non-blocking manner using threading.
+            Only applicable when `notebook` is False and `save_path` is None.
+
+        save_path : str, optional
+            File path to save the rendered figure. If provided, the figure is saved to this path
+            instead of being displayed.
+
+
+
+
+        """
 
         # Creating the merge surface
         surf_merg = cltsurf.merge_surfaces_list([surf_lh, surf_rh])
@@ -2984,39 +3629,82 @@ class SurfacePlotter:
                         colorbar_position=orientation,
                     )
 
-        # Linking the cameras from the subplots with the same view
-        # Creating the grouping
 
-        # One-liner for grouping using dictionary comprehension
-        unique_v_indices = set(key[2] for key in brain_positions.keys())
-        grouped_by_v_idx = {
-            v_idx: [
-                (row, col)
-                for (m_idx, s_idx, v), (row, col) in brain_positions.items()
-                if v == v_idx
-            ]
-            for v_idx in unique_v_indices
-        }
 
-        # After all subplots are created and populated, link the views
-        for v_idx, positions in grouped_by_v_idx.items():
-            if len(positions) > 1:
-                # Get all subplot indices for this view group
-                subplot_indices = []
-
-                # Get number of columns from plotter shape
-                n_cols = pv_plotter.shape[1]  # shape is (n_rows, n_cols)
-
-                for row, col in positions:
-                    # Convert (row, col) to subplot index
-                    subplot_idx = row * n_cols + col
-                    subplot_indices.append(subplot_idx)
-
-                # Link all views in this group
-                pv_plotter.link_views(subplot_indices)
+        # successful_links = self._link_brain_subplot_cameras(pv_plotter, brain_positions)
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         self._finalize_plot(pv_plotter, save_mode, save_path, use_threading)
+
+    def _link_brain_subplot_cameras(self, pv_plotter, brain_positions):
+        """
+        Link cameras for brain subplots that share the same view index.
+        
+        Args:
+            pv_plotter: PyVista plotter object
+            brain_positions: Dict with keys (m_idx, s_idx, v_idx) and values (row, col)
+        """
+        # Group positions by view index using defaultdict for cleaner code
+        from collections import defaultdict
+        
+        grouped_by_v_idx = defaultdict(list)
+        for (m_idx, s_idx, v_idx), (row, col) in brain_positions.items():
+            grouped_by_v_idx[v_idx].append((row, col))
+        
+        # Convert back to regular dict if needed
+        grouped_by_v_idx = dict(grouped_by_v_idx)
+        
+        n_rows, n_cols = pv_plotter.shape
+        successful_links = 0
+        
+        # Link views for each group
+        for v_idx, positions in grouped_by_v_idx.items():
+            if len(positions) <= 1:
+                continue  # Need at least 2 positions to link
+                
+            # Calculate and validate subplot indices
+            valid_indices = []
+            invalid_positions = []
+            
+            for row, col in positions:
+                # Validate position bounds
+                if not (0 <= row < n_rows and 0 <= col < n_cols):
+                    invalid_positions.append((row, col, "out of bounds"))
+                    continue
+                    
+                subplot_idx = row * n_cols + col
+                
+                # Validate renderer exists
+                if subplot_idx >= len(pv_plotter.renderers):
+                    invalid_positions.append((row, col, f"index {subplot_idx} >= {len(pv_plotter.renderers)}"))
+                    continue
+                    
+                # Validate renderer is not None
+                if pv_plotter.renderers[subplot_idx] is None:
+                    invalid_positions.append((row, col, f"renderer at index {subplot_idx} is None"))
+                    continue
+                    
+                valid_indices.append(subplot_idx)
+            
+            # Report any invalid positions
+            if invalid_positions:
+                print(f"Warning: Skipped {len(invalid_positions)} invalid positions for view {v_idx}:")
+                for row, col, reason in invalid_positions:
+                    print(f"  Position ({row}, {col}): {reason}")
+            
+            # Link views if we have enough valid indices
+            if len(valid_indices) > 1:
+                try:
+                    pv_plotter.link_views(valid_indices)
+                    successful_links += 1
+                    print(f"✓ Linked {len(valid_indices)} views for v_idx {v_idx}: indices {valid_indices}")
+                except Exception as e:
+                    print(f"✗ Failed to link views for v_idx {v_idx}: {e}")
+            else:
+                print(f"⚠ Not enough valid renderers for v_idx {v_idx} ({len(valid_indices)}/2+ needed)")
+        
+        print(f"\nSummary: Successfully linked {successful_links}/{len(grouped_by_v_idx)} view groups")
+        return successful_links
 
     def plot_surfaces(
         self,
@@ -3042,38 +3730,52 @@ class SurfacePlotter:
     ) -> None:
         """
         Plot brain surfaces with optional threading and screenshot support.
-        
+
         Parameters
         ----------
         surfaces : Union[cltsurf.Surface, List[cltsurf.Surface], List[List[cltsurf.Surface]]]
             Brain surface(s) to plot.
+
         hemi_id : List[str], default ["lh"]
             Hemisphere identifiers.
+
         views : Union[str, List[str]], default "dorsal"
             View angles for the surfaces.
+
         views_orientation : str, default "horizontal"
             Orientation of the views layout.
+
         notebook : bool, default False
             Whether running in Jupyter notebook environment.
+
         map_names : Union[str, List[str]], default ["surface"]
             Names of the surface maps to plot.
+
         v_limits : Optional[Union[Tuple[float, float], List[Tuple[float, float]]]], default (None, None)
             Value limits for colormapping.
+
         colormaps : Union[str, List[str]], default "BrBG"
             Colormaps to use for each map.
+
         save_path : Optional[str], default None
             File path for saving the figure. If None, plot is displayed.
+
         non_blocking : bool, default False
             If True, display the plot in a separate thread, allowing the terminal
             or notebook to remain interactive. Only applies when save_path is None.
+
         colorbar : bool, default True
             Whether to show colorbars.
+
         colormap_style : str, default "individual"
             Style of colormap application.
+
         colorbar_titles : Union[str, List[str]], optional
             Titles for the colorbars.
+
         colorbar_position : str, default "right"
             Position of the colorbars.
+
         """
 
         # Preparing the surfaces to be plotted
@@ -3123,7 +3825,9 @@ class SurfacePlotter:
         n_maps = len(map_names)
 
         if n_maps == 0:
-            raise ValueError("No valid maps found in the provided surfaces. The map_names must be present in all surfaces.")
+            raise ValueError(
+                "No valid maps found in the provided surfaces. The map_names must be present in all surfaces."
+            )
 
         # Process and validate v_limits parameter
         if isinstance(v_limits, Tuple):
@@ -3135,7 +3839,6 @@ class SurfacePlotter:
             if len(v_limits) != n_maps:
                 v_limits = [(None, None)] * n_maps
 
-        
         if isinstance(colormaps, str):
             colormaps = [colormaps]
 
@@ -3158,7 +3861,7 @@ class SurfacePlotter:
             colorbar_titles = map_names
 
         # Check if the is colortable at any of the surfaces for any of the maps
-        
+
         (
             view_ids,
             config_dict,
@@ -3178,8 +3881,8 @@ class SurfacePlotter:
         )
 
         # Determine rendering mode based on save_path, environment, and threading preference
-        save_mode, use_off_screen, use_notebook, use_threading = self._determine_render_mode(
-            save_path, notebook, non_blocking
+        save_mode, use_off_screen, use_notebook, use_threading = (
+            self._determine_render_mode(save_path, notebook, non_blocking)
         )
 
         # Detecting the screen size for the plotter
@@ -3224,7 +3927,7 @@ class SurfacePlotter:
             vmin, vmax, map_name = map_limits[map_idx, surf_idx, view_idx]
 
             # Select the colormap for the current map
-            idx = [i for i, name in enumerate(map_names) if name == map_name]   
+            idx = [i for i, name in enumerate(map_names) if name == map_name]
             colormap = colormaps[idx[0]] if idx else colormaps[0]
 
             # Add the brain surface mesh
@@ -3292,34 +3995,38 @@ class SurfacePlotter:
                         colorbar_position=orientation,
                     )
 
-        # Linking the cameras from the subplots with the same view
-        # Creating the grouping 
-        # One-liner for counting unique v_idx
-        num_unique_v_idx = len(set(key[2] for key in brain_positions.keys()))
+        # # Linking the cameras from the subplots with the same view
+        # # Creating the grouping
+        # # One-liner for counting unique v_idx
+        # num_unique_v_idx = len(set(key[2] for key in brain_positions.keys()))
 
-        # One-liner for grouping using dictionary comprehension
-        unique_v_indices = set(key[2] for key in brain_positions.keys())
-        grouped_by_v_idx = {
-            v_idx: [(row, col) for (m_idx, s_idx, v), (row, col) in brain_positions.items() if v == v_idx]
-            for v_idx in unique_v_indices
-        }
-        
-        # After all subplots are created and populated, link the views
-        for v_idx, positions in grouped_by_v_idx.items():
-            if len(positions) > 1:
-                # Get all subplot indices for this view group
-                subplot_indices = []
-                
-                # Get number of columns from plotter shape
-                n_cols = pv_plotter.shape[1]  # shape is (n_rows, n_cols)
-                
-                for row, col in positions:
-                    # Convert (row, col) to subplot index
-                    subplot_idx = row * n_cols + col
-                    subplot_indices.append(subplot_idx)
-                
-                # Link all views in this group
-                pv_plotter.link_views(subplot_indices)
+        # # One-liner for grouping using dictionary comprehension
+        # unique_v_indices = set(key[2] for key in brain_positions.keys())
+        # grouped_by_v_idx = {
+        #     v_idx: [
+        #         (row, col)
+        #         for (m_idx, s_idx, v), (row, col) in brain_positions.items()
+        #         if v == v_idx
+        #     ]
+        #     for v_idx in unique_v_indices
+        # }
+
+        # # After all subplots are created and populated, link the views
+        # for v_idx, positions in grouped_by_v_idx.items():
+        #     if len(positions) > 1:
+        #         # Get all subplot indices for this view group
+        #         subplot_indices = []
+
+        #         # Get number of columns from plotter shape
+        #         n_cols = pv_plotter.shape[1]  # shape is (n_rows, n_cols)
+
+        #         for row, col in positions:
+        #             # Convert (row, col) to subplot index
+        #             subplot_idx = row * n_cols + col
+        #             subplot_indices.append(subplot_idx)
+
+        #         # Link all views in this group
+        #         pv_plotter.link_views(subplot_indices)
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         self._finalize_plot(pv_plotter, save_mode, save_path, use_threading)
@@ -3327,12 +4034,13 @@ class SurfacePlotter:
     def _create_threaded_plot(self, plotter: pv.Plotter) -> None:
         """
         Create and show plot in a separate thread for non-blocking visualization.
-        
+
         Parameters
         ----------
         plotter : pv.Plotter
             PyVista plotter instance ready for display.
         """
+
         def show_plot():
             """Internal function to run in separate thread."""
             try:
@@ -3342,12 +4050,12 @@ class SurfacePlotter:
             finally:
                 # Clean up if needed
                 pass
-        
+
         # Create and start the thread
         plot_thread = threading.Thread(target=show_plot)
         plot_thread.daemon = True  # Thread will close when main program closes
         plot_thread.start()
-        
+
         print("Plot opened in separate window. Terminal remains interactive.")
         print("Note: Plot window may take a moment to appear.")
 
@@ -3573,10 +4281,18 @@ class SurfacePlotter:
         scalar_bar.SetNumberOfLabels(self.figure_conf["colorbar_n_labels"])
 
         # Configure appearance
-        scalar_bar.GetTitleTextProperty().SetColor(*pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb)
-        scalar_bar.GetLabelTextProperty().SetColor(*pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb)
-        scalar_bar.GetTitleTextProperty().SetFontSize(self.figure_conf["colorbar_title_font_size"])
-        scalar_bar.GetLabelTextProperty().SetFontSize(self.figure_conf["colorbar_font_size"])
+        scalar_bar.GetTitleTextProperty().SetColor(
+            *pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb
+        )
+        scalar_bar.GetLabelTextProperty().SetColor(
+            *pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb
+        )
+        scalar_bar.GetTitleTextProperty().SetFontSize(
+            self.figure_conf["colorbar_title_font_size"]
+        )
+        scalar_bar.GetLabelTextProperty().SetFontSize(
+            self.figure_conf["colorbar_font_size"]
+        )
 
         # Set outline
         if not self.figure_conf["colorbar_outline"]:
@@ -3603,7 +4319,7 @@ class SurfacePlotter:
     ) -> Tuple[bool, bool, bool, bool]:
         """
         Determine rendering parameters based on save path and environment.
-        
+
         Parameters
         ----------
         save_path : str, optional
@@ -3612,7 +4328,7 @@ class SurfacePlotter:
             Whether running in Jupyter notebook environment.
         non_blocking : bool, default False
             Whether to run the visualization in a separate thread (non-blocking mode).
-            
+
         Returns
         -------
         Tuple[bool, bool, bool, bool]
@@ -4620,6 +5336,7 @@ class SurfacePlotter:
         print("\n💡 To apply: plotter.apply_theme('{}')".format(theme_name))
         print("=" * 50)
 
+
 ################################# Helper Functions ################################
 def _get_shared_limits(surfaces, map_name, vmin, vmax):
     """Get shared vmin and vmax from surfaces if not provided."""
@@ -4639,6 +5356,7 @@ def _get_shared_limits(surfaces, map_name, vmin, vmax):
         vmax = np.max(data)
 
     return vmin, vmax
+
 
 def _get_map_limits(surfaces, map_name, colormap_style, v_limits):
     """Get real vmin and vmax from surfaces if not provided."""
