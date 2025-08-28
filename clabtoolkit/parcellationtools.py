@@ -492,7 +492,7 @@ class Parcellation:
         # Save the parcellation centroids
         if hasattr(self, "centroids"):
             hf.create_dataset(f"{base_cad}/regions_centroids", data=self.centroids)
-        
+
         # Save the timeseries if they exist
         if hasattr(self, "timeseries"):
             hf.create_dataset(f"{base_cad}/time_series", data=self.timeseries)
@@ -502,7 +502,9 @@ class Parcellation:
 
         # Save the morphometry DataFrame if it exists
         if hasattr(self, "morphometry"):
-            cltmisc.save_morphometry_hdf5(out_file, "{base_cad}/morphometry", self.morphometry, mode="w")
+            cltmisc.save_morphometry_hdf5(
+                out_file, "{base_cad}/morphometry", self.morphometry, mode="w"
+            )
 
     ####################################################################################################
     def prepare_for_tracking(self):

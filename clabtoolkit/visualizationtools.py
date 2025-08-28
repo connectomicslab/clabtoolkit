@@ -2953,7 +2953,6 @@ class SurfacePlotter:
                             col_weights = [1] * n_views
                         groups = []
 
-
                         for map_idx in range(n_maps):
                             for view_idx in range(n_views):
                                 cb_dict = {}
@@ -2962,13 +2961,16 @@ class SurfacePlotter:
                                     cb_dict["orientation"] = "vertical"
                                     brain_positions[(map_idx, 0, view_idx)] = (
                                         map_idx,
-                                        view_idx * 2,)
+                                        view_idx * 2,
+                                    )
 
                                 elif colorbar_position == "bottom":
                                     cb_dict["position"] = (map_idx * 2 + 1, view_idx)
                                     cb_dict["orientation"] = "horizontal"
                                     brain_positions[(map_idx, 0, view_idx)] = (
-                                        map_idx * 2, view_idx)
+                                        map_idx * 2,
+                                        view_idx,
+                                    )
 
                                 cb_dict["colormap"] = (
                                     colormaps[map_idx]
@@ -3002,7 +3004,6 @@ class SurfacePlotter:
                                 )
                                 cb_dict["vmin"] = limits_list[0][0]
                                 cb_dict["vmax"] = limits_list[0][1]
-
 
                                 colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
 
@@ -3123,13 +3124,16 @@ class SurfacePlotter:
                                     cb_dict["orientation"] = "vertical"
                                     brain_positions[(map_idx, 0, view_idx)] = (
                                         view_idx,
-                                        map_idx * 2,)
+                                        map_idx * 2,
+                                    )
 
                                 elif colorbar_position == "bottom":
                                     cb_dict["position"] = (view_idx * 2 + 1, map_idx)
                                     cb_dict["orientation"] = "horizontal"
                                     brain_positions[(map_idx, 0, view_idx)] = (
-                                        view_idx * 2, map_idx)
+                                        view_idx * 2,
+                                        map_idx,
+                                    )
 
                                 cb_dict["colormap"] = (
                                     colormaps[map_idx]
@@ -3223,7 +3227,7 @@ class SurfacePlotter:
 
                             cb_dict["position"] = (n_views, 0)
                             cb_dict["orientation"] = "horizontal"
-                        colorbar_list.append(cb_dict)   
+                        colorbar_list.append(cb_dict)
 
         layout_config = {
             "shape": shape,
@@ -3629,8 +3633,6 @@ class SurfacePlotter:
                         colorbar_position=orientation,
                     )
 
-
-
         # successful_links = self._link_brain_subplot_cameras(pv_plotter, brain_positions)
 
         # Handle final rendering - either save, display blocking, or display non-blocking
@@ -3639,71 +3641,87 @@ class SurfacePlotter:
     def _link_brain_subplot_cameras(self, pv_plotter, brain_positions):
         """
         Link cameras for brain subplots that share the same view index.
-        
+
         Args:
             pv_plotter: PyVista plotter object
             brain_positions: Dict with keys (m_idx, s_idx, v_idx) and values (row, col)
         """
         # Group positions by view index using defaultdict for cleaner code
         from collections import defaultdict
-        
+
         grouped_by_v_idx = defaultdict(list)
         for (m_idx, s_idx, v_idx), (row, col) in brain_positions.items():
             grouped_by_v_idx[v_idx].append((row, col))
-        
+
         # Convert back to regular dict if needed
         grouped_by_v_idx = dict(grouped_by_v_idx)
-        
+
         n_rows, n_cols = pv_plotter.shape
         successful_links = 0
-        
+
         # Link views for each group
         for v_idx, positions in grouped_by_v_idx.items():
             if len(positions) <= 1:
                 continue  # Need at least 2 positions to link
-                
+
             # Calculate and validate subplot indices
             valid_indices = []
             invalid_positions = []
-            
+
             for row, col in positions:
                 # Validate position bounds
                 if not (0 <= row < n_rows and 0 <= col < n_cols):
                     invalid_positions.append((row, col, "out of bounds"))
                     continue
-                    
+
                 subplot_idx = row * n_cols + col
-                
+
                 # Validate renderer exists
                 if subplot_idx >= len(pv_plotter.renderers):
-                    invalid_positions.append((row, col, f"index {subplot_idx} >= {len(pv_plotter.renderers)}"))
+                    invalid_positions.append(
+                        (
+                            row,
+                            col,
+                            f"index {subplot_idx} >= {len(pv_plotter.renderers)}",
+                        )
+                    )
                     continue
-                    
+
                 # Validate renderer is not None
                 if pv_plotter.renderers[subplot_idx] is None:
-                    invalid_positions.append((row, col, f"renderer at index {subplot_idx} is None"))
+                    invalid_positions.append(
+                        (row, col, f"renderer at index {subplot_idx} is None")
+                    )
                     continue
-                    
+
                 valid_indices.append(subplot_idx)
-            
+
             # Report any invalid positions
             if invalid_positions:
-                print(f"Warning: Skipped {len(invalid_positions)} invalid positions for view {v_idx}:")
+                print(
+                    f"Warning: Skipped {len(invalid_positions)} invalid positions for view {v_idx}:"
+                )
                 for row, col, reason in invalid_positions:
                     print(f"  Position ({row}, {col}): {reason}")
-            
+
             # Link views if we have enough valid indices
             if len(valid_indices) > 1:
                 try:
                     pv_plotter.link_views(valid_indices)
                     successful_links += 1
-                    print(f"✓ Linked {len(valid_indices)} views for v_idx {v_idx}: indices {valid_indices}")
+                    print(
+                        f"✓ Linked {len(valid_indices)} views for v_idx {v_idx}: indices {valid_indices}"
+                    )
                 except Exception as e:
                     print(f"✗ Failed to link views for v_idx {v_idx}: {e}")
             else:
-                print(f"⚠ Not enough valid renderers for v_idx {v_idx} ({len(valid_indices)}/2+ needed)")
-        
-        print(f"\nSummary: Successfully linked {successful_links}/{len(grouped_by_v_idx)} view groups")
+                print(
+                    f"⚠ Not enough valid renderers for v_idx {v_idx} ({len(valid_indices)}/2+ needed)"
+                )
+
+        print(
+            f"\nSummary: Successfully linked {successful_links}/{len(grouped_by_v_idx)} view groups"
+        )
         return successful_links
 
     def plot_surfaces(

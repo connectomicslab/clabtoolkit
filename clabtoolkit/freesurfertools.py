@@ -72,7 +72,7 @@ class AnnotParcellation:
 
 
         """
-        
+
         # If parc_file is provided, load it
         if parc_file is not None:
             if annot_id is None:
@@ -194,7 +194,9 @@ class AnnotParcellation:
         return self.codes is not None
 
     ####################################################################################################
-    def create_from_data(self, codes, regtable, regnames, annot_id, hemi="lh", filename=None):
+    def create_from_data(
+        self, codes, regtable, regnames, annot_id, hemi="lh", filename=None
+    ):
         """
         Create parcellation from existing data arrays
 
@@ -208,7 +210,7 @@ class AnnotParcellation:
 
         regnames : list
             List of region names
-        
+
         annot_id : str
             Annotation ID for the parcellation
 
@@ -4601,7 +4603,7 @@ def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarr
         raise ValueError(
             "The color table must have 5 columns: R, G, B, A, and packed RGB value"
         )
-    
+
     return cltmisc.get_colors_from_colortable(labels, reg_ctable)
 
 
@@ -4642,7 +4644,7 @@ def colors2colortable(colors: Union[list, np.ndarray]):
 
     # Ensure the color table has 5 columns: R, G, B, A, packed RGB and they are integer type
     colortable = colortable.astype(np.uint32)
-    
+
     return colortable
 
 

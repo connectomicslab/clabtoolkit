@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from typing import Tuple, List
 
 
-
 #####################################################################################################
 def get_screen_size() -> Tuple[int, int]:
     """
@@ -30,29 +29,33 @@ def get_screen_size() -> Tuple[int, int]:
 
     return width, height
 
+
 #####################################################################################################
 def get_current_monitor_size() -> Tuple[int, int]:
     """Get the size of the monitor where the mouse cursor is located."""
     import tkinter as tk
     import screeninfo
-    
+
     # Get mouse position
     root = tk.Tk()
     root.withdraw()
     mouse_x = root.winfo_pointerx()
     mouse_y = root.winfo_pointery()
     root.destroy()
-    
+
     # Find which monitor contains the mouse
     monitors = screeninfo.get_monitors()
     for monitor in monitors:
-        if (monitor.x <= mouse_x < monitor.x + monitor.width and 
-            monitor.y <= mouse_y < monitor.y + monitor.height):
+        if (
+            monitor.x <= mouse_x < monitor.x + monitor.width
+            and monitor.y <= mouse_y < monitor.y + monitor.height
+        ):
             return monitor.width, monitor.height
-    
+
     # Fallback to primary monitor
     primary = next((m for m in monitors if m.is_primary), monitors[0])
     return primary.width, primary.height
+
 
 ###############################################################################################
 def calculate_optimal_subplots_grid(num_views: int) -> List[int]:
@@ -131,7 +134,8 @@ def calculate_optimal_subplots_grid(num_views: int) -> List[int]:
                     position.append((i, j))
 
         return grid_size, position
-        
+
+
 #####################################################################################################
 def calculate_subplot_layout(
     n_plots, screen_width=None, screen_height=None, target_aspect_ratio=None
@@ -193,6 +197,7 @@ def calculate_subplot_layout(
             best_rows, best_cols = rows, cols
 
     return int(best_rows), int(best_cols), aspect_ratio
+
 
 #####################################################################################################
 def create_proportional_subplots(n_plots, figsize_base=4, **layout_kwargs):

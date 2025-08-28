@@ -237,33 +237,34 @@ def is_color_like(color) -> bool:
     # Default to matplotlib's validator for strings and other types
     return mpl_is_color_like(color)
 
+
 #####################################################################################################
 def detect_rgb_range(rgb: Any) -> str:
     """
     Detect if an RGB array uses 0-255 or 0-1 range.
-    
+
     This function analyzes RGB color values to determine whether they follow
     the 0-255 integer format (8-bit) or the 0-1 float format (normalized).
-    
+
     Parameters
     ----------
     rgb : Any
         RGB color array/list containing 3 numeric values [R, G, B].
         Expected formats: [255, 128, 0] or [1.0, 0.5, 0.0]
-        
+
     Returns
     -------
     str
         - "0-255" if any value is greater than 1
         - "0-1" if all values are between 0 and 1 (inclusive)
         - "invalid" if input is malformed or values are outside valid ranges
-        
+
     Raises
     ------
     None
         This function does not raise any exceptions. Invalid inputs
         return "invalid" instead of raising errors.
-        
+
     Examples
     --------
     >>> detect_rgb_range([255, 128, 0])
@@ -286,7 +287,7 @@ def detect_rgb_range(rgb: Any) -> str:
     'invalid'
     >>> detect_rgb_range([255, 128])
     'invalid'
-    
+
     Notes
     -----
     - Expects exactly 3 numeric values (R, G, B)
@@ -301,46 +302,47 @@ def detect_rgb_range(rgb: Any) -> str:
     # Validate input format
     if not isinstance(rgb, (list, tuple)) or len(rgb) != 3:
         return "invalid"
-    
+
     # Check if all values are numeric
     try:
         values = [float(val) for val in rgb]
     except (ValueError, TypeError):
         return "invalid"
-    
+
     # Check if all values are in 0-1 range
     in_zero_one = all(0.0 <= val <= 1.0 for val in values)
-    
+
     # Check if all values are in 0-255 range
     in_zero_255 = all(0 <= val <= 255 for val in values)
-    
+
     # Determine range based on values
     if not in_zero_one and not in_zero_255:
         return "invalid"
-    
+
     # If any value > 1, it's definitely 0-255 range
     if any(val > 1 for val in values):
         return "0-255"
-    
+
     # If all values <= 1, treat as 0-1 range
     # (This includes combinations of 0 and 1)
     return "0-1"
+
 
 #####################################################################################################
 def is_valid_rgb_255(rgb: Any) -> bool:
     """
     Check if RGB array contains valid 0-255 range values.
-    
+
     Parameters
     ----------
     rgb : Any
         RGB color array/list to validate
-        
+
     Returns
     -------
     bool
         True if all values are in 0-255 range, False otherwise
-        
+
     Examples
     --------
     >>> is_valid_rgb_255([255, 128, 0])
@@ -361,40 +363,41 @@ def is_valid_rgb_255(rgb: Any) -> bool:
     # Validate input format
     if not isinstance(rgb, (list, tuple)) or len(rgb) != 3:
         return False
-    
+
     # Check if all values are numeric and in 0-255 range
     try:
         values = [float(val) for val in rgb]
-        
+
         # All values must be in 0-255 range
         if not all(0 <= val <= 255 for val in values):
             return False
-        
+
         # Only accept whole numbers (no decimal places)
         # This rejects both 0-1 format decimals and invalid decimals > 1
         for val in values:
             if val != int(val):
                 return False
-        
+
         return True
     except (ValueError, TypeError):
         return False
+
 
 #####################################################################################################
 def is_valid_rgb_01(rgb: Any) -> bool:
     """
     Check if RGB array contains valid 0-1 range values.
-    
+
     Parameters
     ----------
     rgb : Any
         RGB color array/list to validate
-        
+
     Returns
     -------
     bool
         True if all values are in 0-1 range, False otherwise
-        
+
     Examples
     --------
     >>> is_valid_rgb_01([1.0, 0.5, 0.0])
@@ -411,7 +414,7 @@ def is_valid_rgb_01(rgb: Any) -> bool:
     # Validate input format
     if not isinstance(rgb, (list, tuple)) or len(rgb) != 3:
         return False
-    
+
     # Check if all values are numeric and in 0-1 range
     try:
         values = [float(val) for val in rgb]
@@ -419,23 +422,24 @@ def is_valid_rgb_01(rgb: Any) -> bool:
     except (ValueError, TypeError):
         return False
 
+
 #####################################################################################################
 def normalize_rgb(rgb: Any) -> Union[List[float], None]:
     """
     Convert RGB array to 0-1 range regardless of input format.
-    
+
     Parameters
     ----------
     rgb : Any
         RGB color array in either 0-255 or 0-1 format
-        
+
     Returns
     -------
     List[float] or None
         RGB values normalized to 0-1 range, or None if invalid input
     """
     range_type = detect_rgb_range(rgb)
-    
+
     if range_type == "invalid":
         return None
     elif range_type == "0-255":
@@ -444,7 +448,8 @@ def normalize_rgb(rgb: Any) -> Union[List[float], None]:
         return [float(val) for val in rgb]
     else:
         return None
-    
+
+
 ####################################################################################################
 def rgb2hex(r: Union[int, float], g: Union[int, float], b: Union[int, float]) -> str:
     """
@@ -1032,8 +1037,11 @@ def create_random_colors(
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
+
 #####################################################################################################
-def get_colors_from_colortable(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarray:
+def get_colors_from_colortable(
+    labels: np.ndarray, reg_ctable: np.ndarray
+) -> np.ndarray:
     """
     Create per-vertex RGBA colors based on parcellation labels.
 
@@ -1077,7 +1085,7 @@ def get_colors_from_colortable(labels: np.ndarray, reg_ctable: np.ndarray) -> np
         colors = np.append(colors, np.zeros((len(labels), 1), dtype=np.uint8), axis=1)
 
     else:
-        colors = np.ones((len(labels), 3), dtype=np.uint8) * 240/255 # Default gray
+        colors = np.ones((len(labels), 3), dtype=np.uint8) * 240 / 255  # Default gray
         colors = np.append(colors, np.ones((len(labels), 1), dtype=np.uint8), axis=1)
 
     for i, region_info in enumerate(reg_ctable):
@@ -1088,8 +1096,8 @@ def get_colors_from_colortable(labels: np.ndarray, reg_ctable: np.ndarray) -> np
         if len(indices) > 0:
             colors[indices, :4] = region_info[:4]
 
-
     return colors
+
 
 ###################################################################################################
 def values2colors(
@@ -1230,12 +1238,15 @@ def values2colors(
 
     return result_colors
 
+
 #####################################################################################################
-def colors_to_table(colors: Union[list, np.ndarray], 
-                        alpha_values: np.ndarray = 0, 
-                        values: np.ndarray = None) -> np.ndarray:
+def colors_to_table(
+    colors: Union[list, np.ndarray],
+    alpha_values: np.ndarray = 0,
+    values: np.ndarray = None,
+) -> np.ndarray:
     """
-    Convert color list to a color table. 
+    Convert color list to a color table.
     The color table will contain RGB values, alpha channel, and values or packed RGB values.
 
     This function harmonizes the input colors to RGB format, applies alpha values,
@@ -1244,7 +1255,7 @@ def colors_to_table(colors: Union[list, np.ndarray],
     generate a default packed RGB value for each color.
 
     If only the colors are provided, the function will create a color table
-    with the RGB values, an alpha channel set to 0, and default packed RGB values. 
+    with the RGB values, an alpha channel set to 0, and default packed RGB values.
     This structure is useful for creating a color table that can be used in FreeSurfer.
 
     Parameters
@@ -1291,7 +1302,7 @@ def colors_to_table(colors: Union[list, np.ndarray],
         for i, color in enumerate(colors):
             values[i] = int(color[0]) + int(color[1]) * 2**8 + int(color[2]) * 2**16
 
-    if hasattr(values, '__len__'):
+    if hasattr(values, "__len__"):
         values_len = len(values)
     else:
         values_len = 1
@@ -1300,7 +1311,7 @@ def colors_to_table(colors: Union[list, np.ndarray],
         raise ValueError(
             "The number of values must match the number of colors provided or a single value."
         )
-    if hasattr(alpha_values, '__len__'):
+    if hasattr(alpha_values, "__len__"):
         alpha_len = len(alpha_values)
     else:
         alpha_len = 1
@@ -1316,7 +1327,7 @@ def colors_to_table(colors: Union[list, np.ndarray],
                 alpha_values = np.ones(np.shape(colors)[0]) * alpha_values
             else:
                 alpha_values = np.ones(np.shape(colors)[0]) * alpha_values[0]
-    
+
     # Concatenate RGB values and alpha channel and values
     color_table = np.column_stack(
         (
@@ -1326,8 +1337,8 @@ def colors_to_table(colors: Union[list, np.ndarray],
         )
     )
 
-
     return color_table
+
 
 ###################################################################################################
 def visualize_colors(

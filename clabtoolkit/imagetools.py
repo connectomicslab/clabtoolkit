@@ -2222,22 +2222,22 @@ def compute_statistics_at_nonzero_voxels(
 
         if metric == "mean":
             return np.mean(selected_values)
-        
+
         elif metric == "std":
             return np.std(selected_values)
-        
+
         elif metric == "var":
             return np.var(selected_values)
-        
+
         elif metric == "median":
             return np.median(selected_values)
-        
+
         elif metric == "sum":
             return np.sum(selected_values)
-        
+
         elif metric == "max":
             return np.max(selected_values)
-        
+
         elif metric == "min":
             return np.min(selected_values)
 

@@ -129,12 +129,12 @@ class Surface:
         # If the alpha is not in the range [0, 1], raise an error
         if not (0 <= alpha <= 1):
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
-        
+
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
+        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
 
         tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
-        tmp_ctable[:,:3] = tmp_ctable[:, :3]/255  # Ensure colors are between 0 and 1
+        tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
         self.colortables["surface"] = {
@@ -142,7 +142,6 @@ class Surface:
             "color_table": tmp_ctable,
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
-
 
         # Validate input parameters
         if surface_file is not None and (vertices is not None or faces is not None):
@@ -159,7 +158,7 @@ class Surface:
             if isinstance(surface_file, Path):
                 surface_file = str(surface_file)
 
-            if isinstance(surface_file,str):
+            if isinstance(surface_file, str):
                 if not os.path.isfile(surface_file):
                     raise FileNotFoundError(f"Surface file not found: {surface_file}")
 
@@ -173,10 +172,13 @@ class Surface:
             self.load_from_arrays(vertices, faces, color, alpha, hemi=hemi)
 
     ################################################################################################
-    def load_from_file(self, surface_file: Union[str, Path], 
-                        color: Union[str, np.ndarray] = "#f0f0f0",
-                        alpha: np.float32 = 1.0,
-                        hemi: str = None) -> None:
+    def load_from_file(
+        self,
+        surface_file: Union[str, Path],
+        color: Union[str, np.ndarray] = "#f0f0f0",
+        alpha: np.float32 = 1.0,
+        hemi: str = None,
+    ) -> None:
         """
         Load surface geometry from FreeSurfer or compatible surface file.
 
@@ -184,7 +186,7 @@ class Surface:
         ----------
         surface_file : str or Path
             Path to surface file (e.g., FreeSurfer .pial, .white, .inflated).
-        
+
         color : str or np.ndarray, optional
             Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
             or an RGB array in [0, 1] or [0, 255] range. Default is '#f0f0f0'.
@@ -212,7 +214,7 @@ class Surface:
         - Uses nibabel to read FreeSurfer geometry files.
         - Handles both left ('lh') and right ('rh') hemisphere surfaces.
         - If color is not provided, defaults to light gray ('#f0f0f0').
-        
+
         Examples
         --------
         >>> surface = Surface()
@@ -229,7 +231,7 @@ class Surface:
 
         if not os.path.isfile(surface_file):
             raise FileNotFoundError(f"Surface file not found: {surface_file}")
-        
+
         # Store the surface file path
         self.surf = surface_file
 
@@ -240,9 +242,9 @@ class Surface:
         # If the alpha is not in the range [0, 1], raise an error
         if not (0 <= alpha <= 1):
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
-        
+
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
+        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
 
         # Load the surface geometry
         try:
@@ -275,7 +277,10 @@ class Surface:
             self.hemi = "lh"  # Default to left hemisphere
 
         # Create default parcellation data
-        self._create_default_parcellation(color=color, alpha=alpha,)
+        self._create_default_parcellation(
+            color=color,
+            alpha=alpha,
+        )
 
     ##############################################################################################
     def load_from_arrays(
@@ -332,21 +337,28 @@ class Surface:
         # If the alpha is not in the range [0, 1], raise an error
         if not (0 <= alpha <= 1):
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
-        
+
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
+        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
 
         self.surf = surface_file
         self.mesh = self.create_mesh_from_arrays(vertices, faces)
         self.hemi = hemi if hemi is not None else "lh"  # Default to left hemisphere
 
         # Create default parcellation data
-        self._create_default_parcellation(color=color, alpha=alpha,)
+        self._create_default_parcellation(
+            color=color,
+            alpha=alpha,
+        )
 
     ##############################################################################################
-    def load_from_mesh(self, mesh: pv.PolyData, color: Union[str, np.ndarray] = "#f0f0f0",
-                        alpha: float = 1.0,
-                        hemi: str = None) -> None:
+    def load_from_mesh(
+        self,
+        mesh: pv.PolyData,
+        color: Union[str, np.ndarray] = "#f0f0f0",
+        alpha: float = 1.0,
+        hemi: str = None,
+    ) -> None:
         """
         Load surface geometry from existing PyVista mesh object.
 
@@ -354,7 +366,7 @@ class Surface:
         ----------
         mesh : pv.PolyData
             PyVista mesh object containing surface geometry.
-        
+
         color : str or np.ndarray, optional
             Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
             or an RGB array in [0, 1] or [0, 255] range. Default is '#f0f0f0'.
@@ -393,9 +405,9 @@ class Surface:
         # If the alpha is not in the range [0, 1], raise an error
         if not (0 <= alpha <= 1):
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
-        
+
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb")/255
+        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
 
         # Ensure mesh has default surface colors if not present
         self._create_default_parcellation(color=color, alpha=alpha)
@@ -420,9 +432,9 @@ class Surface:
         return self.mesh is not None
 
     ##############################################################################################
-    def _create_default_parcellation(self, 
-                                    color: Union[str, np.ndarray] = "#f0f0f0", 
-                                    alpha: np.ndarray = 1.0) -> None:
+    def _create_default_parcellation(
+        self, color: Union[str, np.ndarray] = "#f0f0f0", alpha: np.ndarray = 1.0
+    ) -> None:
         """
         Create default parcellation data for surface visualization.
 
@@ -444,13 +456,12 @@ class Surface:
         Creates a single-region parcellation with default gray color values
         assigned to all vertices.
         """
-        
-        tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
-        tmp_ctable[:,:3] = tmp_ctable[:, :3]/255  # Ensure colors are between 0 and 1
 
+        tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
+        tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         self._store_parcellation_data(
-            np.ones((self.mesh.n_points,) , dtype=np.uint32)* int(tmp_ctable[0,4]),
+            np.ones((self.mesh.n_points,), dtype=np.uint32) * int(tmp_ctable[0, 4]),
             tmp_ctable,
             ["surface"],
             "surface",
@@ -545,7 +556,9 @@ class Surface:
         vertices_colors = (
             np.ones((len(vertices), 3), dtype=np.uint8) * 240
         )  # Default colors
-        mesh.point_data["surface"] = np.c_[vertices_colors, np.ones(len(vertices), dtype=np.uint8) * 255]
+        mesh.point_data["surface"] = np.c_[
+            vertices_colors, np.ones(len(vertices), dtype=np.uint8) * 255
+        ]
         return mesh
 
     ##############################################################################################
@@ -616,46 +629,46 @@ class Surface:
             :, 1:4
         ]  # Skip the first column (n_vertices)
         return faces
-    
+
     ###############################################################################################
     def get_edges(self, return_counts: bool = False) -> np.ndarray:
         """
         Extract unique edges from a triangular mesh using vectorized operations.
-        
+
         This function efficiently extracts all unique edges from a triangular mesh
-        represented as a faces array. Each triangle contributes three edges, and 
-        the function automatically removes duplicates that occur when triangles 
+        represented as a faces array. Each triangle contributes three edges, and
+        the function automatically removes duplicates that occur when triangles
         share edges.
-        
+
         Parameters
         ----------
         faces : np.ndarray of shape (n_faces, 3)
-            Array where each row represents a triangular face defined by three 
+            Array where each row represents a triangular face defined by three
             vertex indices. Vertex indices should be non-negative integers.
-            
+
         return_counts : bool, optional
             If True, also return the count of how many faces each edge belongs to.
-            This is useful for identifying boundary edges (count=1) vs interior 
+            This is useful for identifying boundary edges (count=1) vs interior
             edges (count=2). Default is False.
-        
+
         Returns
         -------
         edges : np.ndarray of shape (n_edges, 2)
             Array of unique edges where each row contains two vertex indices
             [v1, v2] with v1 <= v2. Edges are sorted lexicographically.
-            
+
         counts : np.ndarray of shape (n_edges,), optional
-            Number of faces that contain each edge. Only returned if 
-            return_counts=True. Boundary edges have count=1, interior edges 
+            Number of faces that contain each edge. Only returned if
+            return_counts=True. Boundary edges have count=1, interior edges
             have count=2.
-        
+
         Raises
         ------
         ValueError
             If faces array does not have exactly 3 columns (not triangular).
             If faces array is empty.
             If faces array contains negative indices.
-        
+
         Examples
         --------
         >>> # Simple triangular mesh with 2 triangles sharing an edge
@@ -667,7 +680,7 @@ class Surface:
         [1 2]
         [1 3]
         [2 3]]
-        
+
         >>> # Get edge counts to identify boundary vs interior edges
         >>> edges, counts = get_edges(faces, return_counts=True)
         >>> boundary_edges = edges[counts == 1]
@@ -679,11 +692,11 @@ class Surface:
                         [1 3]
                         [2 3]]
         Interior edges: [[1 2]]
-        
+
         >>> # Cube mesh (8 vertices, 12 triangular faces)
         >>> cube_faces = np.array([
         ...     [0, 1, 2], [0, 2, 3],  # Bottom face
-        ...     [4, 5, 6], [4, 6, 7],  # Top face  
+        ...     [4, 5, 6], [4, 6, 7],  # Top face
         ...     [0, 1, 5], [0, 5, 4],  # Front face
         ...     [2, 3, 7], [2, 7, 6],  # Back face
         ...     [0, 3, 7], [0, 7, 4],  # Left face
@@ -692,26 +705,26 @@ class Surface:
         >>> edges = get_edges(cube_faces)
         >>> print(f"Cube has {len(edges)} unique edges")
         Cube has 18 unique edges
-        
+
         Notes
         -----
-        This function uses vectorized NumPy operations for high performance on 
+        This function uses vectorized NumPy operations for high performance on
         large meshes. The algorithm:
-        
+
         1. Extracts all three edges from each triangle simultaneously
         2. Sorts vertex pairs to canonical form (smaller index first)
         3. Uses numpy.unique to efficiently remove duplicates
-        
+
         Time complexity: O(n log n) where n is the number of faces
         Space complexity: O(n) for intermediate arrays
-        
-        For non-triangular meshes, use the general `extract_edges_from_faces` 
+
+        For non-triangular meshes, use the general `extract_edges_from_faces`
         function instead.
-        
+
         The canonical edge representation ensures that edge (i, j) and edge (j, i)
         are treated as the same edge, with the final representation always having
         the smaller vertex index first.
-        
+
         See Also
         --------
         extract_edges_from_faces : General version for arbitrary polygon meshes
@@ -719,33 +732,42 @@ class Surface:
         """
 
         # Getting the faces array from the mesh
-        faces = self.mesh.faces[:, 1:4]  # Extract only the vertex indices, skip the first column
+        faces = self.mesh.faces[
+            :, 1:4
+        ]  # Extract only the vertex indices, skip the first column
 
         # Input validation
         if faces.size == 0:
             raise ValueError("Faces array cannot be empty")
-            
+
         if faces.ndim != 2 or faces.shape[1] != 3:
-            raise ValueError(f"Faces array must have shape (n_faces, 3), got {faces.shape}")
-            
+            raise ValueError(
+                f"Faces array must have shape (n_faces, 3), got {faces.shape}"
+            )
+
         if np.any(faces < 0):
             raise ValueError("Faces array cannot contain negative vertex indices")
-        
+
         # Extract all edges from all triangles using vectorized operations
         # Each triangle contributes 3 edges: (v0,v1), (v1,v2), (v2,v0)
-        all_edges = np.concatenate([
-            faces[:, [0, 1]],  # Edge from vertex 0 to vertex 1
-            faces[:, [1, 2]],  # Edge from vertex 1 to vertex 2  
-            faces[:, [2, 0]]   # Edge from vertex 2 to vertex 0
-        ], axis=0)
-        
+        all_edges = np.concatenate(
+            [
+                faces[:, [0, 1]],  # Edge from vertex 0 to vertex 1
+                faces[:, [1, 2]],  # Edge from vertex 1 to vertex 2
+                faces[:, [2, 0]],  # Edge from vertex 2 to vertex 0
+            ],
+            axis=0,
+        )
+
         # Sort each edge to canonical form (smaller vertex index first)
         # This ensures (i,j) and (j,i) are treated as the same edge
         canonical_edges = np.sort(all_edges, axis=1)
-        
+
         # Remove duplicate edges and optionally count occurrences
         if return_counts:
-            unique_edges, counts = np.unique(canonical_edges, axis=0, return_counts=True)
+            unique_edges, counts = np.unique(
+                canonical_edges, axis=0, return_counts=True
+            )
             return unique_edges, counts
         else:
             unique_edges = np.unique(canonical_edges, axis=0)
@@ -755,20 +777,20 @@ class Surface:
     def get_boundary_edges(self) -> np.ndarray:
         """
         Extract only the boundary edges from a triangular mesh.
-        
+
         Boundary edges are those that belong to only one triangle, indicating
         the mesh boundary or holes in the mesh.
-        
+
         Parameters
         ----------
         faces : np.ndarray of shape (n_faces, 3)
             Triangular mesh faces array.
-            
+
         Returns
         -------
         boundary_edges : np.ndarray of shape (n_boundary_edges, 2)
             Array of boundary edges where each edge belongs to only one face.
-            
+
         Examples
         --------
         >>> # Mesh with a hole (incomplete sphere)
@@ -777,9 +799,10 @@ class Surface:
         >>> print("Boundary edges:", boundary)
         """
 
-
         # Getting the faces array from the mesh
-        faces = self.mesh.faces[:, 1:4]  # Extract only the vertex indices, skip the first column
+        faces = self.mesh.faces[
+            :, 1:4
+        ]  # Extract only the vertex indices, skip the first column
 
         edges, counts = self.get_edges(faces, return_counts=True)
         return edges[counts == 1]
@@ -788,20 +811,20 @@ class Surface:
     def get_manifold_edges(self) -> np.ndarray:
         """
         Extract only the manifold (interior) edges from a triangular mesh.
-        
+
         Manifold edges are those shared by exactly two triangles, indicating
         proper mesh topology without boundaries or non-manifold geometry.
-        
+
         Parameters
         ----------
         faces : np.ndarray of shape (n_faces, 3)
             Triangular mesh faces array.
-            
+
         Returns
         -------
         manifold_edges : np.ndarray of shape (n_manifold_edges, 2)
             Array of manifold edges where each edge belongs to exactly two faces.
-            
+
         Examples
         --------
         >>> # Closed mesh (tetrahedron)
@@ -812,10 +835,8 @@ class Surface:
         # Getting the faces array from the mesh
         faces = self.mesh.faces[:, 1:4]  # Extract only the vertex indices
 
-
         edges, counts = self.get_edges(faces, return_counts=True)
         return edges[counts == 2]
-
 
     ##############################################################################################
     def compute_normals(self) -> None:
@@ -983,7 +1004,7 @@ class Surface:
 
         # Store the parcellation data
         tmp_colors = reg_ctable[:, :3]
-        
+
         reg_ctable[:, :3] = reg_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # If all the opacity values are 0 set them to 1
@@ -1038,7 +1059,6 @@ class Surface:
             "color_table": reg_ctable,
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
-
 
     ##############################################################################################
     def _get_parcellation_data(
@@ -1847,7 +1867,7 @@ class Surface:
         Notes
         -----
         This method sets the vertices colors based on the specified overlay.
-        
+
 
         Examples
         --------
@@ -1880,7 +1900,7 @@ class Surface:
         # if colortables is an attribute of the class, use it
         if hasattr(self, "colortables"):
             dict_ctables = self.colortables
-            
+
             # Check if the overlay is on the colortables
             if overlay_name in dict_ctables.keys():
                 # Use the colortable associated with the parcellation

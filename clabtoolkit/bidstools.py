@@ -262,6 +262,7 @@ def replace_entity_value(
 
     return entity_out
 
+
 ####################################################################################################
 def replace_entity_key(
     entity: Union[dict, str], keys2replace: Dict[str, str], verbose: bool = False
@@ -321,6 +322,7 @@ def replace_entity_key(
         return entity2str(entity_out)
 
     return entity_out
+
 
 ####################################################################################################
 def insert_entity(
@@ -413,6 +415,7 @@ def insert_entity(
             return entity2str(ent_out)
 
         return ent_out
+
 
 ####################################################################################################
 def recursively_replace_entity_value(

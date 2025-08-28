@@ -767,7 +767,7 @@ def resample_streamlines(
     for i, streamline in enumerate(in_streamlines):
         if not isinstance(streamline, np.ndarray):
             raise ValueError(f"Streamline {i} is not a valid numpy array.")
-        
+
         if streamline.ndim != 2 or streamline.shape[1] != 3:
             raise ValueError(
                 f"Streamline {i} must be a 2D array with shape (n_points, 3)."
@@ -1672,7 +1672,7 @@ def explore_trk(filepath: str, max_streamline_samples: int = 5) -> str:
     ------
     FileNotFoundError
         If the specified TRK file does not exist.
-        
+
     ValueError
         If the TRK file is not in the expected format or does not contain streamlines.
 
