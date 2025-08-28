@@ -9,7 +9,6 @@ import copy
 
 # Importing local modules
 from . import freesurfertools as cltfree
-from . import visualizationtools as cltvis
 from . import misctools as cltmisc
 
 
