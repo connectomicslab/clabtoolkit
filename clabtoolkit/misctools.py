@@ -18,6 +18,9 @@ import json
 import pandas as pd
 import inspect
 import types
+import importlib
+from IPython.display import HTML, display
+from IPython import get_ipython
 
 from pathlib import Path
 from colorama import init, Fore, Style, Back
@@ -3542,16 +3545,131 @@ def generate_container_command(
 ####################################################################################################
 
 
-def format_signature(sig: inspect.Signature):
-    """
-    Formats a function signature with ANSI colors.
+# def format_signature(sig: inspect.Signature):
+#     """
+#     Formats a function signature with ANSI colors.
 
+#     """
+#     parts = [f"{bcolors.OKWHITE}({bcolors.ENDC}"]
+#     params = list(sig.parameters.values())
+#     for i, p in enumerate(params):
+#         param_str = f"{bcolors.DARKCYAN}{p.name}{bcolors.ENDC}"
+
+#         if p.annotation != inspect.Parameter.empty:
+#             annotation = (
+#                 p.annotation.__name__
+#                 if hasattr(p.annotation, "__name__")
+#                 else str(p.annotation)
+#             )
+#             param_str += f": {bcolors.OKPURPLE}{annotation}{bcolors.ENDC}"
+
+#         if p.default != inspect.Parameter.empty:
+#             param_str += f"{bcolors.OKGRAY} = {repr(p.default)}{bcolors.ENDC}"
+
+#         parts.append(param_str)
+#         if i < len(params) - 1:
+#             parts.append(f"{bcolors.OKWHITE}, {bcolors.ENDC}")
+#     parts.append(f"{bcolors.OKWHITE}){bcolors.ENDC}")
+#     return "".join(parts)
+
+#######
+#######
+
+
+def is_notebook():
+    """
+    Check if code is running in a Jupyter notebook environment.
+
+    Returns
+    -------
+    bool
+        True if running in Jupyter notebook, False if in terminal or other environment
+
+    Notes
+    -----
+    Uses IPython's get_ipython() to detect the shell type:
+    - 'ZMQInteractiveShell' indicates Jupyter notebook or qtconsole
+    - 'TerminalInteractiveShell' indicates IPython terminal
+    - Other types or exceptions indicate standard Python interpreter
+    """
+    try:
+        shell = get_ipython().__class__.__name__
+        if shell == "ZMQInteractiveShell":
+            return True  # Jupyter notebook or qtconsole
+        elif shell == "TerminalInteractiveShell":
+            return False  # Terminal running IPython
+        else:
+            return False  # Other type (?)
+    except (NameError, AttributeError):
+        return False  # Probably standard Python interpreter
+
+
+#####################################################################################################
+def format_signature(sig: inspect.Signature, notebook_mode=False):
+    """
+    Format a function signature with colors appropriate for the environment.
+
+    Parameters
+    ----------
+    sig : inspect.Signature
+        The function signature object to format
+    notebook_mode : bool, optional
+        If True, format with HTML styling for notebooks.
+        If False, format with ANSI color codes for terminal, by default False
+
+    Returns
+    -------
+    str
+        Formatted signature string with appropriate styling
+
+    Examples
+    --------
+    >>> import inspect
+    >>> def example_func(name: str, age: int = 25): pass
+    >>> sig = inspect.signature(example_func)
+    >>> format_signature(sig, notebook_mode=False)
+    '(name: str, age = 25)'  # With ANSI colors in terminal
+
+    Notes
+    -----
+    - Parameter names are colored in cyan/blue
+    - Type annotations are colored in purple
+    - Default values are colored in gray
+    - Automatically handles different annotation types and missing defaults
+    """
+    if notebook_mode:
+        return _format_signature_html(sig)
+    else:
+        return _format_signature_ansi(sig)
+
+
+#####################################################################################################
+def _format_signature_ansi(sig: inspect.Signature):
+    """
+    Format a function signature with ANSI color codes for terminal display.
+
+    Parameters
+    ----------
+    sig : inspect.Signature
+        The function signature object to format
+
+    Returns
+    -------
+    str
+        Signature string with ANSI color codes using bcolors class
+
+    Notes
+    -----
+    Uses the bcolors class for consistent terminal coloring:
+    - DARKCYAN for parameter names
+    - OKPURPLE for type annotations
+    - OKGRAY for default values
+    - OKWHITE for punctuation (parentheses, commas)
     """
     parts = [f"{bcolors.OKWHITE}({bcolors.ENDC}"]
     params = list(sig.parameters.values())
     for i, p in enumerate(params):
         param_str = f"{bcolors.DARKCYAN}{p.name}{bcolors.ENDC}"
-
         if p.annotation != inspect.Parameter.empty:
             annotation = (
                 p.annotation.__name__
@@ -3559,10 +3677,8 @@ def format_signature(sig: inspect.Signature):
                 else str(p.annotation)
             )
             param_str += f": {bcolors.OKPURPLE}{annotation}{bcolors.ENDC}"
-
         if p.default != inspect.Parameter.empty:
             param_str += f"{bcolors.OKGRAY} = {repr(p.default)}{bcolors.ENDC}"
-
         parts.append(param_str)
         if i < len(params) - 1:
             parts.append(f"{bcolors.OKWHITE}, {bcolors.ENDC}")
@@ -3570,79 +3686,467 @@ def format_signature(sig: inspect.Signature):
     return "".join(parts)
 
 
-####################################################################################################
-def show_module_contents(module):
+######################################################################################################
+def _format_signature_html(sig: inspect.Signature):
     """
-    Displays all classes and functions in a given module with colored formatting.
-    Accepts a module object or module name (str).
+    Format a function signature with HTML styling for Jupyter notebook display.
+
+    Parameters
+    ----------
+    sig : inspect.Signature
+        The function signature object to format
+
+    Returns
+    -------
+    str
+        Signature string with inline HTML styling
+
+    Notes
+    -----
+    Uses inline CSS styles for notebook compatibility:
+    - Cyan blue (#36a3d9) for parameter names
+    - Purple (#9d4edd) for type annotations
+    - Gray (#95a5a6) for default values
+    - Light gray (#97a3b3) for punctuation
     """
-    if isinstance(module, str):
-        try:
-            module = sys.modules.get(module) or __import__(module)
-        except ImportError:
-            print(
-                f"{bcolors.FAIL}Module '{module}' could not be imported.{bcolors.ENDC}"
+    parts = ['<span style="color: #97a3b3;">(</span>']
+    params = list(sig.parameters.values())
+    for i, p in enumerate(params):
+        param_str = f'<span style="color: #36a3d9;">{p.name}</span>'
+        if p.annotation != inspect.Parameter.empty:
+            annotation = (
+                p.annotation.__name__
+                if hasattr(p.annotation, "__name__")
+                else str(p.annotation)
             )
+            param_str += f': <span style="color: #9d4edd;">{annotation}</span>'
+        if p.default != inspect.Parameter.empty:
+            param_str += f'<span style="color: #95a5a6;"> = {repr(p.default)}</span>'
+        parts.append(param_str)
+        if i < len(params) - 1:
+            parts.append('<span style="color: #97a3b3;">, </span>')
+    parts.append('<span style="color: #97a3b3;">)</span>')
+    return "".join(parts)
+
+
+######################################################################################################
+def show_module_contents(module, show_private=False, show_inherited=True):
+    """
+    Display all classes and functions in a given module with colored formatting.
+
+    Works in both Jupyter notebooks and terminal environments, automatically
+    detecting the environment and using appropriate styling (ANSI colors for
+    terminal, HTML for notebooks).
+
+    Parameters
+    ----------
+    module : module object or str
+        A module object or module name (str) to inspect
+    show_private : bool, optional
+        Whether to show private members (names starting with _), by default False
+    show_inherited : bool, optional
+        Whether to show inherited methods in classes, by default True
+
+    Returns
+    -------
+    None
+        Displays the module contents directly (prints to terminal or renders HTML)
+
+    Examples
+    --------
+    >>> show_module_contents('json')
+    📦 Contents of module 'json':
+    ...
+
+    >>> import math
+    >>> show_module_contents(math, show_private=True)
+    📦 Contents of module 'math':
+    ...
+
+    >>> show_module_contents('pathlib', show_inherited=False)
+    📦 Contents of module 'pathlib':
+    ...
+
+    Notes
+    -----
+    - Automatically detects Jupyter notebook vs terminal environment
+    - Shows function signatures with type annotations and default values
+    - Displays class methods and docstrings
+    - Only shows members defined in the target module (not imported)
+    """
+    notebook_mode = is_notebook()
+
+    # Handle module input
+    if isinstance(module, str):
+        module_name = module
+        try:
+            module = sys.modules.get(module)
+            if module is None:
+                module = importlib.import_module(module_name)
+        except ImportError as e:
+            error_msg = f"Module '{module_name}' could not be imported: {e}"
+            if notebook_mode:
+                display(
+                    HTML(
+                        f'<span style="color: #e74c3c; font-weight: bold;">{error_msg}</span>'
+                    )
+                )
+            else:
+                print(f"{bcolors.FAIL}{error_msg}{bcolors.ENDC}")
+            return
+        except Exception as e:
+            error_msg = f"Error importing module '{module_name}': {e}"
+            if notebook_mode:
+                display(
+                    HTML(
+                        f'<span style="color: #e74c3c; font-weight: bold;">{error_msg}</span>'
+                    )
+                )
+            else:
+                print(f"{bcolors.FAIL}{error_msg}{bcolors.ENDC}")
             return
     elif not isinstance(module, types.ModuleType):
-        print(
-            f"{bcolors.FAIL}Invalid input: must be a module object or module name string.{bcolors.ENDC}"
-        )
+        error_msg = "Invalid input: must be a module object or module name string."
+        if notebook_mode:
+            display(
+                HTML(
+                    f'<span style="color: #e74c3c; font-weight: bold;">{error_msg}</span>'
+                )
+            )
+        else:
+            print(f"{bcolors.FAIL}{error_msg}{bcolors.ENDC}")
         return
 
+    # Helper function to filter private members
+    def should_show(name):
+        return show_private or not name.startswith("_")
+
+    # Get all members
+    all_classes = []
+    all_functions = []
+
+    for name in sorted(dir(module)):
+        if not should_show(name):
+            continue
+
+        try:
+            obj = getattr(module, name)
+            if inspect.isclass(obj) and obj.__module__ == module.__name__:
+                all_classes.append((name, obj))
+            elif inspect.isfunction(obj) and obj.__module__ == module.__name__:
+                all_functions.append((name, obj))
+        except Exception:
+            continue
+
+    # Build output based on environment
+    if notebook_mode:
+        _display_notebook_output(module, all_classes, all_functions, show_inherited)
+    else:
+        _display_terminal_output(module, all_classes, all_functions, show_inherited)
+
+
+##
+def _display_notebook_output(module, all_classes, all_functions, show_inherited=True):
+    """
+    Display formatted module contents for Jupyter notebooks using HTML.
+
+    Parameters
+    ----------
+    module : module object
+        The module whose contents to display
+    all_classes : list of tuple
+        List of (name, class_object) tuples for classes in the module
+    all_functions : list of tuple
+        List of (name, function_object) tuples for functions in the module
+    show_inherited : bool, optional
+        Whether to show inherited methods in classes, by default True
+
+    Notes
+    -----
+    Uses IPython.display.HTML to render formatted content with:
+    - Styled headers and sections
+    - Color-coded class and function names
+    - Formatted signatures with type annotations
+    - Docstring previews
+    - Clean visual separators
+    """
+    html = f"""
+    <div style="font-family: 'Courier New', monospace; line-height: 1.6;">
+        <h3 style="color: #9d4edd; margin-bottom: 5px;">📦 Contents of module '{module.__name__}'</h3>
+    """
+
+    if hasattr(module, "__file__") and module.__file__:
+        html += f'<p style="color: #95a5a6; font-size: 0.9em; margin: 0;">Path: {module.__file__}</p>'
+
+    html += "<br>"
+
+    # Classes section
+    if all_classes:
+        html += f'<h4 style="color: #3498db; margin-bottom: 10px;">📘 Classes ({len(all_classes)}):</h4>'
+
+        for name, cls in all_classes:
+            html += f'<div style="margin-left: 20px; margin-bottom: 15px;">'
+            html += f'<strong style="color: #3498db;">{name}</strong><br>'
+
+            # Class docstring
+            doc = inspect.getdoc(cls)
+            if doc:
+                first_line = doc.split("\n")[0]
+                html += f'<span style="color: #95a5a6; font-style: italic;">    # {first_line}</span><br>'
+
+            # Methods
+            methods = []
+            for method_name, method in inspect.getmembers(
+                cls, predicate=inspect.ismethod
+            ):
+                if show_inherited or method.__qualname__.startswith(cls.__name__ + "."):
+                    if not method_name.startswith("_"):
+                        methods.append((method_name, method))
+
+            for method_name, method in inspect.getmembers(
+                cls, predicate=inspect.isfunction
+            ):
+                if show_inherited or method.__qualname__.startswith(cls.__name__ + "."):
+                    if not method_name.startswith("_"):
+                        methods.append((method_name, method))
+
+            if methods:
+                for method_name, method in sorted(methods):
+                    try:
+                        sig = inspect.signature(method)
+                        formatted_sig = format_signature(sig, notebook_mode=True)
+                        html += f'<span style="color: #f39c12; margin-left: 20px;">• {method_name}</span>{formatted_sig}<br>'
+
+                        method_doc = inspect.getdoc(method)
+                        if method_doc:
+                            first_line = method_doc.split("\n")[0]
+                            html += f'<span style="color: #95a5a6; font-style: italic; margin-left: 40px;">      # {first_line}</span><br>'
+                    except Exception:
+                        html += f'<span style="color: #f39c12; margin-left: 20px;">• {method_name}</span> (signature unavailable)<br>'
+
+            html += '<div style="border-bottom: 1px solid #ecf0f1; margin: 10px 0; width: 60%;"></div>'
+            html += "</div>"
+
+    # Functions section
+    if all_functions:
+        html += f'<h4 style="color: #27ae60; margin-bottom: 10px;">🔧 Functions ({len(all_functions)}):</h4>'
+
+        for name, func in all_functions:
+            try:
+                sig = inspect.signature(func)
+                formatted_sig = format_signature(sig, notebook_mode=True)
+                html += f'<div style="margin-left: 20px; margin-bottom: 8px;">'
+                html += f'<span style="color: #27ae60; font-weight: bold;">{name}</span>{formatted_sig}<br>'
+
+                doc = inspect.getdoc(func)
+                if doc:
+                    first_line = doc.split("\n")[0]
+                    html += f'<span style="color: #95a5a6; font-style: italic; margin-left: 20px;">    # {first_line}</span>'
+                html += "</div>"
+            except Exception:
+                html += f'<div style="margin-left: 20px;"><span style="color: #27ae60;">{name}</span> (signature unavailable)</div>'
+
+    # Summary
+    total_items = len(all_classes) + len(all_functions)
+    if total_items == 0:
+        html += '<p style="color: #f39c12;">No public classes or functions found in this module.</p>'
+    else:
+        html += f'<p style="color: #2c3e50; font-weight: bold; margin-top: 20px;">Total: {len(all_classes)} classes, {len(all_functions)} functions</p>'
+
+    html += "</div>"
+    display(HTML(html))
+
+
+#######################################################################################################
+def _display_terminal_output(module, all_classes, all_functions, show_inherited=True):
+    """
+    Display formatted module contents for terminal using ANSI color codes.
+
+    Parameters
+    ----------
+    module : module object
+        The module whose contents to display
+    all_classes : list of tuple
+        List of (name, class_object) tuples for classes in the module
+    all_functions : list of tuple
+        List of (name, function_object) tuples for functions in the module
+    show_inherited : bool, optional
+        Whether to show inherited methods in classes, by default True
+
+    Notes
+    -----
+    Uses bcolors class for consistent terminal coloring:
+    - Headers in bold with color highlighting
+    - Class names in blue, function names in yellow
+    - Method signatures with color-coded parameters
+    - Gray italic text for docstring previews
+    - Visual separators using Unicode characters
+    """
     print(
         f"{bcolors.HEADER}{bcolors.BOLD}📦 Contents of module '{module.__name__}':{bcolors.ENDC}\n"
     )
 
-    # Classes
-    print(f"{bcolors.OKBLUE}{bcolors.BOLD}📘 Classes:{bcolors.ENDC}")
-    for name in sorted(dir(module)):
-        try:
-            obj = getattr(module, name)
-            if inspect.isclass(obj) and obj.__module__ == module.__name__:
-                print(f"  {bcolors.OKBLUE}- {name}{bcolors.ENDC}")
+    if hasattr(module, "__file__") and module.__file__:
+        print(f"{bcolors.OKGRAY}   Path: {module.__file__}{bcolors.ENDC}\n")
 
-                doc = inspect.getdoc(obj)
-                if doc:
-                    first_line = doc.split("\n")[0]
-                    print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+    # Classes section
+    if all_classes:
+        print(
+            f"{bcolors.OKBLUE}{bcolors.BOLD}📘 Classes ({len(all_classes)}):{bcolors.ENDC}"
+        )
 
-                for method_name, method in inspect.getmembers(
-                    obj, predicate=inspect.isfunction
-                ):
-                    if (
-                        method.__module__ == module.__name__
-                        and method.__qualname__.startswith(obj.__name__ + ".")
-                    ):
+        for name, cls in all_classes:
+            print(f"  {bcolors.OKBLUE}{bcolors.BOLD}{name}{bcolors.ENDC}")
+
+            # Class docstring
+            doc = inspect.getdoc(cls)
+            if doc:
+                first_line = doc.split("\n")[0]
+                print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+
+            # Methods
+            methods = []
+            for method_name, method in inspect.getmembers(
+                cls, predicate=inspect.ismethod
+            ):
+                if show_inherited or method.__qualname__.startswith(cls.__name__ + "."):
+                    if not method_name.startswith("_"):
+                        methods.append((method_name, method))
+
+            for method_name, method in inspect.getmembers(
+                cls, predicate=inspect.isfunction
+            ):
+                if show_inherited or method.__qualname__.startswith(cls.__name__ + "."):
+                    if not method_name.startswith("_"):
+                        methods.append((method_name, method))
+
+            if methods:
+                for method_name, method in sorted(methods):
+                    try:
                         sig = inspect.signature(method)
-                        formatted_sig = format_signature(sig)
+                        formatted_sig = format_signature(sig, notebook_mode=False)
                         print(
                             f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}"
                         )
-                        method_doc = inspect.getdoc(method)
 
+                        method_doc = inspect.getdoc(method)
                         if method_doc:
                             first_line = method_doc.split("\n")[0]
                             print(f"      {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+                    except Exception:
+                        print(
+                            f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC} (signature unavailable)"
+                        )
 
-                print(f"    {bcolors.OKWHITE}{'─'*60}{bcolors.ENDC}\n")
-        except Exception:
-            continue
+            print(f"    {bcolors.OKWHITE}{'─' * 60}{bcolors.ENDC}\n")
 
-    # Functions
-    print(f"\n{bcolors.OKGREEN}{bcolors.BOLD}🔧 Functions:{bcolors.ENDC}")
-    for name in sorted(dir(module)):
-        try:
-            obj = getattr(module, name)
-            if inspect.isfunction(obj) and obj.__module__ == module.__name__:
-                sig = inspect.signature(obj)
-                formatted_sig = format_signature(sig)
-                print(f"  {bcolors.OKYELLOW}- {name}{bcolors.ENDC}{formatted_sig}")
-                doc = inspect.getdoc(obj)
+    # Functions section
+    if all_functions:
+        print(
+            f"\n{bcolors.OKGREEN}{bcolors.BOLD}🔧 Functions ({len(all_functions)}):{bcolors.ENDC}"
+        )
+
+        for name, func in all_functions:
+            try:
+                sig = inspect.signature(func)
+                formatted_sig = format_signature(sig, notebook_mode=False)
+                print(f"  {bcolors.OKYELLOW}{name}{bcolors.ENDC}{formatted_sig}")
+
+                doc = inspect.getdoc(func)
                 if doc:
-                    print(f"    {bcolors.OKGRAY}# {doc.splitlines()[0]}{bcolors.ENDC}")
-        except Exception:
-            continue
+                    first_line = doc.split("\n")[0]
+                    print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+            except Exception:
+                print(
+                    f"  {bcolors.OKYELLOW}{name}{bcolors.ENDC} (signature unavailable)"
+                )
+        print()
+
+    # Summary
+    total_items = len(all_classes) + len(all_functions)
+    if total_items == 0:
+        print(
+            f"{bcolors.WARNING}No public classes or functions found in this module.{bcolors.ENDC}"
+        )
+    else:
+        print(
+            f"{bcolors.OKWHITE}Total: {len(all_classes)} classes, {len(all_functions)} functions{bcolors.ENDC}"
+        )
+
+
+# ####################################################################################################
+# def show_module_contents(module):
+#     """
+#     Displays all classes and functions in a given module with colored formatting.
+#     Accepts a module object or module name (str).
+#     """
+#     if isinstance(module, str):
+#         try:
+#             module = sys.modules.get(module) or __import__(module)
+#         except ImportError:
+#             print(
+#                 f"{bcolors.FAIL}Module '{module}' could not be imported.{bcolors.ENDC}"
+#             )
+#             return
+#     elif not isinstance(module, types.ModuleType):
+#         print(
+#             f"{bcolors.FAIL}Invalid input: must be a module object or module name string.{bcolors.ENDC}"
+#         )
+#         return
+
+#     print(
+#         f"{bcolors.HEADER}{bcolors.BOLD}📦 Contents of module '{module.__name__}':{bcolors.ENDC}\n"
+#     )
+
+#     # Classes
+#     print(f"{bcolors.OKBLUE}{bcolors.BOLD}📘 Classes:{bcolors.ENDC}")
+#     for name in sorted(dir(module)):
+#         try:
+#             obj = getattr(module, name)
+#             if inspect.isclass(obj) and obj.__module__ == module.__name__:
+#                 print(f"  {bcolors.OKBLUE}- {name}{bcolors.ENDC}")
+
+#                 doc = inspect.getdoc(obj)
+#                 if doc:
+#                     first_line = doc.split("\n")[0]
+#                     print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+
+#                 for method_name, method in inspect.getmembers(
+#                     obj, predicate=inspect.isfunction
+#                 ):
+#                     if (
+#                         method.__module__ == module.__name__
+#                         and method.__qualname__.startswith(obj.__name__ + ".")
+#                     ):
+#                         sig = inspect.signature(method)
+#                         formatted_sig = format_signature(sig)
+#                         print(
+#                             f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}"
+#                         )
+#                         method_doc = inspect.getdoc(method)
+
+#                         if method_doc:
+#                             first_line = method_doc.split("\n")[0]
+#                             print(f"      {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+
+#                 print(f"    {bcolors.OKWHITE}{'─'*60}{bcolors.ENDC}\n")
+#         except Exception:
+#             continue
+
+#     # Functions
+#     print(f"\n{bcolors.OKGREEN}{bcolors.BOLD}🔧 Functions:{bcolors.ENDC}")
+#     for name in sorted(dir(module)):
+#         try:
+#             obj = getattr(module, name)
+#             if inspect.isfunction(obj) and obj.__module__ == module.__name__:
+#                 sig = inspect.signature(obj)
+#                 formatted_sig = format_signature(sig)
+#                 print(f"  {bcolors.OKYELLOW}- {name}{bcolors.ENDC}{formatted_sig}")
+#                 doc = inspect.getdoc(obj)
+#                 if doc:
+#                     print(f"    {bcolors.OKGRAY}# {doc.splitlines()[0]}{bcolors.ENDC}")
+#         except Exception:
+#             continue
 
 
 ####################################################################################################
