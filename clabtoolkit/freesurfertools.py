@@ -3,7 +3,7 @@ import time
 import subprocess
 import sys
 from glob import glob
-from typing import Union
+from typing import List, Union
 from pathlib import Path
 from datetime import datetime
 import warnings
