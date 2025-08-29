@@ -4491,29 +4491,294 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
         raise
 
 
-#####################################################################################################
+######################################################################################################
 def show_object_content(obj, show_private=False, show_dunder=False):
     """
-    Print object properties and methods with ANSI colors, similar to inspect.help().
+    Inspect and display object properties and methods with colored formatting.
+
+    Provides a comprehensive view of any Python object similar to inspect.help(),
+    but with colored formatting for better readability. Works in both Jupyter
+    notebooks and terminal environments, automatically detecting the environment
+    and using appropriate styling.
 
     Parameters
-        obj: The object to inspect
-        show_private (bool): Whether to show private methods/attributes (starting with _)
-        show_dunder (bool): Whether to show dunder methods (starting with __)
+    ----------
+    obj : object
+        The object to inspect (class, instance, function, module, etc.)
+
+    show_private : bool, optional
+        Whether to show private methods/attributes (starting with single _),
+        by default False
+
+    show_dunder : bool, optional
+        Whether to show dunder/magic methods (starting and ending with __),
+        by default False
 
     Returns
-        None: Prints the colorized help information to stdout
+    -------
+    None
+        Displays the inspection information (prints to terminal or renders HTML)
 
     Examples
-        >>> show_object_content(str)
-        >>> show_object_content(my_object, show_private=True)
-        >>> show_object_content(MyClass, show_dunder=True)
+    --------
+    >>> show_object_content(str)
+    ═══════════════════════════════════════════════════════════
+    🔍 OBJECT INSPECTOR
+    ═══════════════════════════════════════════════════════════
+    📦 Object: str
+    🏷️  Type: type
+    📁 Module: builtins
+    ...
+
+    >>> class MyClass:
+    ...     def method(self): pass
+    >>> show_object_content(MyClass(), show_private=True)
+    # Shows private methods and attributes
+
+    >>> import json
+    >>> show_object_content(json.loads, show_dunder=True)
+    # Shows function details with dunder methods
+
+    Notes
+    -----
+    - Automatically detects Jupyter notebook vs terminal environment
+    - Uses ANSI color codes for terminal, HTML styling for notebooks
+    - Categorizes members into methods, properties, and attributes
+    - Shows method signatures with color-coded parameters
+    - Displays first line of docstrings for quick reference
+    - Includes Method Resolution Order (MRO) for class objects
+    - Truncates long attribute representations to 50 characters
+    - Works with any Python object: classes, instances, functions, modules
+
+    See Also
+    --------
+    show_module_contents : For inspecting entire modules
+    inspect.help : Built-in Python inspection function
     """
+    notebook_mode = is_notebook()
+
     # Get object info
     obj_type = type(obj)
     obj_name = getattr(obj, "__name__", str(obj))
     module_name = getattr(obj_type, "__module__", "unknown")
 
+    # Get all members and categorize them
+    members = inspect.getmembers(obj)
+    methods = []
+    properties = []
+    attributes = []
+
+    for name, value in members:
+        # Filter based on visibility preferences
+        if not show_dunder and name.startswith("__") and name.endswith("__"):
+            continue
+        if not show_private and name.startswith("_") and not name.startswith("__"):
+            continue
+
+        if inspect.ismethod(value) or inspect.isfunction(value):
+            methods.append((name, value))
+        elif inspect.isdatadescriptor(value) or isinstance(value, property):
+            properties.append((name, value))
+        else:
+            attributes.append((name, value))
+
+    # Build output based on environment
+    if notebook_mode:
+        _display_object_notebook_output(
+            obj, obj_type, obj_name, module_name, methods, properties, attributes
+        )
+    else:
+        _display_object_terminal_output(
+            obj, obj_type, obj_name, module_name, methods, properties, attributes
+        )
+
+########################################################################################################
+def _display_object_notebook_output(
+    obj, obj_type, obj_name, module_name, methods, properties, attributes
+):
+    """
+    Display formatted object inspection for Jupyter notebooks using HTML.
+
+    Parameters
+    ----------
+    obj : object
+        The object being inspected
+
+    obj_type : type
+        The type of the object
+
+    obj_name : str
+        Name of the object
+
+    module_name : str
+        Module where the object is defined
+
+    methods : list of tuple
+        List of (name, method_object) tuples for methods
+
+    properties : list of tuple
+        List of (name, property_object) tuples for properties
+
+    attributes : list of tuple
+        List of (name, attribute_value) tuples for attributes
+
+    Notes
+    -----
+    Uses IPython.display.HTML to render formatted content with styled sections
+    and color-coded information display.
+    """
+    html = f"""
+    <div style="font-family: 'Courier New', monospace; line-height: 1.6; border: 2px solid #9d4edd; padding: 20px; border-radius: 8px;">
+        <h2 style="color: #9d4edd; text-align: center; margin: 0; padding: 10px 0; border-bottom: 2px solid #9d4edd;">🔍 OBJECT INSPECTOR</h2>
+        
+        <div style="margin: 15px 0;">
+            <strong style="color: #36a3d9;">📦 Object:</strong> <span style="color: #2c3e50; font-weight: bold;">{obj_name}</span><br>
+            <strong style="color: #36a3d9;">🏷️ Type:</strong> <span style="color: #2c3e50; font-weight: bold;">{obj_type.__name__}</span><br>
+            <strong style="color: #36a3d9;">📁 Module:</strong> <span style="color: #2c3e50; font-weight: bold;">{module_name}</span>
+        </div>
+    """
+
+    # Object docstring
+    doc = inspect.getdoc(obj)
+    if doc:
+        html += f"""
+        <div style="margin: 15px 0;">
+            <h4 style="color: #27ae60; margin-bottom: 8px;">📝 Description:</h4>
+            <p style="color: #95a5a6; font-style: italic; margin-left: 20px; background: #f8f9fa; padding: 10px; border-radius: 4px;">{doc}</p>
+        </div>
+        """
+
+    # Methods section
+    if methods:
+        html += f"""
+        <div style="margin: 20px 0;">
+            <h4 style="color: #3498db; border-bottom: 2px solid #3498db; padding-bottom: 5px;">⚙️ METHODS ({len(methods)})</h4>
+        """
+
+        for name, method in sorted(methods):
+            html += f'<div style="margin: 10px 0; margin-left: 20px;">'
+
+            try:
+                sig = inspect.signature(method)
+                formatted_sig = format_signature(sig, notebook_mode=True)
+                html += f'<strong style="color: #f39c12;">🔧 {name}</strong>{formatted_sig}<br>'
+
+                # Method docstring
+                method_doc = inspect.getdoc(method)
+                if method_doc:
+                    first_line = method_doc.split("\n")[0]
+                    html += f'<span style="color: #95a5a6; font-style: italic; margin-left: 20px;">    {first_line}</span>'
+            except (ValueError, TypeError):
+                html += f'<strong style="color: #f39c12;">🔧 {name}</strong> <span style="color: #95a5a6;">(signature unavailable)</span>'
+
+            html += "</div>"
+
+        html += "</div>"
+
+    # Properties section
+    if properties:
+        html += f"""
+        <div style="margin: 20px 0;">
+            <h4 style="color: #9d4edd; border-bottom: 2px solid #9d4edd; padding-bottom: 5px;">🏠 PROPERTIES ({len(properties)})</h4>
+        """
+
+        for name, prop in sorted(properties):
+            html += f'<div style="margin: 10px 0; margin-left: 20px;">'
+            html += f'<strong style="color: #8e44ad;">🔑 {name}</strong><br>'
+
+            # Property docstring
+            prop_doc = inspect.getdoc(prop)
+            if prop_doc:
+                first_line = prop_doc.split("\n")[0]
+                html += f'<span style="color: #95a5a6; font-style: italic; margin-left: 20px;">    {first_line}</span>'
+
+            html += "</div>"
+
+        html += "</div>"
+
+    # Attributes section
+    if attributes:
+        html += f"""
+        <div style="margin: 20px 0;">
+            <h4 style="color: #1abc9c; border-bottom: 2px solid #1abc9c; padding-bottom: 5px;">📊 ATTRIBUTES ({len(attributes)})</h4>
+        """
+
+        for name, attr in sorted(attributes):
+            attr_type = type(attr).__name__
+            attr_repr = repr(attr)
+
+            # Truncate long representations
+            if len(attr_repr) > 50:
+                attr_repr = attr_repr[:47] + "..."
+
+            html += f"""
+            <div style="margin: 8px 0; margin-left: 20px;">
+                <strong style="color: #16a085;">📌 {name}</strong> 
+                <span style="color: #95a5a6;">({attr_type})</span>: 
+                <span style="color: #2c3e50; background: #f8f9fa; padding: 2px 6px; border-radius: 3px;">{attr_repr}</span>
+            </div>
+            """
+
+        html += "</div>"
+
+    # MRO (Method Resolution Order) for classes
+    if inspect.isclass(obj):
+        mro = inspect.getmro(obj)
+        if len(mro) > 1:
+            html += f"""
+            <div style="margin: 20px 0;">
+                <h4 style="color: #e67e22; border-bottom: 2px solid #e67e22; padding-bottom: 5px;">🏗️ METHOD RESOLUTION ORDER</h4>
+            """
+
+            for i, cls in enumerate(mro):
+                html += f"""
+                <div style="margin: 5px 0; margin-left: 20px;">
+                    <span style="color: #f39c12;">🔗 {i+1}.</span> 
+                    <strong style="color: #2c3e50;">{cls.__name__}</strong> 
+                    <span style="color: #95a5a6;">({cls.__module__})</span>
+                </div>
+                """
+
+            html += "</div>"
+
+    html += "</div>"
+    display(HTML(html))
+
+#########################################################################################################
+def _display_object_terminal_output(
+    obj, obj_type, obj_name, module_name, methods, properties, attributes
+):
+    """
+    Display formatted object inspection for terminal using ANSI color codes.
+
+    Parameters
+    ----------
+    obj : object
+        The object being inspected
+
+    obj_type : type
+        The type of the object
+
+    obj_name : str
+        Name of the object
+
+    module_name : str
+        Module where the object is defined
+
+    methods : list of tuple
+        List of (name, method_object) tuples for methods
+
+    properties : list of tuple
+        List of (name, property_object) tuples for properties
+
+    attributes : list of tuple
+        List of (name, attribute_value) tuples for attributes
+
+    Notes
+    -----
+    Uses bcolors class for consistent ANSI terminal coloring with styled
+    headers, colored sections, and formatted information display.
+    """
     # Print header
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
     print(f"{bcolors.BOLD}{bcolors.HEADER}✅ INSPECTION COMPLETE{bcolors.ENDC}")
@@ -4538,28 +4803,6 @@ def show_object_content(obj, show_private=False, show_dunder=False):
         print(f"\n{bcolors.BOLD}{bcolors.OKGREEN}📝 Description:{bcolors.ENDC}")
         print(f"{bcolors.ITALIC}{bcolors.OKGRAY}{doc}{bcolors.ENDC}")
 
-    # Get all members
-    members = inspect.getmembers(obj)
-
-    # Categorize members
-    methods = []
-    properties = []
-    attributes = []
-
-    for name, value in members:
-        # Filter based on visibility preferences
-        if not show_dunder and name.startswith("__") and name.endswith("__"):
-            continue
-        if not show_private and name.startswith("_") and not name.startswith("__"):
-            continue
-
-        if inspect.ismethod(value) or inspect.isfunction(value):
-            methods.append((name, value))
-        elif inspect.isdatadescriptor(value) or isinstance(value, property):
-            properties.append((name, value))
-        else:
-            attributes.append((name, value))
-
     # Print Methods
     if methods:
         print(
@@ -4568,8 +4811,9 @@ def show_object_content(obj, show_private=False, show_dunder=False):
         for name, method in sorted(methods):
             try:
                 sig = inspect.signature(method)
+                formatted_sig = format_signature(sig, notebook_mode=False)
                 print(
-                    f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{bcolors.OKWHITE}{sig}{bcolors.ENDC}"
+                    f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{formatted_sig}"
                 )
 
                 # Method docstring
