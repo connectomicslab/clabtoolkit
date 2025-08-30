@@ -1429,7 +1429,8 @@ class Parcellation:
                 )
 
                 surf_temp = cltsurf.Surface()
-                surf_temp.load_from_mesh(mesh, hemi="lh")
+                surf_temp.mesh = copy.deepcopy(mesh)
+                # surf_temp.load_from_mesh(mesh, hemi="lh")
                 surfaces_list.append(surf_temp)
                 # Update progress to show completion of this region
 
