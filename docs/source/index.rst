@@ -54,14 +54,20 @@ API Reference
    
    modules/bidstools
    modules/connectivitytools
+   modules/dicomtools
+   modules/dwitools
    modules/freesurfertools
    modules/imagetools
-   modules/parcellationtools
-   modules/surfacetools
-   modules/dwitools
-   modules/qcqatools
-   modules/visualizationtools
    modules/misctools
+   modules/morphometrytools
+   modules/networktools
+   modules/parcellationtools
+   modules/pipelinetools
+   modules/plottools
+   modules/qcqatools
+   modules/segmentationtools
+   modules/surfacetools
+   modules/visualizationtools
 
 Indices and tables
 ==================

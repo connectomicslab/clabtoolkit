@@ -57,6 +57,8 @@ intersphinx_mapping = {
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinx_rtd_theme'
+#html_theme = 'alabaster'  # Built-in theme, no extra install needed
+
 html_static_path = ['_static']
 
 html_theme_options = {
@@ -67,8 +69,8 @@ html_theme_options = {
     'prev_next_buttons_location': 'bottom',
     'style_external_links': False,
     'vcs_pageview_mode': '',
-    'style_nav_header_background': 'white',
-    'collapse_navigation': True,
+    'style_nav_header_background': '#2980B9',
+    'collapse_navigation': False,
     'sticky_navigation': True,
     'navigation_depth': 4,
     'includehidden': True,
