@@ -2525,8 +2525,10 @@ class Surface:
         ----------
         filename : str
             Output filename for annotation file (should end with .annot).
+
         parc_name : str
             Name of parcellation overlay to export from the surface data.
+            
         overwrite : bool, default False
             Whether to overwrite existing files.
 
@@ -2587,7 +2589,7 @@ class Surface:
 
             # Saving the annotation data in FreeSurfer format
             annot_obj = cltfree.AnnotParcellation()
-            annot_obj.create_from_data(maps_array, ctable, struct_names)
+            annot_obj.create_from_data(maps_array, ctable, struct_names, annot_id=parc_name)
             annot_obj.save_annotation(filename, force=overwrite)
         else:
             print(
@@ -2598,7 +2600,7 @@ class Surface:
     def plot(
         self,
         overlay_name: str = "surface",
-        cmap: str = None,
+        cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
         views: Union[str, List[str]] = ["lateral"],
