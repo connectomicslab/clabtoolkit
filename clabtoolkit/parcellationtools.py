@@ -2576,6 +2576,8 @@ class Parcellation:
         volume_table = cltmorpho.compute_reg_volume_fromparcellation(self)
         self.volumetable = volume_table
 
+        return volume_table
+
     ######################################################################################################
     @staticmethod
     def lut_to_fsllut(lut_file_fs: str, lut_file_fsl: str):
