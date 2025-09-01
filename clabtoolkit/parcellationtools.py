@@ -183,10 +183,13 @@ class Parcellation:
                 self.index = [int(x) for x in self.index]
                 self.name = cltmisc.create_names_from_indices(self.index)
 
-                # Generate the colors
-                self.color = cltmisc.create_random_colors(
-                    len(self.index), output_format="hex"
-                )
+                if len(self.index) > 0:
+                    # Generate the colors
+                    self.color = cltmisc.create_random_colors(
+                        len(self.index), output_format="hex"
+                    )
+                else:
+                    self.color = []
 
             # Adjust values to the ones present in the parcellation
 
