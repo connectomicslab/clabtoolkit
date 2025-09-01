@@ -1041,9 +1041,9 @@ class Parcellation:
                 "Xvox": x_coords,
                 "Yvox": y_coords,
                 "Zvox": z_coords,
-                "Xmin": x_coords_mm,
-                "Ymin": y_coords_mm,
-                "Zmin": z_coords_mm,
+                "Xmm": x_coords_mm,
+                "Ymm": y_coords_mm,
+                "Zmm": z_coords_mm,
                 "nvoxels": num_voxels,
                 "volume": volumes,
             }
