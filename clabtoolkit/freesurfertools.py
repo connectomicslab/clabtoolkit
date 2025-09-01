@@ -4655,7 +4655,7 @@ def create_fsaverage_links(
     if not os.path.isdir(fssubj_dir):
         raise ValueError("The selected FreeSurfer directory does not exist")
 
-    # Creating and veryfying the freesurfer directory for the reference name
+    # Creating and verifying the freesurfer directory for the reference name
     if fsavg_dir is None:
         if refsubj_name is None:
             fsavg_dir = os.path.join(
@@ -4682,13 +4682,27 @@ def create_fsaverage_links(
     # Create the link to the fsaverage folder
     link_folder = os.path.join(fssubj_dir, refsubj_name)
 
-    if not os.path.isdir(link_folder):
-        process = subprocess.run(
-            ["ln", "-s", fsavg_dir, fssubj_dir],
-            stdout=subprocess.PIPE,
-            universal_newlines=True,
-        )
-
+    if not os.path.exists(link_folder):  # Changed from os.path.isdir
+        try:
+            if sys.platform.startswith('win'):
+                # Windows implementation
+                subprocess.run(
+                    ["mklink", "/D", link_folder, fsavg_dir],
+                    check=True,
+                    shell=True
+                )
+            else:
+                # Unix/Linux implementation
+                subprocess.run(
+                    ["ln", "-s", fsavg_dir, link_folder],  # Fixed: specify exact target
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                )
+        except subprocess.CalledProcessError as e:
+            raise ValueError(f"Failed to create symbolic link: {e}")
+    
     return link_folder
 
 
