@@ -3475,7 +3475,18 @@ def smart_read_table(
 
     # Try pandas built-in separator auto-detection
     try:
-        df = pd.read_csv(file_path, sep=None, engine="python", **kwargs)
+        
+        # Read the table, take the column names, look on the BIDs columns names and then, read those columns as str)
+        tmp_bids = cltbids.entities4table()
+        bids_entities = list(tmp_bids.values())
+        df_tmp = pd.read_csv(file_path, sep=None, engine="python", **kwargs)
+        cols = df_tmp.columns.tolist()
+
+        if any(col in bids_entities for col in cols):
+            kwargs['dtype'] = {col: str for col in cols if col in bids_entities}
+
+        df = pd.read_csv(file_path, sep=None, dtype={'Run': str} , engine="python", **kwargs)
+
         return df
     except Exception:
         # If auto-detection fails, fall back to manual separator detection
