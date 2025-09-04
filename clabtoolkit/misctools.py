@@ -1040,6 +1040,156 @@ def create_random_colors(
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
+###################################################################################################
+def colortable_visualization(colortable:np.ndarray, 
+                            region_names: Union[str, List[str]], 
+                            columns:int = 2,
+                            export_path: str = None,
+                            title:str = "Color Table",
+                            alternating_bg: bool =False):
+    """
+    Color table visualization. Generates a PNG image displaying a FreeSurfer-style color table.
+    
+    Parameters
+    ----------
+    colortable : array-like, shape (N, 3), (N, 4), or (N, 5)
+        FreeSurfer color table: [R, G, B] or [R, G, B, Alpha] or [R, G, B, Alpha, Value]
+
+    region_names : list of str
+        Region names corresponding to each row.
+
+    columns : int, default=2
+        Number of columns in layout.
+
+    export_path : str, optional
+        Path to save PNG file.
+
+    title : str, default="FreeSurfer Color Table"
+        Title displayed at the top.
+
+    alternating_bg : bool, default=True
+        Whether to shade alternating rows for readability.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Matplotlib figure object.
+    
+    Raises
+    ------
+    ValueError
+        If colortable shape is invalid or region_names length mismatch.
+    TypeError
+        If region_names is not a string or a list of strings.
+
+    Examples
+    --------
+    >>> # Example usage
+    >>> colortable = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
+    >>> region_names = ["Region 1", "Region 2", "Region 3"]
+    >>> fig = colortable_visualization(colortable
+    ...     , region_names, columns=1, title="My Color Table")
+    >>> plt.show()
+
+
+    """
+
+    colortable = np.array(colortable, dtype=float)
+    n_regions = len(region_names)
+
+    # Validate colortable shape
+    if colortable.ndim != 2 or colortable.shape[1] not in [3, 4, 5]:
+        raise ValueError("colortable must be a 2D array with 3, 4, or 5 columns")
+    
+    if colortable.shape[0] != n_regions:
+        raise ValueError("Length of region_names must match number of rows in colortable")
+    
+    if not isinstance(region_names, (str, list)):
+        raise TypeError("region_names must be a string or a list of strings")
+    
+    if isinstance(region_names, str):
+        region_names = [region_names]
+
+    elif isinstance(region_names, list): # Validate all elements are strings
+        if not all(isinstance(name, str) for name in region_names):
+            raise TypeError("All elements in region_names list must be strings")
+
+    colors = colortable[:, 0:3]
+    colors = harmonize_colors(colors, output_format="rgb")
+    colortable[:, 0:3] = colors
+
+    # Layout
+    rows_per_col = int(np.ceil(n_regions / columns))
+    rect_width = 0.5
+    rect_height = 0.35
+    row_spacing = 0.5
+    col_spacing = 5.5
+
+    margin_left, margin_right, margin_top, margin_bottom = 0.5, 1.0, 1.2, 0.6
+    fig_width = margin_left + columns * col_spacing + margin_right
+    fig_height = margin_bottom + rows_per_col * (rect_height + row_spacing) + margin_top
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="white")
+    ax.set_xlim(0, fig_width)
+    ax.set_ylim(0, fig_height)
+    ax.axis("off")
+
+    # Title
+    ax.text(fig_width/2, fig_height - 0.5, title,
+            ha="center", va="center", fontsize=15, fontweight="bold")
+
+    # Draw rows
+    for i in range(n_regions):
+        col = i // rows_per_col
+        row = i % rows_per_col
+        x = margin_left + col * col_spacing
+        y = fig_height - margin_top - (row + 1) * (rect_height + row_spacing) + row_spacing
+
+        # Background shading for readability
+        if alternating_bg and row % 2 == 1:
+            ax.add_patch(patches.Rectangle(
+                (x-0.2, y-0.1), col_spacing-0.3, rect_height+0.2,
+                facecolor="#efecec", edgecolor="none", zorder=0))
+        elif alternating_bg and row % 2 == 0:
+            ax.add_patch(patches.Rectangle(
+                (x-0.2, y-0.1), col_spacing-0.3, rect_height+0.2,
+                facecolor="#c8c8c8", edgecolor="none", zorder=0))
+
+        # Get RGBA
+        r, g, b = colortable[i, 0:3] / 255.0
+        a = colortable[i, 3]/255.0 if colortable.shape[1] >= 4 else 1.0
+
+        # Color rectangle
+        ax.add_patch(patches.Rectangle(
+            (x, y), rect_width, rect_height,
+            facecolor=(r, g, b, a),
+            edgecolor="#444444", linewidth=0.8))
+
+        # Text
+        if colortable.shape[1] == 5:
+            value = int(colortable[i, 4])
+            rgb_label = f"#{value:02d} ({int(colortable[i,0])}, {int(colortable[i,1])}, {int(colortable[i,2])})"
+        else:
+            rgb_label = f"({int(colortable[i,0])}, {int(colortable[i,1])}, {int(colortable[i,2])})"
+
+        # Wrap long names if needed
+        name = textwrap.fill(region_names[i], width=30)
+        label = f"{rgb_label} {name}"
+
+        ax.text(x + rect_width + 0.2, y + rect_height/2,
+                label, ha="left", va="center",
+                fontsize=10, fontfamily="monospace")
+
+    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+    if export_path:
+        plt.savefig(export_path, dpi=300, bbox_inches="tight", 
+                    facecolor="white", pad_inches=0.15)
+        print(f"Saved: {export_path}")
+
+    return fig
+
 
 #####################################################################################################
 def get_colors_from_colortable(
