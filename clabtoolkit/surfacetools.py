@@ -2035,7 +2035,7 @@ class Surface:
             self.mesh.set_active_scalars("RGB")
 
     ##############################################################################################
-    def merge_surfaces(self, surfaces: List["Surface"]) -> "Surface":
+    def merge_surfaces(self, surfaces: Union["Surface", List["Surface"]]) -> "Surface":
         """
         Merge this surface with others into a single surface.
 
@@ -2076,7 +2076,7 @@ class Surface:
         """
 
         if not isinstance(surfaces, list):
-            raise TypeError("surfaces must be a list")
+            surfaces = [surfaces]
 
         if len(surfaces) == 0:
             raise ValueError("surfaces list cannot be empty")
