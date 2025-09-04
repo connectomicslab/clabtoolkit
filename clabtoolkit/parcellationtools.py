@@ -1819,9 +1819,21 @@ class Parcellation:
 
         # Parcellation with values starting from 1 or starting from the offset
         new_parc = np.zeros_like(self.data, dtype="int16")
-        for i, code in enumerate(st_codes):
-            new_parc[self.data == code] = i + 1 + offset
-        self.data = new_parc
+        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
+            if len(self.index) > 0:
+                for i, code in enumerate(self.index):
+                    new_parc[self.data == code] = i + 1 + offset
+
+            else:
+                for i, code in enumerate(st_codes):
+                    new_parc[self.data == code] = i + 1 + offset
+
+            self.data = new_parc
+        else:
+
+            for i, code in enumerate(st_codes):
+                new_parc[self.data == code] = i + 1 + offset
+            self.data = new_parc
 
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             temp_index = np.unique(self.data)
