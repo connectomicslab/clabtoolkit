@@ -28,9 +28,12 @@ from colorama import init, Fore, Style, Back
 init(autoreset=True)
 
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from matplotlib.colors import to_hex
 from matplotlib.colors import is_color_like as mpl_is_color_like
 from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
+
+import textwrap
 
 from typing import Union, List, Optional
 
@@ -3466,6 +3469,9 @@ def smart_read_table(
     >>> df = read_file_with_fallback_detection("data.txt")
     >>> df.shape
     """
+
+    import clabtoolkit.bidstools as cltbids
+
     if possible_seps is None:
         possible_seps = [",", "\t", ";", "|"]
 
