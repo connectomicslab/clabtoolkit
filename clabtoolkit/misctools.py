@@ -5040,6 +5040,66 @@ def _display_object_terminal_output(
 
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
 
+########################################################################################################
+def print_dict_tree(data: Dict[Any, Any], prefix: str = "", is_last: bool = True, max_value_length: int = 50) -> None:
+    """
+    Print dictionary in a tree-like structure with ANSI colors.
+    
+    Parameters
+    ----------
+    data (dict): 
+        The dictionary to print
+
+    prefix (str): 
+        Prefix for the current level (used for recursion)
+
+    is_last (bool): 
+        Whether the current item is the last in its level
+
+    max_value_length (int): 
+        Maximum length of value strings before truncation
+
+    Returns
+    -------
+    None: 
+        Prints the dictionary structure to stdout
+
+    Examples
+    --------
+    >>> my_dict = {"key1": "value1", "key2": {"subkey1": "subvalue1", "subkey2": "subvalue2"}}
+    >>> print_dict_tree(my_dict)
+    ├── key1: value1
+    └── key2/
+        ├── subkey1: subvalue1
+        └── subkey2: subvalue2
+
+    Notes
+    -----
+    - Uses Unicode box-drawing characters for tree structure
+    - Color codes for keys and values for better readability
+    - Truncates long values to avoid clutter
+
+    """
+    if not isinstance(data, dict):
+        return
+    
+    items = list(data.items())
+    
+    for i, (key, value) in enumerate(items):
+        is_last_item = (i == len(items) - 1)
+        current_prefix = "└── " if is_last_item else "├── "
+        
+        if isinstance(value, dict):
+            print(f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKBLUE}{bcolors.BOLD}{key}/{bcolors.ENDC}")
+            extension = "    " if is_last_item else "│   "
+            print_dict_tree(value, prefix + extension, is_last_item, max_value_length)
+        else:
+            # Handle long values by truncating
+            value_str = str(value)
+            if len(value_str) > max_value_length:
+                value_str = value_str[:max_value_length-3] + "..."
+            
+            print(f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKYELLOW}{key}{bcolors.ENDC}: {bcolors.OKGRAY}{value_str}{bcolors.ENDC}")
 
 #####################################################################################################
 def search_methods(obj, keyword, case_sensitive=False):
