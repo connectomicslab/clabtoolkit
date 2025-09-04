@@ -1382,15 +1382,24 @@ class SurfacePlotter:
                     elif colormap_style == "shared_by_map":
                         ######### One colorbar per map #########
                         for map_idx in range(n_maps):
-                            map_limits = maps_limits[map_idx]
-                            for surf_idx in range(n_surfaces):
-                                brain_positions[(map_idx, surf_idx, 0)] = (
-                                    surf_idx,
-                                    map_idx,
-                                )
-                                colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
-                                    map_idx
-                                ]
+                            if not maps_names[map_idx] in surfaces[0].colortables:
+                                map_limits = maps_limits[map_idx]
+
+                                for surf_idx in range(n_surfaces):
+                                    brain_positions[(map_idx, surf_idx, 0)] = (
+                                        surf_idx,
+                                        map_idx,
+                                    )
+                                    colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
+                                        map_idx
+                                    ]
+                            else:
+                                for surf_idx in range(n_surfaces):
+                                    brain_positions[(map_idx, surf_idx, 0)] = (
+                                        surf_idx,
+                                        map_idx,
+                                    )
+                                    colormap_limits[(map_idx, surf_idx, 0)] = (None, None, maps_names[map_idx])
 
                         shape = [n_surfaces + 1, n_maps]
                         row_weights = [1] * n_surfaces + [colorbar_size]
@@ -1595,15 +1604,23 @@ class SurfacePlotter:
                 elif colormap_style == "shared_by_map":
                     ######### One colorbar per map #########
                     for map_idx in range(n_maps):
-                        map_limits = maps_limits[map_idx]
-                        for surf_idx in range(n_surfaces):
-                            brain_positions[(map_idx, surf_idx, 0)] = (
-                                map_idx,
-                                surf_idx,
-                            )
-                            colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
-                                map_idx
-                            ]
+                        if maps_names[map_idx] not in surfaces[0].colortables:
+                            map_limits = maps_limits[map_idx]
+                            for surf_idx in range(n_surfaces):
+                                brain_positions[(map_idx, surf_idx, 0)] = (
+                                    map_idx,
+                                    surf_idx,
+                                )
+                                colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
+                                    map_idx
+                                ]
+                        else:
+                            for surf_idx in range(n_surfaces):
+                                brain_positions[(map_idx, surf_idx, 0)] = (
+                                    map_idx,
+                                    surf_idx,
+                                )
+                                colormap_limits[(map_idx, surf_idx, 0)] = (None, None, maps_names[map_idx])
 
                     shape = [n_maps, n_surfaces + 1]
                     row_weights = [1] * n_maps
@@ -3922,11 +3939,51 @@ class SurfacePlotter:
             plotter_kwargs["groups"] = groups
 
         pv_plotter = pv.Plotter(**plotter_kwargs)
-
         # Now you can place brain surfaces at specific positions
         # pv_plotter.set_background(self.figure_conf["background_color"])
 
         brain_positions = config_dict["brain_positions"]
+
+        # Computing the plot indexes
+        subplot_indices = []
+        n_subplots = len(pv_plotter.renderers)
+        n_rows = config_dict["shape"][0]
+        n_cols = config_dict["shape"][1]
+
+        subplot_indices = []
+
+        for (map_idx, surf_idx, view_idx), position in brain_positions.items():
+            # Handle case where position might be a list/tuple of coordinates
+            if isinstance(position, (list, tuple)) and len(position) >= 2:
+                row, col = position[0], position[1]
+            else:
+                row, col = position
+            
+            # Ensure row and col are integers
+            if isinstance(row, (list, tuple)):
+                row = row[0] if row else 0
+
+            if isinstance(col, (list, tuple)):
+                col = col[0] if col else 0
+                
+            subplot_indices.append(int(row) * n_cols + int(col))
+        
+        # If there is any element of subplot_indices that is bigger than n_subplots do something else
+        if any(sp_index > n_subplots for sp_index in subplot_indices):
+            # Remove all the elements that are bigger than n_subplots
+
+                    # Take a vector from 0 to 6*4 and reshape it to a matrix of 6 rows and 4 columns and print it
+            tmp = np.arange(0, n_rows*n_cols).reshape(n_rows,n_cols)
+            # Now remove the last column and print the matrix
+            tmp = tmp[:,:-1]
+
+            # Now, if the matrix has n_rows bigger than 3, remove , from rows 3 to n_rows -1
+            if tmp.shape[0] > 3:
+                for cont, r in enumerate(range(1, tmp.shape[0])):
+                    tmp[r,:] = tmp[r,:] - cont
+            
+            subplot_indices = tmp.T.flatten().tolist()
+
         map_limits = config_dict["colormap_limits"]
         for (map_idx, surf_idx, view_idx), (row, col) in brain_positions.items():
             pv_plotter.subplot(row, col)
@@ -4013,38 +4070,21 @@ class SurfacePlotter:
                         colorbar_position=orientation,
                     )
 
-        # # Linking the cameras from the subplots with the same view
-        # # Creating the grouping
-        # # One-liner for counting unique v_idx
-        # num_unique_v_idx = len(set(key[2] for key in brain_positions.keys()))
+        # Linking the cameras from the subplots with the same view
+        unique_v_indices = set(key[2] for key in brain_positions.keys())
+        grouped_by_v_idx = {}
 
-        # # One-liner for grouping using dictionary comprehension
-        # unique_v_indices = set(key[2] for key in brain_positions.keys())
-        # grouped_by_v_idx = {
-        #     v_idx: [
-        #         (row, col)
-        #         for (m_idx, s_idx, v), (row, col) in brain_positions.items()
-        #         if v == v_idx
-        #     ]
-        #     for v_idx in unique_v_indices
-        # }
+        for v_idx in unique_v_indices:
+            grouped_by_v_idx[v_idx] = []
+            for i, ((m_idx, s_idx, v_idx), (row, col)) in enumerate(brain_positions.items()):
+                if v_idx in grouped_by_v_idx:  # Safety check
+                    grouped_by_v_idx[v_idx].append(subplot_indices[i])
 
-        # # After all subplots are created and populated, link the views
-        # for v_idx, positions in grouped_by_v_idx.items():
-        #     if len(positions) > 1:
-        #         # Get all subplot indices for this view group
-        #         subplot_indices = []
-
-        #         # Get number of columns from plotter shape
-        #         n_cols = pv_plotter.shape[1]  # shape is (n_rows, n_cols)
-
-        #         for row, col in positions:
-        #             # Convert (row, col) to subplot index
-        #             subplot_idx = row * n_cols + col
-        #             subplot_indices.append(subplot_idx)
-
-        #         # Link all views in this group
-        #         pv_plotter.link_views(subplot_indices)
+        # After all subplots are created and populated, link the views
+        for v_idx, positions in grouped_by_v_idx.items():
+            if len(positions) > 1:
+                # Link all views in this group
+                pv_plotter.link_views(grouped_by_v_idx[v_idx])
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         self._finalize_plot(pv_plotter, save_mode, save_path, use_threading)
