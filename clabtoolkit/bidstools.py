@@ -1120,6 +1120,10 @@ def entities_to_table(
             temp = os.path.splitext(filename)[0]
             result_df.insert(0, "Participant", temp)
 
+    # Declaring all the columns as string type
+    for col in result_df.columns:
+        result_df[col] = result_df[col].astype(str)
+
     return result_df
 
 
