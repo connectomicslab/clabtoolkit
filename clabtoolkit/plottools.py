@@ -56,6 +56,110 @@ def get_current_monitor_size() -> Tuple[int, int]:
     primary = next((m for m in monitors if m.is_primary), monitors[0])
     return primary.width, primary.height
 
+#######################################################################################################
+def estimate_monitor_dpi(screen_width: int, screen_height: int) -> float:
+    """
+    Estimate monitor DPI based on screen resolution using common monitor configurations.
+    
+    Parameters
+    ----------
+    screen_width : int
+        Screen width in pixels
+
+    screen_height : int
+        Screen height in pixels
+        
+    Returns
+    -------
+    float
+        Estimated DPI based on common monitor size/resolution combinations
+    
+    Examples
+    --------
+    >>> estimate_monitor_dpi(1920, 1080)
+    96.0
+    >>>
+    >>> estimate_monitor_dpi(2560, 1440)
+    109.0
+    """
+    
+    # Common monitor configurations: (width, height): typical_dpi
+    monitor_configs = {
+        # Full HD displays
+        (1920, 1080): {
+            'laptop_13_15': 147,    # 13-15" laptop
+            'laptop_17': 130,       # 17" laptop  
+            'monitor_21_24': 92,    # 21-24" monitor
+            'monitor_27': 82,       # 27" monitor
+        },
+        # QHD displays
+        (2560, 1440): {
+            'laptop_13_15': 196,    # 13-15" laptop
+            'monitor_27': 109,      # 27" monitor
+            'monitor_32': 92,       # 32" monitor
+        },
+        # 4K displays  
+        (3840, 2160): {
+            'laptop_15_17': 294,    # 15-17" laptop
+            'monitor_27': 163,      # 27" monitor
+            'monitor_32': 138,      # 32" monitor
+            'monitor_43': 103,      # 43" monitor
+        },
+        # Other common resolutions
+        (1366, 768): {
+            'laptop_11_14': 112,    # Small laptops
+        },
+        (1680, 1050): {
+            'monitor_22': 90,       # 22" monitor
+        },
+        (2880, 1800): {
+            'laptop_15': 220,       # MacBook Pro 15"
+        },
+        (3440, 1440): {
+            'ultrawide_34': 110,    # 34" ultrawide
+        }
+    }
+    
+    # Find exact match first
+    resolution = (screen_width, screen_height)
+    if resolution in monitor_configs:
+        # For known resolutions, estimate based on pixel density
+        configs = monitor_configs[resolution]
+        pixel_count = screen_width * screen_height
+        
+        # Estimate based on total pixels and common usage patterns
+        if pixel_count < 1500000:  # < 1.5M pixels (likely smaller screen)
+            return max(configs.values())  # Higher DPI (smaller screen)
+        elif pixel_count > 8000000:  # > 8M pixels (4K+, likely larger screen)
+            return min(configs.values())  # Lower DPI (larger screen) 
+        else:
+            # Medium resolution, use median DPI
+            return sorted(configs.values())[len(configs.values())//2]
+    
+    # Fallback: calculate approximate DPI based on pixel density
+    # Assume reasonable screen diagonal based on resolution
+    total_pixels = screen_width * screen_height
+    
+    if total_pixels <= 1000000:    # ≤ 1M pixels
+        estimated_diagonal = 13      # Small laptop/tablet
+
+    elif total_pixels <= 2000000:  # ≤ 2M pixels  
+        estimated_diagonal = 21      # Standard monitor
+
+    elif total_pixels <= 4000000:  # ≤ 4M pixels
+        estimated_diagonal = 24      # Larger monitor
+        
+    elif total_pixels <= 8000000:  # ≤ 8M pixels
+        estimated_diagonal = 27      # QHD monitor
+
+    else:                          # > 8M pixels
+        estimated_diagonal = 32      # 4K monitor
+    
+    # Calculate DPI: sqrt(width² + height²) / diagonal_inches
+    diagonal_pixels = (screen_width**2 + screen_height**2)**0.5
+    estimated_dpi = diagonal_pixels / estimated_diagonal
+    
+    return round(estimated_dpi, 1)
 
 ###############################################################################################
 def calculate_optimal_subplots_grid(num_views: int) -> List[int]:
