@@ -1425,9 +1425,9 @@ class SurfacePlotter:
                             else:
                                 cb_dict["title"] = maps_names[map_idx]
 
-                            cb_dict["vmin"] = maps_limits[map_idx][0]
-                            cb_dict["vmax"] = maps_limits[map_idx][1]
                             if maps_names[map_idx] not in surfaces[0].colortables:
+                                cb_dict["vmin"] = maps_limits[map_idx][0]
+                                cb_dict["vmax"] = maps_limits[map_idx][1]
                                 colorbar_list.append(cb_dict)
 
         else:  # vertical
@@ -1645,10 +1645,10 @@ class SurfacePlotter:
                             )
                         else:
                             cb_dict["title"] = maps_names[map_idx]
-
-                        cb_dict["vmin"] = maps_limits[map_idx][0]
-                        cb_dict["vmax"] = maps_limits[map_idx][1]
-                        colorbar_list.append(cb_dict)
+                        if maps_names[map_idx] not in surfaces[0].colortables:
+                            cb_dict["vmin"] = maps_limits[map_idx][0]
+                            cb_dict["vmax"] = maps_limits[map_idx][1]
+                            colorbar_list.append(cb_dict)
 
         layout_config = {
             "shape": shape,
@@ -3334,22 +3334,36 @@ class SurfacePlotter:
             Only applies when save_mode is False.
         """
         if save_mode and save_path:
-            # Save mode - render and save without displaying
-            plotter.render()
-            try:
-                plotter.screenshot(save_path)
-                print(f"Figure saved to: {save_path}")
-            except Exception as e:
-                print(f"Error saving screenshot: {e}")
-                # Try alternative approach
+
+            if save_path.lower().endswith((".html", ".htm")):
+                # Save as HTML
                 try:
-                    img = plotter.screenshot(save_path, return_img=True)
-                    if img is not None:
-                        print(f"Figure saved to: {save_path} (alternative method)")
-                except Exception as e2:
-                    print(f"Alternative screenshot method also failed: {e2}")
-            finally:
-                plotter.close()
+                    
+                    plotter.export_html(save_path)
+                    print(f"Figure saved to: {save_path}")
+
+                except Exception as e:
+                    print(f"Error saving HTML: {e}")
+                finally:
+                    plotter.close()
+
+            else:
+                # Save mode - render and save without displaying
+                plotter.render()
+                try:
+                    plotter.screenshot(save_path)
+                    print(f"Figure saved to: {save_path}")
+                except Exception as e:
+                    print(f"Error saving screenshot: {e}")
+                    # Try alternative approach
+                    try:
+                        img = plotter.screenshot(save_path, return_img=True)
+                        if img is not None:
+                            print(f"Figure saved to: {save_path} (alternative method)")
+                    except Exception as e2:
+                        print(f"Alternative screenshot method also failed: {e2}")
+                finally:
+                    plotter.close()
         else:
             # Display mode
             if use_threading:
@@ -3755,6 +3769,7 @@ class SurfacePlotter:
             None,
             None,
         ),
+        use_opacity: bool = True,
         colormaps: Union[str, List[str]] = "BrBG",
         save_path: Optional[str] = None,
         non_blocking: bool = True,
@@ -3792,8 +3807,13 @@ class SurfacePlotter:
         colormaps : Union[str, List[str]], default "BrBG"
             Colormaps to use for each map.
 
+        use_opacity : bool, default True
+            Whether to use opacity in the surface rendering. This is important when saving to HTML format to
+            ensure proper visualization. If False, surfaces will be fully opaque.
+
         save_path : Optional[str], default None
             File path for saving the figure. If None, plot is displayed.
+
 
         non_blocking : bool, default False
             If True, display the plot in a separate thread, allowing the terminal
@@ -3940,7 +3960,7 @@ class SurfacePlotter:
 
         pv_plotter = pv.Plotter(**plotter_kwargs)
         # Now you can place brain surfaces at specific positions
-        # pv_plotter.set_background(self.figure_conf["background_color"])
+        pv_plotter.set_background(self.figure_conf["background_color"])
 
         brain_positions = config_dict["brain_positions"]
 
@@ -4010,6 +4030,11 @@ class SurfacePlotter:
             surf = self._prepare_surface(
                 surf, map_names[map_idx], colormap, vmin=vmin, vmax=vmax
             )
+            if not use_opacity:
+                # delete the alpha channel if exists
+                if "rgba" in surf.mesh.point_data:
+                    surf.mesh.point_data["rgba"] = surf.mesh.point_data["rgba"][:, :3]
+
             pv_plotter.add_mesh(
                 copy.deepcopy(surf.mesh),
                 scalars="rgba",
@@ -4034,16 +4059,6 @@ class SurfacePlotter:
             pv_plotter.camera.azimuth = camera_params["azimuth"]
             pv_plotter.camera.elevation = camera_params["elevation"]
             pv_plotter.camera.zoom(camera_params["zoom"])
-
-            # getattr(pv_plotter, f"view_{camera_params['view']}")()
-
-            # View title
-            view_title = camera_params["title"]
-
-            # Add your brain surface here
-            print(
-                f"Brain plot: Map {map_idx}, Surface {surf_idx}, View {view_idx} at position ({row}, {col})"
-            )
 
         # And place colorbars at their positions
         if len(colorbar_dict_list):
@@ -4089,6 +4104,7 @@ class SurfacePlotter:
         # Handle final rendering - either save, display blocking, or display non-blocking
         self._finalize_plot(pv_plotter, save_mode, save_path, use_threading)
 
+    #################################################################################################
     def _create_threaded_plot(self, plotter: pv.Plotter) -> None:
         """
         Create and show plot in a separate thread for non-blocking visualization.
@@ -4251,6 +4267,139 @@ class SurfacePlotter:
                 "v_limits must be None, a tuple (vmin, vmax), or a list of tuples [(vmin1, vmax1), ...]"
             )
 
+    def _add_colorbar2(
+        self,
+        plotter: pv.Plotter,
+        colorbar_subplot: Tuple[int, int],
+        vmin: Any,
+        vmax: Any,
+        map_name: str,
+        colormap: str,
+        colorbar_title: str,
+        colorbar_position: str,
+    ) -> None:
+        """
+        Add a properly positioned colorbar to the plot with consistent font sizing.
+
+        Parameters
+        ----------
+        plotter : pv.Plotter
+            PyVista plotter instance.
+        colorbar_subplot : Tuple[int, int]
+            Subplot position for the colorbar.
+        vmin : Any
+            Minimum value for colorbar.
+        vmax : Any
+            Maximum value for colorbar.
+        map_name : str
+            Name of the data array to use for colorbar.
+        colormap : str
+            Matplotlib colormap name.
+        colorbar_title : str
+            Title text for the colorbar.
+        colorbar_position : str
+            Position of colorbar: "horizontal" or "vertical".
+        """
+
+        if isinstance(map_name, list):
+            map_name = map_name[0]
+
+        plotter.subplot(*colorbar_subplot)
+        # Set background color for colorbar subplot
+        plotter.set_background(self.figure_conf["background_color"])
+
+        # Create colorbar mesh with proper data range
+        n_points = 256
+        colorbar_mesh = pv.Line((0, 0, 0), (1, 0, 0), resolution=n_points - 1)
+        scalar_values = np.linspace(vmin, vmax, n_points)
+        colorbar_mesh[map_name] = scalar_values
+
+        # Add invisible mesh for colorbar reference
+        dummy_actor = plotter.add_mesh(
+            colorbar_mesh,
+            scalars=map_name,
+            cmap=colormap,
+            clim=[vmin, vmax],
+            show_scalar_bar=False,
+        )
+        dummy_actor.visibility = False
+
+        # Create scalar bar manually using VTK
+        import vtk
+
+        scalar_bar = vtk.vtkScalarBarActor()
+        scalar_bar.SetLookupTable(dummy_actor.mapper.lookup_table)
+        scalar_bar.SetTitle(colorbar_title)
+        scalar_bar.SetMaximumNumberOfColors(256)
+        scalar_bar.SetNumberOfLabels(self.figure_conf["colorbar_n_labels"])
+
+        # Get text properties for title and labels
+        title_prop = scalar_bar.GetTitleTextProperty()
+        label_prop = scalar_bar.GetLabelTextProperty()
+        
+        # Set colors
+        title_color = pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb
+        title_prop.SetColor(*title_color)
+        label_prop.SetColor(*title_color)
+        
+        # Set font properties - key fix for consistent sizing
+        title_prop.SetFontFamilyToArial()  # Ensure consistent font family
+        label_prop.SetFontFamilyToArial()
+        
+        # Use consistent font sizing approach
+        base_title_size = self.figure_conf["colorbar_title_font_size"]
+        base_label_size = self.figure_conf["colorbar_font_size"]
+        
+        # Apply font sizes with explicit scaling
+        title_prop.SetFontSize(base_title_size)
+        label_prop.SetFontSize(base_label_size)
+        
+        # Enable/disable bold for better consistency
+        title_prop.BoldOn()  # Make title bold for better distinction
+        label_prop.BoldOff()
+        
+        # Set text properties for better rendering consistency
+        title_prop.SetJustificationToCentered()
+        title_prop.SetVerticalJustificationToCentered()
+        label_prop.SetJustificationToCentered()
+        label_prop.SetVerticalJustificationToCentered()
+
+        # Set outline
+        if not self.figure_conf["colorbar_outline"]:
+            scalar_bar.DrawFrameOff()
+        else:
+            scalar_bar.DrawFrameOn()
+
+        # Position colorbar appropriately with consistent sizing
+        if colorbar_position == "horizontal":
+            # Horizontal colorbar
+            scalar_bar.SetOrientationToHorizontal()
+            scalar_bar.SetPosition(0.05, 0.2)
+            scalar_bar.SetPosition2(0.9, 0.6)
+            # For horizontal bars, ensure width is consistent
+            scalar_bar.SetWidth(0.9)
+            scalar_bar.SetHeight(0.4)
+        else:
+            # Vertical colorbar
+            scalar_bar.SetOrientationToVertical()
+            scalar_bar.SetPosition(0.2, 0.05)
+            scalar_bar.SetPosition2(0.6, 0.9)
+            # For vertical bars, ensure height is consistent
+            scalar_bar.SetWidth(0.4)
+            scalar_bar.SetHeight(0.9)
+
+        # Additional properties for consistent rendering
+        scalar_bar.SetLabelFormat("%.2f")  # Consistent number formatting
+        scalar_bar.SetMaximumWidthInPixels(1000)  # Prevent excessive scaling
+        scalar_bar.SetMaximumHeightInPixels(1000)
+        
+        # Set text margin for better spacing
+        scalar_bar.SetTextPad(4)
+        scalar_bar.SetVerticalTitleSeparation(10)
+
+        # Add the scalar bar to the plotter
+        plotter.add_actor(scalar_bar)
+    
     ###############################################################################################
     def _add_colorbar(
         self,
@@ -4334,30 +4483,10 @@ class SurfacePlotter:
 
         scalar_bar = vtk.vtkScalarBarActor()
         scalar_bar.SetLookupTable(dummy_actor.mapper.lookup_table)
-        scalar_bar.SetTitle(colorbar_title)
-        scalar_bar.SetMaximumNumberOfColors(256)
-        scalar_bar.SetNumberOfLabels(self.figure_conf["colorbar_n_labels"])
-
-        # Configure appearance
-        scalar_bar.GetTitleTextProperty().SetColor(
-            *pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb
-        )
-        scalar_bar.GetLabelTextProperty().SetColor(
-            *pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb
-        )
-        scalar_bar.GetTitleTextProperty().SetFontSize(
-            self.figure_conf["colorbar_title_font_size"]
-        )
-        scalar_bar.GetLabelTextProperty().SetFontSize(
-            self.figure_conf["colorbar_font_size"]
-        )
 
         # Set outline
         if not self.figure_conf["colorbar_outline"]:
             scalar_bar.DrawFrameOff()
-
-        # Add the scalar bar to the plotter
-        plotter.add_actor(scalar_bar)
 
         # Position colorbar appropriately
         if colorbar_position == "horizontal":
@@ -4365,11 +4494,67 @@ class SurfacePlotter:
             scalar_bar.SetPosition(0.05, 0.2)
             scalar_bar.SetPosition2(0.9, 0.6)
             scalar_bar.SetOrientationToHorizontal()
+            scalar_bar.SetWidth(0.9)
+            scalar_bar.SetHeight(0.4)
+
         else:
             # Vertical colorbar
             scalar_bar.SetPosition(0.2, 0.05)
             scalar_bar.SetPosition2(0.6, 0.9)
             scalar_bar.SetOrientationToVertical()
+            scalar_bar.SetWidth(0.4)
+            scalar_bar.SetHeight(0.9)
+
+        scalar_bar.SetTitle(colorbar_title)
+        scalar_bar.SetMaximumNumberOfColors(256)
+        scalar_bar.SetNumberOfLabels(self.figure_conf["colorbar_n_labels"])
+
+        # Get text properties for title and labels
+        title_prop = scalar_bar.GetTitleTextProperty()
+        label_prop = scalar_bar.GetLabelTextProperty()
+        
+        # Set colors
+        title_color = pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb
+        title_prop.SetColor(*title_color)
+        label_prop.SetColor(*title_color)
+        
+        # Set font properties - key fix for consistent sizing
+        title_prop.SetFontFamilyToArial()  # Ensure consistent font family
+        label_prop.SetFontFamilyToArial()
+        
+        # Use consistent font sizing approach
+        fonts = cltplot.calculate_font_sizes(6, 4)
+
+        base_title_size = self.figure_conf["colorbar_title_font_size"]
+        base_label_size = self.figure_conf["colorbar_font_size"]
+        
+        # Apply font sizes with explicit scaling
+        title_prop.SetFontSize(base_title_size)
+        label_prop.SetFontSize(base_label_size)
+        
+        # Enable/disable bold for better consistency
+        title_prop.BoldOn()  # Make title bold for better distinction
+        label_prop.BoldOff()
+
+        # Set text properties for better rendering consistency
+        title_prop.SetJustificationToCentered()
+        title_prop.SetVerticalJustificationToCentered()
+        label_prop.SetJustificationToCentered()
+        label_prop.SetVerticalJustificationToCentered()
+
+        # Additional properties for consistent rendering
+        scalar_bar.SetLabelFormat("%.2f")  # Consistent number formatting
+        # scalar_bar.SetMaximumWidthInPixels(1000)  # Prevent excessive scaling
+        # scalar_bar.SetMaximumHeightInPixels(1000)
+        
+        # Set text margin for better spacing
+        scalar_bar.SetTextPad(4)
+        scalar_bar.SetVerticalTitleSeparation(10)
+
+        # Add the scalar bar to the plotter
+        plotter.add_actor(scalar_bar)
+        
+
 
     ###############################################################################################
     def _determine_render_mode(
