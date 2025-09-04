@@ -3704,39 +3704,6 @@ def generate_container_command(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-
-
-# def format_signature(sig: inspect.Signature):
-#     """
-#     Formats a function signature with ANSI colors.
-
-#     """
-#     parts = [f"{bcolors.OKWHITE}({bcolors.ENDC}"]
-#     params = list(sig.parameters.values())
-#     for i, p in enumerate(params):
-#         param_str = f"{bcolors.DARKCYAN}{p.name}{bcolors.ENDC}"
-
-#         if p.annotation != inspect.Parameter.empty:
-#             annotation = (
-#                 p.annotation.__name__
-#                 if hasattr(p.annotation, "__name__")
-#                 else str(p.annotation)
-#             )
-#             param_str += f": {bcolors.OKPURPLE}{annotation}{bcolors.ENDC}"
-
-#         if p.default != inspect.Parameter.empty:
-#             param_str += f"{bcolors.OKGRAY} = {repr(p.default)}{bcolors.ENDC}"
-
-#         parts.append(param_str)
-#         if i < len(params) - 1:
-#             parts.append(f"{bcolors.OKWHITE}, {bcolors.ENDC}")
-#     parts.append(f"{bcolors.OKWHITE}){bcolors.ENDC}")
-#     return "".join(parts)
-
-#######
-#######
-
-
 def is_notebook():
     """
     Check if code is running in a Jupyter notebook environment.
