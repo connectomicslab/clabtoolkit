@@ -168,7 +168,7 @@
         "2_views": {
             "shape": [1,2],
             "views": [
-                "lh-lateral", "rh-lateral"
+                "lh-lateral", "lh-medial"
             ],
             "description": "Standard 2 views for both hemispheres"  
         }
