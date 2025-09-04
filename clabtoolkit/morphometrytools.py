@@ -2699,7 +2699,7 @@ def get_stats_dictionary(region_level: str = "global"):
     cwd = os.path.dirname(os.path.abspath(__file__))
     mapping_stats_json = os.path.join(cwd, "config", "stats_mapping.json")
 
-    with open(mapping_stats_json) as f:
+    with open(mapping_stats_json, encoding="utf-8") as f:
         mapp_dict = json.load(f)
 
     return mapp_dict[region_level]
@@ -2935,7 +2935,7 @@ def get_units(
         # Use default configuration
         config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
         try:
-            with open(config_path, "r") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
             metric_dict = config_data.get("metrics_units", {})
         except (FileNotFoundError, json.JSONDecodeError) as e:
