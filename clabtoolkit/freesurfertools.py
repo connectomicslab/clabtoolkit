@@ -5270,7 +5270,7 @@ def load_lobes_json(lobes_json: str = None):
                 "Please, provide a valid JSON file containing the lobes definition dictionary."
             )
 
-    with open(lobes_json) as f:
+    with open(lobes_json, encoding="utf-8") as f:
         pipe_dict = json.load(f)
 
     return pipe_dict
