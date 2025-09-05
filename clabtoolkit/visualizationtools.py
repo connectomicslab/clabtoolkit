@@ -3384,6 +3384,7 @@ class SurfacePlotter:
             None,
             None,
         ),
+        use_opacity: bool = True,
         colormaps: Union[str, List[str]] = "BrBG",
         colorbar: bool = True,
         colorbar_titles: Union[str, List[str]] = None,
@@ -3451,8 +3452,26 @@ class SurfacePlotter:
             File path to save the rendered figure. If provided, the figure is saved to this path
             instead of being displayed.
 
+        Returns
+        -------
+        None
+            The function does not return any value. It either displays the plot or saves it to a
+            file, depending on the parameters provided.
 
+        Raises
+        ------
+        ValueError
+            If no valid maps are found in the provided surfaces, or if multiple maps are provided
+            but the function is not set up to handle them.
+        ValueError
+            If the provided views are not valid or if the orientation is incorrect.
+        ValueError
+            If the colormap style or colorbar position is invalid.
 
+        Examples
+        --------
+        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter.plot_hemispheres(surf_rh, surf_lh, maps_names="thickness", views=["dorsal", "lateral"], colormaps="viridis", colorbar_titles="Cortical Thickness", save_path="hemispheres.png")
 
         """
 
@@ -3464,18 +3483,24 @@ class SurfacePlotter:
             maps_names = [maps_names]
         n_maps = len(maps_names)
 
-        fin_map_names = []
-        for i, map_name in enumerate(maps_names):
-            cont_map = 0
-            # Check if the map_name is available in any of the surfaces
-            for surf in [surf_lh, surf_rh, surf_merg]:
-                available_maps = list(surf.mesh.point_data.keys())
-                if map_name in available_maps:
-                    cont_map = cont_map + 1
+        if n_maps == 0:
+            raise ValueError("No maps names provided.")
+        
+        if n_maps > 1:
+            raise ValueError("Multiple maps are not supported in this function.")
+        # Check if the maps are available in all surfaces
 
-            #
-            if cont_map == 3:
-                fin_map_names.append(map_name)
+        fin_map_names = []
+        cont_map = 0
+        # Check if the map_name is available in any of the surfaces
+        for surf in [surf_lh, surf_rh, surf_merg]:
+            available_maps = list(surf.mesh.point_data.keys())
+            if map_name in available_maps:
+                cont_map = cont_map + 1
+
+        # If the map is present in all surfaces, add it to the final list
+        if cont_map == 3:
+            fin_map_names.append(map_name)
 
         # Available overlays
         maps_names = fin_map_names
@@ -3568,17 +3593,32 @@ class SurfacePlotter:
 
         pv_plotter = pv.Plotter(**plotter_kwargs)
 
-        # Now you can place brain surfaces at specific positions
-        # pv_plotter.set_background(self.figure_conf["background_color"])
-
         brain_positions = config_dict["brain_positions"]
         map_limits = config_dict["colormap_limits"]
         for (map_idx, surf_idx, view_idx), (row, col) in brain_positions.items():
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
+
+            tmp_view_name = view_ids[view_idx]
+
+            # Split the view name if it contains '_'
+            if "-" in tmp_view_name:
+                tmp_view_name = tmp_view_name.split("-")[1]
+
+                # Capitalize the first letter
+                tmp_view_name = tmp_view_name.capitalize()
+
+                # Detecting if the view is left or right
+                if "lh" in view_ids[view_idx]:
+                    subplot_title = "Left hemisphere: " + tmp_view_name + " view"
+                elif "rh" in view_ids[view_idx]:
+                    subplot_title = "Right hemisphere: " + tmp_view_name + " view"
+                elif "merg" in view_ids[view_idx]:
+                    subplot_title = tmp_view_name + " view"
+
             pv_plotter.add_text(
-                f"Map: {maps_names[map_idx]}, Surface: {surf_idx}, View: {view_ids[view_idx]}",
+                subplot_title,
                 font_size=self.figure_conf["title_font_size"],
                 position="upper_edge",
                 color=self.figure_conf["title_font_color"],
@@ -3606,6 +3646,12 @@ class SurfacePlotter:
             surf = self._prepare_surface(
                 surf, maps_names[map_idx], colormap, vmin=vmin, vmax=vmax
             )
+
+            if not use_opacity:
+                # delete the alpha channel if exists
+                if "rgba" in surf.mesh.point_data:
+                    surf.mesh.point_data["rgba"] = surf.mesh.point_data["rgba"][:, :3]
+
             pv_plotter.add_mesh(
                 copy.deepcopy(surf.mesh),
                 scalars="rgba",
@@ -3629,15 +3675,6 @@ class SurfacePlotter:
             pv_plotter.camera.elevation = camera_params["elevation"]
             pv_plotter.camera.zoom(camera_params["zoom"])
 
-            # getattr(pv_plotter, f"view_{camera_params['view']}")()
-
-            # View title
-            view_title = camera_params["title"]
-
-            # Add your brain surface here
-            print(
-                f"Brain plot: Map {map_idx}, Surface {surf_idx}, View {view_idx} at position ({row}, {col})"
-            )
 
         # And place colorbars at their positions
         if len(colorbar_dict_list):
