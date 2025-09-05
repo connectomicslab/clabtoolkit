@@ -4335,6 +4335,20 @@ class SurfacePlotter:
         scalar_values = np.linspace(vmin, vmax, n_points)
         colorbar_mesh[map_name] = scalar_values
 
+        # Determine font sizes based on colorbar orientation and subplot size
+        # Get the current renderer
+        current_renderer = plotter.renderer
+
+        # Get viewport bounds (normalized coordinates 0-1)
+        viewport = current_renderer.GetViewport()
+        # viewport returns (xmin, ymin, xmax, ymax)
+
+        # Convert to actual pixel dimensions
+        window_size = plotter.window_size
+        subplot_width = (viewport[2] - viewport[0]) * window_size[0]
+        subplot_height = (viewport[3] - viewport[1]) * window_size[1]
+        font_sizes = cltplot.calculate_font_sizes(subplot_width, subplot_height, colorbar_orientation=colorbar_position) 
+
         # Add invisible mesh for colorbar reference
         dummy_actor = plotter.add_mesh(
             colorbar_mesh,
@@ -4355,24 +4369,24 @@ class SurfacePlotter:
         if not self.figure_conf["colorbar_outline"]:
             scalar_bar.DrawFrameOff()
 
+        # scalar_bar.SetPosition(0.1, 0.1)
+        # scalar_bar.SetPosition2(0.9, 0.9)
         # Position colorbar appropriately
         if colorbar_position == "horizontal":
             # Horizontal colorbar
-            scalar_bar.SetPosition(0.05, 0.2)
-            scalar_bar.SetPosition2(0.9, 0.6)
+            scalar_bar.SetPosition(0.05, 0.05)   # 5% from left, 5% from bottom
+            scalar_bar.SetPosition2(0.9, 0.7)   # 90% width, 70% height
             scalar_bar.SetOrientationToHorizontal()
-            scalar_bar.SetWidth(0.9)
-            scalar_bar.SetHeight(0.4)
 
         else:
-            # Vertical colorbar
-            scalar_bar.SetPosition(0.2, 0.05)
-            scalar_bar.SetPosition2(0.6, 0.9)
+            # More conventional vertical version with same positioning philosophy:
+            scalar_bar.SetPosition(0.05, 0.05)    # 5% from left, 5% from bottom
+            scalar_bar.SetPosition2(0.7, 0.9)    # 12% width, 90% height
             scalar_bar.SetOrientationToVertical()
-            scalar_bar.SetWidth(0.4)
-            scalar_bar.SetHeight(0.9)
 
+        colorbar_title = colorbar_title.capitalize()
         scalar_bar.SetTitle(colorbar_title)
+        
         scalar_bar.SetMaximumNumberOfColors(256)
         scalar_bar.SetNumberOfLabels(self.figure_conf["colorbar_n_labels"])
 
@@ -4386,21 +4400,28 @@ class SurfacePlotter:
         label_prop.SetColor(*title_color)
         
         # Set font properties - key fix for consistent sizing
-        title_prop.SetFontFamilyToArial()  # Ensure consistent font family
-        label_prop.SetFontFamilyToArial()
-        
-        # Use consistent font sizing approach
-        fonts = cltplot.calculate_font_sizes(6, 4)
+        if self.figure_conf["colorbar_font_type"].lower() == "arial":
+            title_prop.SetFontFamilyToArial()
+            label_prop.SetFontFamilyToArial()
 
-        base_title_size = self.figure_conf["colorbar_title_font_size"]
-        base_label_size = self.figure_conf["colorbar_font_size"]
+        elif self.figure_conf["colorbar_font_type"].lower() == "courier":
+            title_prop.SetFontFamilyToCourier()
+            label_prop.SetFontFamilyToCourier()
+
+        else:    
+            title_prop.SetFontFamilyToTimes()  # Ensure consistent font family
+            label_prop.SetFontFamilyToTimes()
+        
+        base_title_size = font_sizes["colorbar_title"]
+        base_label_size = font_sizes["colorbar_ticks"]
         
         # Apply font sizes with explicit scaling
         title_prop.SetFontSize(base_title_size)
         label_prop.SetFontSize(base_label_size)
         
         # Enable/disable bold for better consistency
-        title_prop.BoldOn()  # Make title bold for better distinction
+        title_prop.BoldOff()  
+        title_prop.ItalicOff()
         label_prop.BoldOff()
 
         # Set text properties for better rendering consistency
@@ -4421,8 +4442,6 @@ class SurfacePlotter:
         # Add the scalar bar to the plotter
         plotter.add_actor(scalar_bar)
         
-
-
     ###############################################################################################
     def _determine_render_mode(
         self, save_path: Optional[str], notebook: bool, non_blocking: bool = False
