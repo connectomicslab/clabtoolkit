@@ -7,13 +7,37 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../../'))
 
+# Mock imports for ReadTheDocs build
+autodoc_mock_imports = [
+    'pyvista',
+    'vtk', 
+    'dipy',
+    'nilearn',
+    'pydicom',
+    'rich',
+    'colorama',
+    'screeninfo',
+    'fury',
+    'trame',
+    'trame_client',
+    'trame_server',
+    'trame_vtk',
+    'trame_vuetify',
+    'skimage',
+    'matplotlib',
+    'h5py',
+    'joblib',
+    'ipython',
+    'tkinter'
+]
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'clabtoolkit'
 copyright = '2024, Yasser Alemán-Gómez'
 author = 'Yasser Alemán-Gómez'
-release = '0.3.1'
+release = '0.3.3'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
