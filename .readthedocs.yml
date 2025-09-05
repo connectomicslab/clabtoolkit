@@ -10,18 +10,21 @@ build:
     python: "3.12"
   jobs:
     post_create_environment:
-      # Install only minimal dependencies for docs
+      # Install essential build tools
       - pip install --upgrade pip setuptools wheel
     post_install:
-      # Create mock modules for heavy dependencies
-      - mkdir -p $READTHEDOCS_VIRTUALENV_PATH/lib/python3.12/site-packages
+      # Install the package in development mode for proper module introspection
+      - pip install -e .
       
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
   configuration: docs/source/conf.py
   fail_on_warning: false
+  builder: html
 
 # Use minimal requirements for documentation
 python:
   install:
     - requirements: requirements-docs.txt
+    - method: pip
+      path: .

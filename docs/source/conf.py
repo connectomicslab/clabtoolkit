@@ -7,28 +7,121 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../../'))
 
-# Mock imports for ReadTheDocs build
+# Mock imports for ReadTheDocs build - comprehensive list
 autodoc_mock_imports = [
+    # 3D Visualization
     'pyvista',
     'vtk', 
-    'dipy',
-    'nilearn',
-    'pydicom',
-    'rich',
-    'colorama',
-    'screeninfo',
     'fury',
     'trame',
     'trame_client',
     'trame_server',
     'trame_vtk',
     'trame_vuetify',
+    'trame_common',
+    'trame.app',
+    'trame.widgets',
+    'trame.html',
+    
+    # Neuroimaging
+    'dipy',
+    'dipy.io',
+    'dipy.io.streamline',
+    'dipy.io.stateful_tractogram',
+    'dipy.segment',
+    'dipy.segment.clustering',
+    'dipy.tracking',
+    'dipy.tracking.streamline',
+    'nilearn',
+    'nilearn.plotting',
+    'nilearn.maskers',
+    'pydicom',
+    'nibabel',
+    'nibabel.streamlines',
+    'nibabel.orientations',
+    'nibabel.processing',
+    
+    # Image Processing
     'skimage',
+    'skimage.measure',
+    'skimage.morphology',
+    'skimage.filters',
+    'cv2',
+    
+    # Scientific Computing - additional submodules
+    'scipy.sparse',
+    'scipy.ndimage',
+    'scipy.spatial',
+    'scipy.interpolate',
+    'scipy.optimize',
+    
+    # Plotting and UI
     'matplotlib',
-    'h5py',
-    'joblib',
+    'matplotlib.pyplot',
+    'matplotlib.patches',
+    'matplotlib.colors',
+    'matplotlib.figure',
+    'matplotlib.axes',
+    'seaborn',
+    'plotly',
+    'rich',
+    'rich.progress',
+    'rich.console',
+    'rich.panel',
+    'colorama',
+    'screeninfo',
+    
+    # Interactive Computing
     'ipython',
-    'tkinter'
+    'IPython',
+    'IPython.display',
+    'jupyter',
+    'ipywidgets',
+    
+    # GUI and System
+    'tkinter',
+    'pygame',
+    
+    # Data Processing
+    'h5py',
+    'openpyxl',
+    'lxml',
+    'beautifulsoup4',
+    'bs4',
+    
+    # Parallel and Performance
+    'joblib',
+    'numba',
+    'cupy',
+    'dask',
+    
+    # Machine Learning
+    'sklearn',
+    'scikit-learn',
+    'torch',
+    'tensorflow',
+    
+    # Network Analysis
+    'networkx',
+    'igraph',
+    
+    # Statistical Analysis
+    'statsmodels',
+    'pingouin',
+    'patsy',
+    
+    # Misc utilities
+    'tqdm',
+    'click',
+    'typer',
+    'pydantic',
+    'marshmallow',
+    'requests',
+    'urllib3',
+    'certifi',
+    'fsspec',
+    'pooch',
+    'duecredit'
 ]
 
 # -- Project information -----------------------------------------------------
@@ -74,6 +167,18 @@ autodoc_default_options = {
 autodoc_member_order = 'bysource'
 autodoc_typehints = 'description'
 autodoc_typehints_description_target = 'documented'
+
+# Additional autodoc settings for better documentation generation
+autodoc_preserve_defaults = True
+autodoc_class_signature = 'mixed'
+
+# Ensure modules can be imported even with missing dependencies
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+# Add clabtoolkit to the Python path
+sys.path.insert(0, os.path.abspath('../../clabtoolkit'))
 
 # Intersphinx mapping
 intersphinx_mapping = {
