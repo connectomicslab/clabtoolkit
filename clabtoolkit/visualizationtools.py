@@ -3495,7 +3495,7 @@ class SurfacePlotter:
         # Check if the map_name is available in any of the surfaces
         for surf in [surf_lh, surf_rh, surf_merg]:
             available_maps = list(surf.mesh.point_data.keys())
-            if map_name in available_maps:
+            if maps_names[0] in available_maps:
                 cont_map = cont_map + 1
 
         # If the map is present in all surfaces, add it to the final list
