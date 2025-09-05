@@ -4009,8 +4009,17 @@ class SurfacePlotter:
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
+            tmp_view_name = view_ids[view_idx]
+
+            # Split the view name if it contains '_'
+            if "-" in tmp_view_name:
+                tmp_view_name = tmp_view_name.split("-")[1]
+
+                # Capitalize the first letter
+                tmp_view_name = tmp_view_name.capitalize()
+
             pv_plotter.add_text(
-                f"Map: {map_names[map_idx]}, Surface: {surf_idx}, View: {view_ids[view_idx]}",
+                f"{map_names[map_idx]}, Surface: {surf_idx}, View: {tmp_view_name}",
                 font_size=self.figure_conf["title_font_size"],
                 position="upper_edge",
                 color=self.figure_conf["title_font_color"],
