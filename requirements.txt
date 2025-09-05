@@ -1,13 +1,71 @@
-nibabel>=5.3.2
-numpy>=1.23.5
-pandas>=2.3.1
-pydicom>=3.0.1
-rich>=14.1.0
-scipy>=1.16.0
-setuptools>=80.9.0
-scikit-image>=0.25.2
-h5py>=3.14.0
-matplotlib>=3.10.3
-pyvista>=0.45.3
-nilearn>=0.12.0
-joblib>=1.5.1
+# Core scientific computing
+nibabel==5.3.2
+numpy==2.3.2
+pandas==2.3.1
+scipy==1.16.0
+scikit-image==0.25.2
+scikit-learn==1.6.1
+h5py==3.14.0
+matplotlib==3.10.3
+joblib==1.5.1
+pillow==11.3.0
+
+# Neuroimaging specialized
+pydicom==3.0.1
+nilearn==0.12.0
+dipy==1.11.0
+
+# 3D visualization and VTK
+pyvista==0.46.3
+vtk==9.3.1
+fury==0.12.0
+
+# Trame framework for 3D visualization
+trame==3.10.2
+trame-client==3.9.1
+trame-common==1.0.0
+trame-server==3.4.2
+trame-vtk==2.8.17
+trame-vuetify==3.0.1
+
+# Interactive computing
+ipython==9.1.0
+jupyter-client==8.6.3
+jupyter-core==5.7.2
+
+# Progress bars and UI
+rich==14.1.0
+colorama==0.4.6
+screeninfo==0.8.1
+
+# Data processing and file handling
+openpyxl==3.1.5
+lxml==5.3.2
+beautifulsoup4==4.13.4
+requests==2.32.3
+pooch==1.8.2
+
+# Statistical analysis
+pingouin==0.5.5
+statsmodels==0.14.5
+seaborn==0.13.2
+patsy==1.0.1
+
+# Image processing
+imageio==2.37.0
+tifffile==2025.6.11
+networkx==3.5
+
+# Build tools
+setuptools==80.9.0
+build==1.2.2.post1
+wheel
+
+# Utility packages
+tqdm==4.67.1
+pyyaml==6.0.2
+click==8.1.8
+packaging==25.0
+certifi==2025.1.31
+urllib3==2.4.0
+fsspec==2024.6.1
