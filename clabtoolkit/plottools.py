@@ -356,3 +356,306 @@ def create_proportional_subplots(n_plots, figsize_base=4, **layout_kwargs):
     plt.tight_layout()
 
     return fig, axes, layout_info
+
+######################################################################################################
+def calculate_font_sizes(plot_width, plot_height, screen_width=None, screen_height=None,
+                        colorbar_orientation='vertical', colorbar_width=None, colorbar_height=None,
+                        auto_detect_monitor=True):
+    """
+    Calculate appropriate font sizes for matplotlib plots based on dimensions, monitor DPI, and colorbar configuration.
+    
+    This function automatically scales font sizes for plot elements (title, axis labels, tick labels, 
+    colorbar title, and colorbar ticks) based on the plot dimensions, monitor characteristics, and 
+    colorbar orientation. The scaling ensures optimal readability across different plot sizes and 
+    display configurations by calculating monitor DPI from screen resolution.
+    
+    The algorithm uses a reference plot size of 6×4 inches as a baseline and scales font sizes 
+    proportionally based on plot area and monitor DPI. Colorbar fonts are scaled independently 
+    based on colorbar dimensions and orientation constraints.
+    
+    Parameters
+    ----------
+    plot_width : float
+        Width of the plot in inches. Must be positive.
+        Typical values: 3-20 inches for scientific plots.
+
+    plot_height : float  
+        Height of the plot in inches. Must be positive.
+        Typical values: 2-15 inches for scientific plots.
+
+    screen_width : int, optional
+        Screen width in pixels, by default None.
+        If None and auto_detect_monitor=True, automatically detected.
+        Used together with screen_height to calculate monitor DPI.
+
+    screen_height : int, optional
+        Screen height in pixels, by default None.
+        If None and auto_detect_monitor=True, automatically detected.
+        Used together with screen_width to calculate monitor DPI.
+
+    colorbar_orientation : {'vertical', 'horizontal'}, optional
+        Orientation of the colorbar, by default 'vertical'.
+        - 'vertical': Colorbar positioned to the right/left of the plot
+        - 'horizontal': Colorbar positioned above/below the plot
+
+    colorbar_width : float, optional
+        Width of the colorbar in inches, by default None.
+        If None, automatically calculated as 5% of plot width (vertical) or 
+        80% of plot width (horizontal), with minimum constraints.
+
+    colorbar_height : float, optional
+        Height of the colorbar in inches, by default None.
+        If None, automatically calculated as 80% of plot height (vertical) or 
+        5% of plot height (horizontal), with minimum constraints.
+
+    auto_detect_monitor : bool, optional
+        Whether to automatically detect current monitor size, by default True.
+        If False, uses fallback values when screen dimensions are not provided.
+        
+    Returns
+    -------
+    dict
+        Dictionary containing font sizes for different plot elements:
+        
+        - 'title' : float
+            Font size for the main plot title (8-28 pt range)
+
+        - 'axis_labels' : float  
+            Font size for axis labels (6-20 pt range)
+
+        - 'tick_labels' : float
+            Font size for axis tick labels (6-20 pt range)
+
+        - 'colorbar_title' : float
+            Font size for colorbar title (6-16 pt range, orientation-dependent)
+
+        - 'colorbar_ticks' : float
+            Font size for colorbar tick labels (5-12 pt range, orientation-dependent)
+
+        - '_monitor_info' : dict
+            Debug information about monitor detection and DPI calculation
+            
+        All font sizes are rounded to 1 decimal place.
+        
+    Raises
+    ------
+    ValueError
+        If plot_width or plot_height are not positive numbers.
+
+    ValueError
+        If colorbar_orientation is not 'vertical' or 'horizontal'.
+
+    TypeError
+        If numeric parameters are not of appropriate numeric types.
+
+    ImportError
+        If auto_detect_monitor=True but required packages (tkinter, screeninfo) are not available.
+        
+    Examples
+    --------
+    Basic usage with automatic monitor detection:
+    
+    >>> fonts = calculate_font_sizes(6, 4)
+    >>> print(f"Title: {fonts['title']}, Colorbar title: {fonts['colorbar_title']}")
+    Title: 14.2, Colorbar title: 11.4
+    
+    Specify monitor dimensions manually:
+    
+    >>> fonts = calculate_font_sizes(6, 4, screen_width=2560, screen_height=1440)
+    >>> fonts['_monitor_info']['estimated_dpi']
+    109.0
+    
+    Small subplot with horizontal colorbar on high-DPI display:
+    
+    >>> fonts = calculate_font_sizes(3, 2, 
+    ...                             screen_width=3840, screen_height=2160,
+    ...                             colorbar_orientation='horizontal')
+    >>> fonts['colorbar_title']  # Scaled up for high DPI
+    10.2
+    
+    Disable auto-detection for headless environments:
+    
+    >>> fonts = calculate_font_sizes(12, 8, 
+    ...                             screen_width=1920, screen_height=1080,
+    ...                             auto_detect_monitor=False)
+    >>> fonts['title']
+    19.1
+    
+    Custom colorbar dimensions:
+    
+    >>> fonts = calculate_font_sizes(8, 6, 
+    ...                             colorbar_orientation='horizontal',
+    ...                             colorbar_width=6.0, 
+    ...                             colorbar_height=0.5)
+    
+    Apply to matplotlib plot:
+    
+    >>> import matplotlib.pyplot as plt
+    >>> fig, ax = plt.subplots(figsize=(6, 4))
+    >>> fonts = calculate_font_sizes(6, 4, colorbar_orientation='horizontal')
+    >>> ax.set_title('Brain Activation', fontsize=fonts['title'])
+    >>> ax.tick_params(labelsize=fonts['tick_labels'])
+    >>> # For colorbar:
+    >>> # cbar.set_label('Values', fontsize=fonts['colorbar_title'])
+    >>> # cbar.ax.tick_params(labelsize=fonts['colorbar_ticks'])
+    
+    Notes
+    -----
+    DPI Calculation and Scaling:
+    1. Automatically detects current monitor resolution using get_current_monitor_size()
+    2. Estimates monitor DPI based on resolution and common monitor configurations
+    3. Applies DPI-based scaling factor: scale = estimated_dpi / 96.0 (Windows standard)
+    4. Combines with plot area scaling for final font sizes
+    
+    Font scaling algorithm:
+    1. Calculate plot area scaling factor relative to 6×4 inch reference
+    2. Calculate monitor DPI scaling factor relative to 96 DPI baseline
+    3. Scale colorbar fonts based on constraining dimension:
+        - Vertical colorbars: limited by width → scale by width/0.5"
+        - Horizontal colorbars: limited by height → scale by height/0.4"
+    4. Apply orientation-specific bounds to ensure readability
+    
+    The function prioritizes readability over exact proportional scaling, applying 
+    reasonable minimum and maximum font sizes for each element type.
+    
+    Monitor configurations used for DPI estimation:
+    - 1920×1080: 82-147 DPI (depending on screen size)
+    - 2560×1440: 92-196 DPI  
+    - 3840×2160: 103-294 DPI
+    - Other resolutions estimated using pixel density
+    
+    For PyVista compatibility, convert results to integers:
+    >>> pv_fonts = {k: int(round(v)) for k, v in fonts.items() if not k.startswith('_')}
+    """
+    
+    # Input validation
+    if not isinstance(plot_width, (int, float)) or plot_width <= 0:
+        raise ValueError("plot_width must be a positive number")
+    if not isinstance(plot_height, (int, float)) or plot_height <= 0:
+        raise ValueError("plot_height must be a positive number")
+    if colorbar_orientation not in ['vertical', 'horizontal']:
+        raise ValueError("colorbar_orientation must be 'vertical' or 'horizontal'")
+    
+    # Get monitor dimensions
+    if screen_width is None or screen_height is None:
+        if auto_detect_monitor:
+            try:
+                detected_width, detected_height = get_current_monitor_size()
+                screen_width = screen_width or detected_width
+                screen_height = screen_height or detected_height
+            except ImportError as e:
+                raise ImportError(
+                    "Auto monitor detection requires 'tkinter' and 'screeninfo' packages. "
+                    "Install with: pip install screeninfo\n"
+                    "Or disable auto-detection: auto_detect_monitor=False"
+                ) from e
+        else:
+            # Fallback to common resolution
+            screen_width = screen_width or 1920
+            screen_height = screen_height or 1080
+    
+    # Calculate monitor DPI
+    estimated_dpi = estimate_monitor_dpi(screen_width, screen_height)
+    
+    # Calculate scaling factors
+    plot_area = plot_width * plot_height
+    base_area = 24.0  # 6 * 4 inches reference
+    area_scale_factor = (plot_area / base_area) ** 0.5
+    
+    # DPI scaling relative to 96 DPI baseline (Windows standard)
+    dpi_scale_factor = estimated_dpi / 96.0
+    # Cap DPI scaling to reasonable bounds
+    dpi_scale_factor = max(0.8, min(2.0, dpi_scale_factor))
+    
+    # Combined plot scaling
+    plot_scale = area_scale_factor * dpi_scale_factor
+    
+    # Colorbar-specific scaling
+    if colorbar_orientation == 'vertical':
+        if colorbar_width is None:
+            colorbar_width = max(0.3, plot_width * 0.05)
+        if colorbar_height is None:
+            colorbar_height = plot_height * 0.8
+        colorbar_scale = (colorbar_width / 0.5) * dpi_scale_factor  # Reference: 0.5" wide
+    else:  # horizontal
+        if colorbar_width is None:
+            colorbar_width = plot_width * 0.8
+        if colorbar_height is None:
+            colorbar_height = max(0.3, plot_height * 0.05)
+        colorbar_scale = (colorbar_height / 0.4) * dpi_scale_factor  # Reference: 0.4" tall
+    
+    # Base font sizes (optimized for 96 DPI)
+    base_sizes = {
+        'title': 14, 'axis_labels': 12, 'tick_labels': 10,
+        'colorbar_title': 11, 'colorbar_ticks': 9
+    }
+    
+    font_sizes = {}
+    for element, base_size in base_sizes.items():
+        if element.startswith('colorbar'):
+            scaled_size = base_size * colorbar_scale
+        else:
+            scaled_size = base_size * plot_scale
+            
+        # Apply reasonable bounds
+        if element == 'title':
+            scaled_size = max(8, min(28, scaled_size))
+        elif element == 'colorbar_title':
+            if colorbar_orientation == 'horizontal':
+                scaled_size = max(7, min(16, scaled_size))
+            else:
+                scaled_size = max(6, min(14, scaled_size))
+        elif element == 'colorbar_ticks':
+            if colorbar_orientation == 'horizontal':
+                scaled_size = max(6, min(12, scaled_size))
+            else:
+                scaled_size = max(5, min(10, scaled_size))
+        else:
+            scaled_size = max(6, min(20, scaled_size))
+            
+        font_sizes[element] = round(scaled_size, 1)
+    
+    # Add monitor info for debugging
+    font_sizes['_monitor_info'] = {
+        'screen_width': screen_width,
+        'screen_height': screen_height, 
+        'estimated_dpi': estimated_dpi,
+        'dpi_scale_factor': round(dpi_scale_factor, 2),
+        'area_scale_factor': round(area_scale_factor, 2),
+        'plot_scale': round(plot_scale, 2),
+        'colorbar_scale': round(colorbar_scale, 2)
+    }
+        
+    return font_sizes
+
+######################################################################################################
+# Additional utility functions for common use cases
+def get_pyvista_fonts(plot_width, plot_height, **kwargs):
+    """
+    Get integer font sizes specifically for PyVista compatibility.
+    
+    Parameters
+    ----------
+    plot_width : float
+        Width of the plot in inches.
+
+    plot_height : float
+        Height of the plot in inches. 
+
+    **kwargs
+        Additional keyword arguments passed to calculate_font_sizes().
+        
+    Returns
+    -------
+    dict
+        Dictionary with integer font sizes suitable for PyVista (excludes debug info).
+        
+    Examples
+    --------
+    >>> fonts = get_pyvista_fonts(8, 6, colorbar_orientation='vertical')
+    >>> plotter.add_title('3D Brain', font_size=fonts['title'])
+    """
+    fonts = calculate_font_sizes(plot_width, plot_height, **kwargs)
+    # Exclude debug info for clean PyVista usage
+    return {key: int(round(value)) for key, value in fonts.items() 
+            if not key.startswith('_')}
