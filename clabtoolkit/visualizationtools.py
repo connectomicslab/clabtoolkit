@@ -1390,16 +1390,20 @@ class SurfacePlotter:
                                         surf_idx,
                                         map_idx,
                                     )
-                                    colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
-                                        map_idx
-                                    ]
+                                    colormap_limits[(map_idx, surf_idx, 0)] = (
+                                        maps_limits[map_idx]
+                                    )
                             else:
                                 for surf_idx in range(n_surfaces):
                                     brain_positions[(map_idx, surf_idx, 0)] = (
                                         surf_idx,
                                         map_idx,
                                     )
-                                    colormap_limits[(map_idx, surf_idx, 0)] = (None, None, maps_names[map_idx])
+                                    colormap_limits[(map_idx, surf_idx, 0)] = (
+                                        None,
+                                        None,
+                                        maps_names[map_idx],
+                                    )
 
                         shape = [n_surfaces + 1, n_maps]
                         row_weights = [1] * n_surfaces + [colorbar_size]
@@ -1620,7 +1624,11 @@ class SurfacePlotter:
                                     map_idx,
                                     surf_idx,
                                 )
-                                colormap_limits[(map_idx, surf_idx, 0)] = (None, None, maps_names[map_idx])
+                                colormap_limits[(map_idx, surf_idx, 0)] = (
+                                    None,
+                                    None,
+                                    maps_names[map_idx],
+                                )
 
                     shape = [n_maps, n_surfaces + 1]
                     row_weights = [1] * n_maps
@@ -3338,7 +3346,7 @@ class SurfacePlotter:
             if save_path.lower().endswith((".html", ".htm")):
                 # Save as HTML
                 try:
-                    
+
                     plotter.export_html(save_path)
                     print(f"Figure saved to: {save_path}")
 
@@ -3485,7 +3493,7 @@ class SurfacePlotter:
 
         if n_maps == 0:
             raise ValueError("No maps names provided.")
-        
+
         if n_maps > 1:
             raise ValueError("Multiple maps are not supported in this function.")
         # Check if the maps are available in all surfaces
@@ -3674,7 +3682,6 @@ class SurfacePlotter:
             pv_plotter.camera.azimuth = camera_params["azimuth"]
             pv_plotter.camera.elevation = camera_params["elevation"]
             pv_plotter.camera.zoom(camera_params["zoom"])
-
 
         # And place colorbars at their positions
         if len(colorbar_dict_list):
@@ -4015,30 +4022,30 @@ class SurfacePlotter:
                 row, col = position[0], position[1]
             else:
                 row, col = position
-            
+
             # Ensure row and col are integers
             if isinstance(row, (list, tuple)):
                 row = row[0] if row else 0
 
             if isinstance(col, (list, tuple)):
                 col = col[0] if col else 0
-                
+
             subplot_indices.append(int(row) * n_cols + int(col))
-        
+
         # If there is any element of subplot_indices that is bigger than n_subplots do something else
         if any(sp_index > n_subplots for sp_index in subplot_indices):
             # Remove all the elements that are bigger than n_subplots
 
-                    # Take a vector from 0 to 6*4 and reshape it to a matrix of 6 rows and 4 columns and print it
-            tmp = np.arange(0, n_rows*n_cols).reshape(n_rows,n_cols)
+            # Take a vector from 0 to 6*4 and reshape it to a matrix of 6 rows and 4 columns and print it
+            tmp = np.arange(0, n_rows * n_cols).reshape(n_rows, n_cols)
             # Now remove the last column and print the matrix
-            tmp = tmp[:,:-1]
+            tmp = tmp[:, :-1]
 
             # Now, if the matrix has n_rows bigger than 3, remove , from rows 3 to n_rows -1
             if tmp.shape[0] > 3:
                 for cont, r in enumerate(range(1, tmp.shape[0])):
-                    tmp[r,:] = tmp[r,:] - cont
-            
+                    tmp[r, :] = tmp[r, :] - cont
+
             subplot_indices = tmp.T.flatten().tolist()
 
         map_limits = config_dict["colormap_limits"]
@@ -4137,7 +4144,9 @@ class SurfacePlotter:
 
         for v_idx in unique_v_indices:
             grouped_by_v_idx[v_idx] = []
-            for i, ((m_idx, s_idx, v_idx), (row, col)) in enumerate(brain_positions.items()):
+            for i, ((m_idx, s_idx, v_idx), (row, col)) in enumerate(
+                brain_positions.items()
+            ):
                 if v_idx in grouped_by_v_idx:  # Safety check
                     grouped_by_v_idx[v_idx].append(subplot_indices[i])
 
@@ -4393,7 +4402,9 @@ class SurfacePlotter:
         window_size = plotter.window_size
         subplot_width = (viewport[2] - viewport[0]) * window_size[0]
         subplot_height = (viewport[3] - viewport[1]) * window_size[1]
-        font_sizes = cltplot.calculate_font_sizes(subplot_width, subplot_height, colorbar_orientation=colorbar_position) 
+        font_sizes = cltplot.calculate_font_sizes(
+            subplot_width, subplot_height, colorbar_orientation=colorbar_position
+        )
 
         # Add invisible mesh for colorbar reference
         dummy_actor = plotter.add_mesh(
@@ -4420,31 +4431,31 @@ class SurfacePlotter:
         # Position colorbar appropriately
         if colorbar_position == "horizontal":
             # Horizontal colorbar
-            scalar_bar.SetPosition(0.05, 0.05)   # 5% from left, 5% from bottom
-            scalar_bar.SetPosition2(0.9, 0.7)   # 90% width, 70% height
+            scalar_bar.SetPosition(0.05, 0.05)  # 5% from left, 5% from bottom
+            scalar_bar.SetPosition2(0.9, 0.7)  # 90% width, 70% height
             scalar_bar.SetOrientationToHorizontal()
 
         else:
             # More conventional vertical version with same positioning philosophy:
-            scalar_bar.SetPosition(0.05, 0.05)    # 5% from left, 5% from bottom
-            scalar_bar.SetPosition2(0.7, 0.9)    # 12% width, 90% height
+            scalar_bar.SetPosition(0.05, 0.05)  # 5% from left, 5% from bottom
+            scalar_bar.SetPosition2(0.7, 0.9)  # 12% width, 90% height
             scalar_bar.SetOrientationToVertical()
 
         colorbar_title = colorbar_title.capitalize()
         scalar_bar.SetTitle(colorbar_title)
-        
+
         scalar_bar.SetMaximumNumberOfColors(256)
         scalar_bar.SetNumberOfLabels(self.figure_conf["colorbar_n_labels"])
 
         # Get text properties for title and labels
         title_prop = scalar_bar.GetTitleTextProperty()
         label_prop = scalar_bar.GetLabelTextProperty()
-        
+
         # Set colors
         title_color = pv.Color(self.figure_conf["colorbar_font_color"]).float_rgb
         title_prop.SetColor(*title_color)
         label_prop.SetColor(*title_color)
-        
+
         # Set font properties - key fix for consistent sizing
         if self.figure_conf["colorbar_font_type"].lower() == "arial":
             title_prop.SetFontFamilyToArial()
@@ -4454,19 +4465,19 @@ class SurfacePlotter:
             title_prop.SetFontFamilyToCourier()
             label_prop.SetFontFamilyToCourier()
 
-        else:    
+        else:
             title_prop.SetFontFamilyToTimes()  # Ensure consistent font family
             label_prop.SetFontFamilyToTimes()
-        
+
         base_title_size = font_sizes["colorbar_title"]
         base_label_size = font_sizes["colorbar_ticks"]
-        
+
         # Apply font sizes with explicit scaling
         title_prop.SetFontSize(base_title_size)
         label_prop.SetFontSize(base_label_size)
-        
+
         # Enable/disable bold for better consistency
-        title_prop.BoldOff()  
+        title_prop.BoldOff()
         title_prop.ItalicOff()
         label_prop.BoldOff()
 
@@ -4480,14 +4491,14 @@ class SurfacePlotter:
         scalar_bar.SetLabelFormat("%.2f")  # Consistent number formatting
         # scalar_bar.SetMaximumWidthInPixels(1000)  # Prevent excessive scaling
         # scalar_bar.SetMaximumHeightInPixels(1000)
-        
+
         # Set text margin for better spacing
         scalar_bar.SetTextPad(4)
         scalar_bar.SetVerticalTitleSeparation(10)
 
         # Add the scalar bar to the plotter
         plotter.add_actor(scalar_bar)
-        
+
     ###############################################################################################
     def _determine_render_mode(
         self, save_path: Optional[str], notebook: bool, non_blocking: bool = False

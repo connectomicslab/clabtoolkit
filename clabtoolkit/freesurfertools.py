@@ -4391,10 +4391,12 @@ class FreeSurferSubject:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def create_individual_freesurfer_table(subj_id: str,
-                        subjs_dir: str = None,
-                        out_tab_file: str = None,
-                        add_bids_entities: bool = False) -> pd.DataFrame:
+def create_individual_freesurfer_table(
+    subj_id: str,
+    subjs_dir: str = None,
+    out_tab_file: str = None,
+    add_bids_entities: bool = False,
+) -> pd.DataFrame:
     """
     Create a dataset table from the subjects in the given directory.
     Parameters
@@ -4402,13 +4404,13 @@ def create_individual_freesurfer_table(subj_id: str,
     subjs_dir : str, optional
         The directory containing the FreeSurfer subjects. If None, uses the
         FREESURFER_HOME environment variable to locate the subjects directory.
-        
+
     subj_id : str
         The subject ID for which to create the dataset table.
-        
+
     out_tab_file : str, optional
         If provided, the path to save the dataset table as a TSV file.
-        
+
     Returns
     -------
     pd.DataFrame
@@ -4416,52 +4418,66 @@ def create_individual_freesurfer_table(subj_id: str,
     """
     # Check if subjs_dir is provided, otherwise use the default
     if subjs_dir is None:
-        subjs_dir = os.environ.get('SUBJECTS_DIR')
+        subjs_dir = os.environ.get("SUBJECTS_DIR")
 
     else:
         if not os.path.isdir(subjs_dir):
-            raise ValueError(f"The provided subjs_dir '{subjs_dir}' is not a valid directory.")
-    
+            raise ValueError(
+                f"The provided subjs_dir '{subjs_dir}' is not a valid directory."
+            )
+
     if out_tab_file is not None:
         if isinstance(out_tab_file, str):
             out_dir = os.path.dirname(out_tab_file)
             if out_dir and not os.path.exists(out_dir):
                 os.makedirs(out_dir)
         else:
-            raise ValueError("out_tab_file should be a string representing the file path.")
-    
+            raise ValueError(
+                "out_tab_file should be a string representing the file path."
+            )
+
     if not isinstance(subj_id, str):
         raise ValueError("subj_id should be a string representing the subject ID.")
     else:
         # Check if the subject directory exists
-        subj_path = os.path.join(subjs_dir, subj_id,)
+        subj_path = os.path.join(
+            subjs_dir,
+            subj_id,
+        )
         if not os.path.isdir(subj_path):
-            raise ValueError(f"The subject ID '{subj_id}' does not exist in the directory '{subjs_dir}'.")
+            raise ValueError(
+                f"The subject ID '{subj_id}' does not exist in the directory '{subjs_dir}'."
+            )
         else:
             if not os.path.isdir(os.path.join(subj_path, "mri")):
-                raise ValueError(f"The subject ID '{subj_id}' is not a valid FreeSurfer directory.")
-    
+                raise ValueError(
+                    f"The subject ID '{subj_id}' is not a valid FreeSurfer directory."
+                )
+
     # Load the Subject object
     subject = FreeSurferSubject(subj_id, subjs_dir)
-    df = subject.create_stats_table(output_file=out_tab_file, add_bids_entities=add_bids_entities)
+    df = subject.create_stats_table(
+        output_file=out_tab_file, add_bids_entities=add_bids_entities
+    )
     return df
+
 
 #####################################################################################################
 def process_subject(fs_fullid: str, fs_subject_dir: str, out_folder: str) -> tuple:
     """
     Process a single subject and return the result.
-    
+
     Parameters
     ----------
     fs_fullid : str
         The full subject ID
-        
+
     fs_subject_dir : str
         The FreeSurfer subjects directory
-        
+
     out_folder : str
         The output folder for stats tables
-        
+
     Returns
     -------
     tuple
@@ -4470,77 +4486,94 @@ def process_subject(fs_fullid: str, fs_subject_dir: str, out_folder: str) -> tup
     try:
         sub_entity = cltbids.str2entity(fs_fullid)
         file_name = fs_fullid + "_desc-statstable_morphometry.csv"
-        out_flder = os.path.join(out_folder, "freesurfer", "sub-" + sub_entity['sub'], "ses-" + sub_entity['ses'], "stats")
+        out_flder = os.path.join(
+            out_folder,
+            "freesurfer",
+            "sub-" + sub_entity["sub"],
+            "ses-" + sub_entity["ses"],
+            "stats",
+        )
         out_tab_file = os.path.join(out_flder, file_name)
-        
+
         if not os.path.isfile(out_tab_file):
-            df = create_individual_freesurfer_table(fs_fullid, fs_subject_dir, out_tab_file=out_tab_file, add_bids_entities=True)
+            df = create_individual_freesurfer_table(
+                fs_fullid,
+                fs_subject_dir,
+                out_tab_file=out_tab_file,
+                add_bids_entities=True,
+            )
             return (fs_fullid, True, None)
         else:
             return (fs_fullid, True, "File already exists - skipped")
-            
+
     except Exception as e:
         return (fs_fullid, False, str(e))
 
+
 #####################################################################################################
-def create_freesurfer_table(out_folder: str, ids_file:Union[str, List[str]] = None, fs_subject_dir:str = None,  max_workers:int = 1):
-    
+def create_freesurfer_table(
+    out_folder: str,
+    ids_file: Union[str, List[str]] = None,
+    fs_subject_dir: str = None,
+    max_workers: int = 1,
+):
     """
     Create FreeSurfer stats tables for multiple subjects in parallel.
-    
+
     Parameters
     ----------
     out_folder : str
         The output folder for stats tables.
-        
+
     ids_file : str or List[str], optional
         A text file containing subject IDs (one per line) or a list of subject IDs.
         If None, an error is raised.
-        
+
     fs_subject_dir : str, optional
         The FreeSurfer subjects directory. If None, uses the SUBJECTS_DIR environment variable.
-        
+
     max_workers : int, optional
         The maximum number of worker threads to use for parallel processing. Default is 1 (non-parallel).
-        
+
     Returns
     -------
     None
-    
+
     Notes
     -----
     This function processes each subject in parallel using ThreadPoolExecutor and displays a progress bar.
     It handles errors gracefully and provides a summary of completed and failed subjects.
-    
+
     Example
     -------
     >>> create_freesurfer_table("/path/to/output", "/path/to/ids.txt", "/path/to/freesurfer/subjects", max_workers=4)
-    
+
     """
 
-    
     if ids_file is None:
         subject_ids = []
         subj_dirs = os.listdir(fs_subject_dir)
-        
+
         subject_ids = []
         for subj_dir in subj_dirs:
-            if subj_dir.startswith('sub-'):
+            if subj_dir.startswith("sub-"):
                 subject_ids.append(subj_dir)
-        
+
     else:
         # Use cltpipe.get_ids2process to handle both list and file input
         subject_ids = cltpipe.get_ids2process(ids_file)
 
     # Initialize console and display summary
     console = Console()
-    console.print(Panel.fit(
-        f"[bold green]FreeSurfer Stats Processing (Parallel)[/bold green]\n"
-        f"[blue]Total subjects to process: {len(subject_ids)}[/blue]\n"
-        f"[blue]Max workers: {max_workers}[/blue]", 
-        style="cyan"
-    ))
-    
+    console.print(
+        Panel.fit(
+            f"[bold green]FreeSurfer Stats Processing (Parallel)[/bold green]\n"
+            f"[blue]Total subjects to process: {len(subject_ids)}[/blue]\n"
+            f"[blue]Max workers: {max_workers}[/blue]",
+            style="cyan",
+        )
+    )
+
     # Configure progress bar with custom columns
     progress = Progress(
         SpinnerColumn(),
@@ -4552,60 +4585,79 @@ def create_freesurfer_table(out_folder: str, ids_file:Union[str, List[str]] = No
         console=console,
         refresh_per_second=10,
     )
-    
+
     # Process subjects with ThreadPoolExecutor and progress bar
     completed_subjects = []
     failed_subjects = []
-    
+
     with progress:
         task = progress.add_task("Processing subjects", total=len(subject_ids))
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
             future_to_subject = {
-                executor.submit(process_subject, fs_fullid, fs_subject_dir, out_folder): fs_fullid 
+                executor.submit(
+                    process_subject, fs_fullid, fs_subject_dir, out_folder
+                ): fs_fullid
                 for fs_fullid in subject_ids
             }
-            
+
             # Process completed tasks as they finish
             for future in as_completed(future_to_subject):
                 subject_id = future_to_subject[future]
                 try:
                     result = future.result()
                     subject_id, success, error_msg = result
-                    
+
                     if success:
                         completed_subjects.append(subject_id)
                         if error_msg:
-                            progress.update(task, description=f"Skipped: [yellow]{subject_id}[/yellow] ({error_msg})")
+                            progress.update(
+                                task,
+                                description=f"Skipped: [yellow]{subject_id}[/yellow] ({error_msg})",
+                            )
                         else:
-                            progress.update(task, description=f"Completed: [green]{subject_id}[/green]")
+                            progress.update(
+                                task,
+                                description=f"Completed: [green]{subject_id}[/green]",
+                            )
                     else:
                         failed_subjects.append((subject_id, error_msg))
-                        progress.update(task, description=f"Failed: [red]{subject_id}[/red]")
-                        console.print(f"[red]Error processing {subject_id}: {error_msg}[/red]")
-                        
+                        progress.update(
+                            task, description=f"Failed: [red]{subject_id}[/red]"
+                        )
+                        console.print(
+                            f"[red]Error processing {subject_id}: {error_msg}[/red]"
+                        )
+
                 except Exception as exc:
                     failed_subjects.append((subject_id, str(exc)))
-                    progress.update(task, description=f"Failed: [red]{subject_id}[/red]")
-                    console.print(f"[red]Exception processing {subject_id}: {exc}[/red]")
-                
+                    progress.update(
+                        task, description=f"Failed: [red]{subject_id}[/red]"
+                    )
+                    console.print(
+                        f"[red]Exception processing {subject_id}: {exc}[/red]"
+                    )
+
                 # Advance progress
                 progress.advance(task)
-    
+
     # Display final summary
-    console.print(Panel.fit(
-        f"[bold green]✓ Processing Complete![/bold green]\n"
-        f"[green]Successfully processed: {len(completed_subjects)}[/green]\n"
-        f"[red]Failed: {len(failed_subjects)}[/red]", 
-        style="green"
-    ))
-    
+    console.print(
+        Panel.fit(
+            f"[bold green]✓ Processing Complete![/bold green]\n"
+            f"[green]Successfully processed: {len(completed_subjects)}[/green]\n"
+            f"[red]Failed: {len(failed_subjects)}[/red]",
+            style="green",
+        )
+    )
+
     # Display failed subjects if any
     if failed_subjects:
         console.print("\n[bold red]Failed Subjects:[/bold red]")
         for subj_id, error in failed_subjects:
             console.print(f"  [red]• {subj_id}: {error}[/red]")
+
 
 #####################################################################################################
 def create_fsaverage_links(
@@ -4684,12 +4736,10 @@ def create_fsaverage_links(
 
     if not os.path.exists(link_folder):  # Changed from os.path.isdir
         try:
-            if sys.platform.startswith('win'):
+            if sys.platform.startswith("win"):
                 # Windows implementation
                 subprocess.run(
-                    ["mklink", "/D", link_folder, fsavg_dir],
-                    check=True,
-                    shell=True
+                    ["mklink", "/D", link_folder, fsavg_dir], check=True, shell=True
                 )
             else:
                 # Unix/Linux implementation
@@ -4702,7 +4752,7 @@ def create_fsaverage_links(
                 )
         except subprocess.CalledProcessError as e:
             raise ValueError(f"Failed to create symbolic link: {e}")
-    
+
     return link_folder
 
 

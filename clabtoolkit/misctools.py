@@ -1043,16 +1043,19 @@ def create_random_colors(
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
+
 ###################################################################################################
-def colortable_visualization(colortable:np.ndarray, 
-                            region_names: Union[str, List[str]], 
-                            columns:int = 2,
-                            export_path: str = None,
-                            title:str = "Color Table",
-                            alternating_bg: bool =False):
+def colortable_visualization(
+    colortable: np.ndarray,
+    region_names: Union[str, List[str]],
+    columns: int = 2,
+    export_path: str = None,
+    title: str = "Color Table",
+    alternating_bg: bool = False,
+):
     """
     Color table visualization. Generates a PNG image displaying a FreeSurfer-style color table.
-    
+
     Parameters
     ----------
     colortable : array-like, shape (N, 3), (N, 4), or (N, 5)
@@ -1077,7 +1080,7 @@ def colortable_visualization(colortable:np.ndarray,
     -------
     fig : matplotlib.figure.Figure
         Matplotlib figure object.
-    
+
     Raises
     ------
     ValueError
@@ -1103,17 +1106,19 @@ def colortable_visualization(colortable:np.ndarray,
     # Validate colortable shape
     if colortable.ndim != 2 or colortable.shape[1] not in [3, 4, 5]:
         raise ValueError("colortable must be a 2D array with 3, 4, or 5 columns")
-    
+
     if colortable.shape[0] != n_regions:
-        raise ValueError("Length of region_names must match number of rows in colortable")
-    
+        raise ValueError(
+            "Length of region_names must match number of rows in colortable"
+        )
+
     if not isinstance(region_names, (str, list)):
         raise TypeError("region_names must be a string or a list of strings")
-    
+
     if isinstance(region_names, str):
         region_names = [region_names]
 
-    elif isinstance(region_names, list): # Validate all elements are strings
+    elif isinstance(region_names, list):  # Validate all elements are strings
         if not all(isinstance(name, str) for name in region_names):
             raise TypeError("All elements in region_names list must be strings")
 
@@ -1139,35 +1144,67 @@ def colortable_visualization(colortable:np.ndarray,
     ax.axis("off")
 
     # Title
-    ax.text(fig_width/2, fig_height - 0.5, title,
-            ha="center", va="center", fontsize=15, fontweight="bold")
+    ax.text(
+        fig_width / 2,
+        fig_height - 0.5,
+        title,
+        ha="center",
+        va="center",
+        fontsize=15,
+        fontweight="bold",
+    )
 
     # Draw rows
     for i in range(n_regions):
         col = i // rows_per_col
         row = i % rows_per_col
         x = margin_left + col * col_spacing
-        y = fig_height - margin_top - (row + 1) * (rect_height + row_spacing) + row_spacing
+        y = (
+            fig_height
+            - margin_top
+            - (row + 1) * (rect_height + row_spacing)
+            + row_spacing
+        )
 
         # Background shading for readability
         if alternating_bg and row % 2 == 1:
-            ax.add_patch(patches.Rectangle(
-                (x-0.2, y-0.1), col_spacing-0.3, rect_height+0.2,
-                facecolor="#efecec", edgecolor="none", zorder=0))
+            ax.add_patch(
+                patches.Rectangle(
+                    (x - 0.2, y - 0.1),
+                    col_spacing - 0.3,
+                    rect_height + 0.2,
+                    facecolor="#efecec",
+                    edgecolor="none",
+                    zorder=0,
+                )
+            )
         elif alternating_bg and row % 2 == 0:
-            ax.add_patch(patches.Rectangle(
-                (x-0.2, y-0.1), col_spacing-0.3, rect_height+0.2,
-                facecolor="#c8c8c8", edgecolor="none", zorder=0))
+            ax.add_patch(
+                patches.Rectangle(
+                    (x - 0.2, y - 0.1),
+                    col_spacing - 0.3,
+                    rect_height + 0.2,
+                    facecolor="#c8c8c8",
+                    edgecolor="none",
+                    zorder=0,
+                )
+            )
 
         # Get RGBA
         r, g, b = colortable[i, 0:3] / 255.0
-        a = colortable[i, 3]/255.0 if colortable.shape[1] >= 4 else 1.0
+        a = colortable[i, 3] / 255.0 if colortable.shape[1] >= 4 else 1.0
 
         # Color rectangle
-        ax.add_patch(patches.Rectangle(
-            (x, y), rect_width, rect_height,
-            facecolor=(r, g, b, a),
-            edgecolor="#444444", linewidth=0.8))
+        ax.add_patch(
+            patches.Rectangle(
+                (x, y),
+                rect_width,
+                rect_height,
+                facecolor=(r, g, b, a),
+                edgecolor="#444444",
+                linewidth=0.8,
+            )
+        )
 
         # Text
         if colortable.shape[1] == 5:
@@ -1180,15 +1217,26 @@ def colortable_visualization(colortable:np.ndarray,
         name = textwrap.fill(region_names[i], width=30)
         label = f"{rgb_label} {name}"
 
-        ax.text(x + rect_width + 0.2, y + rect_height/2,
-                label, ha="left", va="center",
-                fontsize=10, fontfamily="monospace")
+        ax.text(
+            x + rect_width + 0.2,
+            y + rect_height / 2,
+            label,
+            ha="left",
+            va="center",
+            fontsize=10,
+            fontfamily="monospace",
+        )
 
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     if export_path:
-        plt.savefig(export_path, dpi=300, bbox_inches="tight", 
-                    facecolor="white", pad_inches=0.15)
+        plt.savefig(
+            export_path,
+            dpi=300,
+            bbox_inches="tight",
+            facecolor="white",
+            pad_inches=0.15,
+        )
         print(f"Saved: {export_path}")
 
     return fig
@@ -3481,7 +3529,7 @@ def smart_read_table(
 
     # Try pandas built-in separator auto-detection
     try:
-        
+
         # Read the table, take the column names, look on the BIDs columns names and then, read those columns as str)
         tmp_bids = cltbids.entities4table()
         bids_entities = list(tmp_bids.values())
@@ -3489,9 +3537,11 @@ def smart_read_table(
         cols = df_tmp.columns.tolist()
 
         if any(col in bids_entities for col in cols):
-            kwargs['dtype'] = {col: str for col in cols if col in bids_entities}
+            kwargs["dtype"] = {col: str for col in cols if col in bids_entities}
 
-        df = pd.read_csv(file_path, sep=None, dtype={'Run': str} , engine="python", **kwargs)
+        df = pd.read_csv(
+            file_path, sep=None, dtype={"Run": str}, engine="python", **kwargs
+        )
 
         return df
     except Exception:
@@ -4726,6 +4776,7 @@ def show_object_content(obj, show_private=False, show_dunder=False):
             obj, obj_type, obj_name, module_name, methods, properties, attributes
         )
 
+
 ########################################################################################################
 def _display_object_notebook_output(
     obj, obj_type, obj_name, module_name, methods, properties, attributes
@@ -4878,6 +4929,7 @@ def _display_object_notebook_output(
     html += "</div>"
     display(HTML(html))
 
+
 #########################################################################################################
 def _display_object_terminal_output(
     obj, obj_type, obj_name, module_name, methods, properties, attributes
@@ -5013,28 +5065,34 @@ def _display_object_terminal_output(
 
     print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
 
+
 ########################################################################################################
-def print_dict_tree(data: Dict[Any, Any], prefix: str = "", is_last: bool = True, max_value_length: int = 50) -> None:
+def print_dict_tree(
+    data: Dict[Any, Any],
+    prefix: str = "",
+    is_last: bool = True,
+    max_value_length: int = 50,
+) -> None:
     """
     Print dictionary in a tree-like structure with ANSI colors.
-    
+
     Parameters
     ----------
-    data (dict): 
+    data (dict):
         The dictionary to print
 
-    prefix (str): 
+    prefix (str):
         Prefix for the current level (used for recursion)
 
-    is_last (bool): 
+    is_last (bool):
         Whether the current item is the last in its level
 
-    max_value_length (int): 
+    max_value_length (int):
         Maximum length of value strings before truncation
 
     Returns
     -------
-    None: 
+    None:
         Prints the dictionary structure to stdout
 
     Examples
@@ -5055,24 +5113,29 @@ def print_dict_tree(data: Dict[Any, Any], prefix: str = "", is_last: bool = True
     """
     if not isinstance(data, dict):
         return
-    
+
     items = list(data.items())
-    
+
     for i, (key, value) in enumerate(items):
-        is_last_item = (i == len(items) - 1)
+        is_last_item = i == len(items) - 1
         current_prefix = "└── " if is_last_item else "├── "
-        
+
         if isinstance(value, dict):
-            print(f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKBLUE}{bcolors.BOLD}{key}/{bcolors.ENDC}")
+            print(
+                f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKBLUE}{bcolors.BOLD}{key}/{bcolors.ENDC}"
+            )
             extension = "    " if is_last_item else "│   "
             print_dict_tree(value, prefix + extension, is_last_item, max_value_length)
         else:
             # Handle long values by truncating
             value_str = str(value)
             if len(value_str) > max_value_length:
-                value_str = value_str[:max_value_length-3] + "..."
-            
-            print(f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKYELLOW}{key}{bcolors.ENDC}: {bcolors.OKGRAY}{value_str}{bcolors.ENDC}")
+                value_str = value_str[: max_value_length - 3] + "..."
+
+            print(
+                f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKYELLOW}{key}{bcolors.ENDC}: {bcolors.OKGRAY}{value_str}{bcolors.ENDC}"
+            )
+
 
 #####################################################################################################
 def search_methods(obj, keyword, case_sensitive=False):
