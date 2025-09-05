@@ -2,9 +2,9 @@
 
 ## Overview
 
-**clabtoolkit** is a comprehensive Python toolkit for neuroimaging data processing and analysis, specifically designed for working with brain connectivity data, BIDS datasets, and various neuroimaging formats. Developed by Yasser Alemán-Gómez, this toolkit provides a complete solution for connectomics research and surface-based brain analysis.
+**clabtoolkit** is a comprehensive Python toolkit designed for neuroimaging data processing and analysis, with specialized focus on brain connectivity data, BIDS datasets, and various neuroimaging formats. Developed by Yasser Alemán-Gómez, this toolkit provides an end-to-end solution for connectomics research and surface-based brain analysis.
 
-**Version**: 0.3.1  
+**Version**: 0.3.3  
 **License**: Apache Software License 2.0  
 **Python Support**: 3.9+  
 **Documentation**: https://clabtoolkit.readthedocs.io  
@@ -18,11 +18,13 @@
 pip install clabtoolkit
 ```
 
-### Development Installation
+### Development Installation with Conda
 
 ```bash
 git clone https://github.com/connectomicslab/clabtoolkit.git
 cd clabtoolkit
+conda env create -f environment.yaml
+conda activate clabtoolkit
 pip install -e .[dev]
 ```
 
@@ -43,7 +45,7 @@ surface.plot()
 
 ## Package Architecture
 
-The toolkit follows a modular, layered architecture:
+The toolkit follows a modular, layered architecture designed for scalability and ease of use:
 
 -   **Foundation Layer**: Core utilities and plotting infrastructure
 -   **Data Layer**: BIDS compliance and image processing
@@ -56,14 +58,14 @@ The toolkit follows a modular, layered architecture:
 
 #### bidstools - BIDS Dataset Management
 
-**Purpose**: Complete BIDS (Brain Imaging Data Structure) compliance and dataset management
+**Purpose**: Comprehensive BIDS (Brain Imaging Data Structure) compliance and dataset management
 
 **Key Features**:
 
--   BIDS entity manipulation (`str2entity`, `entity2str`)
--   Dataset organization and validation
+-   BIDS entity manipulation and validation
+-   Dataset organization and structure analysis
 -   Batch processing utilities
--   Database table generation from BIDS datasets
+-   Automated database table generation from BIDS datasets
 
 **Key Functions**:
 
@@ -73,18 +75,23 @@ entities = cltbids.str2entity("sub-01_ses-M00_acq-3T_T1w.nii.gz")
 
 # Manipulate BIDS entities
 cltbids.replace_entity_value(filename, 'ses', 'new_session')
-cltbids.insert_entity(filename, 'run', '01', after='acq')
+cltbids.insert_entity(filename, 'run', '01', prev_entity='acq')
+
+# Generate and display BIDS dataset structure
+tree = cltbids.generate_bids_tree("/path/to/bids/dataset")
+print(tree)
 
 # Get all subjects from a BIDS dataset
 subjects = cltbids.get_subjects("/path/to/bids/dataset")
 
 # Generate comprehensive dataset overview
 database = cltbids.get_bids_database_table("/path/to/bids/dataset")
+print(database.head())
 ```
 
 #### imagetools - Image Processing Engine
 
-**Purpose**: Advanced neuroimaging operations and morphological processing
+**Purpose**: Neuroimaging operations and morphological processing
 
 **Key Classes**:
 
@@ -104,7 +111,7 @@ from clabtoolkit.imagetools import MorphologicalOperations
 
 morph = MorphologicalOperations()
 # Perform morphological closing on binary image
-result = morph.closing(binary_image, structuring_element)
+filled = morph.closing(image_with_holes, iterations=1)
 ```
 
 ### FreeSurfer Integration
@@ -130,12 +137,28 @@ result = morph.closing(binary_image, structuring_element)
 **Usage Example**:
 
 ```python
-from clabtoolkit.freesurfertools import AnnotParcellation
+import clabtoolkit.freesurfertools as cltfree
+import os
+
+# Get FreeSurfer environment variables
+freesurfer_home = os.environ.get('FREESURFER_HOME')
+fs_subject_dir = os.path.join(freesurfer_home, 'subjects')
+fs_fullid = 'bert'
+
+# Load the Subject object
+subject = cltfree.FreeSurferSubject(fs_fullid, fs_subject_dir)
+
+# Obtain dictionaries containing hemisphere-specific FreeSurfer file paths
+surf, maps, parc, stats = subject.get_hemi_dicts(fs_subject_dir, 'lh')
+
+# Get the processing status
+print(f"Processing status for subject {fs_fullid}:")
+subject.get_proc_status()
+print(subject.pstatus)
 
 # Load and process annotation file
-annot = AnnotParcellation("lh.aparc.a2009s.annot")
+annot = cltfree.AnnotParcellation("lh.aparc.a2009s.annot")
 annot.correct_parcellation()  # Fix unlabeled vertices
-annot.save_as_gcs("output.gcs")  # Convert format
 ```
 
 ### Analysis and Processing
@@ -162,17 +185,38 @@ annot.save_as_gcs("output.gcs")  # Convert format
 **Usage Example**:
 
 ```python
-from clabtoolkit.parcellationtools import Parcellation
+import clabtoolkit.parcellationtools as cltparc
 
-# Load parcellation with lookup table
-parc = Parcellation()
-parc.load_from_file("/path/to/parcellation.nii.gz", "/path/to/lut.lut")
+# Load parcellation (automatically detects and loads lookup table if available)
+vol_parc = cltparc.Parcellation("/path/to/parcellation/parcellation.nii.gz")
+```
 
-# Filter specific regions
-parc.filter_regions(['cortex', 'cerebellum'])
+If a lookup table with the same filename and extension (.lut or .tsv) exists, it will be loaded automatically. Otherwise, load it manually:
 
+```python
+# Load the LUT file manually
+vol_parc.load_colortable("/path/to/lookuptable/lookuptable.lut", lut_type="lut")
+```
+
+Compute regional volumes for all structures in the parcellation:
+
+```python
 # Compute regional volumes
-volumes = parc.compute_regional_volumes()
+volumes = vol_parc.compute_regional_volumes()
+```
+
+Filter structures by name or code if only specific regions are of interest:
+
+```python
+# Select structures to keep by their name
+names_to_keep = ["thalamus", "cerebellum"]
+
+# Keep only the specified structures
+vol_parc.keep_by_name(names2look=names_to_keep)
+
+# Save the modified parcellation
+out_parc_path = "/tmp/sub-test_desc-tha+cer_dseg.nii.gz"
+vol_parc.save_parcellation(out_parc_path, save_lut=True)
 ```
 
 #### surfacetools - Surface Geometry Processing
@@ -201,8 +245,12 @@ from clabtoolkit.surfacetools import Surface
 
 # Load surface with scalar data
 surface = Surface("/path/to/lh.pial")
-surface.load_scalar_data("/path/to/thickness.mgh")
-surface.plot(colormap='viridis', views = ["lateral", "medial"])
+surface.load_scalar_data("/path/to/thickness.mgh", maps_names="Thickness")
+surface.plot(overlay_name="Thickness", cmap='viridis', views=["lateral", "medial"])
+
+# Load annotations
+surface.load_annotation("/path/to/lh.aparc.annot", 'aparc')
+surface.plot(overlay_name="Thickness", cmap='viridis', views="8_views")
 ```
 
 #### morphometrytools - Morphometric Analysis
@@ -216,16 +264,32 @@ surface.plot(colormap='viridis', views = ["lateral", "medial"])
 -   Statistical summary generation
 -   Integration with parcellation workflows
 
-**Usage Example**:
+**Usage Examples**:
+
+Extract regional values by combining vertex-wise surface metrics with anatomical parcellation data:
 
 ```python
-from clabtoolkit.morphometrytools import compute_reg_val_fromannot
+import clabtoolkit.morphometrytools as morpho
 
-# Extract regional cortical thickness values
-stats = compute_reg_val_fromannot(
-    scalar_file="lh.thickness.mgh",
-    annot_file="lh.aparc.annot",
-    lut_file="aparc.lut"
+metric_file = '/path/to/metric/lh.thickness'
+parc_file = '/path/to/annotation/lh.atlas.annot'
+
+df_region, metric_values, _ = morpho.compute_reg_val_fromannot(
+    metric_file, parc_file, hemi, metric=metric_name, include_global=False
+)
+```
+
+Compute regional statistics from a volumetric metric map and a parcellation:
+
+```python
+import clabtoolkit.morphometrytools as morpho
+
+metric_file = '/path/to/metric/fa.nii.gz'
+parc_file = '/path/to/parcellation/parc.nii.gz'
+
+# Compute regional statistics
+df, metric_values, _ = morpho.compute_reg_val_fromparcellation(
+    metric_file, parc_file, metric='intensity'
 )
 ```
 
@@ -382,20 +446,6 @@ clabtoolkit uses a sophisticated JSON-based configuration system located in `cla
 -   **lobes.json**: Anatomical lobe definitions for parcellation
 -   **stats_mapping.json**: Statistical measure mappings and metadata
 
-## Testing
-
-Run the test suite:
-
-```bash
-pytest
-```
-
-Run with coverage:
-
-```bash
-pytest --cov=clabtoolkit
-```
-
 ## Dependencies
 
 ### Core Dependencies
@@ -413,6 +463,10 @@ pytest --cov=clabtoolkit
 -   **dipy**: Diffusion MRI processing
 -   **h5py**: HDF5 file support
 
+### Environment
+
+All dependencies are specified in the **environment.yaml** file for reproducible conda environments.
+
 ## Contributing
 
 1. Fork the repository
@@ -420,69 +474,6 @@ pytest --cov=clabtoolkit
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## Common Workflows
-
-### 1. BIDS Dataset Processing
-
-```python
-import clabtoolkit.bidstools as bids
-
-# Get dataset overview
-subjects = bids.get_subjects("/path/to/bids")
-database = bids.get_bids_database_table("/path/to/bids")
-
-# Process filenames
-for filename in dataset_files:
-    entities = bids.str2entity(filename)
-    # Process based on entities
-```
-
-### 2. FreeSurfer Surface Analysis
-
-```python
-import clabtoolkit.surfacetools as surf
-import clabtoolkit.freesurfertools as fs
-
-# Load surface and annotation
-surface = surf.Surface("lh.pial")
-annot = fs.AnnotParcellation("lh.aparc.annot")
-
-# Load scalar data and visualize
-surface.load_scalar_data("lh.thickness.mgh")
-surface.plot(scalar_map=True)
-```
-
-### 3. Multi-View Brain Visualization
-
-```python
-from clabtoolkit.visualizationtools import SurfacePlotter
-
-# Create publication-quality multi-view plots
-plotter = SurfacePlotter(config_file="custom_views.json")
-plotter.plot_surface_with_parcellation(
-    surface_files=["lh.pial", "rh.pial"],
-    scalar_files=["lh.thickness.mgh", "rh.thickness.mgh"]
-)
-```
-
-### 4. Atlas-based Analysis
-
-```python
-from clabtoolkit.parcellationtools import Parcellation
-from clabtoolkit.morphometrytools import compute_reg_val_fromannot
-
-# Load and process parcellation
-parc = Parcellation()
-parc.load_from_file("parcellation.nii.gz", "lookup_table.lut")
-
-# Extract regional morphometry
-stats = compute_reg_val_fromannot(
-    scalar_file="cortical_thickness.mgh",
-    annot_file="parcellation.annot",
-    lut_file="lookup_table.lut"
-)
-```
 
 ## Support and Documentation
 
