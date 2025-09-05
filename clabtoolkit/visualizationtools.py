@@ -3500,7 +3500,7 @@ class SurfacePlotter:
 
         # If the map is present in all surfaces, add it to the final list
         if cont_map == 3:
-            fin_map_names.append(map_name)
+            fin_map_names.append(maps_names[0])
 
         # Available overlays
         maps_names = fin_map_names
