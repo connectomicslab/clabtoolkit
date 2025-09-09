@@ -802,7 +802,7 @@ class Parcellation:
         if fill:
 
             # Refilling the unlabeled voxels according to a supplied mask
-            self.data = cltseg.region_growing(self.data, bool_mask)
+            self.data = cltimg.region_growing(self.data, bool_mask)
 
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             self.adjust_values()
