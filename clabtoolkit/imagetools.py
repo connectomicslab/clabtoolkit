@@ -13,6 +13,7 @@ import pyvista as pv
 from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, convolve
 from scipy.ndimage import binary_fill_holes, label, binary_closing, gaussian_filter
 from scipy.spatial import distance
+from scipy.interpolate import RegularGridInterpolator
 
 from skimage import measure
 
