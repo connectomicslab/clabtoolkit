@@ -2269,6 +2269,86 @@ def compute_statistics_at_nonzero_voxels(
 
 
 #####################################################################################################
+def interpolate(
+    scalar_data: np.ndarray, vertices_vox: np.ndarray, interp_method: str = "linear"
+) -> np.ndarray:
+    """
+    Interpolate 3D or 4D scalar data at specified voxel coordinates using regular grid interpolation.
+    Parameters
+    ----------
+    scalar_data : np.ndarray
+        3D or 4D array of scalar values to interpolate from.
+
+    vertices_vox : np.ndarray
+        Nx3 array of voxel coordinates where interpolation is desired.
+
+    interp_method : str, optional
+        Interpolation method: 'linear', 'nearest', or 'slinear'. Default is 'linear'.
+
+    Returns
+    -------
+    np.ndarray
+        Interpolated scalar values at the specified voxel coordinates.
+
+    Raises
+    ------
+    ValueError
+        If scalar_data is not 3D or 4D, or if vertices_vox is not Nx3.
+        If interp_method is not one of the supported methods.
+
+    Notes
+    -----
+    - Uses scipy's RegularGridInterpolator for interpolation.
+    - Supports both 3D and 4D scalar data.
+    - Interpolates each volume separately if scalar_data is 4D.
+    - Out-of-bounds coordinates are filled with 0.
+
+    """
+
+    # Validate inputs
+    if scalar_data.ndim not in [3, 4]:
+        raise ValueError("scalar_data must be a 3D or 4D numpy array.")
+
+    if vertices_vox.ndim != 2 or vertices_vox.shape[1] != 3:
+        raise ValueError("vertices_vox must be a Nx3 numpy array.")
+
+    if interp_method not in ["linear", "nearest", "slinear"]:
+        raise ValueError("interp_method must be 'linear', 'nearest', or 'slinear'.")
+
+    # Define grid points based on scalar_data shape    # Creating interpolation function
+    x = np.arange(scalar_data.shape[0])
+    y = np.arange(scalar_data.shape[1])
+    z = np.arange(scalar_data.shape[2])
+
+    # Interpolate scalar data at specified voxel coordinates
+    if scalar_data.ndim == 3:
+        my_interpolating_scalmap = RegularGridInterpolator(
+            (x, y, z),
+            scalar_data,  # Removed .data
+            method=interp_method,
+            bounds_error=False,
+            fill_value=0,
+        )
+
+        interpolated_data = my_interpolating_scalmap(vertices_vox)
+
+    elif scalar_data.ndim == 4:
+        # If 4D, interpolate each volume separately and stack results
+        interpolated_data = np.zeros((vertices_vox.shape[0], scalar_data.shape[3]))
+        for t in range(scalar_data.shape[3]):
+            my_interpolating_scalmap = RegularGridInterpolator(
+                (x, y, z),
+                scalar_data[:, :, :, t],  # Removed .data
+                method=interp_method,
+                bounds_error=False,
+                fill_value=0,
+            )
+            interpolated_data[:, t] = my_interpolating_scalmap(vertices_vox)
+
+    return interpolated_data
+
+
+#####################################################################################################
 def region_growing(
     iparc: np.ndarray, mask: Union[np.ndarray, np.bool_], neighborhood="26"
 ) -> np.ndarray:
