@@ -24,6 +24,8 @@ Installation
 
 Install from PyPI::
 
+    conda env create -f environment.yaml
+    conda activate clabtoolkit-env
     pip install clabtoolkit
 
 For development installation::
@@ -35,16 +37,44 @@ For development installation::
 Quick Start
 ===========
 
+Surface Visualization
+=====================
+
+.. code-block:: python
+    import clabtoolkit.surfacetools as cltsurf
+
+    # Reading a surface file
+    surf_lh = cltsurf.Surface("/opt/freesurfer/subjects/fsaverage/surf/lh.pial")
+
+    # Loading scalar maps
+    surf_lh.load_scalar_maps("/opt/freesurfer/subjects/fsaverage/surf/lh.thickness", maps_names="Thickness")
+    surf_lh.plot(overlay_name="Thickness", 
+                views="4_views", 
+                cmap= "jet", 
+                colorbar_position="right")
+
+
+Working with FreeSurfer 
+=======================
 .. code-block:: python
 
-    import clabtoolkit.bidstools as bids
-    import clabtoolkit.connectivitytools as conn
-    
-    # Load BIDS configuration
-    config = bids.load_bids_json()
-    
-    # Extract entities from BIDS filename
-    entities = bids.str2entity("sub-01_ses-M00_T1w.nii.gz")
+    import clabtoolkit.freesurfertools as cltfree
+
+    # Get the FREESURFER_HOME environment variable
+    freesurfer_home = os.environ.get('FREESURFER_HOME')
+
+    # Get the default subject directory
+    fs_subject_dir = os.path.join(freesurfer_home, 'subjects')
+
+    fs_fullid = 'bert'
+
+    # Load the Subject object
+    subject = cltfree.FreeSurferSubject(fs_fullid, fs_subject_dir) 
+
+    # Print subject details
+    print(f"Subject ID: {subject.subj_id}")
+    print(f"Subject Directory: ")
+    cltmisc.print_dict_tree(subject.fs_files)
 
 API Reference
 =============
