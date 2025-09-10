@@ -3,7 +3,7 @@ import time
 import subprocess
 import sys
 from glob import glob
-from typing import List, Union
+from typing import List, Union, Tuple, Dict
 from pathlib import Path
 from datetime import datetime
 import warnings
@@ -2444,6 +2444,43 @@ class FreeSurferSubject:
                 pstatus = "unprocessed"
 
         self.pstatus = pstatus
+
+    ##################################################################################################
+    def get_cras(self) -> Tuple:
+        """
+        Extract the CRAS (Center of Rotation in AC-PC Space) coordinates from the Talairach transform file.
+        Reads the Talairach transform file (talairach.lta) to extract the CRAS coordinates,
+        which represent the center of rotation in the AC-PC aligned space. These coordinates
+        are essential for accurate spatial normalization and alignment of brain images.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        cras : tuple
+            A tuple containing the CRAS coordinates (x, y, z) in millimeters.
+
+        Raises
+        ------
+        ValueError
+            If the Talairach transform file does not exist.
+
+        Examples
+        --------
+        >>> subject.get_cras()
+        >>> print(f"CRAS coordinates: {subject.cras}")
+        """
+
+        lta_file = self.fs_files["mri"]["talairach"]
+
+        if not os.path.isfile(lta_file):
+            raise ValueError(
+                "The Talairach transform file does not exist. Please run at least autorecon2"
+            )
+
+        self.cras = get_cras_coordinates(lta_file)
 
     ####################################################################################################
     def launch_freesurfer(
