@@ -39,7 +39,9 @@ Quick Start
 
 Surface Visualization
 =====================
+
 .. code-block:: python
+
     import clabtoolkit.surfacetools as cltsurf
 
     # Reading a surface file
@@ -51,6 +53,29 @@ Surface Visualization
                 views="4_views", 
                 cmap= "jet", 
                 colorbar_position="right")
+
+
+Working with FreeSurfer 
+=======================
+.. code-block:: python
+
+    import clabtoolkit.freesurfertools as cltfree
+
+    # Get the FREESURFER_HOME environment variable
+    freesurfer_home = os.environ.get('FREESURFER_HOME')
+
+    # Get the default subject directory
+    fs_subject_dir = os.path.join(freesurfer_home, 'subjects')
+
+    fs_fullid = 'bert'
+
+    # Load the Subject object
+    subject = cltfree.FreeSurferSubject(fs_fullid, fs_subject_dir) 
+
+    # Print subject details
+    print(f"Subject ID: {subject.subj_id}")
+    print(f"Subject Directory: ")
+    cltmisc.print_dict_tree(subject.fs_files)
 
 API Reference
 =============
