@@ -5276,6 +5276,124 @@ def detect_hemi(file_name: str):
     return hemi
 
 
+###########################################################################################################
+def parse_freesurfer_lta(filepath: str) -> Dict:
+    """
+    Parse a FreeSurfer .lta (Linear Transform Array) file.
+
+    Parameters:
+    -----------
+    filepath : str
+        Path to the .lta file
+
+    Returns:
+    --------
+    dict
+        Dictionary containing parsed information including cras coordinates
+    """
+
+    def parse_cras_line(line: str) -> Tuple[float, float, float]:
+        """Parse a cras line and return x, y, z coordinates"""
+        # Split by '=' and take the right side, then split by whitespace
+        coords_str = line.split("=")[1].strip()
+        coords = [float(x) for x in coords_str.split()]
+        return tuple(coords)
+
+    def parse_matrix_section(lines: list, start_idx: int) -> np.ndarray:
+        """Parse the 4x4 transformation matrix"""
+        matrix = []
+        for i in range(4):
+            row = [float(x) for x in lines[start_idx + i].strip().split()]
+            matrix.append(row)
+        return np.array(matrix)
+
+    result = {
+        "src_cras": None,
+        "dst_cras": None,
+        "transform_matrix": None,
+        "src_volume_info": {},
+        "dst_volume_info": {},
+    }
+
+    with open(filepath, "r") as file:
+        lines = file.readlines()
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Parse transformation matrix
+        if line.startswith("1 4 4"):
+            result["transform_matrix"] = parse_matrix_section(lines, i + 1)
+            i += 5  # Skip matrix lines
+            continue
+
+        # Parse source volume info
+        elif line == "src volume info":
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("dst volume info"):
+                src_line = lines[i].strip()
+                if src_line.startswith("cras"):
+                    result["src_cras"] = parse_cras_line(src_line)
+                elif src_line.startswith("filename"):
+                    result["src_volume_info"]["filename"] = src_line.split("=")[
+                        1
+                    ].strip()
+                elif src_line.startswith("volume"):
+                    vol_dims = [int(x) for x in src_line.split("=")[1].strip().split()]
+                    result["src_volume_info"]["volume"] = vol_dims
+                i += 1
+            continue
+
+        # Parse destination volume info
+        elif line == "dst volume info":
+            i += 1
+            while i < len(lines) and lines[i].strip():
+                dst_line = lines[i].strip()
+                if dst_line.startswith("cras"):
+                    result["dst_cras"] = parse_cras_line(dst_line)
+                elif dst_line.startswith("filename"):
+                    result["dst_volume_info"]["filename"] = dst_line.split("=")[
+                        1
+                    ].strip()
+                elif dst_line.startswith("volume"):
+                    vol_dims = [int(x) for x in dst_line.split("=")[1].strip().split()]
+                    result["dst_volume_info"]["volume"] = vol_dims
+                i += 1
+            continue
+
+        i += 1
+
+    return result
+
+
+#########################################################################################################
+def get_cras_coordinates(
+    filepath: str, source: bool = True
+) -> Tuple[float, float, float]:
+    """
+    Simple function to extract just the cras coordinates.
+
+    Parameters:
+    -----------
+    filepath : str
+        Path to the .lta file
+    source : bool
+        If True, return source cras; if False, return destination cras
+
+    Returns:
+    --------
+    tuple
+        (x, y, z) coordinates
+    """
+    parsed_data = parse_freesurfer_lta(filepath)
+
+    if source:
+        return parsed_data["src_cras"]
+    else:
+        return parsed_data["dst_cras"]
+
+
 ############################################################################################################
 def load_lobes_json(lobes_json: str = None):
     """
