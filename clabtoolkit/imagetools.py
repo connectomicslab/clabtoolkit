@@ -1222,25 +1222,19 @@ def mm2vox(mm_coords, affine) -> np.ndarray:
     >>> print(f"Voxel coordinates: {vox_coords}")
     """
 
-    # Detect if the number of rows is bigger than the number of columns. If not, transpose the matrix
-    nrows = np.shape(mm_coords)[0]
-    ncols = np.shape(mm_coords)[1]
-    if (nrows < ncols) and (ncols > 3):
-        mm_coords = np.transpose(mm_coords)
+    # Convert to homogeneous coordinates (add column of ones)
+    n_points = mm_coords.shape[0]
+    coords_homogeneous = np.column_stack([mm_coords, np.ones(n_points)])
 
-    if np.shape(mm_coords)[1] == 3:
-        npoints = np.shape(mm_coords)
-        mm_coords = np.c_[mm_coords, np.full(npoints[0], 1)]
+    # Apply inverse affine transformation
+    # (to go from world coordinates to voxel coordinates)
+    affine_inv = np.linalg.inv(affine)
+    coords_vox_homogeneous = coords_homogeneous @ affine_inv.T
 
-        vox_coords = np.matmul(affine, mm_coords.T)
-        vox_coords = np.transpose(vox_coords)
-        vox_coords = vox_coords[:, :3]
+    # Remove the homogeneous coordinate (last column)
+    coords_vox = coords_vox_homogeneous[:, :3]
 
-    else:
-        # Launch an error if the number of columns is different from 3
-        raise ValueError("The number of columns of the input matrix must be 3")
-
-    return vox_coords
+    return coords_vox
 
 
 ####################################################################################################
