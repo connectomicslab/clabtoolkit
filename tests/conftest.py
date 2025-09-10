@@ -26,13 +26,13 @@ def sample_bids_filename():
 def sample_bids_entities():
     """Expected entities from sample BIDS filename."""
     return {
-        'sub': '01',
-        'ses': 'M00', 
-        'acq': '3T',
-        'dir': 'AP',
-        'run': '01',
-        'suffix': 'T1w',
-        'extension': 'nii.gz'
+        "sub": "01",
+        "ses": "M00",
+        "acq": "3T",
+        "dir": "AP",
+        "run": "01",
+        "suffix": "T1w",
+        "extension": "nii.gz",
     }
 
 
@@ -46,11 +46,13 @@ def sample_connectivity_matrix():
 @pytest.fixture
 def sample_dataframe():
     """Sample pandas DataFrame for testing."""
-    return pd.DataFrame({
-        'subject': ['sub-01', 'sub-02', 'sub-03'],
-        'session': ['ses-M00', 'ses-M00', 'ses-M06'],
-        'value': [1.5, 2.3, 1.8]
-    })
+    return pd.DataFrame(
+        {
+            "subject": ["sub-01", "sub-02", "sub-03"],
+            "session": ["ses-M00", "ses-M00", "ses-M06"],
+            "value": [1.5, 2.3, 1.8],
+        }
+    )
 
 
 @pytest.fixture
