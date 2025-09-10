@@ -2148,6 +2148,227 @@ class Surface:
 
         return merged_surface
 
+    #############################################################################################
+    def map_volume_to_surface(
+        self,
+        image: Union[str, np.ndarray, nib.Nifti1Image],
+        method: str = "nilearn",
+        interp_method: str = "linear",
+        overlay_name: str = None,
+    ) -> np.ndarray:
+        """
+        Map volumetric neuroimaging data onto a surface mesh.
+
+        This function projects 3D or 4D volumetric data (e.g., structural or functional
+        MRI) onto vertices of a surface mesh using spatial interpolation.
+        It supports multiple projection methods and can handle both file paths and
+        in-memory data arrays.
+
+        Parameters
+        ----------
+        image : str, np.ndarray, or nibabel.Nifti1Image
+            Input volumetric data to project. Can be:
+            - String: File path to NIfTI image (.nii, .nii.gz, .mgz)
+            - Path: Path object to NIfTI image
+            - numpy.ndarray: 3D or 4D array of volumetric data
+            - nibabel.Nifti1Image: Loaded NIfTI image object
+
+        method : str, default "nilearn"
+            Projection method to use:
+            - "nilearn": Uses nilearn.surface.vol_to_surf (recommended for neuroimaging)
+            - "clabtoolkit": Uses clabtoolkit interpolation functions
+
+        interp_method : str, default "linear"
+            Interpolation method:
+            - "linear": Trilinear interpolation (smooth, good for continuous data)
+            - "nearest": Nearest-neighbor interpolation (preserves discrete values)
+
+        overlay_name : str, optional
+            Name to store projected data in surf_obj.mesh.point_data dictionary.
+            Only used with method="clabtoolkit". If None, data is not stored.
+
+        Returns
+        -------
+        np.ndarray
+            Projected surface data:
+            - For 3D input: 1D array of shape (n_vertices,)
+            - For 4D input: 2D array of shape (n_vertices, n_timepoints)
+            Values correspond to interpolated intensity at each surface vertex.
+
+        Raises
+        ------
+        FileNotFoundError
+            If image file path does not exist.
+
+        ValueError
+            If image format is unsupported or has incompatible dimensions.
+
+        ImportError
+            If required dependencies (nilearn) are not installed.
+
+        RuntimeError
+            If projection fails due to coordinate system mismatch.
+
+        Notes
+        -----
+        **Coordinate Systems:**
+        - nilearn method expects vertices in world coordinates (mm) and handles
+        coordinate transformations internally using the image affine matrix
+        - clabtoolkit method expects vertices in voxel coordinates and requires
+        manual coordinate conversion for NIfTI images
+
+        **Performance:**
+        - nilearn is optimized for neuroimaging data and handles 4D efficiently
+        - clabtoolkit may be slower for 4D data as it processes timepoints sequentially
+
+        **4D Data Support:**
+        - Both methods support 4D fMRI data (x, y, z, time)
+        - Returns (vertices, timepoints) array for temporal analysis
+
+        Examples
+        --------
+        Project a structural image onto cortical surface:
+
+        >>> surface_data = map_volume_to_surface(
+        ...     surf_obj,
+        ...     "T1w.nii.gz",
+        ...     method="nilearn"
+        ... )
+        >>> print(f"Projected {len(surface_data)} vertex values")
+
+        Project 4D fMRI data for time series analysis:
+
+        >>> fmri_surface = map_volume_to_surface(
+        ...     surf_obj,
+        ...     "task_fmri.nii.gz",
+        ...     method="nilearn",
+        ...     interp_method="linear"
+        ... )
+        >>> print(f"Shape: {fmri_surface.shape}")  # (vertices, timepoints)
+        >>> vertex_timeseries = fmri_surface[1000, :]  # Time series for vertex 1000
+
+        Use numpy array input with clabtoolkit method:
+
+        >>> import numpy as np
+        >>> volume_data = np.random.rand(64, 64, 30)  # Synthetic 3D data
+        >>> surface_data = map_volume_to_surface(
+        ...     surf_obj,
+        ...     volume_data,
+        ...     method="clabtoolkit",
+        ...     overlay_name="random_data"
+        ... )
+        >>> # Data is now stored in surf_obj.mesh.point_data["random_data"]
+
+        Compare interpolation methods:
+
+        >>> linear_data = map_volume_to_surface(surf_obj, "mask.nii.gz",
+        ...                                     interp_method="linear")
+        >>> nearest_data = map_volume_to_surface(surf_obj, "mask.nii.gz",
+        ...                                      interp_method="nearest")
+
+        See Also
+        --------
+        nilearn.surface.vol_to_surf : Underlying nilearn projection function
+        clabtoolkit.imagetools.interpolate : Underlying clabtoolkit interpolation
+        """
+
+        from . import imagetools as cltimg
+
+        # Get surface vertices in world coordinates (mm)
+        vertices = self.mesh.points
+        img = None
+
+        # Handle different input types and load data
+        if isinstance(image, Path):
+            image = str(image)  # Convert Path to str for nibabel
+
+        if isinstance(image, str):
+            if not os.path.isfile(image):
+                raise FileNotFoundError(f"Image file not found: {image}")
+            img = nib.load(image)
+            scalar_data = img.get_fdata()
+
+        elif isinstance(image, nib.Nifti1Image):
+            img = image  # Fixed: use 'image' not undefined 'img'
+            scalar_data = image.get_fdata()
+
+        elif isinstance(image, np.ndarray):
+            if image.ndim not in [3, 4]:
+                raise ValueError("Input numpy array must be 3D or 4D")
+            scalar_data = image
+            # img remains None - will raise error if nilearn method selected
+
+        else:
+            raise ValueError(
+                "Image must be a file path (str), nibabel.Nifti1Image object, or numpy.ndarray"
+            )
+
+        # Apply the selected projection method
+        if method == "nilearn":
+            if img is None:
+                raise ValueError(
+                    "nilearn method requires a nibabel image object with coordinate "
+                    "information. Cannot use with plain numpy arrays."
+                )
+
+            try:
+                from nilearn import surface as nlsurf
+            except ImportError:
+                raise ImportError(
+                    "nilearn is required for this projection method. "
+                    "Install with: pip install nilearn"
+                )
+
+            # Get mesh faces in correct format for nilearn
+            faces = self.mesh.faces.reshape(-1, 4)[:, 1:4]
+
+            # Project using nilearn (handles coordinate conversion internally)
+            interpolated_data = nlsurf.vol_to_surf(
+                img,
+                (vertices, faces),  # Pass vertices in mm coordinates
+                interpolation=interp_method,
+            )
+
+        elif method == "clabtoolkit":
+            # Convert vertices to voxel coordinates if we have spatial info
+            if img is not None:
+                vertices_vox = cltimg.mm2vox(vertices, img.affine)
+            else:
+                # Assume vertices are already in appropriate coordinate space
+                vertices_vox = vertices
+
+            if scalar_data.ndim == 4:
+                # Handle 4D data by processing each timepoint
+                n_timepoints = scalar_data.shape[3]
+                n_vertices = len(vertices_vox)
+                interpolated_data = np.zeros((n_vertices, n_timepoints))
+
+                for t in range(n_timepoints):
+                    interpolated_data[:, t] = cltimg.interpolate(
+                        scalar_data[:, :, :, t],
+                        vertices_vox,
+                        interp_method=interp_method,
+                    )
+            else:
+                # Handle 3D data
+                interpolated_data = cltimg.interpolate(
+                    scalar_data, vertices_vox, interp_method=interp_method
+                )
+
+            # Store in mesh point data if requested
+            if overlay_name is not None:
+                if not isinstance(overlay_name, str):
+                    raise ValueError("overlay_name must be a string")
+                self.mesh.point_data[overlay_name] = interpolated_data
+
+        else:
+            raise ValueError(
+                f"Unknown projection method: '{method}'. "
+                f"Supported methods: 'nilearn', 'clabtoolkit'"
+            )
+
+        return interpolated_data
+
     ##############################################################################################
     def save_surface(
         self,
