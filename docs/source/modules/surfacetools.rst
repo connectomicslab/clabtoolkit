@@ -30,6 +30,7 @@ Key Methods:
 - ``load_parcellation()``: Load parcellation overlays
 - ``plot()``: Interactive 3D visualization with customization options
 - ``get_mesh_info()``: Extract surface geometry information
+- ``map_volume_to_surface()``: Project 3D/4D volumetric data onto surface mesh vertices
 
 Common Usage Examples
 ---------------------
@@ -68,4 +69,27 @@ Multi-view visualization::
         views=['lateral', 'medial', 'dorsal'],
         scalar_map=True,
         save_figure="/path/to/output.png"
+    )
+
+Volume-to-surface mapping::
+
+    # Project volumetric data onto surface
+    from pathlib import Path
+    
+    # Load surface
+    surface = Surface("/path/to/lh.pial")
+    
+    # Map 3D structural image to surface
+    surface_values = surface.map_volume_to_surface(
+        image="/path/to/structural.nii.gz",
+        method="nilearn",
+        interp_method="linear"
+    )
+    
+    # Map 4D functional data to surface
+    functional_values = surface.map_volume_to_surface(
+        image="/path/to/functional_4d.nii.gz",
+        method="custom",
+        interp_method="linear",
+        overlay_name="activation"
     )

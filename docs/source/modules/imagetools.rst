@@ -16,6 +16,7 @@ Key Features
 - Quality control and preprocessing utilities
 - Multi-modal image processing support
 - Structuring element generation for morphological operations
+- 3D/4D scalar data interpolation at specified coordinates
 
 Main Classes
 ------------
@@ -76,3 +77,38 @@ Image quality control::
     # Get image statistics
     stats = morph.get_image_statistics(binary_data)
     print(f"Volume: {stats['volume']} voxels")
+
+3D/4D data interpolation::
+
+    from clabtoolkit.imagetools import interpolate
+    import numpy as np
+    import nibabel as nib
+    
+    # Load 3D scalar volume
+    img = nib.load("/path/to/scalar_data.nii.gz")
+    scalar_data = img.get_fdata()
+    
+    # Define voxel coordinates for interpolation (Nx3 array)
+    vertices_vox = np.array([
+        [10.5, 20.3, 15.7],  # fractional coordinates allowed
+        [25.2, 30.1, 45.9],
+        [12.0, 18.5, 22.3]
+    ])
+    
+    # Interpolate values at specified coordinates
+    interpolated_values = interpolate(
+        scalar_data=scalar_data,
+        vertices_vox=vertices_vox,
+        interp_method="linear"  # options: 'linear', 'nearest', 'slinear'
+    )
+    
+    # For 4D data (e.g., time series)
+    functional_img = nib.load("/path/to/4d_functional.nii.gz")
+    functional_data = functional_img.get_fdata()  # shape: (x, y, z, time)
+    
+    # Interpolate 4D data - returns values for each timepoint
+    time_series_values = interpolate(
+        scalar_data=functional_data,
+        vertices_vox=vertices_vox,
+        interp_method="linear"
+    )  # shape: (n_vertices, n_timepoints)
