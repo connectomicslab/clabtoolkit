@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.sparse import csr_matrix
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, List
 import warnings
+from collections import deque
 
 
 ####################################################################################################
@@ -349,3 +350,327 @@ def edges_to_csr(
     )
 
     return csr_graph
+
+
+#####################################################################################################
+def connected_components(
+    csr_graph: csr_matrix, method: str = "union_find", return_labels: bool = False
+) -> Union[List[List[int]], Tuple[List[List[int]], np.ndarray]]:
+    """
+    Find connected components in a CSR graph representation.
+
+    This method identifies all connected components in an undirected graph represented
+    as a CSR matrix. A connected component is a maximal set of vertices such that
+    there is a path between every pair of vertices in the set.
+
+    Parameters
+    ----------
+    csr_graph : csr_matrix
+        A scipy sparse CSR matrix representing the graph adjacency matrix.
+        Should be square with shape (n_vertices, n_vertices). For undirected graphs,
+        the matrix should be symmetric. Non-zero entries represent connections.
+
+    method : str, default="union_find"
+        Algorithm to use for finding connected components:
+        - "union_find": Disjoint Set Union with path compression and union by rank.
+          Most efficient for sparse graphs. Time: O(E * α(V)), Space: O(V).
+        - "bfs": Breadth-First Search traversal.
+          Good memory characteristics. Time: O(V + E), Space: O(V).
+        - "dfs": Depth-First Search traversal.
+          Simple and intuitive. Time: O(V + E), Space: O(V).
+
+    return_labels : bool, default=False
+        If True, also return a label array where labels[i] indicates which
+        component vertex i belongs to. If False, only return the component lists.
+
+    Returns
+    -------
+    components : List[List[int]]
+        A list of connected components, where each component is a list of vertex
+        indices belonging to that component. Components are sorted by the
+        smallest vertex index in each component.
+
+    labels : np.ndarray, optional
+        Only returned if return_labels=True. A 1D array of length n_vertices
+        where labels[i] is the component ID (0-indexed) that vertex i belongs to.
+
+    Raises
+    ------
+    TypeError
+        If csr_graph is not a scipy csr_matrix.
+    ValueError
+        If csr_graph is not square, method is not recognized, or graph is empty.
+    UserWarning
+        If the graph appears to be directed (non-symmetric) when undirected
+        behavior is expected.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.sparse import csr_matrix
+    >>>
+    >>> # Create a graph with 3 components: [0,1], [2,3,4], [5]
+    >>> row = np.array([0, 1, 2, 2, 3, 3, 4, 4])
+    >>> col = np.array([1, 0, 3, 4, 2, 4, 2, 3])
+    >>> data = np.ones(len(row))
+    >>> graph = csr_matrix((data, (row, col)), shape=(6, 6))
+    >>>
+    >>> components = connected_components(graph)
+    >>> print("Connected components:")
+    >>> for i, comp in enumerate(components):
+    ...     print(f"  Component {i}: {comp}")
+    Connected components:
+      Component 0: [0, 1]
+      Component 1: [2, 3, 4]
+      Component 2: [5]
+
+    >>> # Get component labels as well
+    >>> components, labels = connected_components(graph, return_labels=True)
+    >>> print(f"Component labels: {labels}")
+    >>> print(f"Vertex 3 belongs to component: {labels[3]}")
+    Component labels: [0 0 1 1 1 2]
+    Vertex 3 belongs to component: 1
+
+    >>> # Using different algorithms
+    >>> comp_bfs = connected_components(graph, method="bfs")
+    >>> comp_dfs = connected_components(graph, method="dfs")
+    >>> # All methods should give the same result (possibly in different order)
+
+    >>> # Example with weighted edges (weights are ignored for connectivity)
+    >>> weighted_graph = edges_to_csr(
+    ...     np.array([[0, 1], [1, 2]]),
+    ...     np.array([2.5, 3.0])
+    ... )
+    >>> components = connected_components(weighted_graph)
+    >>> print(f"Weighted graph components: {components}")
+    Weighted graph components: [[0, 1, 2]]
+
+    Notes
+    -----
+    - Edge weights are ignored; only connectivity matters.
+    - Self-loops (diagonal entries) are ignored for component detection.
+    - For directed graphs, this finds weakly connected components (treating
+        edges as undirected).
+    - Empty components (isolated vertices) are included as single-vertex components.
+    """
+    if not isinstance(csr_graph, csr_matrix):
+        raise TypeError("Input must be a scipy csr_matrix")
+
+    if csr_graph.shape[0] != csr_graph.shape[1]:
+        raise ValueError("CSR graph must be square")
+
+    n_vertices = csr_graph.shape[0]
+
+    if n_vertices == 0:
+        raise ValueError("Graph cannot be empty")
+
+    # Check if graph is symmetric (undirected)
+    if not np.allclose(csr_graph.data, csr_graph.T.data) or not np.array_equal(
+        csr_graph.indices, csr_graph.T.indices
+    ):
+        warnings.warn(
+            "Graph appears to be directed (non-symmetric). "
+            "Finding weakly connected components.",
+            UserWarning,
+        )
+
+    # Ensure we work with the full connectivity (treat as undirected)
+    symmetric_graph = csr_graph + csr_graph.T
+    symmetric_graph.data = (symmetric_graph.data > 0).astype(int)
+
+    # Choose algorithm
+    if method == "union_find":
+        components = _connected_components_union_find(symmetric_graph)
+    elif method == "bfs":
+        components = _connected_components_bfs(symmetric_graph)
+    elif method == "dfs":
+        components = _connected_components_dfs(symmetric_graph)
+    else:
+        raise ValueError(
+            f"Unknown method '{method}'. Choose from: 'union_find', 'bfs', 'dfs'"
+        )
+
+    # Sort components by their smallest vertex index
+    components.sort(key=lambda comp: min(comp))
+
+    if return_labels:
+        labels = np.empty(n_vertices, dtype=int)
+        for comp_id, component in enumerate(components):
+            for vertex in component:
+                labels[vertex] = comp_id
+        return components, labels
+    else:
+        return components
+
+
+######################################################################################################
+def _connected_components_union_find(csr_graph: csr_matrix) -> List[List[int]]:
+    """Union-Find implementation for connected components."""
+    n_vertices = csr_graph.shape[0]
+    parent = np.arange(n_vertices)
+    rank = np.zeros(n_vertices, dtype=int)
+
+    def find(x: int) -> int:
+        if parent[x] != x:
+            parent[x] = find(parent[x])  # Path compression
+        return parent[x]
+
+    def union(x: int, y: int):
+        px, py = find(x), find(y)
+        if px == py:
+            return
+
+        # Union by rank
+        if rank[px] < rank[py]:
+            parent[px] = py
+        elif rank[px] > rank[py]:
+            parent[py] = px
+        else:
+            parent[py] = px
+            rank[px] += 1
+
+    # Process all edges
+    csr_graph.eliminate_zeros()  # Remove explicit zeros
+    for i in range(n_vertices):
+        start_idx = csr_graph.indptr[i]
+        end_idx = csr_graph.indptr[i + 1]
+        for j_idx in range(start_idx, end_idx):
+            j = csr_graph.indices[j_idx]
+            if i != j:  # Ignore self-loops
+                union(i, j)
+
+    # Group vertices by root
+    components_dict = {}
+    for vertex in range(n_vertices):
+        root = find(vertex)
+        if root not in components_dict:
+            components_dict[root] = []
+        components_dict[root].append(vertex)
+
+    return list(components_dict.values())
+
+
+#####################################################################################################
+def _connected_components_bfs(csr_graph: csr_matrix) -> List[List[int]]:
+    """BFS implementation for connected components."""
+    n_vertices = csr_graph.shape[0]
+    visited = np.zeros(n_vertices, dtype=bool)
+    components = []
+
+    def get_neighbors(vertex: int) -> List[int]:
+        start_idx = csr_graph.indptr[vertex]
+        end_idx = csr_graph.indptr[vertex + 1]
+        neighbors = []
+        for j_idx in range(start_idx, end_idx):
+            neighbor = csr_graph.indices[j_idx]
+            if vertex != neighbor:  # Ignore self-loops
+                neighbors.append(neighbor)
+        return neighbors
+
+    for start_vertex in range(n_vertices):
+        if not visited[start_vertex]:
+            component = []
+            queue = deque([start_vertex])
+            visited[start_vertex] = True
+
+            while queue:
+                vertex = queue.popleft()
+                component.append(vertex)
+
+                for neighbor in get_neighbors(vertex):
+                    if not visited[neighbor]:
+                        visited[neighbor] = True
+                        queue.append(neighbor)
+
+            components.append(component)
+
+    return components
+
+
+#####################################################################################################
+def _connected_components_dfs(csr_graph: csr_matrix) -> List[List[int]]:
+    """DFS implementation for connected components."""
+    n_vertices = csr_graph.shape[0]
+    visited = np.zeros(n_vertices, dtype=bool)
+    components = []
+
+    def get_neighbors(vertex: int) -> List[int]:
+        start_idx = csr_graph.indptr[vertex]
+        end_idx = csr_graph.indptr[vertex + 1]
+        neighbors = []
+        for j_idx in range(start_idx, end_idx):
+            neighbor = csr_graph.indices[j_idx]
+            if vertex != neighbor:  # Ignore self-loops
+                neighbors.append(neighbor)
+        return neighbors
+
+    def dfs(vertex: int, component: List[int]):
+        visited[vertex] = True
+        component.append(vertex)
+
+        for neighbor in get_neighbors(vertex):
+            if not visited[neighbor]:
+                dfs(neighbor, component)
+
+    for vertex in range(n_vertices):
+        if not visited[vertex]:
+            component = []
+            dfs(vertex, component)
+            components.append(component)
+
+    return components
+
+
+#####################################################################################################
+def component_statistics(components: List[List[int]]) -> dict:
+    """
+    Compute statistics about connected components.
+
+    Parameters
+    ----------
+    components : List[List[int]]
+        List of connected components from connected_components().
+
+    Returns
+    -------
+    dict
+        Dictionary containing component statistics:
+        - 'num_components': Number of connected components
+        - 'largest_component_size': Size of the largest component
+        - 'smallest_component_size': Size of the smallest component
+        - 'average_component_size': Average component size
+        - 'component_sizes': List of all component sizes
+        - 'giant_component_ratio': Ratio of largest to total vertices
+
+    Examples
+    --------
+    >>> components = [[0, 1, 2, 3], [4], [5, 6]]
+    >>> stats = component_statistics(components)
+    >>> print(f"Number of components: {stats['num_components']}")
+    >>> print(f"Giant component ratio: {stats['giant_component_ratio']:.2f}")
+    Number of components: 3
+    Giant component ratio: 0.57
+    """
+    if not components:
+        return {
+            "num_components": 0,
+            "largest_component_size": 0,
+            "smallest_component_size": 0,
+            "average_component_size": 0,
+            "component_sizes": [],
+            "giant_component_ratio": 0.0,
+        }
+
+    sizes = [len(comp) for comp in components]
+    total_vertices = sum(sizes)
+
+    return {
+        "num_components": len(components),
+        "largest_component_size": max(sizes),
+        "smallest_component_size": min(sizes),
+        "average_component_size": total_vertices / len(components),
+        "component_sizes": sizes,
+        "giant_component_ratio": (
+            max(sizes) / total_vertices if total_vertices > 0 else 0.0
+        ),
+    }
