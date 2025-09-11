@@ -6,6 +6,7 @@ from pathlib import Path
 import pyvista as pv
 import pandas as pd
 import copy
+import warnings
 
 # Importing local modules
 from . import freesurfertools as cltfree
@@ -1414,6 +1415,306 @@ class Surface:
                     raise ValueError(
                         f"Map file {scalar_map} does not match the number of vertices"
                     )
+
+    ###############################################################################################
+    def separate_mesh_components(
+        self,
+        component_labels: Optional[str] = "components",
+        labels_to_extract: Optional[List[int]] = None,
+        clean_mesh: bool = True,
+        preserve_order: bool = False,
+    ) -> List[pv.PolyData]:
+        """
+        Separate a mesh into independent submeshes based on connected component labels.
+
+        This method extracts disconnected components from a mesh, creating separate PolyData
+        objects for each component. Each submesh contains only the vertices, faces, and
+        point data belonging to that specific component.
+
+        Parameters
+        ----------
+        mesh : pv.PolyData
+            Input PyVista mesh containing multiple disconnected components.
+            Must be a triangulated surface mesh (PolyData).
+
+        component_labels : str, default="components"
+            Name of the point data array containing component labels for each vertex.
+            This array should contain integer labels identifying which component
+            each vertex belongs to.
+
+        labels_to_extract : List[int], optional
+            Specific component labels to extract. If None, extracts all unique
+            labels found in the component_labels array. Use this to extract
+            only specific components of interest.
+
+        clean_mesh : bool, default=True
+            If True, removes unused vertices and ensures faces use consecutive
+            vertex indices in each submesh. If False, preserves original vertex
+            indices which may result in sparse vertex arrays.
+
+        preserve_order : bool, default=False
+            If True, submeshes are returned in the same order as labels_to_extract
+            or sorted label order. If False, may return in arbitrary order for
+            better performance.
+
+        Returns
+        -------
+        List[pv.PolyData]
+            List of PyVista PolyData objects, one for each connected component.
+            Each submesh contains:
+            - Vertices belonging to that component
+            - Faces using only those vertices (with reindexed vertex references)
+            - All original point data arrays, filtered for the component's vertices
+            - Original mesh properties and metadata where applicable
+
+        Raises
+        ------
+        TypeError
+            If mesh is not a PyVista PolyData object.
+        ValueError
+            If component_labels field doesn't exist, contains invalid data,
+            or if the mesh has no faces.
+        KeyError
+            If the specified component_labels field is not found in point data.
+
+        Examples
+        --------
+        >>> import pyvista as pv
+        >>> import numpy as np
+        >>>
+        >>> # Create a mesh with two disconnected triangles
+        >>> points1 = np.array([[0, 0, 0], [1, 0, 0], [0.5, 1, 0]])
+        >>> points2 = np.array([[2, 0, 0], [3, 0, 0], [2.5, 1, 0]])
+        >>> points = np.vstack([points1, points2])
+        >>> faces1 = np.array([[3, 0, 1, 2]])  # First triangle
+        >>> faces2 = np.array([[3, 3, 4, 5]])  # Second triangle
+        >>> faces = np.vstack([faces1, faces2])
+        >>>
+        >>> mesh = pv.PolyData(points, faces)
+        >>>
+        >>> # Add component labels (would normally come from connected_components)
+        >>> mesh.point_data["components"] = np.array([1, 1, 1, 2, 2, 2])
+        >>> mesh.point_data["temperature"] = np.random.rand(6)  # Additional data
+        >>>
+        >>> # Separate into independent meshes
+        >>> submeshes = separate_mesh_components(mesh)
+        >>> print(f"Original mesh: {mesh.n_points} points, {mesh.n_faces} faces")
+        >>> for i, submesh in enumerate(submeshes):
+        ...     comp_label = submesh.point_data["components"][0]
+        ...     print(f"Component {comp_label}: {submesh.n_points} points, {submesh.n_faces} faces")
+        Original mesh: 6 points, 2 faces
+        Component 1: 3 points, 1 faces
+        Component 2: 3 points, 1 faces
+
+        >>> # Extract only specific components
+        >>> component_1_only = separate_mesh_components(mesh, labels_to_extract=[1])
+        >>> print(f"Component 1 only: {len(component_1_only)} submesh(es)")
+        Component 1 only: 1 submesh(es)
+
+        >>> # Check that point data is preserved
+        >>> original_temp = mesh.point_data["temperature"]
+        >>> submesh_temps = [sm.point_data["temperature"] for sm in submeshes]
+        >>> print("Temperature data preserved in submeshes:",
+        ...       len(submesh_temps[0]), len(submesh_temps[1]))
+        Temperature data preserved in submeshes: 3 3
+
+        Notes
+        -----
+        - Only triangular faces are currently supported
+        - Point data arrays are automatically filtered and copied to submeshes
+        - Cell data is not preserved as faces are restructured
+        - Vertex indices in faces are automatically remapped to be consecutive
+        - Empty components (no faces) are excluded from results
+        """
+
+        from . import networktools as cltnet
+
+        if "components" not in self.mesh.point_data:
+            # Get the edges from the surface.
+            edges = self.get_edges()
+            print(f"Number of edges in the surface: {len(edges)}")
+
+            csr_graph = cltnet.edges_to_csr(edges, n_vertices=self.mesh.n_points)
+            components, labels = cltnet.connected_components(
+                csr_graph, return_labels=True
+            )
+            self.mesh.point_data["components"] = labels
+
+            n_components = len(np.unique(labels))
+            colors = cltmisc.create_random_colors(n_components)
+
+            ctab = cltmisc.colors_to_table(colors, alpha_values=255)
+            new_labels = np.zeros_like(labels, dtype=np.int32)
+
+            # Reassign labels to match color indices
+            for i in range(n_components):
+                new_labels[labels == i] = ctab[i, 4]  # Start labels from 1
+            self.mesh.point_data["components"] = new_labels
+
+            struct_names = [f"component_{i}" for i in range(n_components)]
+
+            self.colortables["components"] = create_surface_colortable(
+                colors=colors, struct_names=struct_names
+            )
+
+        mesh = self.mesh
+
+        # Input validation
+        if not isinstance(mesh, pv.PolyData):
+            raise TypeError("Input mesh must be a PyVista PolyData object")
+
+        if mesh.n_cells == 0:
+            raise ValueError("Mesh must contain faces")
+
+        if component_labels not in mesh.point_data:
+            raise KeyError(
+                f"Component labels '{component_labels}' not found in mesh point data. "
+                f"Available arrays: {list(mesh.point_data.keys())}"
+            )
+
+        # Get component labels
+        labels = mesh.point_data[component_labels]
+        if labels.ndim != 1 or len(labels) != mesh.n_points:
+            raise ValueError(
+                f"Component labels must be a 1D array with length {mesh.n_points}"
+            )
+
+        # Determine which labels to extract
+        if labels_to_extract is None:
+            unique_labels = np.unique(labels)
+            if preserve_order:
+                unique_labels = np.sort(unique_labels)
+            labels_to_extract = unique_labels.tolist()
+
+        # Get faces as numpy array
+        if mesh.faces.size == 0:
+            raise ValueError("Mesh contains no faces")
+
+        # Convert PyVista faces format to standard format
+        # PyVista format: [n_vertices, v0, v1, v2, n_vertices, v3, v4, v5, ...]
+        faces_data = mesh.faces.reshape(-1, 4)  # Assuming triangular faces
+        if not np.all(faces_data[:, 0] == 3):
+            warnings.warn(
+                "Non-triangular faces detected. Only triangular faces are supported.",
+                UserWarning,
+            )
+
+        triangle_faces = faces_data[:, 1:4]  # Extract vertex indices only
+
+        if component_labels in self.colortables:
+            colortable = True
+        else:
+            colortable = False
+
+        submeshes = []
+
+        for label in labels_to_extract:
+            # Find vertices belonging to this component
+            vertex_mask = labels == label
+            vertex_indices = np.where(vertex_mask)[0]
+
+            if len(vertex_indices) == 0:
+                warnings.warn(
+                    f"No vertices found for component label {label}", UserWarning
+                )
+                continue
+
+            # Find faces that use only vertices from this component
+            face_mask = np.all(np.isin(triangle_faces, vertex_indices), axis=1)
+            component_faces = triangle_faces[face_mask]
+
+            if len(component_faces) == 0:
+                warnings.warn(
+                    f"No faces found for component label {label}", UserWarning
+                )
+                continue
+
+            # Extract vertices and create vertex mapping
+            component_points = mesh.points[vertex_indices]
+
+            if clean_mesh:
+                # Create mapping from old vertex indices to new consecutive indices
+                old_to_new_idx = {
+                    old_idx: new_idx for new_idx, old_idx in enumerate(vertex_indices)
+                }
+
+                # Remap face vertex indices to new consecutive indices
+                remapped_faces = np.array(
+                    [
+                        [
+                            old_to_new_idx[face[0]],
+                            old_to_new_idx[face[1]],
+                            old_to_new_idx[face[2]],
+                        ]
+                        for face in component_faces
+                    ]
+                )
+            else:
+                # Keep original vertex indices, but create a sparse points array
+                max_vertex_idx = np.max(vertex_indices)
+                sparse_points = np.zeros((max_vertex_idx + 1, 3))
+                sparse_points[vertex_indices] = component_points
+                component_points = sparse_points
+                remapped_faces = component_faces
+
+            # Convert faces back to PyVista format
+            n_faces = len(remapped_faces)
+            pyvista_faces = np.column_stack(
+                [
+                    np.full(n_faces, 3),  # Number of vertices per face (triangles)
+                    remapped_faces,
+                ]
+            ).ravel()
+
+            # Create new submesh
+            submesh = pv.PolyData(component_points, pyvista_faces)
+
+            # Copy all point data arrays for this component
+            for array_name, array_data in mesh.point_data.items():
+                if clean_mesh:
+                    # Extract data for selected vertices only
+                    submesh.point_data[array_name] = array_data[vertex_indices]
+                else:
+                    # Create sparse array matching the sparse points
+                    if array_data.ndim == 1:
+                        sparse_data = np.zeros(max_vertex_idx + 1)
+                        sparse_data[vertex_indices] = array_data[vertex_indices]
+                    else:
+                        sparse_data = np.zeros(
+                            (max_vertex_idx + 1, array_data.shape[1])
+                        )
+                        sparse_data[vertex_indices] = array_data[vertex_indices]
+                    submesh.point_data[array_name] = sparse_data
+
+            # Copy mesh metadata
+            if hasattr(mesh, "field_data"):
+                submesh.field_data.update(mesh.field_data)
+
+            subsurf_obj = Surface(submesh)
+            if colortable:
+                # Copy colortable if it exists for the component_labels
+
+                tmp_ctab = copy.deepcopy(self.colortables[component_labels])
+                index = np.where(tmp_ctab["color_table"][:, 4] == label)[0]
+                if len(index) > 0:
+                    tmp_ctab["color_table"] = tmp_ctab["color_table"][index, :]
+                    tmp_ctab["struct_names"] = [tmp_ctab["struct_names"][index[0]]]
+                else:
+                    single_color_ctab = cltmisc.colors_to_table(
+                        np.array([[240, 240, 240]]), alpha_values=255
+                    )
+                    tmp_ctab["color_table"] = single_color_ctab
+                    tmp_ctab["struct_names"] = [f"component_{single_color_ctab[4]}"]
+
+                subsurf_obj.colortables[component_labels] = tmp_ctab
+
+            submeshes.append(subsurf_obj)
+
+        if preserve_order:
+            # Sort submeshes by component label to maintain order
+            submeshes.sort(key=lambda sm: sm.point_data[component_labels][0])
+
+        return submeshes
 
     ###############################################################################################
     def list_overlays(self) -> Dict[str, str]:
