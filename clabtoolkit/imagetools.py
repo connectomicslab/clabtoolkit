@@ -1246,6 +1246,175 @@ def mm2vox(mm_coords, affine) -> np.ndarray:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+def merge_to_4d(
+    file_paths: Union[str, Path, List[Union[str, Path]]],
+    output_path: Optional[Union[str, Path]] = None,
+    check_affine: bool = True,
+) -> nib.Nifti1Image:
+    """
+    Merge multiple 3D NIfTI files into a single 4D NIfTI file.
+
+    Takes a list of NIfTI file paths and combines them along the 4th dimension
+    to create a 4D volume. This is commonly used for creating time series
+    datasets or multi-contrast imaging data.
+
+    Parameters
+    ----------
+    file_paths : list of str or Path
+        List of paths to 3D NIfTI files to be merged. Files should have
+        identical spatial dimensions and preferably the same affine matrix.
+
+    output_path : str or Path, optional
+        Path where the merged 4D NIfTI file should be saved. If None,
+        the file is not saved to disk.
+
+    check_affine : bool, default True
+        Whether to check that all input files have the same affine matrix.
+        If True, raises ValueError for mismatched affines.
+
+    Returns
+    -------
+    nibabel.Nifti1Image
+        A 4D NIfTI image where the 4th dimension corresponds to the
+        input files in the order provided.
+
+    Raises
+    ------
+    ValueError
+        If input files have different spatial dimensions or affine matrices
+        (when check_affine=True).
+
+    FileNotFoundError
+        If any of the input files cannot be found.
+
+    IOError
+        If there are issues reading the NIfTI files.
+
+    Examples
+    --------
+    >>> file_list = ['vol001.nii.gz', 'vol002.nii.gz', 'vol003.nii.gz']
+    >>> merged_img = merge_nifti_to_4d(file_list, 'merged_4d.nii.gz')
+    >>> print(merged_img.shape)  # (64, 64, 30, 3) for example
+
+    >>> # Merge without saving to disk
+    >>> merged_img = merge_nifti_to_4d(file_list)
+    >>> data_4d = merged_img.get_fdata()
+
+    Notes
+    -----
+    All input files must have the same spatial dimensions (x, y, z).
+    The resulting 4D array will have shape (x, y, z, n) where n is the
+    number of input files.
+
+    Memory usage scales with the total size of all input volumes, so
+    consider available RAM when processing large datasets.
+    """
+
+    if not file_paths:
+        raise ValueError("file_paths cannot be empty")
+
+    if isinstance(file_paths, (str, Path)):
+        file_paths = [file_paths]
+
+    # Detect if the output directory exists, if not give an error
+    if output_path is not None:
+        if isinstance(output_path, str):
+            output_path = Path(output_path)
+
+        out_dir = output_path.parent
+        if not out_dir.exists():
+            raise ValueError(f"Output directory does not exist: {out_dir}")
+
+    # Convert to Path objects for easier handling
+    file_paths = [Path(fp) for fp in file_paths]
+
+    # Check that all files exist
+    for fp in file_paths:
+        if not fp.exists():
+            raise FileNotFoundError(f"File not found: {fp}")
+
+    print(f"Loading {len(file_paths)} NIfTI files...")
+
+    # Load the first file to get reference dimensions and affine
+    try:
+        first_img = nib.load(file_paths[0])
+        reference_shape = first_img.shape
+        reference_affine = first_img.affine
+        reference_header = first_img.header.copy()
+
+        # Initialize list to store all data arrays
+        data_arrays = []
+
+        # Load first file data
+        first_data = first_img.get_fdata()
+        if first_data.ndim != 3:
+            raise ValueError(
+                f"Expected 3D data, got {first_data.ndim}D in {file_paths[0]}"
+            )
+        data_arrays.append(first_data)
+
+    except Exception as e:
+        raise IOError(f"Error loading first file {file_paths[0]}: {e}")
+
+    # Load remaining files and validate compatibility
+    for i, fp in enumerate(file_paths[1:], 1):
+        try:
+            img = nib.load(fp)
+            data = img.get_fdata()
+
+            # Check dimensions
+            if data.shape != reference_shape:
+                raise ValueError(
+                    f"Shape mismatch: {fp} has shape {data.shape}, "
+                    f"expected {reference_shape}"
+                )
+
+            # Check affine matrix if requested
+            if check_affine and not np.allclose(
+                img.affine, reference_affine, atol=1e-6
+            ):
+                raise ValueError(
+                    f"Affine matrix mismatch in {fp}. "
+                    f"Set check_affine=False to ignore this check."
+                )
+
+            if data.ndim != 3:
+                raise ValueError(f"Expected 3D data, got {data.ndim}D in {fp}")
+
+            data_arrays.append(data)
+
+        except Exception as e:
+            raise IOError(f"Error loading file {fp}: {e}")
+
+    # Stack arrays along 4th dimension
+    print("Merging volumes...")
+    merged_data = np.stack(data_arrays, axis=3)
+
+    # Update header for 4D data
+    new_header = reference_header.copy()
+    new_header.set_data_shape(merged_data.shape)
+
+    # Create new 4D NIfTI image
+    merged_img = nib.Nifti1Image(merged_data, reference_affine, new_header)
+
+    print(
+        f"Successfully merged {len(file_paths)} volumes into 4D image with shape {merged_data.shape}"
+    )
+
+    # Save if output path is provided
+    if output_path is not None:
+        if isinstance(output_path, str):
+            output_path = Path(output_path)
+
+        print(f"Saving merged 4D volume to: {output_path}")
+        nib.save(merged_img, output_path)
+
+        return output_path
+    else:
+        return merged_img
+
+
+####################################################################################################
 def spams2maxprob(
     spam_image: str,
     prob_thresh: float = 0.05,
