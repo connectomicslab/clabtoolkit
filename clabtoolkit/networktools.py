@@ -205,7 +205,7 @@ def triangulated_mesh_to_csr(
 ####################################################################################################
 def edges_to_csr(
     edges: np.ndarray,
-    edge_values: np.ndarray,
+    edge_values: np.ndarray = None,
     n_vertices: Optional[int] = None,
     symmetric: bool = True,
 ) -> csr_matrix:
@@ -290,6 +290,9 @@ def edges_to_csr(
     """
     if not isinstance(edges, np.ndarray):
         raise TypeError("Edges must be a numpy array")
+
+    if edge_values is None:
+        edge_values = np.ones(len(edges))
 
     if not isinstance(edge_values, np.ndarray):
         raise TypeError("Edge values must be a numpy array")
