@@ -733,9 +733,9 @@ class Surface:
         """
 
         # Getting the faces array from the mesh
-        faces = self.mesh.faces[
-            :, 1:4
-        ]  # Extract only the vertex indices, skip the first column
+        faces = (
+            self.get_faces()
+        )  # Extract only the vertex indices, skip the first column
 
         # Input validation
         if faces.size == 0:
