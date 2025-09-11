@@ -3305,3 +3305,93 @@ def merge_surfaces_list(surface_list):
             return None
 
     return merged
+
+
+################################################################################################
+def create_surface_colortable(
+    colors: Union[str, List[str], np.ndarray],
+    struct_names: List[str] = None,
+    alpha: float = 1.0,
+) -> dict:
+    """
+    Create a colortable dictionary used for surface parcellation and visualization.
+    Generates a colortable mapping region names and colors for surface parcellations.
+
+
+    Parameters
+    ----------
+    colors : str, List[str], or np.ndarray
+        Colors for each region. Can be:
+        - String: Single color name or hex code (applied to all regions)
+        - List of strings: Color names or hex codes for each region
+        - numpy.ndarray: Nx3 or Nx4 array of RGB(A) values (0-255)
+
+    struct_names : List[str], optional
+        List of region names corresponding to colors. If None, generic names
+        like 'region_1', 'region_2', etc. are assigned.
+        Length must match number of colors if provided.
+
+    alpha : float, default 1.0
+        Alpha transparency for colors (0.0 to 1.0). Applied uniformly if colors
+        do not include alpha channel.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - 'struct_names': List of region names
+        - 'color_table': Nx4 numpy array of RGBA colors (0-255)
+        - 'lookup_table': None (placeholder for future use)
+
+        Raises
+        ------
+        ValueError
+        If alpha is out of range or struct_names length does not match colors.
+
+        Examples
+        --------
+        Create a colortable with specified colors and names:
+        >>> colors = array([[255,   0,   0, 204],
+                            [  0, 255,   0, 204],
+                            [  0,   0, 255, 204]])
+        >>> names = ['Region A', 'Region B', 'Region C']
+        >>> colortable = create_surface_colortable(colors, struct_names=names, alpha=0.8)
+        >>> print(colortable)
+        {'struct_names': ['Region A', 'Region B', 'Region C'],
+        'color_table': array([[255,   0,   0, 204],
+                            [  0, 255,   0, 204],
+                            [  0,   0, 255, 204]]),
+        'lookup_table': None}
+
+    """
+
+    # Validate alpha value
+    if isinstance(alpha, int):
+        alpha = float(alpha)
+
+    # If the alpha is not in the range [0, 1], raise an error
+    if not (0 <= alpha <= 1):
+        raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
+
+    # Handle color input
+    colors = cltmisc.harmonize_colors(colors, output_format="rgb") / 255
+
+    tmp_ctable = cltmisc.colors_to_table(colors=colors, alpha_values=alpha)
+    tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
+
+    if struct_names is None:
+        struct_names = [f"region_{i+1}" for i in range(tmp_ctable.shape[0])]
+
+    elif len(struct_names) != tmp_ctable.shape[0]:
+        raise ValueError(
+            "Length of struct_names must match number of colors in the colortable"
+        )
+
+    # Store parcellation information in organized structure
+    colortable = {
+        "struct_names": struct_names,
+        "color_table": tmp_ctable,
+        "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
+    }
+
+    return colortable
