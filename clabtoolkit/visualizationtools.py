@@ -260,7 +260,7 @@ class SurfacePlotter:
         views: list,
         hemi_id: str = ["lh", "rh"],
         orientation: str = "horizontal",
-        maps_names: Union[str, List[str]] = ["surface"],
+        maps_names: Union[str, List[str]] = ["default"],
         colormaps: Union[str, List[str]] = "viridis",
         v_limits: Union[Tuple[float, float], List[Tuple[float, float]]] = (None, None),
         surfaces: Union[Any, List[Any]] = None,  # cltsurf.Surface
@@ -3385,7 +3385,7 @@ class SurfacePlotter:
         self,
         surf_rh: cltsurf.Surface,
         surf_lh: cltsurf.Surface,
-        maps_names: Union[str, List[str]] = ["surface"],
+        maps_names: Union[str, List[str]] = ["default"],
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
         v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
@@ -3413,7 +3413,7 @@ class SurfacePlotter:
         surf_lh : cltsurf.Surface
             Left hemisphere surface with associated data.
 
-        maps_names : str or list of str, default ["surface"]
+        maps_names : str or list of str, default ["default"]
             Name(s) of the data maps to visualize. Must be present in both surfaces.
 
         views : str or list of str, default "dorsal"
@@ -3808,7 +3808,7 @@ class SurfacePlotter:
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
         notebook: bool = False,
-        map_names: Union[str, List[str]] = ["surface"],
+        map_names: Union[str, List[str]] = ["default"],
         v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
             None,
             None,
@@ -3842,7 +3842,7 @@ class SurfacePlotter:
         notebook : bool, default False
             Whether running in Jupyter notebook environment.
 
-        map_names : Union[str, List[str]], default ["surface"]
+        map_names : Union[str, List[str]], default ["default"]
             Names of the surface maps to plot.
 
         v_limits : Optional[Union[Tuple[float, float], List[Tuple[float, float]]]], default (None, None)

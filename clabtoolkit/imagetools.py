@@ -2176,7 +2176,7 @@ def extract_mesh_from_volume(
     # 5. Compute normals for better shading
     mesh = mesh.compute_normals(split_vertices=True)
 
-    mesh.point_data["surface"] = (
+    mesh.point_data["default"] = (
         np.ones((len(mesh.points), 1), dtype=np.uint32) * vertex_value
     )
 

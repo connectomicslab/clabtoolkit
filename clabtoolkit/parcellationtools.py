@@ -1390,7 +1390,7 @@ class Parcellation:
             "lookup_table": None,
         }
         color_tables = {
-            "surface": table_dict,
+            "default": table_dict,
         }
 
         surfaces_list = []
@@ -1467,7 +1467,7 @@ class Parcellation:
                 merged_surf.save_surface(
                     filename=out_filename,
                     format=out_format,
-                    map_name="surface",
+                    map_name="default",
                     save_annotation=annot_filename,
                     overwrite=overwrite,
                 )
@@ -1475,7 +1475,7 @@ class Parcellation:
                 merged_surf.save_surface(
                     filename=out_filename,
                     format=out_format,
-                    map_name="surface",
+                    map_name="default",
                     overwrite=overwrite,
                 )
 

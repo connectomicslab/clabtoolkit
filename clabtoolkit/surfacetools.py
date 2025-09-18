@@ -138,8 +138,8 @@ class Surface:
         tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
-        self.colortables["surface"] = {
-            "struct_names": ["surface"],
+        self.colortables["default"] = {
+            "struct_names": ["default"],
             "color_table": tmp_ctable,
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
@@ -464,8 +464,8 @@ class Surface:
         self._store_parcellation_data(
             np.ones((self.mesh.n_points,), dtype=np.uint32) * int(tmp_ctable[0, 4]),
             tmp_ctable,
-            ["surface"],
-            "surface",
+            ["default"],
+            "default",
         )
 
     ##############################################################################################
@@ -557,7 +557,7 @@ class Surface:
         vertices_colors = (
             np.ones((len(vertices), 3), dtype=np.uint8) * 240
         )  # Default colors
-        mesh.point_data["surface"] = np.c_[
+        mesh.point_data["default"] = np.c_[
             vertices_colors, np.ones(len(vertices), dtype=np.uint8) * 255
         ]
         return mesh
@@ -1877,8 +1877,8 @@ class Surface:
         try:
             active_scalars = self.mesh.active_scalars_name
             if active_scalars == overlay_name:
-                if "surface" in self.mesh.point_data:
-                    self.mesh.set_active_scalars("surface")
+                if "default" in self.mesh.point_data:
+                    self.mesh.set_active_scalars("default")
                 else:
                     # Find the first available overlay
                     remaining_overlays = list(self.mesh.point_data.keys())
@@ -2123,7 +2123,7 @@ class Surface:
     ##############################################################################################
     def get_vertexwise_colors(
         self,
-        overlay_name: str = "surface",
+        overlay_name: str = "default",
         colormap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
@@ -3123,7 +3123,7 @@ class Surface:
     ###############################################################################################
     def plot(
         self,
-        overlay_name: str = "surface",
+        overlay_name: str = "default",
         cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
@@ -3144,7 +3144,7 @@ class Surface:
 
         Parameters
         ----------
-        overlay_name : str, default "surface"
+        overlay_name : str, default "default"
             Name of the overlay to visualize from the surface's point data.
 
         cmap : str, optional
