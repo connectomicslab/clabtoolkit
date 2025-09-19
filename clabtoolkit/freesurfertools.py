@@ -3957,7 +3957,11 @@ class FreeSurferSubject:
 
                 # Moving the resulting parcellation from conform space to native
                 self.conform2native(
-                    mgz_conform=out_vol, nii_native=out_vol, force=force
+                    mgz_conform=out_vol,
+                    nii_native=out_vol,
+                    force=force,
+                    cont_tech=cont_tech,
+                    cont_image=cont_image,
                 )
 
             if bool_mixwm:
