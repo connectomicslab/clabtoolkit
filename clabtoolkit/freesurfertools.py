@@ -4744,51 +4744,69 @@ def create_fsaverage_links(
     if not os.path.isdir(fssubj_dir):
         raise ValueError("The selected FreeSurfer directory does not exist")
 
-    # Creating and verifying the freesurfer directory for the reference name
-    if fsavg_dir is None:
-        if refsubj_name is None:
-            fsavg_dir = os.path.join(
-                os.environ["FREESURFER_HOME"], "subjects", "fsaverage"
-            )
-        else:
-            fsavg_dir = os.path.join(
-                os.environ["FREESURFER_HOME"], "subjects", refsubj_name
-            )
-    else:
-        if fsavg_dir.endswith(os.path.sep):
-            fsavg_dir = fsavg_dir[0:-1]
-
-        if refsubj_name is not None:
-            if not fsavg_dir.endswith(refsubj_name):
-                fsavg_dir = os.path.join(fsavg_dir, refsubj_name)
-
-    if not os.path.isdir(fsavg_dir):
-        raise ValueError("The selected fsaverage directory does not exist")
-
-    # Taking into account that the fsaverage folder could not be named fsaverage
-    refsubj_name = os.path.basename(fsavg_dir)
-
     # Create the link to the fsaverage folder
     link_folder = os.path.join(fssubj_dir, refsubj_name)
 
-    if not os.path.exists(link_folder):  # Changed from os.path.isdir
-        try:
-            if sys.platform.startswith("win"):
-                # Windows implementation
-                subprocess.run(
-                    ["mklink", "/D", link_folder, fsavg_dir], check=True, shell=True
+    # If the link_folder already exists and is a link, return it
+    if os.path.islink(link_folder):
+        return link_folder
+
+    elif os.path.isdir(link_folder):
+        return link_folder
+    elif os.path.isfile(link_folder):
+        raise ValueError(
+            f"The path {link_folder} already exists and is not a directory"
+        )
+
+    else:
+
+        # Creating and verifying the freesurfer directory for the reference name
+        if fsavg_dir is None:
+            if refsubj_name is None:
+                fsavg_dir = os.path.join(
+                    os.environ["FREESURFER_HOME"], "subjects", "fsaverage"
                 )
             else:
-                # Unix/Linux implementation
-                subprocess.run(
-                    ["ln", "-s", fsavg_dir, link_folder],  # Fixed: specify exact target
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True,
+                fsavg_dir = os.path.join(
+                    os.environ["FREESURFER_HOME"], "subjects", refsubj_name
                 )
-        except subprocess.CalledProcessError as e:
-            raise ValueError(f"Failed to create symbolic link: {e}")
+        else:
+            if fsavg_dir.endswith(os.path.sep):
+                fsavg_dir = fsavg_dir[0:-1]
+
+            if refsubj_name is not None:
+                if not fsavg_dir.endswith(refsubj_name):
+                    fsavg_dir = os.path.join(fsavg_dir, refsubj_name)
+
+        if not os.path.isdir(fsavg_dir):
+            raise ValueError("The selected fsaverage directory does not exist")
+
+        # Taking into account that the fsaverage folder could not be named fsaverage
+        refsubj_name = os.path.basename(fsavg_dir)
+
+        if not os.path.exists(link_folder):  # Changed from os.path.isdir
+            try:
+                if sys.platform.startswith("win"):
+                    # Windows implementation
+                    subprocess.run(
+                        ["mklink", "/D", link_folder, fsavg_dir], check=True, shell=True
+                    )
+                else:
+                    # Unix/Linux implementation
+                    subprocess.run(
+                        [
+                            "ln",
+                            "-s",
+                            fsavg_dir,
+                            link_folder,
+                        ],  # Fixed: specify exact target
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True,
+                    )
+            except subprocess.CalledProcessError as e:
+                raise ValueError(f"Failed to create symbolic link: {e}")
 
     return link_folder
 
