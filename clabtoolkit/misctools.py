@@ -2203,6 +2203,155 @@ def build_values_with_conditions(
 
 
 ####################################################################################################
+def parse_condition(condition: str) -> Tuple[Optional[str], List[str]]:
+    """
+    Parse a condition string to extract the main variable and limit variables.
+
+    Parameters:
+    ----------
+    condition : str
+        Condition string to parse (e.g., "bmin <= bvals <= bmax").
+
+    Returns:
+    -------
+    main_variable : str or None
+        The main variable in the condition (e.g., "bvals").
+        Returns None if no valid variable is found.
+    limit_variables : list of str
+        List of limit variables (e.g., ["bmin", "bmax"]).
+        Returns an empty list if no limits are found.
+    Examples:
+    --------
+    >>> condition = "bmin <= bvals <= bmax"
+    >>> var, limits = parse_condition(condition)
+    >>> print(var)     # Output: "bvals"
+    >>> print(limits)  # Output: ["bmin", "bmax"]
+
+    >>> condition = "bvals > 1000"
+    >>> var, limits = parse_condition(condition)
+    >>> print(var)     # Output: "bvals"
+    >>> print(limits)  # Output: ["1000"]
+
+    >>> condition = "1000 < bvals <= 2000"
+    >>> var, limits = parse_condition(condition)
+    >>> print(var)     # Output: "bvals"
+    >>> print(limits)  # Output: ["1000", "2000"]
+
+    >>> condition = "bvals != bval"
+    >>> var, limits = parse_condition(condition)
+    >>> print(var)     # Output: "bvals"
+    >>> print(limits)  # Output: ["bval"]
+
+    >>> condition = "invalid condition"
+    >>> var, limits = parse_condition(condition)
+    >>> print(var)     # Output: None
+    >>> print(limits)  # Output: []
+
+    """
+    # Remove spaces for easier parsing
+    condition = condition.strip()
+
+    # Define comparison operators (order matters - longer operators first)
+    operators = ["<=", ">=", "==", "!=", "<", ">"]
+
+    # Pattern to match chained comparison: limit1 op1 var op2 limit2
+    chained_pattern = r"(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)"
+
+    # Check for chained comparison first
+    chained_match = re.match(chained_pattern, condition)
+    if chained_match:
+        limit1, op1, var, op2, limit2 = chained_match.groups()
+        return var, [limit1, limit2]
+
+    # Pattern for simple comparison: var op limit or limit op var
+    simple_pattern = r"(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)"
+    simple_match = re.match(simple_pattern, condition)
+
+    if simple_match:
+        left, op, right = simple_match.groups()
+
+        # Determine which is the main variable and which is the limit
+        # Heuristic: assume the variable that appears in multiple conditions
+        # or follows common naming patterns is the main variable
+
+        # For now, we'll use a simple heuristic:
+        # - If one side is a number, the other is the variable
+        # - If both are identifiers, assume the first one is the variable
+        # - You can customize this logic based on your specific needs
+
+        if is_numeric(right):
+            return left, [right]
+        elif is_numeric(left):
+            return right, [left]
+        else:
+            # Both are identifiers - use heuristic or return first as variable
+            # You might want to customize this based on your naming conventions
+            return left, [right]
+
+    return None, []
+
+
+def is_numeric(s: str) -> bool:
+    """Check if a string represents a number."""
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
+def analyze_condition(condition: str) -> dict:
+    """
+    Analyze a condition string and return detailed information.
+
+    Parameters:
+    ----------
+    condition : str
+        Condition string to analyze (e.g., "bmin <= bvals <= bmax").
+
+    Returns:
+    -------
+    info : dict
+        Dictionary containing:
+            - 'original_condition': Original condition string.
+            - 'main_variable': The main variable in the condition.
+            - 'limit_variables': List of limit variables.
+            - 'operators': List of operators found in the condition.
+            - 'is_chained': Boolean indicating if the condition is chained.
+            - 'is_valid': Boolean indicating if the condition was parsed successfully.
+
+    Examples:
+    --------
+    >>> condition = "bmin <= bvals <= bmax"
+    >>> info = analyze_condition(condition)
+    >>> print(info)
+    {'original_condition': 'bmin <= bvals <= bmax',
+        'main_variable': bvals'
+        'limit_variables': ['bmin', 'bmax'],
+        'operators': ['<=', '<='],
+        'is_chained': True,
+        'is_valid': True}
+
+    """
+    variable, limits = parse_condition(condition)
+
+    # Extract operators for additional info
+    operators_found = []
+    for op in ["<=", ">=", "==", "!=", "<", ">"]:
+        if op in condition:
+            operators_found.append(op)
+
+    return {
+        "original_condition": condition,
+        "main_variable": variable,
+        "limit_variables": limits,
+        "operators": operators_found,
+        "is_chained": len(limits) > 1,
+        "is_valid": variable is not None,
+    }
+
+
+####################################################################################################
 def remove_duplicates(input_list: list):
     """
     Function to remove duplicates from a list while preserving the order
