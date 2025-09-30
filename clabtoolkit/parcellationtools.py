@@ -149,7 +149,7 @@ class Parcellation:
                         self.name = cltmisc.create_names_from_indices(self.index)
 
                     if not hasattr(self, "color"):
-                        self.color = cltmisc.create_random_colors(
+                        self.color = cltmisc.create_distinguishable_colors(
                             len(self.index), output_format="hex"
                         )
 
@@ -185,7 +185,7 @@ class Parcellation:
 
                 if len(self.index) > 0:
                     # Generate the colors
-                    self.color = cltmisc.create_random_colors(
+                    self.color = cltmisc.create_distinguishable_colors(
                         len(self.index), output_format="hex"
                     )
                 else:
@@ -1653,7 +1653,7 @@ class Parcellation:
             self.color = new_colors
         else:
             # If new_colors is not provided, the colors will be created
-            self.color = cltmisc.create_random_colors(n_groups)
+            self.color = cltmisc.create_distinguishable_colors(n_groups)
 
         # Detect minimum and maximum labels
         self.parc_range()
@@ -1790,7 +1790,7 @@ class Parcellation:
             self.color = new_colors
         else:
             # If new_colors is not provided, the colors will be created
-            self.color = cltmisc.create_random_colors(n_groups)
+            self.color = cltmisc.create_distinguishable_colors(n_groups)
 
         # Detect minimum and maximum labels
         self.parc_range()

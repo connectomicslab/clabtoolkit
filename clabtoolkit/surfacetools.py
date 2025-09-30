@@ -1541,7 +1541,7 @@ class Surface:
             self.mesh.point_data["components"] = labels
 
             n_components = len(np.unique(labels))
-            colors = cltmisc.create_random_colors(n_components)
+            colors = cltmisc.create_distinguishable_colors(n_components)
 
             ctab = cltmisc.colors_to_table(colors, alpha_values=255)
             new_labels = np.zeros_like(labels, dtype=np.int32)

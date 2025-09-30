@@ -2,7 +2,7 @@ import numpy as np
 import h5py
 import uuid
 
-from typing import Union, Dict, List, Tuple, Set, Any, Optional
+from typing import Union, Dict, List, Tuple, Set, Any, Optional, Literal
 
 
 import shlex
@@ -1042,6 +1042,7 @@ def create_random_colors(
             return colors / 255.0
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
+
 
 ###################################################################################################
 def create_distinguishable_colors(
