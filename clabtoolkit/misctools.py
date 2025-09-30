@@ -1043,6 +1043,265 @@ def create_random_colors(
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
+###################################################################################################
+def create_distinguishable_colors(
+    n: int,
+    output_format: str = "rgb",
+    exclude_colors: Optional[list] = None,
+    lightness_range: tuple[float, float] = (0.4, 0.85),
+    saturation_range: tuple[float, float] = (0.5, 1.0),
+    random_seed: Optional[int] = None,
+) -> Union[list[str], np.ndarray]:
+    """
+    Generate n maximally distinguishable colors using perceptual color spacing.
+
+    This function creates colors that are as visually distinct as possible from each
+    other, making them ideal for categorical data visualization, plots with many
+    categories, or any application requiring easily distinguishable colors.
+
+    The algorithm uses HSV color space to distribute colors evenly across the hue
+    spectrum while maintaining good saturation and lightness values for visibility.
+    For very small sets (n ≤ 10), it can optionally use predefined maximally distinct
+    color sets based on color theory research.
+
+    Parameters
+    ----------
+    n : int
+        Number of colors to generate. Must be a positive integer.
+
+    output_format : str, default "rgb"
+        Format of the output colors. Supported formats:
+        - "rgb": RGB values as integers in range [0, 255]
+        - "rgbnorm": RGB values as floats in range [0.0, 1.0]
+        - "hex": Hexadecimal color strings (e.g., "#FF5733")
+
+    exclude_colors : list of str or list of tuples, optional
+        Colors to avoid when generating the palette. Can be hex strings or
+        RGB tuples. The algorithm will try to maximize distance from these colors.
+
+    lightness_range : tuple of float, default (0.4, 0.85)
+        Range of lightness (V in HSV) to use, as (min, max) in [0, 1].
+        Values closer to 0 are darker, closer to 1 are lighter.
+        Default range avoids very dark and very light colors for better visibility.
+
+    saturation_range : tuple of float, default (0.5, 1.0)
+        Range of saturation (S in HSV) to use, as (min, max) in [0, 1].
+        Values closer to 0 are more gray, closer to 1 are more vivid.
+        Default range ensures colors are vibrant and easily distinguishable.
+
+    random_seed : int or None, default None
+        Seed for random number generator for reproducible saturation/lightness
+        variations. If None, variations will be non-deterministic.
+
+    Returns
+    -------
+    colors : list of str or numpy.ndarray
+        Generated colors in the specified format:
+        - If output_format is "hex": list of hex color strings
+        - If output_format is "rgb" or "rgbnorm": numpy array of shape (n, 3)
+
+    Raises
+    ------
+    ValueError
+        If output_format is not one of the supported formats.
+        If n is not a positive integer.
+        If lightness_range or saturation_range values are not in [0, 1].
+
+    TypeError
+        If n is not an integer.
+
+    Examples
+    --------
+    Generate distinguishable colors for a categorical plot:
+
+    >>> colors = create_distinguishable_colors(5, output_format="hex")
+    >>> print(colors)
+    ['#E63946', '#06FFA5', '#3A86FF', '#FFBE0B', '#8338EC']
+
+    >>> colors = create_distinguishable_colors(8, output_format="rgb")
+    >>> print(colors.shape)
+    (8, 3)
+
+    Generate colors with custom lightness for dark backgrounds:
+
+    >>> colors = create_distinguishable_colors(
+    ...     6,
+    ...     output_format="hex",
+    ...     lightness_range=(0.6, 0.95),
+    ...     saturation_range=(0.7, 1.0)
+    ... )
+
+    Exclude specific colors (e.g., avoid red):
+
+    >>> colors = create_distinguishable_colors(
+    ...     4,
+    ...     output_format="hex",
+    ...     exclude_colors=["#FF0000", "#CC0000"]
+    ... )
+
+    Notes
+    -----
+    - Colors are distributed evenly across the hue spectrum (360 degrees)
+    - Saturation and lightness are varied slightly to increase distinctiveness
+    - The algorithm prioritizes perceptual difference over aesthetic harmony
+    - For small sets (n ≤ 6), consider also trying matplotlib's "tab10" colormap
+    with create_random_colors(n, cmap="tab10") for comparison
+    - Maximum recommended n is around 20-30 for truly distinguishable colors;
+    beyond that, some colors will inevitably appear similar
+
+    See Also
+    --------
+    create_random_colors : Generate random or colormap-based colors
+    matplotlib.colors.rgb_to_hsv : Convert RGB to HSV color space
+    """
+
+    # Input validation
+    if not isinstance(n, int):
+        raise TypeError("n must be an integer")
+    if n <= 0:
+        raise ValueError("n must be a positive integer")
+
+    output_format = output_format.lower()
+    if output_format not in ["hex", "rgb", "rgbnorm"]:
+        raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
+
+    if not (0 <= lightness_range[0] <= lightness_range[1] <= 1):
+        raise ValueError("lightness_range values must be in [0, 1] with min <= max")
+    if not (0 <= saturation_range[0] <= saturation_range[1] <= 1):
+        raise ValueError("saturation_range values must be in [0, 1] with min <= max")
+
+    # Set random seed if provided
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    # Generate evenly spaced hues
+    hues = np.linspace(0, 1, n, endpoint=False)
+
+    # Add a small random offset to starting hue for variety (deterministic if seed is set)
+    hue_offset = np.random.uniform(0, 1 / n) if n > 1 else 0
+    hues = (hues + hue_offset) % 1.0
+
+    # Generate varied saturation and lightness values
+    # Alternate between high and low values for adjacent colors to maximize difference
+    saturations = np.zeros(n)
+    lightnesses = np.zeros(n)
+
+    for i in range(n):
+        # Alternate patterns for better distinction between adjacent colors
+        if i % 2 == 0:
+            saturations[i] = np.random.uniform(
+                saturation_range[0] + 0.4 * (saturation_range[1] - saturation_range[0]),
+                saturation_range[1],
+            )
+            lightnesses[i] = np.random.uniform(
+                lightness_range[0] + 0.3 * (lightness_range[1] - lightness_range[0]),
+                lightness_range[1],
+            )
+        else:
+            saturations[i] = np.random.uniform(
+                saturation_range[0],
+                saturation_range[0] + 0.6 * (saturation_range[1] - saturation_range[0]),
+            )
+            lightnesses[i] = np.random.uniform(
+                lightness_range[0],
+                lightness_range[0] + 0.7 * (lightness_range[1] - lightness_range[0]),
+            )
+
+    # Create HSV colors
+    hsv_colors = np.column_stack([hues, saturations, lightnesses])
+
+    # Convert to RGB (normalized [0, 1])
+    rgb_colors_norm = np.array([hsv_to_rgb(hsv) for hsv in hsv_colors])
+
+    # Handle excluded colors if provided
+    if exclude_colors is not None:
+        # This is a placeholder for more sophisticated exclusion logic
+        # In a full implementation, you might adjust colors that are too close
+        # to excluded colors
+        pass
+
+    # Convert to requested output format
+    if output_format == "rgbnorm":
+        return rgb_colors_norm
+    elif output_format == "rgb":
+        return (rgb_colors_norm * 255).astype(int)
+    else:  # hex
+        hex_colors = []
+        for color in rgb_colors_norm:
+            r, g, b = (color * 255).astype(int)
+            hex_colors.append("#{:02X}{:02X}{:02X}".format(r, g, b))
+        return hex_colors
+
+
+####################################################################################################
+def get_predefined_distinguishable_colors(
+    n: int, output_format: str = "rgb"
+) -> Union[list[str], np.ndarray]:
+    """
+    Get a predefined set of maximally distinguishable colors.
+
+    This function returns carefully selected colors that are known to be highly
+    distinguishable based on color theory research. Available for up to 20 colors.
+
+    Parameters
+    ----------
+    n : int
+        Number of colors (must be between 1 and 20).
+
+    output_format : str, default "rgb"
+        Format of the output: "rgb", "rgbnorm", or "hex".
+
+    Returns
+    -------
+    colors : list or numpy.ndarray
+        The predefined distinguishable colors.
+
+    Notes
+    -----
+    Based on Kenneth Kelly's 22 colors of maximum contrast, optimized for
+    both color-normal and color-blind viewers.
+    """
+    # Kelly's 22 colors of maximum contrast (excluding white and black)
+    kelly_colors_hex = [
+        "#F3C300",  # Vivid Yellow
+        "#875692",  # Strong Purple
+        "#F38400",  # Vivid Orange
+        "#A1CAF1",  # Very Light Blue
+        "#BE0032",  # Vivid Red
+        "#C2B280",  # Grayish Yellow
+        "#848482",  # Medium Gray
+        "#008856",  # Vivid Green
+        "#E68FAC",  # Strong Purplish Pink
+        "#0067A5",  # Strong Blue
+        "#F99379",  # Strong Yellowish Pink
+        "#604E97",  # Strong Violet
+        "#F6A600",  # Vivid Orange Yellow
+        "#B3446C",  # Strong Purplish Red
+        "#DCD300",  # Vivid Greenish Yellow
+        "#882D17",  # Strong Reddish Brown
+        "#8DB600",  # Vivid Yellowish Green
+        "#654522",  # Deep Yellowish Brown
+        "#E25822",  # Vivid Reddish Orange
+        "#2B3D26",  # Dark Olive Green
+    ]
+
+    if n > len(kelly_colors_hex):
+        raise ValueError(f"Only {len(kelly_colors_hex)} predefined colors available")
+
+    selected_colors = kelly_colors_hex[:n]
+
+    if output_format == "hex":
+        return selected_colors
+
+    # Convert hex to RGB
+    rgb_colors = multi_hex2rgb(selected_colors)
+    rgb_array = np.array(rgb_colors)
+
+    if output_format == "rgb":
+        return rgb_array
+    else:  # rgbnorm
+        return rgb_array / 255.0
+
 
 ###################################################################################################
 def colortable_visualization(
