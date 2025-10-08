@@ -3245,18 +3245,21 @@ class Surface:
         )
 
 
-def merge_surfaces_list(surface_list):
+#################################################################################################
+def merge_surfaces(
+    surface_list: List[Union[str, Path, Surface]],
+) -> Union[Surface, None]:
     """
-    Merge a list of Surface objects into a single Surface object.
+    Merge a list of surfaces into a single Surface object.
 
-    Combines multiple Surface objects by merging their geometries and point
-    data into a unified surface representation. Preserves all overlays and
-    associated data from the input surfaces.
+    Combines multiple surface meshes into one unified mesh, merging
+    vertex coordinates, face connectivity, and point data. The first surface
+    serves as the base, with subsequent surfaces appended.
 
     Parameters
     ----------
-    surface_list : List[Surface]
-        List of Surface objects to merge. Must contain at least one surface.
+    surface_list : List[Union[str, Path, Surface]]
+        List of Surface objects or file paths to surfaces to merge.
 
     Returns
     -------
