@@ -2376,19 +2376,35 @@ class Surface:
         >>> merged = surf1.merge_surfaces([surf2, surf3])
         """
 
-        if not isinstance(surfaces, list):
-            surfaces = [surfaces]
+        if isinstance(surf2add, (str, Path)):
 
-        if len(surfaces) == 0:
+            if isinstance(surf2add, str):
+                if not os.path.isfile(surf2add):
+                    raise FileNotFoundError(f"File '{surf2add}' not found")
+
+            elif isinstance(surf2add, Path):
+                # Check if Path is valid
+                if not surf2add.exists():
+                    raise FileNotFoundError(f"Path '{str(surf2add)}' does not exist")
+                if not surf2add.is_file():
+                    raise ValueError(f"Path '{str(surf2add)}' is not a file")
+
+            # Load the surface from file
+            surf2add = [Surface(surf2add)]
+
+        elif isinstance(surf2add, Surface):
+            surf2add = [surf2add]
+
+        if len(surf2add) == 0:
             raise ValueError("surfaces list cannot be empty")
 
         # Check that all items in the list are Surface objects
-        for i, surf in enumerate(surfaces):
-            if not isinstance(surf, Surface):
+        for i, surf in enumerate(surf2add):
+            if not isinstance(surf, Surface) and not isinstance(surf, str):
                 raise TypeError(f"Item at index {i} is not a Surface object")
 
         # Include this surface in the list
-        all_surfaces = [self] + surfaces
+        all_surfaces = [self] + surf2add
 
         # Find common point_data fields across all surfaces
         common_fields = None
