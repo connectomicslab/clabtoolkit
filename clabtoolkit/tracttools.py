@@ -671,7 +671,7 @@ class Tractogram:
 
     ####################################################################################################
     def add_tractograms(
-        self, tractograms: Union["Tractogram", List["Tractogram"]]
+        self, tract2add: Union["Tractogram", List["Tractogram"]]
     ) -> "Tractogram":
         """
         This method merges the current Tractogram with one or more other Tractogram objects.
