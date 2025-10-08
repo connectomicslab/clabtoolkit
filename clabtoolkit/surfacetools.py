@@ -2336,7 +2336,7 @@ class Surface:
             self.mesh.set_active_scalars("RGB")
 
     ##############################################################################################
-    def merge_surfaces(self, surf2add: Union["str", "Path", "Surface"]) -> "Surface":
+    def add_surface(self, surf2add: Union["str", "Path", "Surface"]) -> "Surface":
         """
         Merge this surface with others into a single surface.
 
@@ -2367,12 +2367,12 @@ class Surface:
         >>> # Merge left and right hemisphere surfaces
         >>> lh_surf = Surface("lh.pial")
         >>> rh_surf = Surface("rh.pial")
-        >>> merged = lh_surf.merge_surfaces([rh_surf])
+        >>> merged = lh_surf.add_surface([rh_surf])
         >>> print(f"Merged surface has {merged.mesh.n_points} vertices")
         >>>
         >>> # Merge multiple surfaces from file paths
         >>> surf1 = Surface("surface1.pial")
-        >>> merged = surf1.merge_surfaces("surface2.pial")
+        >>> merged = surf1.add_surface("surface2.pial")
         """
 
         if isinstance(surf2add, (str, Path)):
@@ -3286,7 +3286,9 @@ def merge_surfaces_list(surface_list):
         raise TypeError("surface_list must be a list")
 
     if any(not isinstance(surf, (str, Path, Surface)) for surf in surface_list):
-        raise TypeError("All items in surface_list must be Surface objects, file paths, or Path objects")
+        raise TypeError(
+            "All items in surface_list must be Surface objects, file paths, or Path objects"
+        )
 
     # If the list is empty, return None
     if not surface_list:
@@ -3299,7 +3301,7 @@ def merge_surfaces_list(surface_list):
     # Start with the first surface as the base for merging
     if isinstance(surface_list[0], (str, Path)):
         surface_list[0] = Surface(surface_list[0])
-        
+
     elif isinstance(surface_list[0], Surface):
         merged = copy.deepcopy(surface_list[0])
 
@@ -3312,7 +3314,7 @@ def merge_surfaces_list(surface_list):
             # we can just continue using the merged object
 
             # Most common: merge_surfaces returns a new object
-            result = merged.merge_surfaces(surf)
+            result = merged.add_surface(surf)
 
             # If result is not None, update merged
             if result is not None:
