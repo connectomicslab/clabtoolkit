@@ -1909,14 +1909,19 @@ def interpolate_streamline_values(
 
 
 ###############################################################################################
-def merge_tractograms(tractograms: List):
+def merge_tractograms(
+    tractograms: List[Union[str, Path, Tractogram]],
+) -> Union[Tractogram, None]:
     """
-    Merges multiple Tractogram objects into a single Tractogram.
+    Merges multiple tractograms into a single tractogram.
+
+    It combines streamlines and associated data from all input tractograms. If the input
+    list is empty, it returns None. If there's only one tractogram, it returns it as is.
 
     Parameters:
     -----------
-        tractograms : List[Tractogram]
-            List of Tractogram objects to be merged.
+        tractograms : List[Union[str, Path, Tractogram]]
+            List of Tractogram objects to be merged. Can also include file paths to tractogram files.
 
     Returns:
     --------
@@ -1935,12 +1940,22 @@ def merge_tractograms(tractograms: List):
         >>> merged_tract = merge_tractograms_list([tract1, tract2])
         >>> print(f"Merged tractogram has {len(merged_tract.tracts)} streamlines")
     """
-    if not tractograms or not isinstance(tractograms, list):
-        raise ValueError("Input must be a non-empty list of Tractogram objects.")
 
-    for t in tractograms:
-        if not isinstance(t, Tractogram):
-            raise ValueError("All items in the list must be Tractogram objects.")
+    if not isinstance(tractograms, list):
+        raise TypeError("surface_list must be a list")
+
+    if any(not isinstance(surf, (str, Path, Tractogram)) for surf in tractograms):
+        raise TypeError(
+            "All items in surface_list must be Tractogran objects, file paths, or Path objects"
+        )
+
+    # If the list is empty, return None
+    if not tractograms:
+        return None
+
+    # If there's only one surface, return it as is
+    if len(tractograms) == 1:
+        return Tractogram(tractograms[0])
 
     # Initialize lists to hold merged data
     all_streamlines = []
@@ -1950,6 +1965,10 @@ def merge_tractograms(tractograms: List):
     header = None
 
     for t in tractograms:
+
+        # Load tractogram if a file path is provided
+        t = Tractogram(t)
+
         # Merge streamlines
         all_streamlines.extend(t.tracts)
 
