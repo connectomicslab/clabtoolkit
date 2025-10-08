@@ -3247,7 +3247,7 @@ class Surface:
 
 #################################################################################################
 def merge_surfaces(
-    surface_list: List[Union[str, Path, Surface]],
+    surfaces: List[Union[str, Path, Surface]],
 ) -> Union[Surface, None]:
     """
     Merge a list of surfaces into a single Surface object.
@@ -3258,7 +3258,7 @@ def merge_surfaces(
 
     Parameters
     ----------
-    surface_list : List[Union[str, Path, Surface]]
+    surfaces : List[Union[str, Path, Surface]]
         List of Surface objects or file paths to surfaces to merge.
 
     Returns
@@ -3270,9 +3270,9 @@ def merge_surfaces(
     Raises
     ------
     TypeError
-        If surface_list is not a list or contains non-Surface objects
+        If surfaces is not a list or contains non-Surface objects
     ValueError
-        If the surface_list is empty
+        If the surfaces is empty
 
     Notes
     -----
@@ -3287,31 +3287,31 @@ def merge_surfaces(
     >>> print(f"Merged surface has {merged.mesh.n_points} vertices")
     """
 
-    if not isinstance(surface_list, list):
+    if not isinstance(surfaces, list):
         raise TypeError("surface_list must be a list")
 
-    if any(not isinstance(surf, (str, Path, Surface)) for surf in surface_list):
+    if any(not isinstance(surf, (str, Path, Surface)) for surf in surfaces):
         raise TypeError(
             "All items in surface_list must be Surface objects, file paths, or Path objects"
         )
 
     # If the list is empty, return None
-    if not surface_list:
+    if not surfaces:
         return None
 
     # If there's only one surface, return it as is
-    if len(surface_list) == 1:
-        return copy.deepcopy(surface_list[0])
+    if len(surfaces) == 1:
+        return copy.deepcopy(surfaces[0])
 
     # Start with the first surface as the base for merging
-    if isinstance(surface_list[0], (str, Path)):
-        surface_list[0] = Surface(surface_list[0])
+    if isinstance(surfaces[0], (str, Path)):
+        surfaces[0] = Surface(surfaces[0])
 
-    elif isinstance(surface_list[0], Surface):
-        merged = copy.deepcopy(surface_list[0])
+    elif isinstance(surfaces[0], Surface):
+        merged = copy.deepcopy(surfaces[0])
 
     # Iterate through the rest of the surfaces and merge them
-    for surf in surface_list[1:]:
+    for surf in surfaces[1:]:
         try:
             # Use the merge_surfaces method of the Surface class
             # This will handle the merging logic and return a new Surface object
