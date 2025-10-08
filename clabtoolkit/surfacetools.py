@@ -2336,7 +2336,7 @@ class Surface:
             self.mesh.set_active_scalars("RGB")
 
     ##############################################################################################
-    def merge_surfaces(self, surfaces: Union["Surface", List["Surface"]]) -> "Surface":
+    def merge_surfaces(self, surf2add: Union["str", "Path", "Surface"]) -> "Surface":
         """
         Merge this surface with others into a single surface.
 
@@ -2346,8 +2346,9 @@ class Surface:
 
         Parameters
         ----------
-        surfaces : List[Surface]
-            List of Surface objects to merge with this surface
+        surf2add : str, Path or Surface
+            Surface to add. It can be a file path (str or Path) to a surface file
+            or another Surface object. If a file path is provided, it will be loaded.
 
         Returns
         -------
