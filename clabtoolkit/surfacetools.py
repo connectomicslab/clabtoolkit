@@ -2370,11 +2370,9 @@ class Surface:
         >>> merged = lh_surf.merge_surfaces([rh_surf])
         >>> print(f"Merged surface has {merged.mesh.n_points} vertices")
         >>>
-        >>> # Merge multiple surfaces
+        >>> # Merge multiple surfaces from file paths
         >>> surf1 = Surface("surface1.pial")
-        >>> surf2 = Surface("surface2.pial")
-        >>> surf3 = Surface("surface3.pial")
-        >>> merged = surf1.merge_surfaces([surf2, surf3])
+        >>> merged = surf1.merge_surfaces("surface2.pial")
         """
 
         if isinstance(surf2add, (str, Path)):
@@ -3287,8 +3285,8 @@ def merge_surfaces_list(surface_list):
     if not isinstance(surface_list, list):
         raise TypeError("surface_list must be a list")
 
-    if any(not isinstance(surf, Surface) for surf in surface_list):
-        raise TypeError("All items in surface_list must be Surface objects")
+    if any(not isinstance(surf, (str, Path, Surface)) for surf in surface_list):
+        raise TypeError("All items in surface_list must be Surface objects, file paths, or Path objects")
 
     # If the list is empty, return None
     if not surface_list:
@@ -3299,7 +3297,11 @@ def merge_surfaces_list(surface_list):
         return copy.deepcopy(surface_list[0])
 
     # Start with the first surface as the base for merging
-    merged = copy.deepcopy(surface_list[0])
+    if isinstance(surface_list[0], (str, Path)):
+        surface_list[0] = Surface(surface_list[0])
+        
+    elif isinstance(surface_list[0], Surface):
+        merged = copy.deepcopy(surface_list[0])
 
     # Iterate through the rest of the surfaces and merge them
     for surf in surface_list[1:]:
@@ -3310,7 +3312,7 @@ def merge_surfaces_list(surface_list):
             # we can just continue using the merged object
 
             # Most common: merge_surfaces returns a new object
-            result = merged.merge_surfaces([surf])
+            result = merged.merge_surfaces(surf)
 
             # If result is not None, update merged
             if result is not None:
