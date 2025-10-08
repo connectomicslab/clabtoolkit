@@ -694,22 +694,44 @@ class Tractogram:
 
         Examples
         --------
+        >>> tract1 = Tractogram('tract1.trk')
+        >>> tract2 = Tractogram('tract2.trk')
+        >>> merged_tract = tract1.add_tractograms(tract2)
+        >>> print(f"Merged tractogram has {len(merged_tract.tracts)} streamlines")
+        >>> merged_tract = tract1.add_tractograms('tract3.trk')
+        >>> print(f"Merged tractogram has {len(merged_tract.tracts)} streamlines")
 
         """
 
-        if not isinstance(tractograms, list):
-            tractograms = [tractograms]
+        if isinstance(tract2add, (str, Path)):
 
-        if len(tractograms) == 0:
+            if isinstance(tract2add, str):
+                if not os.path.isfile(tract2add):
+                    raise FileNotFoundError(f"File '{tract2add}' not found")
+
+            elif isinstance(tract2add, Path):
+                # Check if Path is valid
+                if not tract2add.exists():
+                    raise FileNotFoundError(f"Path '{str(tract2add)}' does not exist")
+                if not tract2add.is_file():
+                    raise ValueError(f"Path '{str(tract2add)}' is not a file")
+
+            # Load the surface from file
+            tract2add = [Tractogram(tract2add)]
+
+        elif isinstance(tract2add, Tractogram):
+            tract2add = [tract2add]
+
+        if len(tract2add) == 0:
             raise ValueError("Tractograms list cannot be empty")
 
-        # Check that all items in the list are Tractogram objects
-        for i, tractogram in enumerate(tractograms):
-            if not isinstance(tractogram, Tractogram):
-                raise TypeError(f"Item at index {i} is not a Tractogram object")
+        # Check that all items in the list are Surface objects
+        for i, tract in enumerate(tract2add):
+            if not isinstance(tract, Tractogram) and not isinstance(tract, str):
+                raise TypeError(f"Item at index {i} is not a Surface object")
 
         # Include this surface in the list
-        all_tractograms = [self] + tractograms
+        all_tractograms = [self] + tract2add
 
         # Find common point_data fields across all surfaces
         common_data_per_points = None
