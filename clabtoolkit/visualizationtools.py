@@ -3804,7 +3804,7 @@ class SurfacePlotter:
         surfaces: Union[
             cltsurf.Surface, List[cltsurf.Surface], List[List[cltsurf.Surface]]
         ],
-        hemi_id: List[str] = ["lh"],
+        hemi_id: Union[str, List[str]] = "both",
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
         notebook: bool = False,
@@ -3876,6 +3876,19 @@ class SurfacePlotter:
             Position of the colorbars.
 
         """
+
+        # Validate and process hemi_id parameter
+        if isinstance(hemi_id, str):
+            hemi_id = [hemi_id]
+
+        # the hemi_id must be one of the following
+        valid_hemi_ids = ["lh", "rh", "both"]
+
+        # Leave in hemi_id only valid values
+        hemi_id = [h for h in hemi_id if h in valid_hemi_ids]
+
+        if "both" in hemi_id and len(hemi_id) > 1:
+            hemi_id = ["lh", "rh"]
 
         # Preparing the surfaces to be plotted
         if isinstance(surfaces, cltsurf.Surface):
