@@ -120,6 +120,10 @@ class Tractogram:
             self.tract_file = "from_object"
             self.load_tractogram_from_object(tractogram_input)
 
+            # Create the data_per_streamline for default map
+            default = np.array(np.ones(len(self.tracts)) * tmp_ctable[:, 4], dtype=int)
+            self.data_per_streamline["default"] = default.reshape(-1, 1)
+
         elif tractogram_input is not None:
             # Load from file path
             if isinstance(tractogram_input, Path):
@@ -140,6 +144,10 @@ class Tractogram:
                 self.data_per_streamline,
             ) = self.load_tractogram_from_file(tractogram_input)
 
+            # Create the data_per_streamline for default map
+            default = np.array(np.ones(len(self.tracts)) * tmp_ctable[:, 4], dtype=int)
+            self.data_per_streamline["default"] = default.reshape(-1, 1)
+
         elif tracts is not None and affine is not None and header is not None:
             # Load from direct components
             self.tract_file = "from_components"
@@ -150,6 +158,10 @@ class Tractogram:
             # Initialize data dictionaries
             self.data_per_point = {}
             self.data_per_streamline = {}
+
+            # Create the data_per_streamline for default map
+            default = np.array(np.ones(len(self.tracts)) * tmp_ctable[:, 4], dtype=int)
+            self.data_per_streamline["default"] = default.reshape(-1, 1)
 
             # Calculate streamline lengths (the method now stores them internally)
             self.compute_streamline_lengths()
@@ -670,7 +682,7 @@ class Tractogram:
         return ArraySequence(all_points)
 
     ####################################################################################################
-    def add_tractograms(
+    def add_tractogram(
         self, tract2add: Union["Tractogram", List["Tractogram"]]
     ) -> "Tractogram":
         """
@@ -696,9 +708,9 @@ class Tractogram:
         --------
         >>> tract1 = Tractogram('tract1.trk')
         >>> tract2 = Tractogram('tract2.trk')
-        >>> merged_tract = tract1.add_tractograms(tract2)
+        >>> merged_tract = tract1.add_tractogram(tract2)
         >>> print(f"Merged tractogram has {len(merged_tract.tracts)} streamlines")
-        >>> merged_tract = tract1.add_tractograms('tract3.trk')
+        >>> merged_tract = tract1.add_tractogram('tract3.trk')
         >>> print(f"Merged tractogram has {len(merged_tract.tracts)} streamlines")
 
         """
@@ -959,7 +971,7 @@ class Tractogram:
         # Store the cluster IDs in data_per_streamline
         colors = cltmisc.create_distinguishable_colors(len(self.centroids))
         colortable = cltmisc.colors_to_table(
-            colors=colors, alpha_values=0, values=range(len(self.centroids))
+            colors=colors, alpha_values=1, values=range(len(self.centroids))
         )
         colortable[:, :3] = colortable[:, :3] / 255  # Ensure colors are between 0 and 1
         self.colortables["cluster_id"] = {
@@ -1911,6 +1923,8 @@ def interpolate_streamline_values(
 ###############################################################################################
 def merge_tractograms(
     tractograms: List[Union[str, Path, Tractogram]],
+    color_table: dict = None,
+    map_name: str = "tract_id",
 ) -> Union[Tractogram, None]:
     """
     Merges multiple tractograms into a single tractogram.
@@ -1922,6 +1936,17 @@ def merge_tractograms(
     -----------
         tractograms : List[Union[str, Path, Tractogram]]
             List of Tractogram objects to be merged. Can also include file paths to tractogram files.
+
+        color_table : dict, optional
+            A dictionary defining the color table for the merged tractogram. If None, a default color table will be created.
+
+            The dictionary should contain:
+                - 'tractograms_names': List of names for each tractogram.
+                - 'color_table': numpy.ndarray of shape (n_tractograms, 5) with RGBA colors and values.
+                - 'lookup_table': Optional, can be None.
+
+        map_name : str, optional
+            Name of the map to store tract IDs in the merged tractogram. Default is 'tract_id'.
 
     Returns:
     --------
@@ -1957,52 +1982,62 @@ def merge_tractograms(
     if len(tractograms) == 1:
         return Tractogram(tractograms[0])
 
+    n_tracts = len(tractograms)
+    if color_table is not None:
+        if not isinstance(color_table, dict):
+            raise TypeError("color_table must be a dictionary")
+
+        required_keys = ["tractograms_names", "color_table"]
+        if not all(key in color_table for key in required_keys):
+            raise ValueError(f"color_table must contain the keys: {required_keys}")
+        if len(color_table["tractograms_names"]) != n_tracts:
+            raise ValueError(
+                "Length of 'tractograms_names' in color_table must match number of tractograms"
+            )
+        if color_table["color_table"].shape[0] != n_tracts:
+            raise ValueError(
+                "Number of rows in 'color_table' must match number of tractograms"
+            )
+
+    # Creating a colortable in case it is not provided
+    if color_table is None:
+        colors = cltmisc.create_distinguishable_colors(n_tracts)
+        color_table = cltmisc.colors_to_table(
+            colors=colors, alpha_values=1, values=range(n_tracts)
+        )
+        color_table[:, :3] = (
+            color_table[:, :3] / 255
+        )  # Ensure colors are between 0 and 1
+        color_table[:, 4] = np.arange(n_tracts) + 1  # Set the value column
+        bundle_names = [f"tract_{i}" for i in range(n_tracts)]
+        color_table_dict = {
+            "tractograms_names": bundle_names,
+            "color_table": color_table,
+            "lookup_table": None,
+        }
+
     # Initialize lists to hold merged data
-    all_streamlines = []
-    all_data_per_point = {}
-    all_data_per_streamline = {}
-    affine = None
-    header = None
+    for i, t in enumerate(tractograms):
 
-    for t in tractograms:
+        if i == 0:
+            merged_tractogram = Tractogram(t)
+            bundle_ids = np.full((len(merged_tractogram.tracts), 1), color_table[i, 4])
 
-        # Load tractogram if a file path is provided
-        t = Tractogram(t)
+        else:
+            merged_tractogram.add_tractogram(t)
+            bundle_ids = np.vstack(
+                (
+                    bundle_ids,
+                    np.full(
+                        (len(merged_tractogram.tracts) - len(bundle_ids), 1),
+                        color_table[i, 4],
+                    ),
+                )
+            )
 
-        # Merge streamlines
-        all_streamlines.extend(t.tracts)
-
-        # Merge data_per_point
-        if hasattr(t, "data_per_point") and t.data_per_point:
-            for key, value in t.data_per_point.items():
-                if key not in all_data_per_point:
-                    all_data_per_point[key] = []
-                all_data_per_point[key].extend(value)
-
-        # Merge data_per_streamline
-        if hasattr(t, "data_per_streamline") and t.data_per_streamline:
-            for key, value in t.data_per_streamline.items():
-                if key not in all_data_per_streamline:
-                    all_data_per_streamline[key] = []
-                all_data_per_streamline[key].append(value)
-
-        # Use the affine and header from the first tractogram
-        if affine is None:
-            affine = t.affine
-        if header is None:
-            header = t.header
-
-    # Convert lists to appropriate formats
-    for key in all_data_per_streamline:
-        all_data_per_streamline[key] = np.vstack(all_data_per_streamline[key])
-
-    merged_tractogram = Tractogram()
-    merged_tractogram.tracts = ArraySequence(all_streamlines)
-    merged_tractogram.affine = affine
-    header["nb_streamlines"] = len(all_streamlines)
-    merged_tractogram.header = header
-    merged_tractogram.data_per_point = all_data_per_point
-    merged_tractogram.data_per_streamline = all_data_per_streamline
-    merged_tractogram.compute_streamline_lengths()
+    merged_tractogram.data_per_streamline[map_name] = bundle_ids.reshape(
+        -1, 1
+    )  # Reshape to be a column vector
+    merged_tractogram.colortables[map_name] = color_table_dict
 
     return merged_tractogram
