@@ -1781,6 +1781,10 @@ class Surface:
                         overlays[key] = "normals"
                     else:
                         overlays[key] = "color"
+
+                elif tmp.shape[1] == 4:
+                    overlays[key] = "color_with_alpha"
+
                 else:
                     overlays[key] = "unknown"
 
