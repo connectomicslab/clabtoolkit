@@ -3233,6 +3233,8 @@ class Surface:
 #################################################################################################
 def merge_surfaces(
     surfaces: List[Union[str, Path, Surface]],
+    color_table: dict = None,
+    map_name: str = "surf_id",
 ) -> Union[Surface, None]:
     """
     Merge a list of surfaces into a single Surface object.
@@ -3245,6 +3247,14 @@ def merge_surfaces(
     ----------
     surfaces : List[Union[str, Path, Surface]]
         List of Surface objects or file paths to surfaces to merge.
+
+    color_table : dict, optional
+        Colortable dictionary with keys:
+        - 'struct_names': List of names for each surface
+        - 'color_table': Nx5 numpy array of RGBA colors (0-255)
+        - 'lookup_table': None (placeholder)
+        If None, a default colortable with distinguishable colors is created.
+        Length of 'struct_names' and rows in 'color_table' must match number of surfaces
 
     Returns
     -------
@@ -3286,34 +3296,79 @@ def merge_surfaces(
 
     # If there's only one surface, return it as is
     if len(surfaces) == 1:
-        return copy.deepcopy(surfaces[0])
+        if isinstance(surfaces[0], Surface):
+            return surfaces[0]
+        else:
+            return Surface(surfaces[0])
 
-    # Start with the first surface as the base for merging
-    if isinstance(surfaces[0], (str, Path)):
-        surfaces[0] = Surface(surfaces[0])
+    n_surfaces = len(surfaces)
+    if color_table is not None:
+        if not isinstance(color_table, dict):
+            raise TypeError("color_table must be a dictionary")
 
-    elif isinstance(surfaces[0], Surface):
-        merged = copy.deepcopy(surfaces[0])
+        required_keys = ["struct_names", "color_table"]
+        if not all(key in color_table for key in required_keys):
+            raise ValueError(f"color_table must contain the keys: {required_keys}")
+
+        if len(color_table["struct_names"]) != n_surfaces:
+            raise ValueError(
+                "Length of 'struct_names' in color_table must match number of surfaces"
+            )
+        if color_table["color_table"].shape[0] != n_surfaces:
+            raise ValueError(
+                "Number of rows in 'color_table' must match number of surfaces"
+            )
+
+    # Creating a colortable in case it is not provided
+    if color_table is None:
+        colors = cltmisc.create_distinguishable_colors(n_surfaces)
+        color_table = cltmisc.colors_to_table(
+            colors=colors, alpha_values=1, values=range(n_surfaces)
+        )
+        color_table[:, :3] = (
+            color_table[:, :3] / 255
+        )  # Ensure colors are between 0 and 1
+        color_table[:, 4] = np.arange(n_surfaces) + 1  # Set the value column
+        surface_names = [f"mesh_{i}" for i in range(n_surfaces)]
+        color_table_dict = {
+            "struct_names": surface_names,
+            "color_table": color_table,
+            "lookup_table": None,
+        }
 
     # Iterate through the rest of the surfaces and merge them
-    for surf in surfaces[1:]:
+    for i, surf in enumerate(surfaces):
         try:
-            # Use the merge_surfaces method of the Surface class
-            # This will handle the merging logic and return a new Surface object
-            # If the merge_surfaces method modifies the merged object in place,
-            # we can just continue using the merged object
+            if i == 0:
+                # Initialize the merged surface with the first surface
+                if isinstance(surf, Surface):
+                    merged = copy.deepcopy(surf)
 
-            # Most common: merge_surfaces returns a new object
-            result = merged.add_surface(surf)
+                else:
+                    merged = Surface(surf)
+                surf_ids = np.full((merged.mesh.n_points, 1), color_table[i, 4])
 
-            # If result is not None, update merged
-            if result is not None:
-                merged = result
+            else:
+                # Most common: merge_surfaces returns a new object
+                result = merged.add_surface(surf)
+
+                # If result is not None, update merged
+                if result is not None:
+                    merged = result
+                surf_ids = np.vstack(
+                    (
+                        surf_ids,
+                        np.full((surf.mesh.n_points, 1), color_table[i, 4]),
+                    )
+                )
 
             # If result is None, assume it modified merged in place
         except Exception as e:
             print(f"Merge failed: {e}")
             return None
+
+    merged.mesh.point_data[map_name] = surf_ids
+    merged.colortables[map_name] = color_table_dict
 
     return merged
 
