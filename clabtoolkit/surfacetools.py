@@ -2293,51 +2293,32 @@ class Surface:
         >>> # Prepare colors for first available overlay
         >>> surface.prepare_colors()
         """
-        # Get the list of overlays
-        overlay_dict = self.list_overlays()
 
-        # If the dictionary is empty
-        overlays = list(overlay_dict.keys())
-        if overlay_name is None:
-            overlay_name = overlays[0] if overlay_dict else None
+        # Getting the minimum and maximum values of the overlay
+        if vmin is None:
+            vmin = np.min(self.mesh.point_data[overlay_name])
 
-        if overlay_name not in overlays:
+        if vmax is None:
+            vmax = np.max(self.mesh.point_data[overlay_name])
+
+        try:
+            # Setting NaNs and infinities to zero
+            vertex_values = self.mesh.point_data[overlay_name]
+            vertex_values = np.nan_to_num(
+                vertex_values,
+                nan=0.0,
+            )  # Handle NaNs and infinities
+            self.mesh.point_data[overlay_name] = vertex_values
+
+        except KeyError:
             raise ValueError(
-                f"Overlay '{overlay_name}' not found. Available overlays: {', '.join(overlays)}"
+                f"Data array '{overlay_name}' not found in surface point_data"
             )
 
-        else:
-            # Set the active overlay
-            self.set_active_overlay(overlay_name)
-
-        if overlay_dict[overlay_name] == "color":
-            self.mesh.point_data["RGB"] = self.mesh.point_data[overlay_name]
-            self.mesh.set_active_scalars("RGB")
-            return
-
-        else:
-            # If no colormap is provided, use the default colormap for the overlay
-            vertex_values = self.mesh.point_data[overlay_name]
-            dict_ctables = self.colortables
-            # Check if the overlay is a color or scalar type
-
-            if overlay_name in dict_ctables.keys():
-                # Use the colortable associated with the parcellation
-                vertex_colors = cltfree.create_vertex_colors(
-                    vertex_values, self.colortables[overlay_name]["color_table"]
-                )
-
-            else:
-                vertex_colors = cltmisc.values2colors(
-                    vertex_values,
-                    cmap=cmap,
-                    output_format="rgb",
-                    vmin=vmin,
-                    vmax=vmax,
-                )
-
-            self.mesh.point_data["RGB"] = vertex_colors
-            self.mesh.set_active_scalars("RGB")
+        # Apply colors to mesh data
+        self.mesh.point_data["rgba"] = self.get_vertexwise_colors(
+            overlay_name, cmap, vmin, vmax
+        )
 
     ##############################################################################################
     def add_surface(self, surf2add: Union["str", "Path", "Surface"]) -> "Surface":
