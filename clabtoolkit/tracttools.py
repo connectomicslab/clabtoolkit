@@ -86,7 +86,7 @@ class Tractogram:
 
         # Store parcellation information in organized structure
         self.colortables["default"] = {
-            "tractograms_names": ["default"],
+            "names": ["default"],
             "color_table": tmp_ctable,
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
@@ -782,7 +782,7 @@ class Tractogram:
         tract_id_colors = cltmisc.create_distinguishable_colors(n_tractograms)
 
         merged_colortables["tract_id"] = {
-            "tractograms_names": [f"Tractogram_{i}" for i in range(n_tractograms)],
+            "names": [f"Tractogram_{i}" for i in range(n_tractograms)],
             "color_table": tract_id_colors,
             "lookup_table": None,
         }
@@ -975,7 +975,7 @@ class Tractogram:
         )
         colortable[:, :3] = colortable[:, :3] / 255  # Ensure colors are between 0 and 1
         self.colortables["cluster_id"] = {
-            "tractograms_names": [f"cluster_{i}" for i in range(len(self.centroids))],
+            "names": [f"cluster_{i}" for i in range(len(self.centroids))],
             "color_table": colortable,
             "lookup_table": None,
         }
@@ -1987,12 +1987,12 @@ def merge_tractograms(
         if not isinstance(color_table, dict):
             raise TypeError("color_table must be a dictionary")
 
-        required_keys = ["tractograms_names", "color_table"]
+        required_keys = ["names", "color_table"]
         if not all(key in color_table for key in required_keys):
             raise ValueError(f"color_table must contain the keys: {required_keys}")
-        if len(color_table["tractograms_names"]) != n_tracts:
+        if len(color_table["names"]) != n_tracts:
             raise ValueError(
-                "Length of 'tractograms_names' in color_table must match number of tractograms"
+                "Length of 'names' in color_table must match number of tractograms"
             )
         if color_table["color_table"].shape[0] != n_tracts:
             raise ValueError(
@@ -2011,7 +2011,7 @@ def merge_tractograms(
         color_table[:, 4] = np.arange(n_tracts) + 1  # Set the value column
         bundle_names = [f"tract_{i}" for i in range(n_tracts)]
         color_table_dict = {
-            "tractograms_names": bundle_names,
+            "names": bundle_names,
             "color_table": color_table,
             "lookup_table": None,
         }

@@ -1385,7 +1385,7 @@ class Parcellation:
         )
 
         table_dict = {
-            "struct_names": temp_parc.name,
+            "names": temp_parc.name,
             "color_table": color_table,
             "lookup_table": None,
         }

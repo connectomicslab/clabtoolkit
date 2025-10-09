@@ -139,7 +139,7 @@ class Surface:
 
         # Store parcellation information in organized structure
         self.colortables["default"] = {
-            "struct_names": ["default"],
+            "names": ["default"],
             "color_table": tmp_ctable,
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
@@ -1056,7 +1056,7 @@ class Surface:
 
         # Store parcellation information in organized structure
         self.colortables[parc_name] = {
-            "struct_names": reg_names,
+            "names": reg_names,
             "color_table": reg_ctable,
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
@@ -1121,7 +1121,7 @@ class Surface:
                 # If there is a colortable for this map, use it
                 if annotation in self.colortables:
                     ctable = self.colortables[annotation]["color_table"]
-                    struct_names = self.colortables[annotation]["struct_names"]
+                    struct_names = self.colortables[annotation]["names"]
 
                     # Create AnnotParcellation object from the data
                     parc = cltfree.AnnotParcellation()
@@ -1698,13 +1698,13 @@ class Surface:
                 index = np.where(tmp_ctab["color_table"][:, 4] == label)[0]
                 if len(index) > 0:
                     tmp_ctab["color_table"] = tmp_ctab["color_table"][index, :]
-                    tmp_ctab["struct_names"] = [tmp_ctab["struct_names"][index[0]]]
+                    tmp_ctab["names"] = [tmp_ctab["names"][index[0]]]
                 else:
                     single_color_ctab = cltmisc.colors_to_table(
                         np.array([[240, 240, 240]]), alpha_values=255
                     )
                     tmp_ctab["color_table"] = single_color_ctab
-                    tmp_ctab["struct_names"] = [f"component_{single_color_ctab[4]}"]
+                    tmp_ctab["names"] = [f"component_{single_color_ctab[4]}"]
 
                 subsurf_obj.colortables[component_labels] = tmp_ctab
 
@@ -1948,8 +1948,8 @@ class Surface:
         # Add colortable info if available
         if overlay_name in self.colortables:
             ctable_info = self.colortables[overlay_name]
-            info["num_regions"] = len(ctable_info["struct_names"])
-            info["region_names"] = ctable_info["struct_names"]
+            info["num_regions"] = len(ctable_info["names"])
+            info["region_names"] = ctable_info["names"]
             info["has_annot_object"] = "annot_object" in ctable_info
 
         return info
@@ -1998,13 +1998,13 @@ class Surface:
             return annot_obj.get_region_vertices(region_name)
         else:
             # Fallback to manual lookup
-            if region_name not in self.colortables[parc_name]["struct_names"]:
+            if region_name not in self.colortables[parc_name]["names"]:
                 raise ValueError(
                     f"Region '{region_name}' not found in parcellation '{parc_name}'"
                 )
 
             # Find the label value for this region
-            region_idx = self.colortables[parc_name]["struct_names"].index(region_name)
+            region_idx = self.colortables[parc_name]["names"].index(region_name)
             label_value = self.colortables[parc_name]["color_table"][region_idx, 4]
 
             # Get vertices with this label
@@ -2058,7 +2058,7 @@ class Surface:
         else:
             # Fallback to manual calculation
             vertices = self.get_region_vertices(parc_name, region_name)
-            region_idx = self.colortables[parc_name]["struct_names"].index(region_name)
+            region_idx = self.colortables[parc_name]["names"].index(region_name)
             color_table = self.colortables[parc_name]["color_table"]
 
             return {
@@ -2114,7 +2114,7 @@ class Surface:
             # Fallback to basic information
             ctable_info = self.colortables[parc_name]
             regions = {}
-            for i, name in enumerate(ctable_info["struct_names"]):
+            for i, name in enumerate(ctable_info["names"]):
                 color_table = ctable_info["color_table"]
                 vertices = self.get_region_vertices(parc_name, name)
                 regions[name] = {
@@ -3107,7 +3107,7 @@ class Surface:
         # If there is a colortable for this map, use it
         if parc_name in self.colortables:
             ctable = self.colortables[parc_name]["color_table"]
-            struct_names = self.colortables[parc_name]["struct_names"]
+            struct_names = self.colortables[parc_name]["names"]
 
             # Saving the annotation data in FreeSurfer format
             annot_obj = cltfree.AnnotParcellation()
@@ -3306,13 +3306,13 @@ def merge_surfaces(
         if not isinstance(color_table, dict):
             raise TypeError("color_table must be a dictionary")
 
-        required_keys = ["struct_names", "color_table"]
+        required_keys = ["names", "color_table"]
         if not all(key in color_table for key in required_keys):
             raise ValueError(f"color_table must contain the keys: {required_keys}")
 
-        if len(color_table["struct_names"]) != n_surfaces:
+        if len(color_table["names"]) != n_surfaces:
             raise ValueError(
-                "Length of 'struct_names' in color_table must match number of surfaces"
+                "Length of 'names' in color_table must match number of surfaces"
             )
         if color_table["color_table"].shape[0] != n_surfaces:
             raise ValueError(
@@ -3331,7 +3331,7 @@ def merge_surfaces(
         color_table[:, 4] = np.arange(n_surfaces) + 1  # Set the value column
         surface_names = [f"mesh_{i}" for i in range(n_surfaces)]
         color_table_dict = {
-            "struct_names": surface_names,
+            "names": surface_names,
             "color_table": color_table,
             "lookup_table": None,
         }
@@ -3455,7 +3455,7 @@ def create_surface_colortable(
 
     # Store parcellation information in organized structure
     colortable = {
-        "struct_names": struct_names,
+        "names": struct_names,
         "color_table": tmp_ctable,
         "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
     }
