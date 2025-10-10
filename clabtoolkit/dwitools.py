@@ -602,10 +602,13 @@ def concatenate_tractograms(
     ----------
     in_tracts : list of str
         List of file paths to the tractograms to concatenate.
+
     concat_tract : str, optional
         File path for the output concatenated tractogram.
+
     show_progress : bool, optional
         Whether to show a progress bar during processing.
+
     skip_missing : bool, optional
         If True, skip missing files instead of raising an error.
 
