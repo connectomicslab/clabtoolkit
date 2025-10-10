@@ -1,5 +1,5 @@
 """
-Visualization tools for brain surface plotting and layout configuration.
+Module for building visualization layout configurations for brain surface plots.
 
 """
 
@@ -199,6 +199,7 @@ def build_layout_config(
         }
 
 
+###############################################################################################
 def single_element_layout(
     objs2plot,
     maps_names,
@@ -273,6 +274,7 @@ def single_element_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def multi_map_single_surface_layout(
     objs2plot,
     maps_names,
@@ -326,6 +328,7 @@ def multi_map_single_surface_layout(
         )
 
 
+###############################################################################################
 def horizontal_multi_map_layout(
     objs2plot,
     maps_names,
@@ -508,6 +511,7 @@ def horizontal_multi_map_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def vertical_multi_map_layout(
     objs2plot,
     maps_names,
@@ -680,6 +684,7 @@ def vertical_multi_map_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def grid_multi_map_layout(
     objs2plot,
     maps_names,
@@ -1337,6 +1342,7 @@ def multi_map_multi_surface_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def multi_view_single_element_layout(
     surface,
     view_ids,
@@ -1498,6 +1504,7 @@ def multi_view_single_element_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def multi_view_multi_surface_layout(
     objs2plot,
     valid_views,
@@ -1749,6 +1756,7 @@ def multi_view_multi_surface_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def multi_view_multi_map_layout(
     objs2plot,
     valid_views,
@@ -2014,6 +2022,7 @@ def multi_view_multi_map_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def single_map_multi_surface_layout(
     objs2plot,
     maps_names,
@@ -2076,6 +2085,7 @@ def single_map_multi_surface_layout(
         )
 
 
+###############################################################################################
 def horizontal_multi_surface_layout(
     objs2plot,
     maps_names,
@@ -2204,6 +2214,7 @@ def horizontal_multi_surface_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def vertical_multi_surface_layout(
     objs2plot,
     maps_names,
@@ -2315,6 +2326,7 @@ def vertical_multi_surface_layout(
     return layout_config, colorbar_list
 
 
+###############################################################################################
 def grid_multi_surface_layout(
     objs2plot,
     maps_names,

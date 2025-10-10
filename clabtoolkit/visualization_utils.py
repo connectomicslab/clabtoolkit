@@ -1,12 +1,5 @@
 """
-Brain Surface Visualization Tools
-
-This module provides comprehensive tools for visualizing brain surfaces with various
-anatomical views and data overlays. It supports FreeSurfer surface formats and
-provides flexible layout options for publication-quality figures.
-
-Classes:
-    SurfacePlotter: Main class for creating multi-view brain surface layouts
+Module for visualization utilities in the clabtoolkit package.
 """
 
 import os
