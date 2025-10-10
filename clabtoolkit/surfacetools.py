@@ -3278,7 +3278,7 @@ def merge_surfaces(
     Examples
     --------
     >>> surfaces = [surf1, surf2, surf3]
-    >>> merged = merge_surfaces_list(surfaces)
+    >>> merged = merge_surfaces(surfaces)
     >>> print(f"Merged surface has {merged.mesh.n_points} vertices")
     """
 
