@@ -3010,6 +3010,36 @@ def replace_substrings(
 
     return result
 
+#################################################################################################
+def to_list(item):
+    """
+    Convert single items to lists for consistent handling.
+
+    Parameters
+    ----------
+    item : any
+        A single item or a list of items.
+
+    Returns
+    -------
+    list
+        A list containing the item(s).
+
+    Examples
+    --------
+    >>> to_list(5)
+    [5]
+    >>> to_list([1, 2, 3])
+    [1, 2, 3]
+    >>> to_list("hello")
+    ['hello']
+    >>> to_list(["a", "b"])
+    ['a', 'b']
+    """
+    if not isinstance(item, list):
+        return [item]
+    return item
+
 
 ####################################################################################################
 def list_intercept(list1: list, list2: list):
