@@ -2018,13 +2018,11 @@ def merge_tractograms(
 
     # Initialize lists to hold merged data
     for i, t in enumerate(tractograms):
-
         if i == 0:
             merged_tractogram = Tractogram(t)
             bundle_ids = np.full((len(merged_tractogram.tracts), 1), color_table[i, 4])
-
         else:
-            merged_tractogram.add_tractogram(t)
+            merged_tractogram = merged_tractogram.add_tractogram(t)
             bundle_ids = np.vstack(
                 (
                     bundle_ids,
