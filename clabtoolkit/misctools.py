@@ -1044,6 +1044,50 @@ def create_random_colors(
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
 
 
+#########################################################################################################
+def create_lut_dictionary(parc_values: List[int]) -> dict:
+    """
+    Create a lookup table (LUT) dictionary mapping parcel values to colors.
+
+    Parameters
+    ----------
+    parc_values : List[int]
+        List of integer parcel values.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - "index": List of parcel IDs (excluding background id 0)
+        - "name": List of region names (e.g., "Region_1", "Region_2", ...)
+        - "color": List of hex color codes corresponding to each parcel ID
+
+    Examples
+    --------
+    >>> parc_values = [0, 1, 2, 3, 4]
+    >>> lut_dict = create_lut_dictionary(parc_values)
+    >>> print(lut_dict)
+    {'index': [1, 2, 3, 4],
+     'name': ['Region_1', 'Region_2', 'Region_3', 'Region_4'],
+     'color': ['#e6194b', '#3cb44b', '#ffe119', '#0082c8']}
+
+    """
+    # Remove the background id (0)
+    sts_ids = np.array(parc_values)
+    sts_ids = sts_ids[sts_ids != 0]
+    sts_ids = sts_ids.astype(int).tolist()
+
+    sts_names = [f"Region_{id}" for id in sts_ids]
+    sts_colors = create_distinguishable_colors(len(sts_ids), output_format="hex")
+
+    lut_dict = {}
+    lut_dict["index"] = sts_ids
+    lut_dict["name"] = sts_names
+    lut_dict["color"] = sts_colors
+
+    return lut_dict
+
+
 ###################################################################################################
 def create_distinguishable_colors(
     n: int,
