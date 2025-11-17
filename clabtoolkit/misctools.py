@@ -1045,7 +1045,7 @@ def create_random_colors(
 
 
 #########################################################################################################
-def create_lut_dictionary(parc_values: List[int]) -> dict:
+def create_lut_dictionary(parc_values: Union[List[int], np.ndarray]) -> dict:
     """
     Create a lookup table (LUT) dictionary mapping parcel values to colors.
 
