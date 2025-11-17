@@ -2299,6 +2299,156 @@ def extract_centroid_from_volume(
 
 
 ####################################################################################################
+def create_spams_from_volume(
+    indiv_parc: np.ndarray, sts_ids: Union[List[int], np.ndarray]
+) -> np.ndarray:
+    """
+    Create SPAMs (Spatial Probability Maps) from individual parcellation volumes.
+
+    Parameters
+    ----------
+    indiv_parc : numpy.ndarray
+        4D array with dimensions (X, Y, Z, N) where N is the number of subjects.
+        Each voxel contains integer labels representing different structures.
+
+    sts_ids : list or numpy.ndarray
+        List or array of integer structure IDs for which to create SPAMs.
+
+    Returns
+    -------
+    numpy.ndarray
+        4D array with dimensions (X, Y, Z, M) where M is the number of structure IDs.
+        Each voxel contains the proportion of subjects that have the corresponding
+        structure ID at that voxel.
+
+    Raises
+    ------
+    ValueError
+        If indiv_parc is not a 4D numpy array.
+    ValueError
+        If sts_ids is not a list or numpy array of integers.
+
+    Notes
+    -----
+    - The function computes the proportion of subjects that have each specified
+        structure ID at each voxel.
+    - The output SPAMs can be used for group-level analyses in neuroimaging studies.
+
+    Examples
+    --------
+    >>> # Example usage
+    >>> indiv_parc = np.random.randint(0, 5, size=(64, 64, 64, 10))  # 10 subjects with labels 0-4
+    >>> sts_ids = [1, 2, 3]
+    >>> spams = create_spams_from_volume(indiv_parc, sts_ids)
+    >>> print(spams.shape)  # Output shape will be (64, 64, 64, 3)
+    """
+
+    # Validate inputs
+    if not isinstance(indiv_parc, np.ndarray) or indiv_parc.ndim != 4:
+        raise ValueError("indiv_parc must be a 4D numpy array (X, Y, Z, N).")
+
+    if not isinstance(sts_ids, (list, np.ndarray)) or not all(
+        isinstance(id, int) for id in sts_ids
+    ):
+        raise ValueError("sts_ids must be a list or numpy array of integers.")
+
+    # Creating the SPAMs
+    # Get the dimensions of the data
+    data_shape = indiv_parc.shape
+    spam_image = np.zeros(data_shape[0:3] + (len(sts_ids),), dtype=np.float32)
+    for cont, sts_id in enumerate(sts_ids):
+        tmp_sts_img = indiv_parc == sts_id
+
+        # Convert to logical and sum across subjects
+        tmp_sts_img = tmp_sts_img.astype(np.int16)
+        sum_img = np.sum(tmp_sts_img, axis=3)
+
+        # Divide by number of subjects to get proportion
+        spam_image[:, :, :, cont] = sum_img / len(data_shape[3])
+
+    return spam_image
+
+
+#####################################################################################################
+def spams2maxprob_from_volume(
+    spam_vol: np.ndarray,
+    prob_thresh: float = 0.0,
+    vol_indexes: Union[List[int], np.ndarray] = None,
+) -> np.ndarray:
+    """
+    Convert SPAMs (Spatial Probability Maps) to a maximum probability parcellation volume.
+
+    Parameters
+    ----------
+    spam_vol : numpy.ndarray
+        4D array with dimensions (X, Y, Z, M) where M is the number of structures.
+        Each voxel contains the probability of belonging to each structure.
+
+    prob_thresh : float, optional
+        Probability threshold to apply before determining maximum probability.
+        Voxels with probabilities below this threshold will be set to zero. Default is 0.0.
+
+    vol_indexes : list or numpy.ndarray, optional
+        List or array of integer structure indexes to consider for maximum probability.
+        If provided, only these structures will be considered. Default is None.
+
+    Returns
+    -------
+    numpy.ndarray
+        3D array with dimensions (X, Y, Z) where each voxel contains the index of the structure
+        with the maximum probability, or 0 if below the threshold.
+
+    Raises
+    ------
+    ValueError
+        If spam_vol is not a 4D numpy array.
+
+    Notes
+    -----
+    - The function applies a probability threshold to the SPAMs and then determines
+        the structure with the maximum probability at each voxel.
+    - Voxels with probabilities below the threshold are assigned a value of 0 in the output
+    - If vol_indexes is provided, only those structures are considered for maximum probability.
+
+    Examples
+    --------
+    >>> # Example usage
+    >>> spam_vol = np.random.rand(64, 64, 64, 5)  # SPAMs for 5 structures
+    >>> maxprob_vol = spams2maxprob_from_volume(spam_vol, prob_thresh=0.2)
+    >>> print(maxprob_vol.shape)  # Output shape will be (64, 64, 64)
+    """
+
+    # Validate inputs
+    if not isinstance(spam_vol, np.ndarray) or spam_vol.ndim != 4:
+        raise ValueError("spam_vol must be a 4D numpy array (X, Y, Z, M).")
+
+    spam_vol[spam_vol < prob_thresh] = 0
+    spam_vol[spam_vol > 1] = 1
+
+    if vol_indexes is not None:
+        # Creating the maxprob
+
+        # I want to find the complementary indexes to vol_indexes
+        all_indexes = np.arange(0, spam_vol.shape[3])
+        set1 = set(all_indexes)
+        set2 = set(vol_indexes)
+
+        # Find the symmetric difference
+        diff_elements = set1.symmetric_difference(set2)
+
+        # Convert the result back to a NumPy array if needed
+        diff_array = np.array(list(diff_elements))
+        spam_vol[:, :, :, diff_array] = 0
+        # array_data = np.delete(spam_vol, diff_array, 3)
+
+    ind = np.where(np.sum(spam_vol, axis=3) == 0)
+    maxprob_thl = spam_vol.argmax(axis=3) + 1
+    maxprob_thl[ind] = 0
+
+    return maxprob_thl
+
+
+####################################################################################################
 def compute_statistics_at_nonzero_voxels(
     mask_array: np.ndarray, data_array: np.ndarray, metric: str = "mean"
 ) -> np.ndarray:
