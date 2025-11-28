@@ -228,7 +228,7 @@ def finalize_plot(
                 print(f"Error saving HTML: {e}")
             finally:
                 plotter.close()
-        
+
         elif save_path.lower().endswith((".svg", ".pdf", ".eps", ".ps", ".tex")):
             # Save as vector graphic
             try:
@@ -417,7 +417,9 @@ def prepare_obj_for_plotting(
             nan=0.0,
         )  # Handle NaNs and infinities
 
-        colors = obj2plot.get_pointwise_colors(map_name, colormap, vmin, vmax)
+        obj2plot.data_per_point["rgba"] = obj2plot.get_pointwise_colors(
+            map_name, colormap, vmin, vmax
+        )
 
     elif isinstance(obj2plot, cltsurf.Surface):
         if vmin is None:
@@ -447,6 +449,7 @@ def prepare_obj_for_plotting(
     else:
         raise TypeError("obj2plot must be a Surface or Tractogram instance")
 
+    return obj2plot
 
 ################################################################################################
 def process_v_limits(
