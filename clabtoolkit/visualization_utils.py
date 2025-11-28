@@ -228,6 +228,16 @@ def finalize_plot(
                 print(f"Error saving HTML: {e}")
             finally:
                 plotter.close()
+        
+        elif save_path.lower().endswith((".svg", ".pdf", ".eps", ".ps", ".tex")):
+            # Save as vector graphic
+            try:
+                plotter.save_graphic(save_path)
+                print(f"Figure saved to: {save_path}")
+            except Exception as e:
+                print(f"Error saving vector graphic: {e}")
+            finally:
+                plotter.close()
 
         else:
             # Save mode - render and save without displaying
