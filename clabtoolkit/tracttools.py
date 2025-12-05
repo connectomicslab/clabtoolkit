@@ -288,6 +288,99 @@ class Tractogram:
         self.data_per_streamline = copy.deepcopy(data_per_streamline)
 
     ###############################################################################################
+    def load_colortable(
+        self,
+        lut_file: Union[str, Path],
+        map_name: str = "default",
+        opacity: np.ndarray = 1.0,
+        lut_type: str = "lut",
+    ) -> None:
+        """
+        Loads a colortable from a file and associates it with a specified map name.
+
+        Parameters:
+        -----------
+            colortable_path (str or Path):
+                Path to the colortable file.
+
+            map_name (str):
+                Name of the map to associate with the loaded colortable.
+
+        Returns:
+        -------
+            None
+
+        """
+        if isinstance(lut_file, Path):
+            lut_file = str(lut_file)
+
+        if not os.path.isfile(lut_file):
+            raise FileNotFoundError(
+                f"The specified colortable file does not exist: {lut_file}"
+            )
+
+        # Load the colortable using the utility function
+        if lut_type == "lut":
+            lut_dict = cltparc.Parcellation.read_luttable(lut_file)
+
+        colors = lut_dict["color"]
+        if map_name in self.data_per_streamline or map_name not in self.data_per_point:
+            if (
+                map_name in self.data_per_streamline
+                and map_name not in self.data_per_point
+            ):
+                values = np.unique(np.concatenate(self.data_per_streamline[map_name]))
+                if len(values) != len(colors):
+                    raise ValueError(
+                        f"Colortable in {lut_file} does not cover all IDs in data_per_point for map '{map_name}'."
+                    )
+            elif (
+                map_name not in self.data_per_streamline
+                and map_name in self.data_per_point
+            ):
+                values = np.unique(np.concatenate(self.data_per_point[map_name]))
+                if len(values) != len(colors):
+                    raise ValueError(
+                        f"Colortable in {lut_file} does not cover all IDs in data_per_point for map '{map_name}'."
+                    )
+
+            elif (
+                map_name in self.data_per_streamline and map_name in self.data_per_point
+            ):
+                values = np.unique(np.concatenate(self.data_per_point[map_name]))
+                if len(values) != len(colors):
+                    raise ValueError(
+                        f"Colortable in {lut_file} does not cover all IDs in data_per_point for map '{map_name}'."
+                    )
+
+            color_table = cltmisc.colors_to_table(colors=colors, values=values)
+        else:
+            color_table = cltmisc.colors_to_table(colors=colors)
+
+        if isinstance(opacity, (int, float)):
+            # opacity is a scalar, no need to check length
+            opacity_array = np.full(color_table.shape[0], opacity)
+
+        elif len(opacity) != color_table.shape[0]:
+            opacity_array = np.full(color_table.shape[0], opacity[0])
+
+        else:
+            opacity_array = np.array(opacity)
+
+        color_table[:, :3] = (
+            color_table[:, :3] / 255
+        )  # Ensure colors are between 0 and 1
+
+        color_table[:, 3] = opacity_array  # Set uniform opacity
+
+        # Store parcellation information in organized structure
+        self.colortables[map_name] = {
+            "names": lut_dict["name"],
+            "color_table": color_table,
+            "lookup_table": None,
+        }
+
+    ###############################################################################################
     def resample_streamlines(
         self,
         num_points: int = 51,
