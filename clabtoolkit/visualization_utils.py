@@ -357,7 +357,7 @@ def prepare_obj_for_plotting(
     range_min: Optional[float] = None,
     range_max: Optional[float] = None,
     range_color: List[int, int, int, int] = [128, 128, 128, 255],
-) -> cltsurf.Surface:
+) -> Union[cltsurf.Surface, clttract.Tractogram]:
     """
     Prepare Surface or Tractogram object for plotting with color mapping.
 
