@@ -1414,6 +1414,179 @@ def merge_to_4d(
         return merged_img
 
 
+#####################################################################################################
+def create_spams(
+    in_parcs: Union[List[Path], List[str]],
+    out_spams: Union[str, Path],
+    lut_table: Union[str, Path, dict],
+    save_color_spams: bool = False,
+    rgb255: bool = True,
+):
+    """
+    Create SPAM probability maps from multiple parcellation images.
+    Generates spatial probability maps (SPAMs) from a list of parcellation
+    images, using a lookup table (LUT) for region definitions and colors.
+
+    Parameters
+    ----------
+    in_parcs : list of str or Path
+        List of file paths to input parcellation images.
+
+    out_spams : str or Path
+        File path for the output SPAM image.
+
+    lut_table : str, Path, or dict
+        Path to LUT file (TSV or LUT format) or a dictionary with 'index',
+        'name', and 'color' keys defining regions.
+
+    save_color_spams : bool, optional
+        Whether to save a color-coded SPAM image. Default is False.
+
+    rgb255 : bool, optional
+        Whether to scale RGB colors to 0-255 range. Default is True.
+
+    Raises
+    ------
+    ValueError
+        If input parameters are invalid.
+
+    Examples
+    --------
+    >>> # Create SPAMs from parcellations with LUT file
+    >>> create_spams(
+    ...     in_parcs=['subj1_parc.nii.gz', 'subj2_parc.nii.gz'],
+    ...     out_spams='group_spams.nii.gz
+    ...     lut_table='parc_lut.tsv',
+    ...     save_color_spams=True,
+    ...     rgb255=True
+    ... )
+
+    """
+
+    # Check if the in_parcs is a list
+    if not isinstance(in_parcs, list):
+        raise ValueError("The 'in_parcs' parameter must be a list of file paths.")
+
+    # Unify and check if all the file exist
+    in_parcs_checked = []
+    for parc in in_parcs:
+        if isinstance(parc, str):
+            parc_path = Path(parc)
+        elif isinstance(parc, Path):
+            parc_path = parc
+        else:
+            raise ValueError("Each item in 'in_parcs' must be a string or Path object.")
+
+        if not parc_path.exists():
+            raise FileNotFoundError(f"The file {parc_path} does not exist.")
+
+        in_parcs_checked.append(parc_path)
+
+    # Load the image with nibabel to check
+    for i in range(len(in_parcs_checked)):
+
+        # Load the image with nibabel to check
+        img = nib.load(str(in_parcs[i]))
+        data = img.get_fdata()
+
+        # Create a 4D volume with 0s with the same shape as the original and number of subjects as 4th dimension
+        if i == 0:
+            all_subj = np.zeros(data.shape + (len(in_parcs_checked),))
+
+        all_subj[..., i] = data
+
+    # Read the LUT file
+    # Check if str or Path and if it exists
+    if lut_table is None:
+        sts_ids = np.unique(all_subj)
+        lut_dict = cltmisc.create_lut_dictionary(sts_ids)
+
+    else:
+        if isinstance(lut_table, dict):
+
+            # Check if the keys are correct
+            required_keys = {"index", "name", "color"}
+            if not required_keys.issubset(lut_table.keys()):
+                raise ValueError(
+                    f"The LUT dictionary must contain the keys: {required_keys}"
+                )
+
+        else:
+            if isinstance(lut_table, (str, Path)):
+                lut_table = Path(lut_table)
+
+                if not lut_table.exists():
+                    lut_dict = cltmisc.create_lut_dictionary(np.unique(all_subj))
+
+                else:
+                    with open(lut_table, "r") as f:
+                        first_line = f.readline().strip()
+
+                        # TSV format has tab-separated header: index, name, color
+                        if "\t" in first_line and "index" in first_line.lower():
+                            lut_dict = cltparc.Parcellation.read_tsvtable(
+                                in_file=str(lut_table)
+                            )
+                        else:
+                            lut_dict = cltparc.Parcellation.read_luttable(
+                                in_file=str(lut_table)
+                            )
+
+    sts_ids = lut_dict["index"]
+    sts_names = lut_dict["name"]
+    sts_colors = lut_dict["color"]
+    sts_colors = cltmisc.multi_hex2rgb(sts_colors)
+
+    if rgb255:
+        sts_colors = cltmisc.harmonize_colors(sts_colors, output_format="rgb")
+
+    else:
+        sts_colors = cltmisc.harmonize_colors(sts_colors, output_format="rgbnorm")
+
+    # Create the SPAM image
+    spam_image = create_spams_from_volume(all_subj, sts_ids)
+
+    # Save the SPAM image
+    # Check if the output directory exists
+    if isinstance(out_spams, str):
+        out_spams = Path(out_spams)
+
+    # If the directory does not exist, lunch an error
+    out_dir = out_spams.parent
+    if not out_dir.exists():
+        raise ValueError(f"The output directory {out_dir} does not exist.")
+
+    spam_nifti = nib.Nifti1Image(spam_image, img.affine)
+    nib.save(spam_nifti, str(out_spams))
+
+    # Save the color SPAM image if required
+    if save_color_spams:
+        spams_dim = spam_image.shape
+        color_spam_image = np.zeros((spams_dim[0], spams_dim[1], spams_dim[2], 3))
+
+        # Take the same name and and colored after the original basename
+        colored_spam_name = os.path.splitext(out_spams.name)[0] + "_colored.nii.gz"
+
+        # Full path
+        color_spam_path = out_spams.with_name(colored_spam_name)
+
+        for i, vol_index in enumerate(sts_ids):
+            color = sts_colors[i]
+            color_spam_image[..., 0] = (
+                color_spam_image[..., 0] + spam_image[..., i] * color[0]
+            )
+            color_spam_image[..., 1] = (
+                color_spam_image[..., 1] + spam_image[..., i] * color[1]
+            )
+            color_spam_image[..., 2] = (
+                color_spam_image[..., 2] + spam_image[..., i] * color[2]
+            )
+
+        color_spam_nifti = nib.Nifti1Image(color_spam_image, img.affine)
+        color_spam_path = os.path.join(out_dir, colored_spam_name)
+        nib.save(color_spam_nifti, str(color_spam_path))
+
+
 ####################################################################################################
 def spams2maxprob(
     spam_image: str,
