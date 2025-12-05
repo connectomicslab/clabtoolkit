@@ -1459,7 +1459,7 @@ def apply_theme(plotobj, theme_name: str, auto_save: bool = True) -> None:
     >>> plotter.apply_theme("publication")
     """
 
-    themes = self.themes_conf
+    themes = plotobj.themes_conf
 
     if theme_name not in themes:
         available_themes = list(themes.keys())
