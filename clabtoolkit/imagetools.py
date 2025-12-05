@@ -20,6 +20,7 @@ from skimage import measure
 # Importing local modules
 from . import misctools as cltmisc
 from . import bidstools as cltbids
+from . import parcellationtools as cltparc
 
 
 ####################################################################################################
