@@ -3367,6 +3367,11 @@ def merge_surfaces(
             print(f"Merge failed: {e}")
             return None
 
+    # Create surf_ids based on actual point ranges
+    surf_ids = np.zeros((merged.mesh.n_points, 1))
+    for i, (start, end) in enumerate(point_ranges):
+        surf_ids[start:end] = color_table_array[i, 4]
+
     merged.mesh.point_data[map_name] = surf_ids
     merged.colortables[map_name] = color_table_dict
 
