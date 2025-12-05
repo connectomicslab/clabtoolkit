@@ -2,24 +2,22 @@ import os
 import numpy as np
 import copy
 import nibabel as nb
-from nibabel.streamlines import Field, ArraySequence
+from nibabel.streamlines import ArraySequence
 from scipy.interpolate import RegularGridInterpolator
 
 from typing import Union, List, Dict, Optional, Tuple
 from pathlib import Path
-import pyvista as pv
 import pandas as pd
 import copy
 import warnings
 
 # Importing local modules
-from . import freesurfertools as cltfree
 from . import misctools as cltmisc
+from . import parcellationtools as cltparc
 
 from dipy.segment.clustering import QuickBundlesX, QuickBundles
 from dipy.tracking.streamline import set_number_of_points
-from dipy.io.streamline import save_trk
-from dipy.io.stateful_tractogram import StatefulTractogram, Space
+from dipy.io.stateful_tractogram import Space
 
 
 ####################################################################################################
