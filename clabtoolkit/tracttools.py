@@ -1434,6 +1434,57 @@ class Tractogram:
             ).reshape(-1, 1)
 
     ###############################################################################################
+    def reduce_streamlines(self, percentage: float = 50) -> None:
+        """
+        Reduces the number of streamline by a specified factor.
+
+        Parameters:
+        -----------
+            percentage (np.float):
+                Percentage of streamlines to keep (between 0 and 100).
+
+        Returns:
+        --------
+            None
+
+        Raises:
+        -------
+            ValueError: If percentage is not between 0 and 100.
+
+        Notes:
+        ------
+            This method modifies the tractogram in place, reducing the number of streamlines
+            by keeping every N-th streamline, where N is determined by the specified percentage.
+
+        Examples:
+        ---------
+        >>> tractogram = Tractogram('input.trk')
+        >>> tractogram.reduce_streamlines(percentage=25)
+        >>> print(f"Reduced tractogram now has {len(tractogram.tracts)} streamlines")
+
+        """
+
+        if percentage <= 0 or percentage > 100:
+            raise ValueError("Percentage must be between 0 and 100")
+
+        # Calculate the reduction factor
+        factor = np.ceil(100 / percentage).astype(int)
+
+        # Reduce the streamlines
+        reduced_streamlines = self.tracts[::factor]
+
+        # Update the tractogram's streamlines and associated data, the maps and the header
+        self.tracts = reduced_streamlines
+        if hasattr(self, "data_per_point") and self.data_per_point:
+            for key in self.data_per_point.keys():
+                self.data_per_point[key] = self.data_per_point[key][::factor]
+        if hasattr(self, "data_per_streamline") and self.data_per_streamline:
+            for key in self.data_per_streamline.keys():
+                self.data_per_streamline[key] = self.data_per_streamline[key][::factor]
+        if hasattr(self, "header") and self.header:
+            self.header["nb_streamlines"] = len(self.tracts)
+
+    ###############################################################################################
     def filter_streamlines(
         self,
         condition: str,
