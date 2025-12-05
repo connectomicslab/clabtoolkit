@@ -1978,16 +1978,16 @@ def merge_tractograms(
     ---------
         >>> tract1 = Tractogram('tract1.trk')
         >>> tract2 = Tractogram('tract2.trk')
-        >>> merged_tract = merge_tractograms_list([tract1, tract2])
+        >>> merged_tract = merge_tractograms([tract1, tract2])
         >>> print(f"Merged tractogram has {len(merged_tract.tracts)} streamlines")
     """
 
     if not isinstance(tractograms, list):
-        raise TypeError("surface_list must be a list")
+        raise TypeError("tractograms must be a list")
 
     if any(not isinstance(surf, (str, Path, Tractogram)) for surf in tractograms):
         raise TypeError(
-            "All items in surface_list must be Tractogran objects, file paths, or Path objects"
+            "All items in tractograms must be Tractogran objects, file paths, or Path objects"
         )
 
     # If the list is empty, return None
@@ -2034,9 +2034,14 @@ def merge_tractograms(
 
     # Initialize lists to hold merged data
     for i, t in enumerate(tractograms):
+
+        if isinstance(t, (str, Path)):
+            t = Tractogram(t)
+
         if i == 0:
-            merged_tractogram = Tractogram(t)
+            merged_tractogram = copy.deepcopy(t)
             bundle_ids = np.full((len(merged_tractogram.tracts), 1), color_table[i, 4])
+
         else:
             merged_tractogram = merged_tractogram.add_tractogram(t)
             bundle_ids = np.vstack(
