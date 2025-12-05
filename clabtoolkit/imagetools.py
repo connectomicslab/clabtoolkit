@@ -2364,7 +2364,7 @@ def create_spams_from_volume(
         sum_img = np.sum(tmp_sts_img, axis=3)
 
         # Divide by number of subjects to get proportion
-        spam_image[:, :, :, cont] = sum_img / len(data_shape[3])
+        spam_image[:, :, :, cont] = sum_img / data_shape[3]
 
     return spam_image
 
