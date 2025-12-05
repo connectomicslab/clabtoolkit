@@ -2036,6 +2036,10 @@ class Tractogram:
         vmax: np.float64 = None,
         views: Union[str, List[str]] = ["lateral"],
         hemi: str = "lh",
+        use_opacity: bool = True,
+        tract_plot_style: str = "tube",
+        vis_percentage: float = 100,
+        force_reduction: bool = True,
         notebook: bool = False,
         show_colorbar: bool = False,
         colorbar_title: str = None,
@@ -2045,14 +2049,14 @@ class Tractogram:
         """
         Plot the tractrogram with specified overlay and visualization parameters.
 
-        Renders the surface mesh with optional overlays using PyVista, supporting
+        Renders the tractogram with optional overlays using PyVista, supporting
         multiple camera views, custom colormaps, and interactive or static output.
         Handles both categorical parcellation data and continuous scalar overlays.
 
         Parameters
         ----------
         overlay_name : str, default "default"
-            Name of the overlay to visualize from the surface's point data.
+            Name of the overlay to visualize from the tractogram's point data.
 
         cmap : str, optional
             Colormap for scalar data. If None, uses parcellation colors for
@@ -2071,6 +2075,19 @@ class Tractogram:
 
         hemi : str, default "lh"
             Hemisphere to visualize: 'lh' (left) or 'rh' (right).
+
+        use_opacity : bool, default True
+            Whether to use opacity settings from the tractogram overlays.
+
+        tract_plot_style : str, default "tube"
+            Style for rendering streamlines: 'tube' or 'line'.
+
+        vis_percentage : float, default 100
+            Percentage of streamlines to visualize (0-100). Reduces number for
+            faster rendering if less than 100.
+
+        force_reduction : bool, default True
+            Whether to force reduction of streamlines when vis_percentage < 100.
 
         notebook : bool, default False
             Whether to display in Jupyter notebook. If False, opens interactive window.
@@ -2099,8 +2116,8 @@ class Tractogram:
 
         Examples
         --------
-        >>> surface.plot(overlay_name="aparc")
-        >>> surface.plot(overlay_name="thickness", cmap="hot", views="medial", show_colorbar=True)
+        >>> tractogram.plot(overlay_name="fa")
+        >>> tractogram.plot(overlay_name="fa", cmap="hot", views="medial", show_colorbar=True)
         """
 
         # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
@@ -2118,15 +2135,31 @@ class Tractogram:
 
         from . import visualizationtools as cltvis
 
-        plotter = cltvis.SurfacePlotter()
+        # Initialize the BrainPlotter
+        plotter = cltvis.BrainPlotter()
 
-        plotter.plot_surfaces(
+        # Reduce streamlines if needed for visualization
+        n_streamlines = len(self.tracts)
+        if vis_percentage < 100:
+            self.reduce_streamlines(percentage=vis_percentage)
+
+        if n_streamlines > 100000 and force_reduction:
+            # Reduce to 100k streamlines
+            reduction_percentage = (100000 / n_streamlines) * 100
+            print(
+                f"Number of streamlines is {n_streamlines}, reducing to {int(reduction_percentage)}% for faster visualization."
+            )
+            self.reduce_streamlines(percentage=reduction_percentage)
+
+        plotter.plot_objects(
             self,
             hemi_id=hemi,
             views=views,
             map_names=overlay_name,
             colormaps=cmap,
             v_limits=(vmin, vmax),
+            use_opacity=use_opacity,
+            tract_plot_style=tract_plot_style,
             notebook=notebook,
             colorbar=show_colorbar,
             colorbar_titles=colorbar_title,
