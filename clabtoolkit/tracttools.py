@@ -9,7 +9,6 @@ from typing import Union, List, Dict, Optional, Tuple
 from pathlib import Path
 import pandas as pd
 import copy
-import warnings
 
 # Importing local modules
 from . import misctools as cltmisc
@@ -881,8 +880,8 @@ class Tractogram:
                 if not tract2add.is_file():
                     raise ValueError(f"Path '{str(tract2add)}' is not a file")
 
-            # Load the surface from file
-            tract2add = [Tractogram(tract2add)]
+            # Load the tractogram from file
+            tract2add = [copy.deepcopy(Tractogram(tract2add))]
 
         elif isinstance(tract2add, Tractogram):
             tract2add = [tract2add]
@@ -890,15 +889,15 @@ class Tractogram:
         if len(tract2add) == 0:
             raise ValueError("Tractograms list cannot be empty")
 
-        # Check that all items in the list are Surface objects
+        # Check that all items in the list are tractogram objects
         for i, tract in enumerate(tract2add):
             if not isinstance(tract, Tractogram) and not isinstance(tract, str):
-                raise TypeError(f"Item at index {i} is not a Surface object")
+                raise TypeError(f"Item at index {i} is not a tractogram object")
 
-        # Include this surface in the list
+        # Include this tractogram in the list
         all_tractograms = [self] + tract2add
 
-        # Find common point_data fields across all surfaces
+        # Find common point_data fields across all tractograms
         common_data_per_points = None
         common_data_per_streamlines = None
         for tractogram in all_tractograms:
