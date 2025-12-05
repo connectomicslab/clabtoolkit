@@ -1917,6 +1917,12 @@ def get_map_limits(
                 raise ValueError(
                     f"No data found for map_name '{map_name}' in the provided objects."
                 )
+            # Concatenate if data is a list of arrays
+            if isinstance(data, list):
+                data = np.concatenate(data)
+
+            if isinstance(data, ArraySequence):
+                data = np.concatenate(data)
 
             # Compute vmin and vmax if not provided
             if vmin is None:
