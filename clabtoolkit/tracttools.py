@@ -1433,6 +1433,164 @@ class Tractogram:
                 values
             ).reshape(-1, 1)
 
+    ###################################################################################################
+    def get_pointwise_colors(
+        self,
+        overlay_name: str = "default",
+        colormap: str = "viridis",
+        vmin: np.float64 = None,
+        vmax: np.float64 = None,
+        range_min: np.float64 = None,
+        range_max: np.float64 = None,
+        range_color: List[int, int, int] = [128, 128, 128],
+    ) -> None:
+        """
+        Compute streamlines colors for visualization based on the specified overlay.
+
+        This method processes the overlay data and creates appropiate point colors
+        for visualization, handling both scalar data (with colormaps) and
+        categorical data (with discrete color tables).
+
+        Parameters
+        ----------
+        overlay_name : str, optional
+            Name of the overlay to visualize. If None, the first available overlay is used.
+
+        colormap : str, optional
+            Colormap to use for scalar overlays. If None, uses parcellation color table
+            for categorical data or 'viridis' for scalar data.
+
+        vmin : np.float64, optional
+            Minimum value for scaling the colormap. If None, uses the minimum value of the overlay
+
+        vmax : np.float64, optional
+            Maximum value for scaling the colormap. If None, uses the maximum value of the overlay
+        If both vmin and vmax are None, the colormap will be applied to the full range of the overlay values.
+        If both are provided, they will be used to scale the colormap.
+
+        range_min : np.float64, optional
+            Minimum threshold for the overlay values. Values below this will be colored with range_color.
+            If None, no minimum threshold is applied.
+
+        range_max : np.float64, optional
+            Maximum threshold for the overlay values. Values above this will be colored with range_color.
+            If None, no maximum threshold is applied.
+
+        range_color : List[int, int, int, int], optional
+            RGBA color to use for values outside the specified range (range_min, range_max).
+            Default is gray [128, 128, 128].
+
+        Returns
+        -------
+        point_colors : ArraySequence
+            Array of RGBA colors for each point in the tractogram.
+
+        Raises
+        ------
+        ValueError
+            If the specified overlay is not found in the mesh point data
+
+        ValueError
+            If no overlays are available
+
+        Notes
+        -----
+        This method sets the vertices colors based on the specified overlay.
+
+
+        Examples
+        --------
+        >>> # Prepare colors for a parcellation (uses discrete colors)
+        >>> surface.get_vertexwise_colors(overlay_name="aparc")
+        >>>
+        >>> # Prepare colors for scalar data with custom colormap
+        >>> surface.get_vertexwise_colors(overlay_name="thickness", colormap="hot")
+        >>>
+        >>> # Prepare colors for the surface overlay
+        >>> surface.get_vertexwise_colors()
+        """
+
+        # Get the list of overlays
+        map_list_dict = self.list_maps()
+
+        st_maps = map_list_dict["maps_per_streamline"]
+        pt_maps = map_list_dict["maps_per_point"]
+        overlays = []
+        if st_maps is not None:
+            overlays = overlays + st_maps
+
+        if pt_maps is not None:
+            overlays = overlays + pt_maps
+
+        if overlay_name not in overlays:
+            raise ValueError(
+                f"Overlay '{overlay_name}' not found. Available overlays: {', '.join(overlays)}"
+            )
+
+        # Getting the values of the overlay
+
+        if overlay_name in st_maps:
+            # Map the streamline values to points
+            data = self.data_per_streamline[overlay_name]
+
+        if overlay_name in pt_maps:
+            data = self.data_per_point[overlay_name]
+
+        # Concatenate all arrays into a single array for color mapping
+        all_data = np.concatenate(data)
+        lengths = [len(arr) for arr in data]
+
+        # Calculate split indices (cumulative sum of lengths, excluding the last one)
+        split_indices = np.cumsum(lengths)[:-1]
+
+        # if colortables is an attribute of the class, use it
+        if hasattr(self, "colortables"):
+            dict_ctables = self.colortables
+
+            # Check if the overlay is on the colortables
+            if overlay_name in dict_ctables.keys():
+                # Use the colortable associated with the parcellation
+
+                point_colors = cltmisc.get_colors_from_colortable(
+                    all_data, self.colortables[overlay_name]["color_table"]
+                )
+            else:
+                # Use the colormap for scalar data
+                point_colors = cltmisc.values2colors(
+                    all_data,
+                    cmap=colormap,
+                    output_format="rgb",
+                    vmin=vmin,
+                    vmax=vmax,
+                )
+        else:
+            point_colors = cltmisc.values2colors(
+                all_data,
+                cmap=colormap,
+                output_format="rgb",
+                vmin=vmin,
+                vmax=vmax,
+            )
+
+        if range_min is not None or range_max is not None:
+
+            # Create mask for out-of-range values
+            mask = np.zeros(len(all_data), dtype=bool)
+            if range_min is not None:
+                mask |= all_data < range_min
+
+            if range_max is not None:
+                mask |= all_data > range_max
+
+            # Set out-of-range values to a specified color
+            point_colors[mask] = range_color[:3]
+
+        # Split array_all back into a list of arrays
+        point_colors = np.split(point_colors, split_indices)
+        point_colors = ArraySequence(point_colors)
+
+        return point_colors
+
     ###############################################################################################
     def reduce_streamlines(self, percentage: float = 50) -> None:
         """
