@@ -361,6 +361,9 @@ def prepare_obj_for_plotting(
     colormap: str,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
+    range_min: Optional[float] = None,
+    range_max: Optional[float] = None,
+    range_color: List[int, int, int, int] = [128, 128, 128, 255],
 ) -> cltsurf.Surface:
     """
     Prepare Surface or Tractogram object for plotting with color mapping.
@@ -380,6 +383,15 @@ def prepare_obj_for_plotting(
 
     vmax : float, optional
         Maximum value for color scaling. If None, computed from data.
+
+    range_min : float, optional
+        Minimum value for value range masking. Values below this will be displayed in gray.
+
+    range_max : float, optional
+        Maximum value for value range masking. Values above this will be displayed in gray.
+
+    range_color : List[int, int, int, int], optional
+        RGBA color to use for values outside the specified range. Default is gray [128, 128, 128, 255].
 
     Returns
     -------
@@ -421,6 +433,26 @@ def prepare_obj_for_plotting(
             map_name, colormap, vmin, vmax
         )
 
+        if range_min is not None or range_max is not None:
+            rgba_colors = obj2plot.data_per_point["rgba"]
+
+            # Create mask for out-of-range values
+            mask = np.zeros(len(point_values), dtype=bool)
+            if range_min is not None:
+                mask |= data_values < range_min
+
+            if range_max is not None:
+                mask |= data_values > range_max
+
+            # Set out-of-range values to a specified color
+            if rgba_colors.shape[1] == 4:  # RGBA
+                rgba_colors[mask] = range_color
+
+            elif rgba_colors.shape[1] == 3:  # RGB
+                rgba_colors[mask] = range_color[:3]
+
+            obj2plot.data_per_point["rgba"] = rgba_colors
+
     elif isinstance(obj2plot, cltsurf.Surface):
         if vmin is None:
             vmin = np.min(obj2plot.mesh.point_data[map_name])
@@ -444,12 +476,32 @@ def prepare_obj_for_plotting(
             map_name, colormap, vmin, vmax
         )
 
-        return obj2plot
+        # Apply gray color to values outside the specified range
+        if range_min is not None or range_max is not None:
+            data_values = obj2plot.mesh.point_data[map_name]
+            rgba_colors = obj2plot.mesh.point_data["rgba"]
+
+            # Create mask for out-of-range values
+            mask = np.zeros(len(data_values), dtype=bool)
+            if range_min is not None:
+                mask |= data_values < range_min
+            if range_max is not None:
+                mask |= data_values > range_max
+
+            # Set out-of-range values to a specified color
+            if rgba_colors.shape[1] == 4:  # RGBA
+                rgba_colors[mask] = range_color
+
+            elif rgba_colors.shape[1] == 3:  # RGB
+                rgba_colors[mask] = range_color[:3]
+
+            obj2plot.mesh.point_data["rgba"] = rgba_colors
 
     else:
         raise TypeError("obj2plot must be a Surface or Tractogram instance")
 
     return obj2plot
+
 
 ################################################################################################
 def process_v_limits(
