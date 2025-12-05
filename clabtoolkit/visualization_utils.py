@@ -4,22 +4,15 @@ Module for visualization utilities in the clabtoolkit package.
 
 import os
 import json
-import math
-import copy
 import numpy as np
-import nibabel as nib
 from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
-from nilearn import plotting
 import pyvista as pv
 import threading
 from pathlib import Path
 
-
-# Importing external modules
-import matplotlib.pyplot as plt
+from nibabel.streamlines import ArraySequence
 
 # Importing local modules
-from . import freesurfertools as cltfree
 from . import misctools as cltmisc
 from . import plottools as cltplot
 
@@ -32,7 +25,7 @@ from . import tracttools as clttract
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############          Section 1: Class dedicated to plot Tractogram objects             ############
+############   Module dedicated to prepare objects for the VisualizationTools module    ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
