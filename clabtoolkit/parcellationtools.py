@@ -1438,7 +1438,7 @@ class Parcellation:
                 # Update progress to show completion of this region
 
         # surf_orig.merge_surfaces(surfaces_list)
-        merged_surf = cltsurf.merge_surfaces_list(surfaces_list)
+        merged_surf = cltsurf.merge_surfaces(surfaces_list)
         merged_surf.colortables = color_tables
 
         if out_filename is not None:
