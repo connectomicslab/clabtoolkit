@@ -1480,7 +1480,23 @@ class Tractogram:
             Dict:
                 Dictionary containing number of streamlines, affine matrix, and header info.
         """
-        pass
+        n_streamlines = len(self.tracts) if self.tracts is not None else 0
+        affine = self.affine if hasattr(self, "affine") else None
+        mean_length = (
+            np.mean(self.compute_streamline_lengths())
+            if hasattr(self, "tracts")
+            and self.tracts is not None
+            and len(self.tracts) > 0
+            else None
+        )
+
+        info = {
+            "number_of_streamlines": n_streamlines,
+            "mean_streamline_length": mean_length,
+            "affine": affine,
+            "header": self.header if hasattr(self, "header") else None,
+        }
+        return info
 
     ##############################################################################################
     def centroids_to_tractogram(self):
