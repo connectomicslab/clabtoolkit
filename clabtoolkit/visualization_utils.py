@@ -712,7 +712,6 @@ def add_colorbar(
         scalar_bar.SetPosition2(0.7, 0.9)  # 12% width, 90% height
         scalar_bar.SetOrientationToVertical()
 
-    colorbar_title = colorbar_title.capitalize()
     scalar_bar.SetTitle(colorbar_title)
 
     scalar_bar.SetMaximumNumberOfColors(256)
