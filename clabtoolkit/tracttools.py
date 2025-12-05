@@ -775,6 +775,68 @@ class Tractogram:
         return ArraySequence(all_points)
 
     ####################################################################################################
+    def points_to_streamline(
+        self, map_name: str, streamline_map_name: str = None, metric: str = "mean"
+    ) -> np.ndarray:
+        """
+        Converts maps_per_point to maps_per_streamline by averaging point values for each streamline.
+        This method creates a new set of data_per_streamline where each streamline's value
+        is the average of its corresponding points from data_per_point.
+
+        Parameters
+        ----------
+        map_name : str
+            The name of the map in data_per_point to convert.
+
+        streamline_map_name : str, optional
+            The name of the new map to create in data_per_streamline. If None, uses map_name.
+
+        metric : str, optional
+            The aggregation metric to use: "mean", "median", "max", or "min". Default is "mean".
+
+        Returns
+        -------
+        np.ndarray
+            A 2D array of shape (n_streamlines, n_features) containing aggregated values.
+        """
+        if not hasattr(self, "data_per_point") or map_name not in self.data_per_point:
+            raise ValueError(f"Map '{map_name}' not found in data_per_point.")
+
+        if streamline_map_name is None:
+            streamline_map_name = map_name
+
+        streamline_data = np.zeros(
+            len(self.tracts), dtype=type(self.data_per_point[map_name][0][0])
+        )
+        for i, streamline in enumerate(self.tracts):
+            point_values = self.data_per_point[map_name][i]
+
+            if metric == "median":
+                avg_value = np.median(point_values, axis=0)
+            elif metric == "max":
+                avg_value = np.max(point_values, axis=0)
+            elif metric == "min":
+                avg_value = np.min(point_values, axis=0)
+            else:
+                avg_value = np.mean(point_values, axis=0)
+
+            streamline_data[i] = avg_value
+
+        # Ensure it's 2D even for single scalar values
+        if streamline_data.ndim == 1:
+            streamline_data = streamline_data[:, np.newaxis]
+
+        self.data_per_streamline[streamline_map_name] = streamline_data
+
+        # Check if the map has colortable information and propagate it if so
+        if map_name in self.colortables:
+            self.colortables[streamline_map_name] = copy.deepcopy(
+                self.colortables[map_name]
+            )
+
+        return streamline_data
+
+    ####################################################################################################
     def add_tractogram(
         self, tract2add: Union["Tractogram", List["Tractogram"]]
     ) -> "Tractogram":
