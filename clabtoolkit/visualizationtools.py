@@ -10,27 +10,18 @@ Classes:
 """
 
 import os
-import json
-import math
 import copy
 import numpy as np
-import nibabel as nib
-from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
-from nilearn import plotting
+from typing import Union, List, Optional, Tuple, Dict, Any
 import pyvista as pv
-import threading
-
-
-# Importing external modules
-import matplotlib.pyplot as plt
 
 # Importing local modules
-from . import freesurfertools as cltfree
 from . import misctools as cltmisc
 from . import plottools as cltplot
 
 # Use TYPE_CHECKING to avoid circular imports
 from . import surfacetools as cltsurf
+from . import tracttools as clttract
 from . import visualization_utils as visutils
 from . import build_visualization_layout as vislayout
 
@@ -44,7 +35,7 @@ from . import build_visualization_layout as vislayout
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-class SurfacePlotter:
+class BrainPlotter:
     """
     A comprehensive brain surface visualization tool using PyVista.
 
@@ -115,7 +106,7 @@ class SurfacePlotter:
         if not os.path.exists(config_file):
             raise FileNotFoundError(f"Configuration file '{config_file}' not found")
 
-        # Load configurations from the JSON file
+        # Load configurations from the tractogram file
         self.config_file = config_file
         configs = visutils.load_configs(self.config_file)
 
@@ -215,62 +206,6 @@ class SurfacePlotter:
             colorbar_list,
         )
 
-    ###############################################################################################
-    def _create_colorbar_configs(
-        self,
-        maps_names,
-        colormaps,
-        v_limits,
-        colorbar_titles,
-        surfaces,
-        config,
-        colormap_style,
-        colorbar_position,
-    ):
-        """Create colorbar configurations based on layout."""
-        colorbar_configs = []
-        brain_positions = config["brain_positions"]
-        shape = config["shape"]
-
-        # Determine the number of dimensions
-        n_maps = len(maps_names)
-        n_surfaces = len(surfaces) if surfaces else 1
-
-        # Get unique combinations that need colorbars
-        unique_maps = set()
-        unique_map_surface_pairs = set()
-
-        for map_idx, surf_idx, view_idx in brain_positions.keys():
-            unique_maps.add(map_idx)
-            unique_map_surface_pairs.add((map_idx, surf_idx))
-
-        if colormap_style == "individual":
-            colorbar_configs = self._create_individual_colorbar_configs(
-                maps_names,
-                colormaps,
-                v_limits,
-                colorbar_titles,
-                surfaces,
-                brain_positions,
-                colorbar_position,
-                shape,
-                unique_map_surface_pairs,
-            )
-        else:  # shared
-            colorbar_configs = self._create_shared_colorbar_configs(
-                maps_names,
-                colormaps,
-                v_limits,
-                colorbar_titles,
-                surfaces,
-                brain_positions,
-                colorbar_position,
-                shape,
-                unique_maps,
-            )
-
-        return colorbar_configs
-
     ###############################################################################
     # Public methods
     def plot_hemispheres(
@@ -281,6 +216,10 @@ class SurfacePlotter:
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
         v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
+            None,
+            None,
+        ),
+        v_range: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
             None,
             None,
         ),
@@ -321,6 +260,13 @@ class SurfacePlotter:
             Value limits for color mapping. If a single tuple is provided, it applies to all maps
             (e.g., (vmin, vmax)). If a list is provided, it should match the number of maps.
             If None, limits are determined from the data.
+
+        v_range : tuple or list of tuples, optional
+            Value range for restricting colormap application. Values outside this range will be
+            displayed in gray. If a single tuple is provided (e.g., (range_min, range_max)), it
+            applies to all maps. If a list is provided, it should match the number of maps.
+            If None, no range restriction is applied. This is different from v_limits:
+            v_limits sets the colorbar bounds, while v_range masks out-of-range values.
 
         colormaps : str or list of str, default "BrBG"
             Colormap(s) to use for visualization. If a single colormap is provided, it applies to all maps.
@@ -413,7 +359,7 @@ class SurfacePlotter:
             )
 
         # Process and validate v_limits parameter
-        if isinstance(v_limits, Tuple):
+        if isinstance(v_limits, tuple):
             if len(v_limits) != 2:
                 v_limits = (None, None)
             v_limits = [v_limits] * n_maps
@@ -421,6 +367,18 @@ class SurfacePlotter:
         elif isinstance(v_limits, List[Tuple[float, float]]):
             if len(v_limits) != n_maps:
                 v_limits = [(None, None)] * n_maps
+
+        # Process and validate v_range parameter
+        if isinstance(v_range, tuple):
+            if len(v_range) != 2:
+                v_range = (None, None)
+            v_range = [v_range] * n_maps
+
+        elif isinstance(v_range, list):
+            if len(v_range) != n_maps:
+                v_range = [(None, None)] * n_maps
+        else:
+            v_range = [(None, None)] * n_maps
 
         if isinstance(colormaps, str):
             colormaps = [colormaps]
@@ -486,7 +444,7 @@ class SurfacePlotter:
             "shape": config_dict["shape"],
             "row_weights": config_dict["row_weights"],
             "col_weights": config_dict["col_weights"],
-            "border": True,
+            "border": self.figure_conf.get("subplot_border", True),
         }
 
         groups = config_dict["groups"]
@@ -535,6 +493,11 @@ class SurfacePlotter:
             idx = [i for i, name in enumerate(maps_names) if name == map_name]
             colormap = colormaps[idx[0]] if idx else colormaps[0]
 
+            # Get the v_range for the current map
+            range_min, range_max = (
+                v_range[map_idx] if map_idx < len(v_range) else (None, None)
+            )
+
             # Add the brain surface mesh
             if "lh" in view_ids[view_idx]:
                 surf = copy.deepcopy(surf_lh)
@@ -546,7 +509,13 @@ class SurfacePlotter:
                 surf = copy.deepcopy(surf_merg)
 
             surf = visutils.prepare_obj_for_plotting(
-                surf, maps_names[map_idx], colormap, vmin=vmin, vmax=vmax
+                surf,
+                maps_names[map_idx],
+                colormap,
+                vmin=vmin,
+                vmax=vmax,
+                range_min=range_min,
+                range_max=range_max,
             )
 
             if not use_opacity:
@@ -609,10 +578,15 @@ class SurfacePlotter:
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
 
     ###############################################################################
-    def plot_surfaces(
+    def plot_objects(
         self,
-        surfaces: Union[
-            cltsurf.Surface, List[cltsurf.Surface], List[List[cltsurf.Surface]]
+        objs2plot: Union[
+            cltsurf.Surface,
+            clttract.Tractogram,
+            List[cltsurf.Surface],
+            List[List[cltsurf.Surface]],
+            List[clttract.Tractogram],
+            List[List[clttract.Tractogram]],
         ],
         hemi_id: Union[str, List[str]] = "both",
         views: Union[str, List[str]] = "dorsal",
@@ -624,6 +598,7 @@ class SurfacePlotter:
             None,
         ),
         use_opacity: bool = True,
+        tract_plot_style: str = "tube",
         colormaps: Union[str, List[str]] = "BrBG",
         save_path: Optional[str] = None,
         non_blocking: bool = True,
@@ -637,8 +612,9 @@ class SurfacePlotter:
 
         Parameters
         ----------
-        surfaces : Union[cltsurf.Surface, List[cltsurf.Surface], List[List[cltsurf.Surface]]]
-            Brain surface(s) to plot.
+        objs2plot : Union[cltsurf.Surface, clttract.Tractogram, List[cltsurf.Surface], List[List[cltsurf.Surface]], List[clttract.Tractogram], List[List[clttract.Tractogram]]]
+            Single or list of brain surface objects (cltsurf.Surface) or tractogram objects (clttract.Tractogram).
+            Each element can also be a list of such objects to be merged and plotted together.
 
         hemi_id : List[str], default ["lh"]
             Hemisphere identifiers.
@@ -667,7 +643,6 @@ class SurfacePlotter:
 
         save_path : Optional[str], default None
             File path for saving the figure. If None, plot is displayed.
-
 
         non_blocking : bool, default False
             If True, display the plot in a separate thread, allowing the terminal
@@ -701,28 +676,34 @@ class SurfacePlotter:
             hemi_id = ["lh", "rh"]
 
         # Preparing the surfaces to be plotted
-        if isinstance(surfaces, cltsurf.Surface):
-            surf2plot = [copy.deepcopy(surfaces)]
+        if isinstance(objs2plot, cltsurf.Surface):
+            obj2plot = [copy.deepcopy(objs2plot)]
 
-        elif isinstance(surfaces, list):
+        elif isinstance(objs2plot, list):
             # If all the elements are of type cltsurf.Surface
-            surf2plot = []
-            for surf in surfaces:
-                if isinstance(surf, cltsurf.Surface):
-                    surf2plot.append(copy.deepcopy(surf))
 
-                elif isinstance(surf, list) and all(
-                    isinstance(s, cltsurf.Surface) for s in surf
+            obj2plot = []
+            for sing_obj in objs2plot:
+                if isinstance(sing_obj, (cltsurf.Surface, clttract.Tractogram)):
+                    obj2plot.append(copy.deepcopy(sing_obj))
+
+                elif isinstance(sing_obj, list) and all(
+                    hasattr(s, "mesh") for s in sing_obj
                 ):
-                    surf2plot.append(cltsurf.merge_surfaces(surf))
+                    obj2plot.append(cltsurf.merge_surfaces(sing_obj))
+
+                elif isinstance(sing_obj, list) and all(
+                    hasattr(s, "tracts") for s in sing_obj
+                ):
+                    obj2plot.append(clttract.merge_tractograms(sing_obj))
 
                 else:
                     raise TypeError(
-                        "All elements must be of type cltsurf.Surface or a list of such."
+                        "All elements must be of type Surface, Tractogram or a list of such."
                     )
 
-        # Number of surfaces
-        n_surfaces = len(surf2plot)
+        # Number of objects to plot
+        n_objects = len(obj2plot)
 
         # Filter to only available maps
         if isinstance(map_names, str):
@@ -732,14 +713,28 @@ class SurfacePlotter:
         fin_map_names = []
         for i, map_name in enumerate(map_names):
             cont_map = 0
-            # Check if the map_name is available in any of the surfaces
-            for surf in surf2plot:
-                available_maps = list(surf.mesh.point_data.keys())
+            # Check if the map_name is available in any of the surfaces or tractograms
+            for sing_obj in obj2plot:
+                if isinstance(sing_obj, clttract.Tractogram):
+                    map_list_dict = sing_obj.list_maps()
+
+                    st_maps = map_list_dict["maps_per_streamline"]
+                    pt_maps = map_list_dict["maps_per_point"]
+                    available_maps = []
+                    if st_maps is not None:
+                        available_maps = available_maps + st_maps
+
+                    if pt_maps is not None:
+                        available_maps = available_maps + pt_maps
+
+                elif isinstance(sing_obj, cltsurf.Surface):
+                    available_maps = list(sing_obj.mesh.point_data.keys())
+
                 if map_name in available_maps:
                     cont_map = cont_map + 1
 
             #
-            if cont_map == n_surfaces:
+            if cont_map == n_objects:
                 fin_map_names.append(map_name)
 
         # Available overlays
@@ -791,7 +786,7 @@ class SurfacePlotter:
         ) = self._build_plotting_config(
             views=views,
             maps_names=map_names,
-            surfaces=surf2plot,
+            surfaces=obj2plot,
             colormaps=colormaps,
             v_limits=v_limits,
             orientation=views_orientation,
@@ -818,7 +813,7 @@ class SurfacePlotter:
             "shape": config_dict["shape"],
             "row_weights": config_dict["row_weights"],
             "col_weights": config_dict["col_weights"],
-            "border": True,
+            "border": self.figure_conf.get("subplot_border", True),
         }
 
         groups = config_dict["groups"]
@@ -902,26 +897,100 @@ class SurfacePlotter:
             colormap = colormaps[idx[0]] if idx else colormaps[0]
 
             # Add the brain surface mesh
-            surf = surf2plot[surf_idx]
-            surf = visutils.prepare_obj_for_plotting(
-                surf, map_names[map_idx], colormap, vmin=vmin, vmax=vmax
+            tmp_obj = obj2plot[surf_idx]
+            tmp_obj = visutils.prepare_obj_for_plotting(
+                tmp_obj, map_names[map_idx], colormap, vmin=vmin, vmax=vmax
             )
-            if not use_opacity:
-                # delete the alpha channel if exists
-                if "rgba" in surf.mesh.point_data:
-                    surf.mesh.point_data["rgba"] = surf.mesh.point_data["rgba"][:, :3]
+            if isinstance(tmp_obj, clttract.Tractogram):
 
-            pv_plotter.add_mesh(
-                copy.deepcopy(surf.mesh),
-                scalars="rgba",
-                rgb=True,
-                ambient=self.figure_conf["mesh_ambient"],
-                diffuse=self.figure_conf["mesh_diffuse"],
-                specular=self.figure_conf["mesh_specular"],
-                specular_power=self.figure_conf["mesh_specular_power"],
-                smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                show_scalar_bar=False,
-            )
+                tracts = tmp_obj.tracts
+                rgba_data = tmp_obj.data_per_point["rgba"]
+
+                # 1. Concatenate all points and colors
+                all_points = np.vstack(tracts)
+                all_rgba = np.vstack(rgba_data)
+
+                # 2. Build the lines connectivity array
+                #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
+                lines = []
+                offset = 0
+                for tract in tracts:
+                    n = len(tract)
+                    lines.append(n)
+                    lines.extend(range(offset, offset + n))
+                    offset += n
+                lines = np.array(lines, dtype=np.int_)
+
+                # 3. Create single PolyData with all curves
+                if tract_plot_style == "tube":
+                    # Create a PolyData object for tube representation
+                    # Create a PolyData object for tube representation
+                    poly = pv.PolyData()
+                    poly.points = all_points
+                    poly.lines = lines
+
+                    # Attach your RGBA scalars
+                    poly.point_data["rgba"] = all_rgba  # <-- important
+
+                    # Add tube filter (tube cannot take scalars directly)
+                    tube_radius = 0.1
+                    tube_sides = 10
+                    tube_poly = poly.tube(
+                        radius=tube_radius,
+                        n_sides=tube_sides,
+                    )
+
+                    # Add the mesh with tube representation
+                    pv_plotter.add_mesh(
+                        tube_poly,
+                        scalars="rgba",  # use the same name
+                        rgb=True,
+                        ambient=self.figure_conf["mesh_ambient"],
+                        diffuse=self.figure_conf["mesh_diffuse"],
+                        specular=self.figure_conf["mesh_specular"],
+                        specular_power=self.figure_conf["mesh_specular_power"],
+                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                        show_scalar_bar=False,
+                    )
+                else:
+                    poly = pv.PolyData()
+                    poly.points = all_points
+                    poly.lines = lines
+                    poly.point_data["rgba"] = all_rgba
+
+                    # 4. Single add_mesh call
+                    pv_plotter.add_mesh(
+                        poly,
+                        scalars="rgba",
+                        line_width=2,
+                        rgb=True,
+                        ambient=self.figure_conf["mesh_ambient"],
+                        diffuse=self.figure_conf["mesh_diffuse"],
+                        specular=self.figure_conf["mesh_specular"],
+                        specular_power=self.figure_conf["mesh_specular_power"],
+                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                        show_scalar_bar=False,
+                    )
+
+            elif isinstance(tmp_obj, cltsurf.Surface):
+                if not use_opacity:
+                    # delete the alpha channel if exists
+                    if "rgba" in tmp_obj.mesh.point_data:
+                        tmp_obj.mesh.point_data["rgba"] = tmp_obj.mesh.point_data[
+                            "rgba"
+                        ][:, :3]
+
+                pv_plotter.add_mesh(
+                    copy.deepcopy(tmp_obj.mesh),
+                    scalars="rgba",
+                    rgb=True,
+                    ambient=self.figure_conf["mesh_ambient"],
+                    diffuse=self.figure_conf["mesh_diffuse"],
+                    specular=self.figure_conf["mesh_specular"],
+                    specular_power=self.figure_conf["mesh_specular_power"],
+                    smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                    show_scalar_bar=False,
+                )
 
             # Set the camera view
             tmp_view = view_ids[view_idx]
