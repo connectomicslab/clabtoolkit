@@ -1084,6 +1084,7 @@ class Tractogram:
 
         return self.centroids, self.centroids_indexes
 
+    ####################################################################################################
     def label_streamlines_by_clusters(self):
         """
         Label each streamline in the tractogram with its corresponding cluster ID.
@@ -1501,13 +1502,13 @@ class Tractogram:
         Examples
         --------
         >>> # Prepare colors for a parcellation (uses discrete colors)
-        >>> surface.get_vertexwise_colors(overlay_name="aparc")
+        >>> tractogram.get_vertexwise_colors(overlay_name="aparc")
         >>>
         >>> # Prepare colors for scalar data with custom colormap
-        >>> surface.get_vertexwise_colors(overlay_name="thickness", colormap="hot")
+        >>> tractogram.get_vertexwise_colors(overlay_name="thickness", colormap="hot")
         >>>
-        >>> # Prepare colors for the surface overlay
-        >>> surface.get_vertexwise_colors()
+        >>> # Prepare colors for the tractogram overlay
+        >>> tractogram.get_vertexwise_colors()
         """
 
         # Get the list of overlays
