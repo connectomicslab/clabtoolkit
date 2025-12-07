@@ -207,387 +207,9 @@ class BrainPlotter:
         )
 
     ###############################################################################
-    # Public methods
-    def plot_hemispheres(
+    def plot(
         self,
-        surf_rh: cltsurf.Surface,
-        surf_lh: cltsurf.Surface,
-        maps_names: Union[str, List[str]] = ["default"],
-        views: Union[str, List[str]] = "dorsal",
-        views_orientation: str = "horizontal",
-        v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
-            None,
-            None,
-        ),
-        v_range: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
-            None,
-            None,
-        ),
-        use_opacity: bool = True,
-        colormaps: Union[str, List[str]] = "BrBG",
-        colorbar: bool = True,
-        colorbar_titles: Union[str, List[str]] = None,
-        colormap_style: str = "individual",
-        colorbar_position: str = "right",
-        notebook: bool = False,
-        non_blocking: bool = False,
-        save_path: Optional[str] = None,
-    ):
-        """
-        Plot brain hemispheres with multiple views and multiple maps.
-
-        Parameters
-        ----------
-        surf_rh : cltsurf.Surface
-            Right hemisphere surface with associated data.
-
-        surf_lh : cltsurf.Surface
-            Left hemisphere surface with associated data.
-
-        maps_names : str or list of str, default ["default"]
-            Name(s) of the data maps to visualize. Must be present in both surfaces.
-
-        views : str or list of str, default "dorsal"
-            View(s) to display. Options include 'dorsal', 'ventral', 'lateral', 'medial', 'anterior', 'posterior'.
-            Can be a single view or a list of views. It can also include different multiple views specified as layouts:
-            >>> plotter = SurfacePlotter("configs.json")
-            >>> layouts = plotter.list_available_layouts()
-
-        views_orientation : str, default "horizontal"
-            Orientation of views when multiple views are provided. Options are 'horizontal' or 'vertical'.
-
-        v_limits : tuple or list of tuples, optional
-            Value limits for color mapping. If a single tuple is provided, it applies to all maps
-            (e.g., (vmin, vmax)). If a list is provided, it should match the number of maps.
-            If None, limits are determined from the data.
-
-        v_range : tuple or list of tuples, optional
-            Value range for restricting colormap application. Values outside this range will be
-            displayed in gray. If a single tuple is provided (e.g., (range_min, range_max)), it
-            applies to all maps. If a list is provided, it should match the number of maps.
-            If None, no range restriction is applied. This is different from v_limits:
-            v_limits sets the colorbar bounds, while v_range masks out-of-range values.
-
-        colormaps : str or list of str, default "BrBG"
-            Colormap(s) to use for visualization. If a single colormap is provided, it applies to all maps.
-            If a list is provided, it should match the number of maps.
-
-        colorbar : bool, default True
-            Whether to display colorbars for the maps.
-
-        colorbar_titles : str or list of str, optional
-            Title(s) for the colorbars. If a single title is provided, it applies to all maps.
-            If a list is provided, it should match the number of maps. If None, map names are used.
-
-        colormap_style : str, default "individual"
-            Style of colormap application. Options are 'individual' (each map has its own colormap)
-            or 'shared' (all maps share the same colormap).
-
-        colorbar_position : str, default "right"
-            Position of the colorbars. Options are 'right' or 'bottom'.
-
-        notebook : bool, default False
-            Whether to render the plot in a Jupyter notebook environment.
-            If True, uses notebook-compatible rendering.
-
-        non_blocking : bool, default False
-            If True, displays the plot in a non-blocking manner using threading.
-            Only applicable when `notebook` is False and `save_path` is None.
-
-        save_path : str, optional
-            File path to save the rendered figure. If provided, the figure is saved to this path
-            instead of being displayed.
-
-        Returns
-        -------
-        None
-            The function does not return any value. It either displays the plot or saves it to a
-            file, depending on the parameters provided.
-
-        Raises
-        ------
-        ValueError
-            If no valid maps are found in the provided surfaces, or if multiple maps are provided
-            but the function is not set up to handle them.
-        ValueError
-            If the provided views are not valid or if the orientation is incorrect.
-        ValueError
-            If the colormap style or colorbar position is invalid.
-
-        Examples
-        --------
-        >>> plotter = SurfacePlotter("configs.json")
-        >>> plotter.plot_hemispheres(surf_rh, surf_lh, maps_names="thickness", views=["dorsal", "lateral"], colormaps="viridis", colorbar_titles="Cortical Thickness", save_path="hemispheres.png")
-
-        """
-
-        # Creating the merge surface
-        surf_merg = cltsurf.merge_surfaces([surf_lh, surf_rh])
-        colorbar_size = self.figure_conf["colorbar_size"]
-
-        # Filter to only available maps
-        if isinstance(maps_names, str):
-            maps_names = [maps_names]
-        n_maps = len(maps_names)
-
-        if n_maps == 0:
-            raise ValueError("No maps names provided.")
-
-        if n_maps > 1:
-            raise ValueError("Multiple maps are not supported in this function.")
-        # Check if the maps are available in all surfaces
-
-        fin_map_names = []
-        cont_map = 0
-        # Check if the map_name is available in any of the surfaces
-        for surf in [surf_lh, surf_rh, surf_merg]:
-            available_maps = list(surf.mesh.point_data.keys())
-            if maps_names[0] in available_maps:
-                cont_map = cont_map + 1
-
-        # If the map is present in all surfaces, add it to the final list
-        if cont_map == 3:
-            fin_map_names.append(maps_names[0])
-
-        # Available overlays
-        maps_names = fin_map_names
-        n_maps = len(maps_names)
-
-        if n_maps == 0:
-            raise ValueError(
-                "No valid maps found in the provided surfaces. The maps_names must be present in all surfaces."
-            )
-
-        # Process and validate v_limits parameter
-        if isinstance(v_limits, tuple):
-            if len(v_limits) != 2:
-                v_limits = (None, None)
-            v_limits = [v_limits] * n_maps
-
-        elif isinstance(v_limits, List[Tuple[float, float]]):
-            if len(v_limits) != n_maps:
-                v_limits = [(None, None)] * n_maps
-
-        # Process and validate v_range parameter
-        if isinstance(v_range, tuple):
-            if len(v_range) != 2:
-                v_range = (None, None)
-            v_range = [v_range] * n_maps
-
-        elif isinstance(v_range, list):
-            if len(v_range) != n_maps:
-                v_range = [(None, None)] * n_maps
-        else:
-            v_range = [(None, None)] * n_maps
-
-        if isinstance(colormaps, str):
-            colormaps = [colormaps]
-
-        if len(colormaps) >= n_maps:
-            colormaps = colormaps[:n_maps]
-
-        else:
-            # If not enough colormaps are provided, repeat the first one
-            colormaps = [colormaps[0]] * n_maps
-
-        if colorbar_titles is not None:
-            if isinstance(colorbar_titles, str):
-                colorbar_titles = [colorbar_titles]
-
-            if len(colorbar_titles) != n_maps:
-                # If not enough titles are provided, repeat the first one
-                colorbar_titles = [colorbar_titles[0]] * n_maps
-
-        else:
-            colorbar_titles = maps_names
-
-        # Get view configuration
-        view_ids = visutils.get_views_to_plot(self, views, ["lh", "rh"])
-
-        # Determine rendering mode based on save_path, environment, and threading preference
-        save_mode, use_off_screen, use_notebook, use_threading = (
-            visutils.determine_render_mode(save_path, notebook, non_blocking)
-        )
-
-        # Detecting the screen size for the plotter
-        screen_size = cltplot.get_current_monitor_size()
-
-        config_dict, colorbar_dict_list = vislayout.hemispheres_multi_map_layout(
-            surf_lh,
-            surf_rh,
-            surf_merg,
-            view_ids,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles=colorbar_titles,
-            orientation=views_orientation,
-            colorbar=colorbar,
-            colormap_style=colormap_style,
-            colorbar_position=colorbar_position,
-            colorbar_size=colorbar_size,
-        )
-
-        # Determine rendering mode based on save_path, environment, and threading preference
-        save_mode, use_off_screen, use_notebook, use_threading = (
-            visutils.determine_render_mode(save_path, notebook, non_blocking)
-        )
-
-        # Detecting the screen size for the plotter
-        screen_size = cltplot.get_current_monitor_size()
-
-        # Create PyVista plotter with appropriate rendering mode
-        plotter_kwargs = {
-            "notebook": use_notebook,
-            "window_size": [screen_size[0], screen_size[1]],
-            "off_screen": use_off_screen,
-            "shape": config_dict["shape"],
-            "row_weights": config_dict["row_weights"],
-            "col_weights": config_dict["col_weights"],
-            "border": self.figure_conf.get("subplot_border", True),
-        }
-
-        groups = config_dict["groups"]
-        if groups:
-            plotter_kwargs["groups"] = groups
-
-        pv_plotter = pv.Plotter(**plotter_kwargs)
-
-        brain_positions = config_dict["brain_positions"]
-        map_limits = config_dict["colormap_limits"]
-        for (map_idx, surf_idx, view_idx), (row, col) in brain_positions.items():
-            pv_plotter.subplot(row, col)
-            # Set background color from figure configuration
-            pv_plotter.set_background(self.figure_conf["background_color"])
-
-            tmp_view_name = view_ids[view_idx]
-
-            # Split the view name if it contains '_'
-            if "-" in tmp_view_name:
-                tmp_view_name = tmp_view_name.split("-")[1]
-
-                # Capitalize the first letter
-                tmp_view_name = tmp_view_name.capitalize()
-
-                # Detecting if the view is left or right
-                if "lh" in view_ids[view_idx]:
-                    subplot_title = "Left hemisphere: " + tmp_view_name + " view"
-                elif "rh" in view_ids[view_idx]:
-                    subplot_title = "Right hemisphere: " + tmp_view_name + " view"
-                elif "merg" in view_ids[view_idx]:
-                    subplot_title = tmp_view_name + " view"
-
-            pv_plotter.add_text(
-                subplot_title,
-                font_size=self.figure_conf["title_font_size"],
-                position="upper_edge",
-                color=self.figure_conf["title_font_color"],
-                shadow=self.figure_conf["title_shadow"],
-                font=self.figure_conf["title_font_type"],
-            )
-
-            # Geting the vmin and vmax for the current map
-            vmin, vmax, map_name = map_limits[map_idx, surf_idx, view_idx]
-
-            # Select the colormap for the current map
-            idx = [i for i, name in enumerate(maps_names) if name == map_name]
-            colormap = colormaps[idx[0]] if idx else colormaps[0]
-
-            # Get the v_range for the current map
-            range_min, range_max = (
-                v_range[map_idx] if map_idx < len(v_range) else (None, None)
-            )
-
-            # Add the brain surface mesh
-            if "lh" in view_ids[view_idx]:
-                surf = copy.deepcopy(surf_lh)
-
-            elif "rh" in view_ids[view_idx]:
-                surf = copy.deepcopy(surf_rh)
-
-            elif "merg" in view_ids[view_idx]:
-                surf = copy.deepcopy(surf_merg)
-
-            surf = visutils.prepare_obj_for_plotting(
-                surf,
-                maps_names[map_idx],
-                colormap,
-                vmin=vmin,
-                vmax=vmax,
-                range_min=range_min,
-                range_max=range_max,
-            )
-
-            if not use_opacity:
-                # delete the alpha channel if exists
-                if "rgba" in surf.mesh.point_data:
-                    surf.mesh.point_data["rgba"] = surf.mesh.point_data["rgba"][:, :3]
-
-            pv_plotter.add_mesh(
-                copy.deepcopy(surf.mesh),
-                scalars="rgba",
-                rgb=True,
-                ambient=self.figure_conf["mesh_ambient"],
-                diffuse=self.figure_conf["mesh_diffuse"],
-                specular=self.figure_conf["mesh_specular"],
-                specular_power=self.figure_conf["mesh_specular_power"],
-                smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                show_scalar_bar=False,
-            )
-
-            # Set the camera view
-            tmp_view = view_ids[view_idx]
-            if tmp_view.startswith("merg"):
-                tmp_view = tmp_view.replace("merg", "lh")
-
-            camera_params = self.views_conf[tmp_view]
-            pv_plotter.camera_position = camera_params["view"]
-            pv_plotter.camera.azimuth = camera_params["azimuth"]
-            pv_plotter.camera.elevation = camera_params["elevation"]
-            pv_plotter.camera.zoom(camera_params["zoom"])
-
-        # And place colorbars at their positions
-        if len(colorbar_dict_list):
-
-            for colorbar_dict in colorbar_dict_list:
-                if colorbar_dict is not False:
-                    row, col = colorbar_dict["position"]
-                    orientation = colorbar_dict["orientation"]
-                    colorbar_id = colorbar_dict["map_name"]
-                    colormap = colorbar_dict["colormap"]
-                    colorbar_title = colorbar_dict["title"]
-                    vmin = colorbar_dict["vmin"]
-                    vmax = colorbar_dict["vmax"]
-                    pv_plotter.subplot(row, col)
-
-                    visutils.add_colorbar(
-                        self,
-                        plotter=pv_plotter,
-                        colorbar_subplot=(row, col),
-                        vmin=vmin,
-                        vmax=vmax,
-                        map_name=colorbar_id,
-                        colormap=colormap,
-                        colorbar_title=colorbar_title,
-                        colorbar_position=orientation,
-                    )
-
-        # successful_links = visutils.link_brain_subplot_cameras(pv_plotter, brain_positions)
-
-        # Handle final rendering - either save, display blocking, or display non-blocking
-        visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
-
-    ###############################################################################
-    def plot_objects(
-        self,
-        objs2plot: Union[
-            cltsurf.Surface,
-            clttract.Tractogram,
-            List[cltsurf.Surface],
-            List[List[cltsurf.Surface]],
-            List[clttract.Tractogram],
-            List[List[clttract.Tractogram]],
-        ],
+        objs2plot: Union[cltsurf.Surface, clttract.Tractogram, List],
         hemi_id: Union[str, List[str]] = "both",
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
@@ -597,6 +219,11 @@ class BrainPlotter:
             None,
             None,
         ),
+        v_range: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
+            None,
+            None,
+        ),
+        range_color: Tuple = (128, 128, 128, 255),
         use_opacity: bool = True,
         tract_plot_style: str = "tube",
         colormaps: Union[str, List[str]] = "BrBG",
@@ -633,6 +260,12 @@ class BrainPlotter:
 
         v_limits : Optional[Union[Tuple[float, float], List[Tuple[float, float]]]], default (None, None)
             Value limits for colormapping.
+
+        v_range : Optional[Union[Tuple[float, float], List[Tuple[float, float]]]], default (None, None)
+            Value range for colormap application. Values outside this range will be displayed in range_color.
+
+        range_color : Tuple, default (128, 128, 128, 255)
+            RGBA color to use for values outside the specified v_range.
 
         colormaps : Union[str, List[str]], default "BrBG"
             Colormaps to use for each map.
@@ -679,6 +312,9 @@ class BrainPlotter:
         if isinstance(objs2plot, cltsurf.Surface):
             obj2plot = [copy.deepcopy(objs2plot)]
 
+        elif isinstance(objs2plot, clttract.Tractogram):
+            obj2plot = [copy.deepcopy(objs2plot)]
+
         elif isinstance(objs2plot, list):
             # If all the elements are of type cltsurf.Surface
 
@@ -720,6 +356,13 @@ class BrainPlotter:
 
                     st_maps = map_list_dict["maps_per_streamline"]
                     pt_maps = map_list_dict["maps_per_point"]
+
+                    if map_name in st_maps and map_name not in pt_maps:
+                        sing_obj.streamline_to_points(
+                            map_name=map_name,
+                            point_map_name=map_name,
+                        )
+
                     available_maps = []
                     if st_maps is not None:
                         available_maps = available_maps + st_maps
@@ -755,6 +398,15 @@ class BrainPlotter:
         elif isinstance(v_limits, List[Tuple[float, float]]):
             if len(v_limits) != n_maps:
                 v_limits = [(None, None)] * n_maps
+
+        if isinstance(v_range, Tuple):
+            if len(v_range) != 2:
+                v_range = (None, None)
+            v_range = [v_range] * n_maps
+
+        elif isinstance(v_range, List[Tuple[float, float]]):
+            if len(v_range) != n_maps:
+                v_range = [(None, None)] * n_maps
 
         if isinstance(colormaps, str):
             colormaps = [colormaps]
@@ -834,7 +486,7 @@ class BrainPlotter:
 
         subplot_indices = []
 
-        for (map_idx, surf_idx, view_idx), position in brain_positions.items():
+        for (map_idx, obj_idx, view_idx), position in brain_positions.items():
             # Handle case where position might be a list/tuple of coordinates
             if isinstance(position, (list, tuple)) and len(position) >= 2:
                 row, col = position[0], position[1]
@@ -867,7 +519,7 @@ class BrainPlotter:
             subplot_indices = tmp.T.flatten().tolist()
 
         map_limits = config_dict["colormap_limits"]
-        for (map_idx, surf_idx, view_idx), (row, col) in brain_positions.items():
+        for (map_idx, obj_idx, view_idx), (row, col) in brain_positions.items():
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
@@ -881,7 +533,7 @@ class BrainPlotter:
                 tmp_view_name = tmp_view_name.capitalize()
 
             pv_plotter.add_text(
-                f"{map_names[map_idx]}, Surface: {surf_idx}, View: {tmp_view_name}",
+                f"{map_names[map_idx]}, Surface: {obj_idx}, View: {tmp_view_name}",
                 font_size=self.figure_conf["title_font_size"],
                 position="upper_edge",
                 color=self.figure_conf["title_font_color"],
@@ -890,16 +542,23 @@ class BrainPlotter:
             )
 
             # Geting the vmin and vmax for the current map
-            vmin, vmax, map_name = map_limits[map_idx, surf_idx, view_idx]
+            vmin, vmax, map_name = map_limits[map_idx, obj_idx, view_idx]
 
             # Select the colormap for the current map
             idx = [i for i, name in enumerate(map_names) if name == map_name]
             colormap = colormaps[idx[0]] if idx else colormaps[0]
 
             # Add the brain surface mesh
-            tmp_obj = obj2plot[surf_idx]
+            tmp_obj = obj2plot[obj_idx]
             tmp_obj = visutils.prepare_obj_for_plotting(
-                tmp_obj, map_names[map_idx], colormap, vmin=vmin, vmax=vmax
+                tmp_obj,
+                map_names[map_idx],
+                colormap,
+                vmin=vmin,
+                vmax=vmax,
+                range_min=v_range[map_idx][0],
+                range_max=v_range[map_idx][1],
+                range_color=range_color,
             )
             if isinstance(tmp_obj, clttract.Tractogram):
 
