@@ -2149,7 +2149,7 @@ class Tractogram:
             )
             self.reduce_streamlines(percentage=reduction_percentage)
 
-        plotter.plot_objects(
+        plotter.plot(
             self,
             hemi_id=hemi,
             views=views,
