@@ -1440,7 +1440,7 @@ class Tractogram:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: List[int, int, int] = [128, 128, 128],
+        range_color: Tuple = (128, 128, 128, 255),
     ) -> None:
         """
         Compute streamlines colors for visualization based on the specified overlay.
@@ -1560,6 +1560,9 @@ class Tractogram:
                     output_format="rgb",
                     vmin=vmin,
                     vmax=vmax,
+                    range_min=range_min,
+                    range_max=range_max,
+                    range_color=range_color,
                 )
         else:
             point_colors = cltmisc.values2colors(
@@ -1568,20 +1571,10 @@ class Tractogram:
                 output_format="rgb",
                 vmin=vmin,
                 vmax=vmax,
+                range_min=range_min,
+                range_max=range_max,
+                range_color=range_color,
             )
-
-        if range_min is not None or range_max is not None:
-
-            # Create mask for out-of-range values
-            mask = np.zeros(len(all_data), dtype=bool)
-            if range_min is not None:
-                mask |= all_data < range_min
-
-            if range_max is not None:
-                mask |= all_data > range_max
-
-            # Set out-of-range values to a specified color
-            point_colors[mask] = range_color[:3]
 
         # Split array_all back into a list of arrays
         point_colors = np.split(point_colors, split_indices)
@@ -2032,6 +2025,9 @@ class Tractogram:
         cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
+        range_min: np.float64 = None,
+        range_max: np.float64 = None,
+        range_color: Tuple = (128, 128, 128, 255),
         views: Union[str, List[str]] = ["lateral"],
         hemi: str = "lh",
         use_opacity: bool = True,
@@ -2156,6 +2152,8 @@ class Tractogram:
             map_names=overlay_name,
             colormaps=cmap,
             v_limits=(vmin, vmax),
+            range_color=range_color,
+            v_range=(range_min, range_max),
             use_opacity=use_opacity,
             tract_plot_style=tract_plot_style,
             notebook=notebook,
