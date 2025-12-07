@@ -45,7 +45,7 @@ class Tractogram:
         tracts: ArraySequence = None,
         affine: np.ndarray = None,
         header: Dict = None,
-        color: Union[str, np.ndarray] = "#1E4877",
+        color: Union[str, np.ndarray] = "#BFBDBD",
         alpha: float = 1.0,
         name: str = "default",
     ) -> None:
