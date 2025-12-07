@@ -1616,6 +1616,9 @@ def values2colors(
     invert_clmap: bool = False,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
+    range_min: Optional[float] = None,
+    range_max: Optional[float] = None,
+    range_color: tuple = (200, 200, 200),
 ) -> Union[List[str], np.ndarray]:
     """
     Map numerical values to colors using a specified colormap with optional inversions.
@@ -1628,31 +1631,47 @@ def values2colors(
     ----------
     values : list or numpy.ndarray
         Numerical values to map to colors. Can be integers or floats.
+
     cmap : str, default "viridis"
         Name of matplotlib colormap to use for color generation.
+
     output_format : str, default "hex"
         Format of the output colors. Supported formats:
         - "hex": Hexadecimal color strings (e.g., "#FF5733")
         - "rgb": RGB values as integers in range [0, 255]
         - "rgbnorm": RGB values as floats in range [0.0, 1.0]
+
     invert_cl : bool, default False
         If True, return the complementary colors instead of the original ones.
+
     invert_clmap : bool, default False
         If True, invert the gradient of the colormap before mapping values.
+
     vmin : float or None, default None
         Minimum value for colormap normalization. If None, uses min(values).
+
     vmax : float or None, default None
         Maximum value for colormap normalization. If None, uses max(values).
 
+    range_min : float or None, default None
+        Minimum threshold for values. Values below this will be set to range_color.
+
+    range_max : float or None, default None
+        Maximum threshold for values. Values above this will be set to range_color.
+
+    range_color : tuple, default (200, 200, 200, 255)
+        Color to assign to out-of-range values, in RGBA format.
+
     Returns
     -------
-    colors : list of str or numpy.ndarray
+    all_colors : list of str or numpy.ndarray
         Mapped colors in the specified format.
 
     Raises
     ------
     ValueError
         If output_format is not supported or cmap is invalid.
+
     TypeError
         If values is not a list or numpy array.
     """
@@ -1664,6 +1683,38 @@ def values2colors(
     values = np.array(values, dtype=float)
     if values.size == 0:
         raise ValueError("values array cannot be empty")
+
+    # Check the range_color format
+    if not (isinstance(range_color, tuple) and len(range_color) in [3, 4]):
+        raise ValueError("range_color must be a tuple of length 3 (RGB) or 4 (RGBA)")
+
+    # Prepare output array
+    if output_format == "hex":
+        all_colors = [""] * len(values)
+    else:
+        # all_colors will be the repeated range_color initially
+        if output_format == "rgb":
+            all_colors = np.tile(
+                np.array(range_color, dtype=np.uint8), (len(values), 1)
+            )
+        else:  # rgbnorm
+            all_colors = np.tile(
+                np.array(range_color, dtype=np.float32) / 255.0,
+                (len(values), 1),
+            )
+
+    # all_colors = np.ones((len(values), 4), dtype=np.uint8)
+    # all_colors[:, :3] = range_color[:3]
+
+    # Create mask for out-of-range values
+    mask = np.zeros(len(values), dtype=bool)
+    if range_min is not None:
+        mask |= values.flatten() < range_min
+
+    if range_max is not None:
+        mask |= values.flatten() > range_max
+
+    values_4_colors = values[~mask]
 
     output_format = output_format.lower()
     if output_format not in ["hex", "rgb", "rgbnorm"]:
@@ -1684,45 +1735,57 @@ def values2colors(
 
     # Set vmin and vmax
     if vmin is None:
-        vmin = np.nanmin(values)
+        vmin = np.nanmin(values_4_colors)
+
     if vmax is None:
-        vmax = np.nanmax(values)
+        vmax = np.nanmax(values_4_colors)
 
     # Handle edge cases
     if not np.isfinite(vmin):
         vmin = 0.0
+
     if not np.isfinite(vmax):
         vmax = 1.0
+
     if vmax == vmin:
         # All values are the same, map to middle of colormap
-        normalized_values = np.full_like(values, 0.5, dtype=float)
+        normalized_values = np.full_like(values_4_colors, 0.5, dtype=float)
     else:
         # Normalize values to [0, 1] range using vmin/vmax
-        normalized_values = (values - vmin) / (vmax - vmin)
+        normalized_values = (values_4_colors - vmin) / (vmax - vmin)
 
     # Clip values to [0, 1] range
     normalized_values = np.clip(normalized_values, 0, 1)
 
     # Handle NaN values - map to a neutral color (middle of colormap)
-    nan_mask = ~np.isfinite(values)
+    nan_mask = ~np.isfinite(values_4_colors)
     normalized_values[nan_mask] = 0.5
 
     # Map normalized values to colors using the continuous colormap
     mapped_colors = colormap(normalized_values)  # This returns RGBA values in [0,1]
 
+    # Assign computed colors to the output array
+    mapped_colors = np.squeeze(mapped_colors)
+
+    # Move to values between 0 and 255
+    mapped_colors = (mapped_colors * 255).astype(np.uint8)
+
+    all_colors[~mask, :] = mapped_colors
+
     # Remove alpha channel if present (take only RGB)
-    if mapped_colors.shape[-1] == 4:
-        mapped_colors = mapped_colors[..., :3]
+    if all_colors.shape[-1] == 4:
+        all_colors = all_colors[..., :3]
 
     # Convert to the desired output format
     if output_format == "rgbnorm":
-        result_colors = mapped_colors
+        result_colors = all_colors / 255.0
+
     elif output_format == "rgb":
-        result_colors = (mapped_colors * 255).astype(np.uint8)
+        result_colors = all_colors
+
     else:  # hex
         result_colors = [
-            f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
-            for r, g, b in mapped_colors
+            f"#{int(r):02x}{int(g):02x}{int(b):02x}" for r, g, b in mapped_colors
         ]
 
     # Apply color inversion if requested
