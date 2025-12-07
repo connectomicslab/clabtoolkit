@@ -408,6 +408,37 @@ class BrainPlotter:
             if len(v_range) != n_maps:
                 v_range = [(None, None)] * n_maps
 
+        for vr in v_range:
+            if not (isinstance(vr, Tuple) and len(vr) == 2):
+                raise ValueError(
+                    "Each element in v_range must be a tuple of (min, max)."
+                )
+            # Check that the min is less than max if both are not None
+            if vr[0] is not None and vr[1] is not None:
+                if vr[0] >= vr[1]:
+                    raise ValueError(
+                        "In v_range, min value must be less than max value."
+                    )
+
+        for vl in v_limits:
+            if not (isinstance(vl, Tuple) and len(vl) == 2):
+                raise ValueError(
+                    "Each element in v_limits must be a tuple of (min, max)."
+                )
+
+            # Check that the min is less than max if both are not None
+            if vl[0] is not None and vl[1] is not None:
+                if vl[0] >= vl[1]:
+                    raise ValueError(
+                        "In v_limits, min value must be less than max value."
+                    )
+
+        for i, vl in enumerate(v_limits):
+            vr_tmp = v_range[i]
+            new_lower = vr_tmp[0] if vl[0] is None and vr_tmp[0] is not None else vl[0]
+            new_upper = vr_tmp[1] if vl[1] is None and vr_tmp[1] is not None else vl[1]
+            v_limits[i] = (new_lower, new_upper)
+
         if isinstance(colormaps, str):
             colormaps = [colormaps]
 
@@ -826,6 +857,12 @@ class BrainPlotter:
 
         if isinstance(colorbar_title, list):
             colorbar_title = colorbar_title[0]
+
+        if vmin is None and range_min is not None:
+            vmin = range_min
+
+        if vmax is None and range_max is not None:
+            vmax = range_max
 
         # Creating the merge surface
         surf_merg = cltsurf.merge_surfaces([surf_lh, surf_rh])
