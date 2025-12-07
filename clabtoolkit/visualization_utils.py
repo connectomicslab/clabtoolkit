@@ -356,7 +356,7 @@ def prepare_obj_for_plotting(
     vmax: Optional[float] = None,
     range_min: Optional[float] = None,
     range_max: Optional[float] = None,
-    range_color: List[int, int, int, int] = [128, 128, 128, 255],
+    range_color: Tuple = (128, 128, 128, 255),
 ) -> Union[cltsurf.Surface, clttract.Tractogram]:
     """
     Prepare Surface or Tractogram object for plotting with color mapping.
@@ -423,28 +423,8 @@ def prepare_obj_for_plotting(
         )  # Handle NaNs and infinities
 
         obj2plot.data_per_point["rgba"] = obj2plot.get_pointwise_colors(
-            map_name, colormap, vmin, vmax
+            map_name, colormap, vmin, vmax, range_min, range_max, range_color
         )
-
-        if range_min is not None or range_max is not None:
-            rgba_colors = obj2plot.data_per_point["rgba"]
-
-            # Create mask for out-of-range values
-            mask = np.zeros(len(point_values), dtype=bool)
-            if range_min is not None:
-                mask |= data_values < range_min
-
-            if range_max is not None:
-                mask |= data_values > range_max
-
-            # Set out-of-range values to a specified color
-            if rgba_colors.shape[1] == 4:  # RGBA
-                rgba_colors[mask] = range_color
-
-            elif rgba_colors.shape[1] == 3:  # RGB
-                rgba_colors[mask] = range_color[:3]
-
-            obj2plot.data_per_point["rgba"] = rgba_colors
 
     elif isinstance(obj2plot, cltsurf.Surface):
         if vmin is None:
@@ -466,7 +446,7 @@ def prepare_obj_for_plotting(
 
         # Apply colors to mesh data
         obj2plot.mesh.point_data["rgba"] = obj2plot.get_vertexwise_colors(
-            map_name, colormap, vmin, vmax
+            map_name, colormap, vmin, vmax, range_min, range_max, range_color
         )
 
         # Apply gray color to values outside the specified range
