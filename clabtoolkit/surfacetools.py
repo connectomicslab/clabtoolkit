@@ -2131,6 +2131,9 @@ class Surface:
         colormap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
+        range_min: np.float64 = None,
+        range_max: np.float64 = None,
+        range_color: Tuple = (128, 128, 128, 255),
     ) -> None:
         """
         Compute vertices colors for visualization based on the specified overlay.
@@ -2155,6 +2158,15 @@ class Surface:
             Maximum value for scaling the colormap. If None, uses the maximum value of the overlay
         If both vmin and vmax are None, the colormap will be applied to the full range of the overlay values.
         If both are provided, they will be used to scale the colormap.
+
+        range_min : np.float64, optional
+            Minimum value for defining a special color range. Values below this will be colored with range_color
+
+        range_max : np.float64, optional
+            Maximum value for defining a special color range. Values above this will be colored with range_color
+
+        range_color : Tuple, optional
+            RGBA color to use for values outside the defined range (range_min, range_max)
 
         Returns
         -------
@@ -2221,6 +2233,9 @@ class Surface:
                     output_format="rgb",
                     vmin=vmin,
                     vmax=vmax,
+                    range_min=range_min,
+                    range_max=range_max,
+                    range_color=range_color,
                 )
         else:
             vertices_colors = cltmisc.values2colors(
@@ -2229,6 +2244,9 @@ class Surface:
                 output_format="rgb",
                 vmin=vmin,
                 vmax=vmax,
+                range_min=range_min,
+                range_max=range_max,
+                range_color=range_color,
             )
 
         return vertices_colors
@@ -2240,6 +2258,9 @@ class Surface:
         cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
+        range_min: np.float64 = None,
+        range_max: np.float64 = None,
+        range_color: Tuple = (128, 128, 128, 255),
     ) -> None:
         """
         Prepare vertices colors for visualization based on the specified overlay.
@@ -2264,6 +2285,15 @@ class Surface:
             Maximum value for scaling the colormap. If None, uses the maximum value of the overlay
         If both vmin and vmax are None, the colormap will be applied to the full range of the overlay values.
         If both are provided, they will be used to scale the colormap.
+
+        range_min : np.float64, optional
+            Minimum value for defining a special color range. Values below this will be colored with range_color
+
+        range_max : np.float64, optional
+            Maximum value for defining a special color range. Values above this will be colored with range_color
+
+        range_color : Tuple, optional
+            RGBA color to use for values outside the defined range (range_min, range_max)
 
         Returns
         -------
@@ -2317,7 +2347,7 @@ class Surface:
 
         # Apply colors to mesh data
         self.mesh.point_data["rgba"] = self.get_vertexwise_colors(
-            overlay_name, cmap, vmin, vmax
+            overlay_name, cmap, vmin, vmax, range_min, range_max, range_color
         )
 
     ##############################################################################################
@@ -2946,6 +2976,9 @@ class Surface:
                 cmap=None,  # Use the colortable for this map
                 vmin=None,
                 vmax=None,
+                range_min=None,
+                range_max=None,
+                range_color=(128, 128, 128, 255),
             )
 
             # Save the mesh (no texture parameter needed for vertices colors)
@@ -3127,6 +3160,9 @@ class Surface:
         cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
+        range_min: np.float64 = None,
+        range_max: np.float64 = None,
+        range_color: Tuple = (128, 128, 128, 255),
         views: Union[str, List[str]] = ["lateral"],
         views_orientation: str = "grid",
         hemi: str = "lh",
@@ -3157,6 +3193,17 @@ class Surface:
 
         vmax : float, optional
             Maximum value for colormap scaling. If None, uses data maximum.
+
+        range_min : float, optional
+            Minimum data value to include in the visualization. Values below
+            this threshold will be displayed in range_color.
+
+        range_max : float, optional
+            Maximum data value to include in the visualization. Values above
+            this threshold will be displayed in range_color.
+
+        range_color : Tuple, default (128, 128, 128, 255)
+            RGBA color for values outside the specified data range.
 
         views : str or List[str], default ["lateral"]
             Camera view(s): 'lateral', 'medial', 'dorsal', 'ventral', 'anterior',
@@ -3212,9 +3259,9 @@ class Surface:
 
         from . import visualizationtools as cltvis
 
-        plotter = cltvis.SurfacePlotter()
+        plotter = cltvis.BrainPlotter()
 
-        plotter.plot_surfaces(
+        plotter.plot(
             self,
             hemi_id=hemi,
             views=views,
@@ -3222,6 +3269,8 @@ class Surface:
             map_names=overlay_name,
             colormaps=cmap,
             v_limits=(vmin, vmax),
+            range_color=range_color,
+            v_range=(range_min, range_max),
             notebook=notebook,
             colorbar=show_colorbar,
             colorbar_titles=colorbar_title,
