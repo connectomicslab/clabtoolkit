@@ -716,23 +716,17 @@ class BrainPlotter:
         self,
         surf_rh: cltsurf.Surface,
         surf_lh: cltsurf.Surface,
-        maps_name: Union[str, List[str]] = ["default"],
+        map_name: str = "default",
         views: Union[str, List[str]] = "dorsal",
-        views_orientation: str = "horizontal",
-        v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
-            None,
-            None,
-        ),
-        v_range: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
-            None,
-            None,
-        ),
+        vmin: Optional[float] = None,
+        vmax: Optional[float] = None,
+        range_min: Optional[float] = None,
+        range_max: Optional[float] = None,
         range_color: Tuple = (128, 128, 128, 255),
         use_opacity: bool = True,
-        colormaps: Union[str, List[str]] = "BrBG",
+        colormap: str = "viridis",
         colorbar: bool = True,
-        colorbar_titles: Union[str, List[str]] = None,
-        colormap_style: str = "individual",
+        colorbar_title: str = None,
         colorbar_position: str = "right",
         notebook: bool = False,
         non_blocking: bool = False,
@@ -749,8 +743,8 @@ class BrainPlotter:
         surf_lh : cltsurf.Surface
             Left hemisphere surface with associated data.
 
-        maps_name : str or list of str, default ["default"]
-            Name(s) of the data maps to visualize. Must be present in both surfaces.
+        map_name : str "default"
+            Name of the data maps to visualize. Must be present in both surfaces.
 
         views : str or list of str, default "dorsal"
             View(s) to display. Options include 'dorsal', 'ventral', 'lateral', 'medial', 'anterior', 'posterior'.
@@ -758,38 +752,29 @@ class BrainPlotter:
             >>> plotter = SurfacePlotter("configs.json")
             >>> layouts = plotter.list_available_layouts()
 
-        views_orientation : str, default "horizontal"
-            Orientation of views when multiple views are provided. Options are 'horizontal' or 'vertical'.
+        vmin : float, optional
+            Minimum value for colormap scaling. If None, uses the minimum value from the data.
 
-        v_limits : tuple or list of tuples, optional
-            Value limits for color mapping. If a single tuple is provided, it applies to all maps
-            (e.g., (vmin, vmax)). If a list is provided, it should match the number of maps.
-            If None, limits are determined from the data.
+        vmax : float, optional
+            Maximum value for colormap scaling. If None, uses the maximum value from the data.
 
-        v_range : tuple or list of tuples, optional
-            Value range for restricting colormap application. Values outside this range will be
-            displayed in gray. If a single tuple is provided (e.g., (range_min, range_max)), it
-            applies to all maps. If a list is provided, it should match the number of maps.
-            If None, no range restriction is applied. This is different from v_limits:
-            v_limits sets the colorbar bounds, while v_range masks out-of-range values.
+        range_min : float, optional
+            Minimum value for the value range. Values below this will be colored with `range_color`.
+
+        range_max : float, optional
+            Maximum value for the value range. Values above this will be colored with `range_color`.
 
         range_color : Tuple, default (128, 128, 128, 255)
             RGBA color to use for values outside the specified v_range.
 
-        colormaps : str or list of str, default "BrBG"
-            Colormap(s) to use for visualization. If a single colormap is provided, it applies to all maps.
-            If a list is provided, it should match the number of maps.
+        colormap : str or list of str, default "BrBG"
+            Colormap to use for visualization.
 
         colorbar : bool, default True
             Whether to display colorbars for the maps.
 
-        colorbar_titles : str or list of str, optional
-            Title(s) for the colorbars. If a single title is provided, it applies to all maps.
-            If a list is provided, it should match the number of maps. If None, map names are used.
-
-        colormap_style : str, default "individual"
-            Style of colormap application. Options are 'individual' (each map has its own colormap)
-            or 'shared' (all maps share the same colormap).
+        colorbar_title : str, optional
+            Title for the colorbar. If None, map name are used.
 
         colorbar_position : str, default "right"
             Position of the colorbars. Options are 'right' or 'bottom'.
@@ -817,97 +802,45 @@ class BrainPlotter:
         ValueError
             If no valid maps are found in the provided surfaces, or if multiple maps are provided
             but the function is not set up to handle them.
+
         ValueError
             If the provided views are not valid or if the orientation is incorrect.
+
         ValueError
             If the colormap style or colorbar position is invalid.
 
         Examples
         --------
         >>> plotter = SurfacePlotter("configs.json")
-        >>> plotter.plot_hemispheres(surf_rh, surf_lh, maps_names="thickness", views=["dorsal", "lateral"], colormaps="viridis", colorbar_titles="Cortical Thickness", save_path="hemispheres.png")
-
+        >>> plotter.plot_surface_hemispheres(surf_lh, surf_rh, map_name="thickness",
+        ...                                 views=["lateral", "medial", "dorsal"],
+        ...                                 colorbar=True)
         """
+
+        # Check that the map_name is a str. If is a list select the first element
+        if isinstance(map_name, list):
+            map_name = map_name[0]
+
+        if isinstance(colormap, list):
+            colormap = colormap[0]
+
+        if isinstance(colorbar_title, list):
+            colorbar_title = colorbar_title[0]
 
         # Creating the merge surface
         surf_merg = cltsurf.merge_surfaces([surf_lh, surf_rh])
         colorbar_size = self.figure_conf["colorbar_size"]
 
-        # Filter to only available maps
-        if isinstance(maps_name, str):
-            maps_name = [maps_name]
-        n_maps = len(maps_name)
-
-        if n_maps == 0:
-            raise ValueError("No maps names provided.")
-
-        if n_maps > 1:
-            raise ValueError("Multiple maps are not supported in this function.")
-        # Check if the maps are available in all surfaces
-
-        fin_map_names = []
-        cont_map = 0
         # Check if the map_name is available in any of the surfaces
         for surf in [surf_lh, surf_rh, surf_merg]:
             available_maps = list(surf.mesh.point_data.keys())
-            if maps_name[0] in available_maps:
-                cont_map = cont_map + 1
+            if map_name not in available_maps:
+                raise ValueError(
+                    f"Map '{map_name}' not found in one of the provided surfaces. Available maps: {available_maps}"
+                )
 
-        # If the map is present in all surfaces, add it to the final list
-        if cont_map == 3:
-            fin_map_names.append(maps_name[0])
-
-        # Available overlays
-        maps_name = fin_map_names
-        n_maps = len(maps_name)
-
-        if n_maps == 0:
-            raise ValueError(
-                "No valid maps found in the provided surfaces. The maps_names must be present in all surfaces."
-            )
-
-        # Process and validate v_limits parameter
-        if isinstance(v_limits, tuple):
-            if len(v_limits) != 2:
-                v_limits = (None, None)
-            v_limits = [v_limits] * n_maps
-
-        elif isinstance(v_limits, List[Tuple[float, float]]):
-            if len(v_limits) != n_maps:
-                v_limits = [(None, None)] * n_maps
-
-        # Process and validate v_range parameter
-        if isinstance(v_range, tuple):
-            if len(v_range) != 2:
-                v_range = (None, None)
-            v_range = [v_range] * n_maps
-
-        elif isinstance(v_range, list):
-            if len(v_range) != n_maps:
-                v_range = [(None, None)] * n_maps
-        else:
-            v_range = [(None, None)] * n_maps
-
-        if isinstance(colormaps, str):
-            colormaps = [colormaps]
-
-        if len(colormaps) >= n_maps:
-            colormaps = colormaps[:n_maps]
-
-        else:
-            # If not enough colormaps are provided, repeat the first one
-            colormaps = [colormaps[0]] * n_maps
-
-        if colorbar_titles is not None:
-            if isinstance(colorbar_titles, str):
-                colorbar_titles = [colorbar_titles]
-
-            if len(colorbar_titles) != n_maps:
-                # If not enough titles are provided, repeat the first one
-                colorbar_titles = [colorbar_titles[0]] * n_maps
-
-        else:
-            colorbar_titles = maps_name
+        if colorbar_title is None:
+            colorbar_title = map_name
 
         # Get view configuration
         view_ids = visutils.get_views_to_plot(self, views, ["lh", "rh"])
@@ -920,18 +853,17 @@ class BrainPlotter:
         # Detecting the screen size for the plotter
         screen_size = cltplot.get_current_monitor_size()
 
-        config_dict, colorbar_dict_list = vislayout.hemispheres_multi_map_layout(
+        config_dict, colorbar_dict_list = vislayout.hemispheres_layout(
             surf_lh,
             surf_rh,
             surf_merg,
             view_ids,
-            maps_name,
-            v_limits,
-            colormaps,
-            colorbar_titles=colorbar_titles,
-            orientation=views_orientation,
+            map_name,
+            vmin,
+            vmax,
+            colormap,
+            colorbar_title=colorbar_title,
             colorbar=colorbar,
-            colormap_style=colormap_style,
             colorbar_position=colorbar_position,
             colorbar_size=colorbar_size,
         )
@@ -995,16 +927,7 @@ class BrainPlotter:
             )
 
             # Geting the vmin and vmax for the current map
-            vmin, vmax, map_name = map_limits[map_idx, obj_idx, view_idx]
-
-            # Select the colormap for the current map
-            idx = [i for i, name in enumerate(maps_name) if name == map_name]
-            colormap = colormaps[idx[0]] if idx else colormaps[0]
-
-            # Get the v_range for the current map
-            range_min, range_max = (
-                v_range[map_idx] if map_idx < len(v_range) else (None, None)
-            )
+            vmin, vmax, map_name = map_limits[0, 0, view_idx]
 
             # Add the brain surface mesh
             if "lh" in view_ids[view_idx]:
@@ -1018,7 +941,7 @@ class BrainPlotter:
 
             surf = visutils.prepare_obj_for_plotting(
                 surf,
-                maps_name[map_idx],
+                map_name,
                 colormap,
                 vmin=vmin,
                 vmax=vmax,
@@ -1080,8 +1003,6 @@ class BrainPlotter:
                         colorbar_title=colorbar_title,
                         colorbar_position=orientation,
                     )
-
-        # successful_links = visutils.link_brain_subplot_cameras(pv_plotter, brain_positions)
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)

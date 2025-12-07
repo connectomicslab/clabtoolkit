@@ -428,10 +428,16 @@ def prepare_obj_for_plotting(
 
     elif isinstance(obj2plot, cltsurf.Surface):
         if vmin is None:
-            vmin = np.min(obj2plot.mesh.point_data[map_name])
+            if range_min is not None:
+                vmin = range_min
+            else:
+                vmin = np.min(obj2plot.mesh.point_data[map_name])
 
         if vmax is None:
-            vmax = np.max(obj2plot.mesh.point_data[map_name])
+            if range_max is not None:
+                vmax = range_max
+            else:
+                vmax = np.max(obj2plot.mesh.point_data[map_name])
 
         try:
             vertex_values = obj2plot.mesh.point_data[map_name]
