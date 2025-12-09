@@ -388,6 +388,60 @@ class Tractogram:
         }
 
     ###############################################################################################
+    def smooth_streamlines(self, iterations: int = 1, sigma: float = 1.0) -> None:
+        """
+        Smooth streamlines using a Gaussian filter.
+
+        Parameters
+        ----------
+        iterations : int, optional
+            Number of smoothing iterations to perform. Default is 1.
+        sigma : float, optional
+            Standard deviation for Gaussian kernel. Default is 1.0.
+
+        Returns
+        -------
+        None
+            The method modifies the streamlines in place.
+        """
+
+        # Check if the tractogram has streamlines loaded
+        if not hasattr(self, "tracts") or self.tracts is None:
+            raise ValueError(
+                "No streamlines loaded. Please ensure the tractogram file was loaded correctly."
+            )
+
+        # Get streamlines (reference to tracts for consistency with class structure)
+        streamlines = self.tracts
+
+        # Check if the streamlines are empty
+        if len(streamlines) == 0:
+            raise ValueError(
+                "Tractogram contains no streamlines. Please provide a valid tractogram file."
+            )
+
+        # Handle both ArraySequence and list inputs
+        is_list_input = False
+        if not isinstance(streamlines, nb.streamlines.array_sequence.ArraySequence):
+            if isinstance(streamlines, list):
+                streamlines = ArraySequence(streamlines)
+                is_list_input = True
+
+        # Smooth individual streamlines
+        for i, streamline in enumerate(streamlines):
+
+            smooth_st = cltmisc.smooth_curve_coordinates(
+                streamline, iterations=iterations, sigma=sigma
+            )
+            streamlines[i] = smooth_st
+
+        # Update the tractogram object with smoothed streamlines
+        if is_list_input:
+            self.tracts = list(streamlines)
+        else:
+            self.tracts = streamlines
+
+    ###############################################################################################
     def resample_streamlines(
         self,
         num_points: int = 51,
