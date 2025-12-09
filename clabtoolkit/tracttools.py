@@ -18,6 +18,16 @@ from dipy.segment.clustering import QuickBundlesX, QuickBundles
 from dipy.tracking.streamline import set_number_of_points
 from dipy.io.stateful_tractogram import Space
 
+# Utility function for interpolating streamline values
+from rich.progress import (
+    Progress,
+    BarColumn,
+    TimeRemainingColumn,
+    TextColumn,
+    MofNCompleteColumn,
+    SpinnerColumn,
+)
+
 
 ####################################################################################################
 ####################################################################################################
@@ -2426,26 +2436,48 @@ def merge_tractograms(
         }
 
     # Initialize lists to hold merged data
-    for i, t in enumerate(tractograms):
 
-        if isinstance(t, (str, Path)):
-            t = Tractogram(t)
+    # Add Rich progress bar around the main loop
+    n_bundles = len(tractograms)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}", justify="right"),
+        BarColumn(bar_width=None),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+        expand=True,
+    ) as progress:
 
-        if i == 0:
-            merged_tractogram = copy.deepcopy(t)
-            bundle_ids = np.full((len(merged_tractogram.tracts), 1), color_table[i, 4])
+        task = progress.add_task("Merging tractograms", total=n_bundles)
 
-        else:
-            merged_tractogram = merged_tractogram.add_tractogram(t)
-            bundle_ids = np.vstack(
-                (
-                    bundle_ids,
-                    np.full(
-                        (len(merged_tractogram.tracts) - len(bundle_ids), 1),
-                        color_table[i, 4],
-                    ),
-                )
+        for i, t in enumerate(tractograms):
+            progress.update(
+                task,
+                description=f"Merging tractograms: {i + 1}/{n_bundles}",
+                completed=i + 1,
             )
+
+            if isinstance(t, (str, Path)):
+                t = Tractogram(t)
+
+            if i == 0:
+                merged_tractogram = copy.deepcopy(t)
+                bundle_ids = np.full(
+                    (len(merged_tractogram.tracts), 1), color_table[i, 4]
+                )
+
+            else:
+                merged_tractogram = merged_tractogram.add_tractogram(t)
+                bundle_ids = np.vstack(
+                    (
+                        bundle_ids,
+                        np.full(
+                            (len(merged_tractogram.tracts) - len(bundle_ids), 1),
+                            color_table[i, 4],
+                        ),
+                    )
+                )
 
     merged_tractogram.data_per_streamline[map_name] = bundle_ids.reshape(
         -1, 1
