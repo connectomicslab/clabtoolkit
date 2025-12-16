@@ -1698,7 +1698,7 @@ class Tractogram:
             self.header["nb_streamlines"] = len(self.tracts)
 
     ###############################################################################################
-    def filter_streamlines(
+    def filter(
         self,
         condition: str,
         **kwargs,
@@ -1717,6 +1717,20 @@ class Tractogram:
                 - 'length == X': Keep streamlines exactly X mm long.
                 - 'length != X': Exclude streamlines exactly X mm long.
                 - 'Xmin <= length <= Ymax': Keep streamlines between X and Y mm.
+
+        Returns:
+        --------
+            filtered_streamlines (List[np.ndarray] or None):
+                List of streamlines that match the condition. Returns None if no streamlines match.
+
+        Raises:
+        -------
+            ValueError: If the condition format is invalid or if the specified map is not found.
+
+        Notes:
+        ------
+            This method modifies the tractogram in place, updating the streamlines and associated
+            data based on the filtering condition.
 
         """
 
