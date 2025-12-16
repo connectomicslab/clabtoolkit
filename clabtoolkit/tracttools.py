@@ -1775,6 +1775,32 @@ class Tractogram:
             if hasattr(self, "header") and self.header:
                 self.header["nb_streamlines"] = len(self.tracts)
 
+            # Remove it from the colortables if exists
+            if hasattr(self, "colortables") and map_name in self.colortables:
+
+                tmp_colortable = self.colortables[map_name]["color_table"]
+                tmp_names = self.colortables[map_name]["names"]
+                tmp_dict = {}
+                tmp_dict[map_name] = tmp_colortable[
+                    :, -1
+                ]  # Assuming last column has the streamline IDs
+                indexes = cltmisc.get_indices_by_condition(
+                    condition, **{map_name: tmp_dict[map_name]}
+                )
+                # Filter the colortable and names
+                filtered_colortable = np.array(
+                    [
+                        tmp_colortable[i]
+                        for i in range(len(tmp_colortable))
+                        if i not in indexes
+                    ]
+                )
+                filtered_names = [
+                    tmp_names[i] for i in range(len(tmp_names)) if i not in indexes
+                ]
+                self.colortables[map_name]["color_table"] = filtered_colortable
+                self.colortables[map_name]["names"] = filtered_names
+
             return filtered_streamlines
 
     ###############################################################################################
