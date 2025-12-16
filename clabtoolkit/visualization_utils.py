@@ -346,6 +346,77 @@ def link_brain_subplot_cameras(pv_plotter, brain_positions):
     )
     return successful_links
 
+#################################################################################################
+def prepare_list_obj_for_plotting(
+    obj2plot: Union[List[cltsurf.Surface], List[clttract.Tractogram]],
+    map_name: str,
+    colormap: str,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    range_min: Optional[float] = None,
+    range_max: Optional[float] = None,
+    range_color: Tuple = (128, 128, 128, 255),
+) -> Union[cltsurf.Surface, clttract.Tractogram]:
+    """
+    Prepare a list of Surface or Tractogram objects for plotting with color mapping.
+
+    Parameters
+    ----------
+    obj2plot : Union[List[cltsurf.Surface], List[clttract.Tractogram]]
+        The list of objects to prepare for plotting. Can be a list of Surface or Tractogram instances.
+
+    map_name : str
+        Name of the data array to use for color mapping.
+        
+    colormap : str
+        Matplotlib colormap name to use for color mapping.
+
+    vmin : float, optional
+        Minimum value for color scaling. If None, computed from data.
+
+    vmax : float, optional
+        Maximum value for color scaling. If None, computed from data.
+
+    range_min : float, optional
+        Minimum value for value range masking. Values below this will be displayed in gray.
+
+    range_max : float, optional
+        Maximum value for value range masking. Values above this will be displayed in gray.
+
+    range_color : List[int, int, int, int], optional
+        RGBA color to use for values outside the specified range. Default is gray [128, 128, 128, 255].
+
+    Returns
+    -------
+    Union[List[cltsurf.Surface], List[clttract.Tractogram]]
+        The prepared list of objects with color mapping applied.
+
+
+    """
+    if not isinstance(obj2plot, list):
+        obj2plot = [obj2plot]
+
+    prepared_objects = []
+    for obj in obj2plot:
+        if not isinstance(obj, (cltsurf.Surface, clttract.Tractogram)):
+            raise TypeError(
+                "All objects in obj2plot must be Surface or Tractogram instances"
+            )
+
+        prepared_obj = prepare_obj_for_plotting(
+            obj,
+            map_name,
+            colormap,
+            vmin,
+            vmax,
+            range_min,
+            range_max,
+            range_color,
+        )
+        prepared_objects.append(prepared_obj)
+
+    return prepared_objects
+
 
 ################################################################################################
 def prepare_obj_for_plotting(
