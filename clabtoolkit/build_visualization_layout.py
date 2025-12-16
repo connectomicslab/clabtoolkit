@@ -32,159 +32,136 @@ from . import visualization_utils as visutils
 def build_layout_config(
     plotobj,
     valid_views,
-    maps_names,
     objs2plot,
-    v_limits,
-    colormaps,
-    orientation,
+    maps_dict,
     colorbar,
-    colormap_style,
+    orientation,
+    colorbar_style,
     colorbar_position,
-    colorbar_titles,
 ):
     """Build the basic layout configuration."""
 
+    maps_names = list(maps_dict.keys())
     n_views = len(valid_views)
     n_maps = len(maps_names)
-    n_surfaces = len(objs2plot)
+    n_objects = len(objs2plot)
     colorbar_size = plotobj.figure_conf["colorbar_size"]
 
-    if n_views == 1 and n_maps == 1 and n_surfaces == 1:  # Works fine
-        # Check if maps_names[0] is present in the surface
-        if colormap_style not in ["individual", "shared"]:
-            colormap_style = "individual"
+    limits_dict, charac_dict = visutils.get_map_characteristics(objs2plot, maps_dict)
+    ##### Determine colormap limits based on colorbar style #####
+    colormap_limits = {}
+    for view_idx in range(n_views):
+        for map_idx in range(n_maps):
+            map_name = maps_names[map_idx]
 
-        if maps_names[0] in list(objs2plot[0].colortables.keys()):
+            for surf_idx in range(n_objects):
+
+                if colorbar_style == "individual":
+                    colormap_limits[(map_idx, surf_idx, view_idx)] = [
+                        limits_dict[map_name]["individual"][surf_idx]
+                    ]
+
+                elif colorbar_style == "shared_by_map":
+                    colormap_limits[(map_idx, surf_idx, view_idx)] = [
+                        limits_dict[map_name]["shared_by_map"]
+                    ]
+
+                else:
+                    colormap_limits[(map_idx, surf_idx, view_idx)] = [
+                        limits_dict["shared"]
+                    ]
+
+    if n_views == 1 and n_maps == 1 and n_objects == 1:  # Works fine!
+
+        if maps_dict[maps_names[0]]["colormap"] == "categorical":
             colorbar = False
 
         return single_element_layout(
-            objs2plot,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
             colorbar_position,
             colorbar_size,
         )
 
-    elif n_views == 1 and n_maps == 1 and n_surfaces > 1:  # Works fine
-        if colormap_style not in ["individual", "shared"]:
-            colormap_style = "individual"
-
-        # Check if maps_names[0] is present in ALL objs2plot
-        if all(
-            maps_names[0] in objs2plot[i].colortables.keys() for i in range(n_surfaces)
-        ):
-            colorbar = False
+    elif n_views == 1 and n_maps == 1 and n_objects > 1:  # Works fine !
 
         return single_map_multi_surface_layout(
-            objs2plot,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
-            orientation,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            orientation,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
 
-    elif n_views == 1 and n_maps > 1 and n_surfaces == 1:  # Works fine
-        if colormap_style not in ["individual", "shared"]:
-            colormap_style = "individual"
+    elif n_views == 1 and n_maps > 1 and n_objects == 1:  # Works fine !
 
         return multi_map_single_surface_layout(
-            objs2plot,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
-            orientation,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            orientation,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
 
-    elif n_views == 1 and n_maps > 1 and n_surfaces > 1:  # Works fine
-        colorbar_data = any(
-            map_name not in surface.colortables
-            for map_name in maps_names
-            for surface in objs2plot
-        )
-        if colorbar_data == False:
-            colorbar = False
+    elif n_views == 1 and n_maps > 1 and n_objects > 1:  # Works fine !
 
         return multi_map_multi_surface_layout(
-            objs2plot,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
-            orientation,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            orientation,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
 
-    elif n_views > 1 and n_maps == 1 and n_surfaces == 1:  # Works fine
-        if all(
-            maps_names[0] in objs2plot[i].colortables.keys() for i in range(n_surfaces)
-        ):
-            colorbar = False
+    elif n_views > 1 and n_maps == 1 and n_objects == 1:  # Works fine !
+
         return multi_view_single_element_layout(
-            objs2plot[0],
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             valid_views,
-            maps_names[0],
-            v_limits[0],
-            colormaps[0],
-            colorbar_titles[0],
-            orientation,
             colorbar,
+            orientation,
             colorbar_position,
             colorbar_size,
         )
 
-    elif n_views > 1 and n_maps == 1 and n_surfaces > 1:  # Works fine
-        if all(
-            maps_names[0] in objs2plot[i].colortables.keys() for i in range(n_surfaces)
-        ):
-            colorbar = False
+    elif n_views > 1 and n_maps == 1 and n_objects > 1:  # Works fine !
+
         return multi_view_multi_surface_layout(
-            objs2plot,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             valid_views,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
-            orientation,
             colorbar,
+            orientation,
             colorbar_position,
-            colormap_style,
+            colorbar_style,
             colorbar_size,
         )
 
-    elif n_views > 1 and n_maps > 1 and n_surfaces == 1:  # Works fine
-        colorbar_data = any(
-            map_name not in objs2plot[0].colortables for map_name in maps_names
-        )
-        if colorbar_data == False:
-            colorbar = False
+    elif n_views > 1 and n_maps > 1 and n_objects == 1:  # Works fine !
 
         return multi_view_multi_map_layout(
-            objs2plot,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             valid_views,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
-            orientation,
             colorbar,
-            colormap_style,
+            orientation,
             colorbar_position,
+            colorbar_style,
             colorbar_size,
         )
 
@@ -201,31 +178,21 @@ def build_layout_config(
 
 ###############################################################################################
 def single_element_layout(
-    objs2plot,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
-    colorbar,
-    colorbar_position,
-    colorbar_size,
+    maps_dict: Dict,
+    colormap_limits: Dict,
+    charac_dict: Dict,
+    colorbar: bool,
+    colorbar_position: str,
+    colorbar_size: float,
 ):
     """Handle single view, single map, single surface case."""
     brain_positions = {(0, 0, 0): (0, 0)}
-    colormap_limits = {}
 
-    limits_list = visutils.get_map_limits(
-        objs2plot=objs2plot,
-        map_name=maps_names[0],
-        colormap_style="individual",
-        v_limits=v_limits[0],
-    )
-    colormap_limits[(0, 0, 0)] = limits_list[0]
+    map_names = list(maps_dict.keys())[0]
+    colormap = charac_dict[map_names]["colormap"]
+    colorbar_title = charac_dict[map_names]["colorbar_title"]
 
     colorbar_list = []
-
-    if maps_names[0] in objs2plot[0].colortables:
-        colorbar = False
 
     if not colorbar:
         shape = [1, 1]
@@ -249,16 +216,11 @@ def single_element_layout(
             cb_dict["position"] = (1, 0)
             cb_dict["orientation"] = "horizontal"
 
-        cb_dict["colormap"] = colormaps[0]
-        cb_dict["map_name"] = maps_names[0]
-
-        cb_dict["vmin"] = limits_list[0][0]
-        cb_dict["vmax"] = limits_list[0][1]
-
-        if colorbar_titles:
-            cb_dict["title"] = colorbar_titles[0]
-        else:
-            cb_dict["title"] = maps_names[0]
+        cb_dict["colormap"] = colormap
+        cb_dict["map_name"] = map_names
+        cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+        cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+        cb_dict["title"] = colorbar_title
 
         colorbar_list.append(cb_dict)
 
@@ -276,53 +238,44 @@ def single_element_layout(
 
 ###############################################################################################
 def multi_map_single_surface_layout(
-    objs2plot,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
-    orientation,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    orientation,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle multiple maps, single surface case."""
-    brain_positions = {}
 
     if orientation == "horizontal":
         return horizontal_multi_map_layout(
-            objs2plot,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
     elif orientation == "vertical":
         return vertical_multi_map_layout(
-            objs2plot,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
     else:  # grid
         return grid_multi_map_layout(
-            objs2plot,
-            maps_names,
-            v_limits,
-            colormaps,
-            colorbar_titles,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
@@ -330,33 +283,24 @@ def multi_map_single_surface_layout(
 
 ###############################################################################################
 def horizontal_multi_map_layout(
-    objs2plot,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle horizontal layout for multiple maps."""
 
+    brain_positions = {}
+    dims = visutils.get_plot_config_dimensions(colormap_limits)
+    n_objs2plot = dims[1]
+
+    maps_names = list(maps_dict.keys())
     n_maps = len(maps_names)
 
-    brain_positions = {}
-    colormap_limits = {}
-
-    for map_idx in range(n_maps):
-        brain_positions[(map_idx, 0, 0)] = (0, map_idx)
-        map_limits = visutils.get_map_limits(
-            objs2plot=objs2plot,
-            map_name=maps_names[map_idx],
-            colormap_style="individual",
-            v_limits=v_limits[map_idx],
-        )[0]
-        colormap_limits[(map_idx, 0, 0)] = map_limits
-
+    ##### Determine colormap limits based on colorbar style #####
     colorbar_list = []
     if not colorbar:
         shape = [1, n_maps]
@@ -364,139 +308,88 @@ def horizontal_multi_map_layout(
         col_weights = [1] * n_maps
         groups = []
 
+        for map_idx in range(n_maps):
+            brain_positions[(map_idx, 0, 0)] = (0, map_idx)
+
     else:
-        if colormap_style == "individual":
+
+        if colorbar_style == "individual":
+            # Set position-specific parameters
             if colorbar_position == "right":
                 shape = [1, n_maps * 2]
                 row_weights = [1]
                 col_weights = [1, colorbar_size] * n_maps
-                groups = []
-
-                for map_idx in range(n_maps):
-                    brain_positions[(map_idx, 0, 0)] = (0, map_idx * 2)
-
-                    cb_dict = {}
-                    cb_dict["position"] = (0, map_idx * 2 + 1)
-                    cb_dict["orientation"] = "vertical"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
-                    cb_dict["map_name"] = maps_names[map_idx]
-
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
-
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
-
-                    colorbar_list.append(cb_dict)
+                brain_pos_col = lambda idx: idx * 2
+                cb_pos = lambda idx: (0, idx * 2 + 1)
+                orientation = "vertical"
 
             else:  # bottom
                 shape = [2, n_maps]
                 row_weights = [1, colorbar_size]
                 col_weights = [1] * n_maps
-                groups = []
+                brain_pos_col = lambda idx: idx
+                cb_pos = lambda idx: (1, idx)
+                orientation = "horizontal"
 
-                for map_idx in range(n_maps):
-                    brain_positions[(map_idx, 0, 0)] = (0, map_idx)
+            groups = []
 
-                    cb_dict = {}
-                    cb_dict["position"] = (1, map_idx)
-                    cb_dict["orientation"] = "horizontal"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
-                    cb_dict["map_name"] = maps_names[map_idx]
-
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
-
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
-
-                    colorbar_list.append(cb_dict)
-        else:  # shared colorbar
-            cb_dict = {}
-            cb_dict["colormap"] = colormaps[0]
-            cb_dict["map_name"] = " + ".join(maps_names)
+            # Single loop for both cases
             for map_idx in range(n_maps):
-                map_limits = visutils.get_map_limits(
-                    objs2plot=objs2plot,
-                    map_name=maps_names[map_idx],
-                    colormap_style="shared",
-                    v_limits=v_limits[map_idx],
-                )[0]
-                if map_idx == 0:
-                    limits_list = map_limits
-                else:
-                    limits_list = (
-                        min(limits_list[0], map_limits[0]),
-                        max(limits_list[1], map_limits[1]),
-                    )
+                brain_positions[(map_idx, 0, 0)] = (0, brain_pos_col(map_idx))
 
-            cb_dict["vmin"] = limits_list[0]
-            cb_dict["vmax"] = limits_list[1]
+                # Extract map properties
+                colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
+                colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                # Build colorbar dictionary
+                cb_dict = {
+                    "position": cb_pos(map_idx),
+                    "orientation": orientation,
+                    "colormap": colormap,
+                    "map_name": maps_names[map_idx],
+                    "vmin": colormap_limits[(map_idx, 0, 0)][0][0],
+                    "vmax": colormap_limits[(map_idx, 0, 0)][0][1],
+                    "title": colorbar_title,
+                }
 
-            if colorbar_titles:
-                cb_dict["title"] = colorbar_titles[0]
-            else:
-                cb_dict["title"] = " + ".join(maps_names)
+                colorbar_list.append(cb_dict)
 
+        else:  # shared colorbar
+
+            colorbar_title = charac_dict["shared"]["colorbar_title"]
+            colormap = charac_dict["shared"]["colormap"]
+
+            # Set position-specific parameters first
             if colorbar_position == "right":
                 shape = [1, n_maps + 1]
                 row_weights = [1]
                 col_weights = [1] * n_maps + [colorbar_size]
                 groups = []
-
-                cb_dict["position"] = (0, n_maps)
-                cb_dict["orientation"] = "vertical"
-
+                cb_position = (0, n_maps)
+                cb_orientation = "vertical"
             else:  # bottom
                 shape = [2, n_maps]
                 row_weights = [1, colorbar_size]
                 col_weights = [1] * n_maps
+                groups = [
+                    (1, slice(0, n_maps))
+                ]  # Colorbar spans all columns in bottom row
+                cb_position = (1, 0)
+                cb_orientation = "horizontal"
 
-                groups = [(1, slice(0, n_maps))]  # Colorbar in last row
-                cb_dict["position"] = (1, 0)
-                cb_dict["orientation"] = "horizontal"
-
-                for map_idx in range(n_maps):
-                    brain_positions[(map_idx, 0, 0)] = (0, map_idx)
-
+            # Set brain positions
             for map_idx in range(n_maps):
-                colormap_limits[(map_idx, 0, 0)] = (
-                    cb_dict["vmin"],
-                    cb_dict["vmax"],
-                    maps_names[0],
-                )
+                brain_positions[(map_idx, 0, 0)] = (0, map_idx)
+
+            # Build shared colorbar dictionary
+            cb_dict = {
+                "position": cb_position,
+                "orientation": cb_orientation,
+                "colormap": colormap,
+                "map_name": " + ".join(maps_names),
+                "vmin": colormap_limits[(0, 0, 0)][0][0],
+                "vmax": colormap_limits[(0, 0, 0)][0][1],
+                "title": colorbar_title,
+            }
 
             colorbar_list.append(cb_dict)
 
@@ -513,31 +406,19 @@ def horizontal_multi_map_layout(
 
 ###############################################################################################
 def vertical_multi_map_layout(
-    objs2plot,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
-    """Handle vertical layout for multiple maps."""
-    n_maps = len(maps_names)
+    """Handle horizontal layout for multiple maps."""
 
     brain_positions = {}
-    colormap_limits = {}
-
-    for map_idx in range(n_maps):
-        brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
-        map_limits = visutils.get_map_limits(
-            objs2plot=objs2plot,
-            map_name=maps_names[map_idx],
-            colormap_style="individual",
-            v_limits=v_limits[map_idx],
-        )[0]
-        colormap_limits[(map_idx, 0, 0)] = map_limits
+    maps_names = list(maps_dict.keys())
+    n_maps = len(maps_names)
 
     colorbar_list = []
     if not colorbar:
@@ -546,133 +427,90 @@ def vertical_multi_map_layout(
         col_weights = [1]
         groups = []
 
+        for map_idx in range(n_maps):
+            brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
+
     else:
-        if colormap_style == "individual":
+        if colorbar_style == "individual":
+            # Set position-specific parameters
             if colorbar_position == "right":
                 shape = [n_maps, 2]
                 row_weights = [1] * n_maps
                 col_weights = [1, colorbar_size]
-                groups = []
-
-                for map_idx in range(n_maps):
-                    brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
-
-                    cb_dict = {}
-                    cb_dict["position"] = (map_idx, 1)
-                    cb_dict["orientation"] = "vertical"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
-                    cb_dict["map_name"] = maps_names[map_idx]
-
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
-
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
-
-                    colorbar_list.append(cb_dict)
+                brain_pos_col = lambda idx: idx
+                cb_pos = lambda idx: (idx, 1)
+                orientation = "vertical"
 
             else:  # bottom
                 shape = [n_maps * 2, 1]
                 row_weights = [1, colorbar_size] * n_maps
                 col_weights = [1]
-                groups = []
+                brain_pos_col = lambda idx: idx * 2
+                cb_pos = lambda idx: (idx * 2 + 1, 0)
+                orientation = "horizontal"
 
-                for map_idx in range(n_maps):
-                    brain_positions[(map_idx, 0, 0)] = (map_idx * 2, 0)
+            groups = []
 
-                    cb_dict = {}
-                    cb_dict["position"] = (map_idx * 2 + 1, 0)
-                    cb_dict["orientation"] = "horizontal"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
-                    cb_dict["map_name"] = maps_names[map_idx]
-
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
-
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
-
-                    colorbar_list.append(cb_dict)
-        else:  # shared colorbar
-            cb_dict = {}
-            cb_dict["colormap"] = colormaps[0]
-            cb_dict["map_name"] = " + ".join(maps_names)
+            # Single loop for both cases
             for map_idx in range(n_maps):
-                map_limits = visutils.get_map_limits(
-                    objs2plot=objs2plot,
-                    map_name=maps_names[map_idx],
-                    colormap_style="shared",
-                    v_limits=v_limits[map_idx],
-                )[0]
-                if map_idx == 0:
-                    limits_list = map_limits
-                else:
-                    limits_list = (
-                        min(limits_list[0], map_limits[0]),
-                        max(limits_list[1], map_limits[1]),
-                    )
-            cb_dict["vmin"] = limits_list[0]
-            cb_dict["vmax"] = limits_list[1]
-            if colorbar_titles:
-                cb_dict["title"] = colorbar_titles[0]
-            else:
-                cb_dict["title"] = " + ".join(maps_names)
+                brain_positions[(map_idx, 0, 0)] = (brain_pos_col(map_idx), 0)
+
+                # Extract map properties
+                colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
+                colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                # Build colorbar dictionary
+
+                # Build colorbar dictionary
+                cb_dict = {
+                    "position": cb_pos(map_idx),
+                    "orientation": orientation,
+                    "colormap": colormap,
+                    "map_name": maps_names[map_idx],
+                    "vmin": colormap_limits[(map_idx, 0, 0)][0][0],
+                    "vmax": colormap_limits[(map_idx, 0, 0)][0][1],
+                    "title": colorbar_title,
+                }
+
+                colorbar_list.append(cb_dict)
+
+        else:  # shared colorbar
+            # Set position-specific parameters first
+            colorbar_title = charac_dict["shared"]["colorbar_title"]
+            colormap = charac_dict["shared"]["colormap"]
             if colorbar_position == "right":
                 shape = [n_maps, 2]
                 row_weights = [1] * n_maps
                 col_weights = [1, colorbar_size]
                 groups = [(slice(0, n_maps), 1)]
 
-                cb_dict["position"] = (0, 1)
-                cb_dict["orientation"] = "vertical"
+                cb_position = (0, 1)
+                cb_orientation = "vertical"
             else:  # bottom
                 shape = [n_maps + 1, 1]
                 row_weights = [1] * n_maps + [colorbar_size]
                 col_weights = [1]
                 groups = [(n_maps, 0)]
-                cb_dict["position"] = (n_maps, 0)
-                cb_dict["orientation"] = "horizontal"
-                for map_idx in range(n_maps):
-                    brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
+
+                cb_position = (n_maps, 0)
+                cb_orientation = "horizontal"
+
+            # Set brain positions
             for map_idx in range(n_maps):
-                colormap_limits[(map_idx, 0, 0)] = (
-                    cb_dict["vmin"],
-                    cb_dict["vmax"],
-                    maps_names[0],
-                )
-            colorbar_list.append(cb_dict)
+                brain_positions[(map_idx, 0, 0)] = (map_idx, 0)
+
+            # Build shared colorbar dictionary
+            cb_dict = {
+                "position": cb_position,
+                "orientation": cb_orientation,
+                "colormap": colormap,  # Use first map's colormap
+                "map_name": " + ".join(maps_names),
+                "vmin": colormap_limits[(0, 0, 0)][0][0],
+                "vmax": colormap_limits[(0, 0, 0)][0][1],
+                "title": colorbar_title,
+            }
+
+        colorbar_list.append(cb_dict)
+
     layout_config = {
         "shape": shape,
         "row_weights": row_weights,
@@ -686,33 +524,23 @@ def vertical_multi_map_layout(
 
 ###############################################################################################
 def grid_multi_map_layout(
-    objs2plot,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle grid layout for multiple maps."""
 
-    n_maps = len(maps_names)
-    optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_maps)
+    #
     brain_positions = {}
-    colormap_limits = {}
+    maps_names = list(maps_dict.keys())
+    n_maps = len(maps_names)
 
-    for map_idx in range(n_maps):
-        pos = positions[map_idx]
-        brain_positions[(map_idx, 0, 0)] = pos
-        map_limits = visutils.get_map_limits(
-            objs2plot=objs2plot,
-            map_name=maps_names[map_idx],
-            colormap_style="individual",
-            v_limits=v_limits[map_idx],
-        )[0]
-        colormap_limits[(map_idx, 0, 0)] = map_limits
+    # Determine optimal grid
+    optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_maps)
 
     colorbar_list = []
     if not colorbar:
@@ -720,8 +548,13 @@ def grid_multi_map_layout(
         row_weights = [1] * optimal_grid[0]
         col_weights = [1] * optimal_grid[1]
         groups = []
+
+        for map_idx in range(n_maps):
+            pos = positions[map_idx]
+            brain_positions[(map_idx, 0, 0)] = (pos[0], pos[1])
+
     else:
-        if colormap_style == "individual":
+        if colorbar_style == "individual":
             if colorbar_position == "right":
                 shape = [optimal_grid[0], optimal_grid[1] * 2]
                 row_weights = [1] * optimal_grid[0]
@@ -732,33 +565,19 @@ def grid_multi_map_layout(
                     pos = positions[map_idx]
                     brain_positions[(map_idx, 0, 0)] = (pos[0], pos[1] * 2)
 
+                    # Extract map properties
+                    map_data = maps_dict[maps_names[map_idx]]
+                    colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                    colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
+
                     cb_dict = {}
                     cb_dict["position"] = (pos[0], pos[1] * 2 + 1)
                     cb_dict["orientation"] = "vertical"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
+                    cb_dict["colormap"] = colormap
                     cb_dict["map_name"] = maps_names[map_idx]
-
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
-
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
+                    cb_dict["vmin"] = colormap_limits[(map_idx, 0, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(map_idx, 0, 0)][0][1]
+                    cb_dict["title"] = colorbar_title
 
                     colorbar_list.append(cb_dict)
 
@@ -772,59 +591,29 @@ def grid_multi_map_layout(
                     pos = positions[map_idx]
                     brain_positions[(map_idx, 0, 0)] = (pos[0] * 2, pos[1])
 
+                    # Extract map properties
+                    map_data = maps_dict[maps_names[map_idx]]
+                    colormap = charac_dict[maps_names[map_idx]]["individual"][
+                        "colormap"
+                    ]
+                    colorbar_title = charac_dict[maps_names[map_idx]]["individual"][
+                        "colorbar_title"
+                    ]
+
                     cb_dict = {}
                     cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
                     cb_dict["orientation"] = "horizontal"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
+                    cb_dict["colormap"] = colormap
                     cb_dict["map_name"] = maps_names[map_idx]
-
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
-
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
+                    cb_dict["vmin"] = colormap_limits[(map_idx, 0, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(map_idx, 0, 0)][0][1]
+                    cb_dict["title"] = colorbar_title
 
                     colorbar_list.append(cb_dict)
+
         else:  # shared colorbar
             cb_dict = {}
-            cb_dict["colormap"] = colormaps[0]
-            cb_dict["map_name"] = " + ".join(maps_names)
-            for map_idx in range(n_maps):
-                map_limits = visutils.get_map_limits(
-                    objs2plot=objs2plot,
-                    map_name=maps_names[map_idx],
-                    colormap_style="shared",
-                    v_limits=v_limits[map_idx],
-                )[0]
-                if map_idx == 0:
-                    limits_list = map_limits
-                else:
-                    limits_list = (
-                        min(limits_list[0], map_limits[0]),
-                        max(limits_list[1], map_limits[1]),
-                    )
-            cb_dict["vmin"] = limits_list[0]
-            cb_dict["vmax"] = limits_list[1]
-            if colorbar_titles:
-                cb_dict["title"] = colorbar_titles[0]
-            else:
-                cb_dict["title"] = " + ".join(maps_names)
+
             if colorbar_position == "right":
                 shape = [optimal_grid[0], optimal_grid[1] + 1]
                 row_weights = [1] * optimal_grid[0]
@@ -840,16 +629,25 @@ def grid_multi_map_layout(
                 groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
                 cb_dict["position"] = (optimal_grid[0], 0)
                 cb_dict["orientation"] = "horizontal"
-            for map_idx in range(n_maps):
-                colormap_limits[(map_idx, 0, 0)] = (
-                    cb_dict["vmin"],
-                    cb_dict["vmax"],
-                    maps_names[0],
-                )
+
+                # Set brain positions
             for map_idx in range(n_maps):
                 pos = positions[map_idx]
                 brain_positions[(map_idx, 0, 0)] = pos
+
+            # Extract map properties
+            colormap = charac_dict["shared"]["colormap"]
+            colorbar_title = charac_dict["shared"]["colorbar_title"]
+
+            # Store shared limits for all maps
+            cb_dict["colormap"] = colormap
+            cb_dict["map_name"] = " + ".join(maps_names)
+            cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+            cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+            cb_dict["title"] = colorbar_title
+
             colorbar_list.append(cb_dict)
+
     layout_config = {
         "shape": shape,
         "row_weights": row_weights,
@@ -865,55 +663,56 @@ def grid_multi_map_layout(
 # Multiple objs2plot and multiple maps cases
 ################################################################################
 def multi_map_multi_surface_layout(
-    objs2plot,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
-    orientation,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    orientation,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle multiple maps and multiple objs2plot case."""
 
-    n_maps = len(maps_names)
-    n_surfaces = len(objs2plot)
+    maps_names = list(maps_dict.keys())
+
     brain_positions = {}
-    colormap_limits = {}
     colorbar_list = []
-    if orientation == "horizontal":
+
+    dims = visutils.get_plot_config_dimensions(colormap_limits)
+    n_objs = dims[1]
+    n_maps = dims[0]
+
+    ################################################################################
+
+    if orientation == "horizontal":  # The orientation of the maps
 
         if not colorbar:
-            shape = [n_surfaces, n_maps]
-            row_weights = [1] * n_surfaces
+            shape = [n_objs, n_maps]
+            row_weights = [1] * n_objs
             col_weights = [1] * n_maps
             groups = []
-
-            # Maps in columns, objs2plot in rows
             for map_idx in range(n_maps):
-                for surf_idx in range(n_surfaces):
+                for surf_idx in range(n_objs):
                     brain_positions[(map_idx, surf_idx, 0)] = (surf_idx, map_idx)
-                    map_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot[surf_idx],
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )[0]
-                    colormap_limits[(map_idx, surf_idx, 0)] = map_limits
+
         else:
 
             # Force colorbar to bottom for this case
-            if colormap_style == "individual":
+            if colorbar_style == "individual":
                 if colorbar_position == "right":
-                    shape = [n_surfaces, n_maps * 2]
-                    row_weights = [1] * n_surfaces
+                    shape = [n_objs, n_maps * 2]
+                    row_weights = [1] * n_objs
                     col_weights = [1, colorbar_size] * n_maps
                     groups = []
 
                     for map_idx in range(n_maps):
-                        for surf_idx in range(n_surfaces):
+                        map_data = maps_dict[maps_names[map_idx]]
+                        colormap = map_data["colormap"]
+                        map_name = maps_names[map_idx]
+                        colorbar_title = map_data["colorbar_title"]
+
+                        for surf_idx in range(n_objs):
                             brain_positions[(map_idx, surf_idx, 0)] = (
                                 surf_idx,
                                 map_idx * 2,
@@ -922,44 +721,32 @@ def multi_map_multi_surface_layout(
                             cb_dict = {}
                             cb_dict["position"] = (surf_idx, map_idx * 2 + 1)
                             cb_dict["orientation"] = "vertical"
-                            cb_dict["colormap"] = (
-                                colormaps[map_idx]
-                                if map_idx < len(colormaps)
-                                else colormaps[-1]
-                            )
-                            cb_dict["map_name"] = maps_names[map_idx]
-                            if colorbar_titles:
-                                cb_dict["title"] = (
-                                    colorbar_titles[map_idx]
-                                    if map_idx < len(colorbar_titles)
-                                    else colorbar_titles[-1]
-                                )
-                            else:
-                                cb_dict["title"] = maps_names[map_idx]
-                            limits_list = visutils.get_map_limits(
-                                objs2plot=objs2plot[surf_idx],
-                                map_name=maps_names[map_idx],
-                                colormap_style="individual",
-                                v_limits=v_limits[map_idx],
-                            )
-                            cb_dict["vmin"] = limits_list[0][0]
-                            cb_dict["vmax"] = limits_list[0][1]
-                            colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
+                            cb_dict["colormap"] = colormap
+                            cb_dict["map_name"] = map_name
+                            cb_dict["title"] = colorbar_title
 
-                            if (
-                                maps_names[map_idx]
-                                not in objs2plot[surf_idx].colortables
-                            ):
-                                colorbar_list.append(cb_dict)
+                            cb_dict["vmin"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][0]
+                            cb_dict["vmax"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][1]
+
+                            colorbar_list.append(cb_dict)
 
                 elif colorbar_position == "bottom":
-                    shape = [n_surfaces * 2, n_maps]
-                    row_weights = [1, colorbar_size] * n_surfaces
+                    shape = [n_objs * 2, n_maps]
+                    row_weights = [1, colorbar_size] * n_objs
                     col_weights = [1] * n_maps
                     groups = []
 
                     for map_idx in range(n_maps):
-                        for surf_idx in range(n_surfaces):
+                        map_data = maps_dict[maps_names[map_idx]]
+                        colormap = map_data["colormap"]
+                        map_name = maps_names[map_idx]
+                        colorbar_title = map_data["colorbar_title"]
+
+                        for surf_idx in range(n_objs):
                             brain_positions[(map_idx, surf_idx, 0)] = (
                                 surf_idx * 2,
                                 map_idx,
@@ -967,368 +754,225 @@ def multi_map_multi_surface_layout(
                             cb_dict = {}
                             cb_dict["position"] = (surf_idx * 2 + 1, map_idx)
                             cb_dict["orientation"] = "horizontal"
-                            cb_dict["colormap"] = (
-                                colormaps[map_idx]
-                                if map_idx < len(colormaps)
-                                else colormaps[-1]
-                            )
-                            cb_dict["map_name"] = maps_names[map_idx]
-                            if colorbar_titles:
-                                cb_dict["title"] = (
-                                    colorbar_titles[map_idx]
-                                    if map_idx < len(colorbar_titles)
-                                    else colorbar_titles[-1]
-                                )
-                            else:
-                                cb_dict["title"] = maps_names[map_idx]
-                            limits_list = visutils.get_map_limits(
-                                objs2plot=objs2plot[surf_idx],
-                                map_name=maps_names[map_idx],
-                                colormap_style="individual",
-                                v_limits=v_limits[map_idx],
-                            )
-                            cb_dict["vmin"] = limits_list[0][0]
-                            cb_dict["vmax"] = limits_list[0][1]
-                            colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
+                            cb_dict["colormap"] = colormap
+                            cb_dict["map_name"] = map_name
+                            cb_dict["title"] = colorbar_title
 
-                            if (
-                                maps_names[map_idx]
-                                not in objs2plot[surf_idx].colortables
-                            ):
-                                colorbar_list.append(cb_dict)
+                            cb_dict["vmin"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][0]
+                            cb_dict["vmax"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][1]
+
+                            colorbar_list.append(cb_dict)
 
             else:
-
-                # Map-wise limits
-                maps_limits = []
                 for map_idx in range(n_maps):
-                    if maps_names[map_idx] not in objs2plot[0].colortables:
-                        map_limits = visutils.get_map_limits(
-                            objs2plot=objs2plot,
-                            map_name=maps_names[map_idx],
-                            colormap_style="shared",
-                            v_limits=v_limits[map_idx],
-                        )[0]
-                        maps_limits.append(map_limits)
+                    for surf_idx in range(n_objs):
+                        brain_positions[(map_idx, surf_idx, 0)] = (
+                            surf_idx,
+                            map_idx,
+                        )
+                if colorbar_style == "shared":
 
-                if colormap_style == "shared":
-                    ######### Global colorbar #########
-                    # Compute the global limits
-                    global_limits = (
-                        min(l[0] for l in maps_limits),
-                        max(l[1] for l in maps_limits),
-                    )
+                    colormap = charac_dict["shared"]["colormap"]
+                    colorbar_title = charac_dict["shared"]["colorbar_title"]
+
                     cb_dict = {}
-                    cb_dict["colormap"] = colormaps[0]
+                    cb_dict["colormap"] = colormap
+                    cb_dict["title"] = colorbar_title
                     cb_dict["map_name"] = " + ".join(maps_names)
-                    cb_dict["vmin"] = global_limits[0]
-                    cb_dict["vmax"] = global_limits[1]
-                    if colorbar_titles:
-                        cb_dict["title"] = colorbar_titles[0]
-                    else:
-                        cb_dict["title"] = " + ".join(maps_names)
-
-                    for map_idx in range(n_maps):
-                        for surf_idx in range(n_surfaces):
-                            brain_positions[(map_idx, surf_idx, 0)] = (
-                                surf_idx,
-                                map_idx,
-                            )
-                            colormap_limits[(map_idx, surf_idx, 0)] = global_limits + (
-                                maps_names[0],
-                            )
+                    cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
 
                     if colorbar_position == "right":
-                        shape = [n_surfaces, n_maps + 1]
-                        row_weights = [1] * n_surfaces
+                        shape = [n_objs, n_maps + 1]
+                        row_weights = [1] * n_objs
                         col_weights = [1] * n_maps + [colorbar_size]
-                        groups = [(slice(0, n_surfaces), n_maps)]
+                        groups = [(slice(0, n_objs), n_maps)]
 
                         cb_dict["position"] = (0, n_maps)
                         cb_dict["orientation"] = "vertical"
 
                     elif colorbar_position == "bottom":
-                        shape = [n_surfaces + 1, n_maps]
-                        row_weights = [1] * n_surfaces + [colorbar_size]
+                        shape = [n_objs + 1, n_maps]
+                        row_weights = [1] * n_objs + [colorbar_size]
                         col_weights = [1] * n_maps
-                        groups = [(n_surfaces, slice(0, n_maps))]
+                        groups = [(n_objs, slice(0, n_maps))]
 
-                        cb_dict["position"] = (n_surfaces, 0)
+                        cb_dict["position"] = (n_objs, 0)
                         cb_dict["orientation"] = "horizontal"
 
                     colorbar_list.append(cb_dict)
 
-                elif colormap_style == "shared_by_map":
+                elif colorbar_style == "shared_by_map":
                     ######### One colorbar per map #########
-                    for map_idx in range(n_maps):
-                        if not maps_names[map_idx] in objs2plot[0].colortables:
-                            map_limits = maps_limits[map_idx]
 
-                            for surf_idx in range(n_surfaces):
-                                brain_positions[(map_idx, surf_idx, 0)] = (
-                                    surf_idx,
-                                    map_idx,
-                                )
-                                colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
-                                    map_idx
-                                ]
-                        else:
-                            for surf_idx in range(n_surfaces):
-                                brain_positions[(map_idx, surf_idx, 0)] = (
-                                    surf_idx,
-                                    map_idx,
-                                )
-                                colormap_limits[(map_idx, surf_idx, 0)] = (
-                                    None,
-                                    None,
-                                    maps_names[map_idx],
-                                )
-
-                    shape = [n_surfaces + 1, n_maps]
-                    row_weights = [1] * n_surfaces + [colorbar_size]
+                    shape = [n_objs + 1, n_maps]
+                    row_weights = [1] * n_objs + [colorbar_size]
                     col_weights = [1] * n_maps
                     groups = []
 
                     for map_idx in range(n_maps):
-                        cb_dict = {}
-                        cb_dict["position"] = (n_surfaces, map_idx)
-                        cb_dict["orientation"] = "horizontal"
-                        cb_dict["colormap"] = (
-                            colormaps[map_idx]
-                            if map_idx < len(colormaps)
-                            else colormaps[-1]
-                        )
-                        cb_dict["map_name"] = maps_names[map_idx]
-                        if colorbar_titles:
-                            cb_dict["title"] = (
-                                colorbar_titles[map_idx]
-                                if map_idx < len(colorbar_titles)
-                                else colorbar_titles[-1]
-                            )
-                        else:
-                            cb_dict["title"] = maps_names[map_idx]
 
-                        if maps_names[map_idx] not in objs2plot[0].colortables:
-                            cb_dict["vmin"] = maps_limits[map_idx][0]
-                            cb_dict["vmax"] = maps_limits[map_idx][1]
-                            colorbar_list.append(cb_dict)
+                        colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                        colorbar_title = charac_dict[maps_names[map_idx]][
+                            "colorbar_title"
+                        ]
+
+                        cb_dict = {}
+                        cb_dict["colormap"] = colormap
+                        cb_dict["title"] = colorbar_title
+                        cb_dict["map_name"] = maps_names[map_idx]
+                        cb_dict["vmin"] = colormap_limits[(map_idx, 0, 0)][0][0]
+                        cb_dict["vmax"] = colormap_limits[(map_idx, 0, 0)][0][1]
+
+                        cb_dict["position"] = (n_objs, map_idx)
+                        cb_dict["orientation"] = "horizontal"
+
+                        colorbar_list.append(cb_dict)
 
     else:  # vertical
 
         if not colorbar:
             # Maps in rows, objs2plot in columns
-            shape = [n_maps, n_surfaces]
+            shape = [n_maps, n_objs]
             row_weights = [1] * n_maps
-            col_weights = [1] * n_surfaces
+            col_weights = [1] * n_objs
             groups = []
 
             for map_idx in range(n_maps):
-                for surf_idx in range(n_surfaces):
+                for surf_idx in range(n_objs):
                     brain_positions[(map_idx, surf_idx, 0)] = (map_idx, surf_idx)
-
-        # Force colorbar to right for this case
-        if colormap_style == "individual":
-            if colorbar_position == "right":
-                shape = [n_maps, n_surfaces * 2]
-                row_weights = [1] * n_maps
-                col_weights = [1, colorbar_size] * n_surfaces
-                groups = []
-
-                for map_idx in range(n_maps):
-                    for surf_idx in range(n_surfaces):
-                        brain_positions[(map_idx, surf_idx, 0)] = (
-                            map_idx,
-                            surf_idx * 2,
-                        )
-                        cb_dict = {}
-                        cb_dict["position"] = (map_idx, surf_idx * 2 + 1)
-                        cb_dict["orientation"] = "vertical"
-                        cb_dict["colormap"] = (
-                            colormaps[map_idx]
-                            if map_idx < len(colormaps)
-                            else colormaps[-1]
-                        )
-                        cb_dict["map_name"] = maps_names[map_idx]
-                        if colorbar_titles:
-                            cb_dict["title"] = (
-                                colorbar_titles[map_idx]
-                                if map_idx < len(colorbar_titles)
-                                else colorbar_titles[-1]
-                            )
-                        else:
-                            cb_dict["title"] = maps_names[map_idx]
-                        limits_list = visutils.get_map_limits(
-                            objs2plot=objs2plot[surf_idx],
-                            map_name=maps_names[map_idx],
-                            colormap_style="individual",
-                            v_limits=v_limits[map_idx],
-                        )
-                        cb_dict["vmin"] = limits_list[0][0]
-                        cb_dict["vmax"] = limits_list[0][1]
-                        colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
-                        if maps_names[map_idx] not in objs2plot[surf_idx].colortables:
-                            colorbar_list.append(cb_dict)
-
-            elif colorbar_position == "bottom":
-                shape = [n_maps * 2, n_surfaces]
-                row_weights = [1, colorbar_size] * n_maps
-                col_weights = [1] * n_surfaces
-                groups = []
-
-                for map_idx in range(n_maps):
-                    for surf_idx in range(n_surfaces):
-                        brain_positions[(map_idx, surf_idx, 0)] = (
-                            map_idx * 2,
-                            surf_idx,
-                        )
-                        cb_dict = {}
-                        cb_dict["position"] = (map_idx * 2 + 1, surf_idx)
-                        cb_dict["orientation"] = "horizontal"
-                        cb_dict["colormap"] = (
-                            colormaps[map_idx]
-                            if map_idx < len(colormaps)
-                            else colormaps[-1]
-                        )
-                        cb_dict["map_name"] = maps_names[map_idx]
-                        if colorbar_titles:
-                            cb_dict["title"] = (
-                                colorbar_titles[map_idx]
-                                if map_idx < len(colorbar_titles)
-                                else colorbar_titles[-1]
-                            )
-                        else:
-                            cb_dict["title"] = maps_names[map_idx]
-                        limits_list = visutils.get_map_limits(
-                            objs2plot=objs2plot[surf_idx],
-                            map_name=maps_names[map_idx],
-                            colormap_style="individual",
-                            v_limits=v_limits[map_idx],
-                        )
-                        cb_dict["vmin"] = limits_list[0][0]
-                        cb_dict["vmax"] = limits_list[0][1]
-                        colormap_limits[(map_idx, surf_idx, 0)] = limits_list[0]
-                        if maps_names[map_idx] not in objs2plot[surf_idx].colortables:
-                            colorbar_list.append(cb_dict)
-
         else:
-            # Map-wise limits
-            maps_limits = []
-            for map_idx in range(n_maps):
-                if any(
-                    maps_names[map_idx] not in surface.colortables
-                    for surface in objs2plot
-                ):
-                    map_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[map_idx],
-                        colormap_style="shared",
-                        v_limits=v_limits[map_idx],
-                    )[0]
-                    maps_limits.append(map_limits)
-
-            if colormap_style == "shared":
-                ######### Global colorbar #########
-                # Compute the global limits
-                global_limits = (
-                    min(l[0] for l in maps_limits),
-                    max(l[1] for l in maps_limits),
-                )
-                cb_dict = {}
-                cb_dict["colormap"] = colormaps[0]
-                cb_dict["map_name"] = " + ".join(maps_names)
-                cb_dict["vmin"] = global_limits[0]
-                cb_dict["vmax"] = global_limits[1]
-                if colorbar_titles:
-                    cb_dict["title"] = colorbar_titles[0]
-                else:
-                    cb_dict["title"] = " + ".join(maps_names)
-
-                for map_idx in range(n_maps):
-                    for surf_idx in range(n_surfaces):
-                        brain_positions[(map_idx, surf_idx, 0)] = (
-                            map_idx,
-                            surf_idx,
-                        )
-                        colormap_limits[(map_idx, surf_idx, 0)] = global_limits + (
-                            maps_names[0],
-                        )
-
+            # Force colorbar to right for this case
+            if colorbar_style == "individual":
                 if colorbar_position == "right":
-                    shape = [n_maps, n_surfaces + 1]
+                    shape = [n_maps, n_objs * 2]
                     row_weights = [1] * n_maps
-                    col_weights = [1] * n_surfaces + [colorbar_size]
-                    groups = [(slice(0, n_maps), n_surfaces)]
+                    col_weights = [1, colorbar_size] * n_objs
+                    groups = []
 
-                    cb_dict["position"] = (0, n_surfaces)
-                    cb_dict["orientation"] = "vertical"
+                    for map_idx in range(n_maps):
+                        map_data = maps_dict[maps_names[map_idx]]
+                        colormap = map_data["colormap"]
+                        map_name = maps_names[map_idx]
+                        colorbar_title = map_data["colorbar_title"]
+
+                        for surf_idx in range(n_objs):
+                            brain_positions[(map_idx, surf_idx, 0)] = (
+                                map_idx,
+                                surf_idx * 2,
+                            )
+
+                            cb_dict = {}
+                            cb_dict["position"] = (map_idx, surf_idx * 2 + 1)
+                            cb_dict["orientation"] = "vertical"
+                            cb_dict["colormap"] = colormap
+                            cb_dict["map_name"] = map_name
+                            cb_dict["title"] = colorbar_title
+
+                            cb_dict["vmin"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][0]
+                            cb_dict["vmax"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][1]
+
+                            colorbar_list.append(cb_dict)
 
                 elif colorbar_position == "bottom":
-                    shape = [n_maps + 1, n_surfaces]
-                    row_weights = [1] * n_maps + [colorbar_size]
-                    col_weights = [1] * n_surfaces
-                    groups = [(n_maps, slice(0, n_surfaces))]
+                    shape = [n_maps * 2, n_objs]
+                    row_weights = [1, colorbar_size] * n_maps
+                    col_weights = [1] * n_objs
+                    groups = []
 
-                    cb_dict["position"] = (n_maps, 0)
-                    cb_dict["orientation"] = "horizontal"
+                    for map_idx in range(n_maps):
+                        map_data = maps_dict[maps_names[map_idx]]
+                        colormap = map_data["colormap"]
+                        map_name = maps_names[map_idx]
+                        colorbar_title = map_data["colorbar_title"]
+                        for surf_idx in range(n_objs):
+                            brain_positions[(map_idx, surf_idx, 0)] = (
+                                map_idx * 2,
+                                surf_idx,
+                            )
+                            cb_dict = {}
+                            cb_dict["position"] = (map_idx * 2 + 1, surf_idx)
+                            cb_dict["orientation"] = "horizontal"
+                            cb_dict["colormap"] = colormap
+                            cb_dict["map_name"] = map_name
+                            cb_dict["title"] = colorbar_title
+                            cb_dict["vmin"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][0]
+                            cb_dict["vmax"] = colormap_limits[(map_idx, surf_idx, 0)][
+                                0
+                            ][1]
+                            colorbar_list.append(cb_dict)
 
-                if any(
-                    maps_names[map_idx] not in surface.colortables
-                    for map_idx in range(n_maps)
-                    for surface in objs2plot
-                ):
+            else:
+                for map_idx in range(n_maps):
+                    for surf_idx in range(n_objs):
+                        brain_positions[(map_idx, surf_idx, 0)] = (
+                            map_idx,
+                            surf_idx,
+                        )
+
+                if colorbar_style == "shared":
+                    colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                    colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
+
+                    cb_dict = {}
+                    cb_dict["colormap"] = colormap
+                    cb_dict["title"] = colorbar_title
+                    cb_dict["map_name"] = " + ".join(maps_names)
+                    cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+
+                    if colorbar_position == "right":
+                        shape = [n_maps, n_objs + 1]
+                        row_weights = [1] * n_maps
+                        col_weights = [1] * n_objs + [colorbar_size]
+                        groups = [(slice(0, n_maps), n_objs)]
+
+                        cb_dict["position"] = (0, n_objs)
+                        cb_dict["orientation"] = "vertical"
+
+                    elif colorbar_position == "bottom":
+                        shape = [n_maps + 1, n_objs]
+                        row_weights = [1] * n_maps + [colorbar_size]
+                        col_weights = [1] * n_objs
+                        groups = [(n_maps, slice(0, n_objs))]
+
+                        cb_dict["position"] = (n_maps, 0)
+                        cb_dict["orientation"] = "horizontal"
+
                     colorbar_list.append(cb_dict)
 
-            elif colormap_style == "shared_by_map":
-                ######### One colorbar per map #########
-                for map_idx in range(n_maps):
-                    if maps_names[map_idx] not in objs2plot[0].colortables:
-                        map_limits = maps_limits[map_idx]
-                        for surf_idx in range(n_surfaces):
-                            brain_positions[(map_idx, surf_idx, 0)] = (
-                                map_idx,
-                                surf_idx,
-                            )
-                            colormap_limits[(map_idx, surf_idx, 0)] = maps_limits[
-                                map_idx
-                            ]
-                    else:
-                        for surf_idx in range(n_surfaces):
-                            brain_positions[(map_idx, surf_idx, 0)] = (
-                                map_idx,
-                                surf_idx,
-                            )
-                            colormap_limits[(map_idx, surf_idx, 0)] = (
-                                None,
-                                None,
-                                maps_names[map_idx],
-                            )
+                elif colorbar_style == "shared_by_map":
+                    shape = [n_maps, n_objs + 1]
+                    row_weights = [1] * n_maps
+                    col_weights = [1] * n_objs + [colorbar_size]
+                    groups = []
 
-                shape = [n_maps, n_surfaces + 1]
-                row_weights = [1] * n_maps
-                col_weights = [1] * n_surfaces + [colorbar_size]
-                groups = []
+                    for map_idx in range(n_maps):
 
-                for map_idx in range(n_maps):
-                    cb_dict = {}
-                    cb_dict["position"] = (map_idx, n_surfaces)
-                    cb_dict["orientation"] = "vertical"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
-                    cb_dict["map_name"] = maps_names[map_idx]
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
-                    if maps_names[map_idx] not in objs2plot[0].colortables:
-                        cb_dict["vmin"] = maps_limits[map_idx][0]
-                        cb_dict["vmax"] = maps_limits[map_idx][1]
+                        map_data = maps_dict[maps_names[map_idx]]
+                        colormap = map_data["colormap"]
+                        colorbar_title = map_data["colorbar_title"]
+
+                        cb_dict = {}
+                        cb_dict["colormap"] = colormap
+                        cb_dict["title"] = colorbar_title
+                        cb_dict["map_name"] = maps_names[map_idx]
+                        cb_dict["vmin"] = colormap_limits[(map_idx, 0, 0)][0][0]
+                        cb_dict["vmax"] = colormap_limits[(map_idx, 0, 0)][0][1]
+
+                        cb_dict["position"] = (map_idx, n_objs)
+                        cb_dict["orientation"] = "vertical"
+
                         colorbar_list.append(cb_dict)
 
     layout_config = {
@@ -1344,63 +988,52 @@ def multi_map_multi_surface_layout(
 
 ###############################################################################################
 def multi_view_single_element_layout(
-    surface,
-    view_ids,
-    map_name,
-    v_limits,
-    colormap,
-    colorbar_title,
-    orientation,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
+    valid_views,
     colorbar,
+    orientation,
     colorbar_position,
     colorbar_size,
 ):
     """Handle multiple views, single map, single surface case."""
 
-    if map_name in surface.colortables:
-        colorbar = False
-
-    n_views = len(view_ids)
+    n_views = len(valid_views)
     brain_positions = {}
-    colormap_limits = {}
     colorbar_list = []
 
-    map_limits = visutils.get_map_limits(
-        objs2plot=surface,
-        map_name=map_name,
-        colormap_style="individual",
-        v_limits=v_limits,
-    )[0]
+    brain_positions = {}
+    map_name = list(maps_dict.keys())[0]
+
+    colormap = charac_dict["shared"]["colormap"]
+    colorbar_title = charac_dict["shared"]["colorbar_title"]
+    groups = []
     if orientation == "horizontal":
         for view_idx in range(n_views):
             brain_positions[(0, 0, view_idx)] = (0, view_idx)
-            colormap_limits[(0, 0, view_idx)] = map_limits
 
         if not colorbar:
             shape = [1, n_views]
             row_weights = [1]
             col_weights = [1] * n_views
-            groups = []
 
         else:
-            shape = [1, n_views + 1]
-            row_weights = [1]
-            col_weights = [1] * n_views + [colorbar_size]
-            groups = []
 
             cb_dict = {}
             cb_dict["colormap"] = colormap
             cb_dict["map_name"] = map_name
-            cb_dict["vmin"] = map_limits[0]
-            cb_dict["vmax"] = map_limits[1]
-            if colorbar_title:
-                cb_dict["title"] = colorbar_title
-            else:
-                cb_dict["title"] = map_name
+            cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+            cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+            cb_dict["title"] = colorbar_title
 
             if colorbar_position == "right":
+                shape = [1, n_views + 1]
+                row_weights = [1]
+                col_weights = [1] * n_views + [colorbar_size]
                 cb_dict["position"] = (0, n_views)
                 cb_dict["orientation"] = "vertical"
+
             else:  # bottom
                 shape = [2, n_views]
                 row_weights = [1, colorbar_size]
@@ -1414,29 +1047,23 @@ def multi_view_single_element_layout(
     elif orientation == "vertical":
         for view_idx in range(n_views):
             brain_positions[(0, 0, view_idx)] = (view_idx, 0)
-            colormap_limits[(0, 0, view_idx)] = map_limits
 
         if not colorbar:
             shape = [n_views, 1]
             row_weights = [1] * n_views
             col_weights = [1]
-            groups = []
 
         else:
             shape = [n_views, 2]
             row_weights = [1] * n_views
             col_weights = [1, colorbar_size]
-            groups = []
 
             cb_dict = {}
             cb_dict["colormap"] = colormap
             cb_dict["map_name"] = map_name
-            cb_dict["vmin"] = map_limits[0]
-            cb_dict["vmax"] = map_limits[1]
-            if colorbar_title:
-                cb_dict["title"] = colorbar_title
-            else:
-                cb_dict["title"] = map_name
+            cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+            cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+            cb_dict["title"] = colorbar_title
 
             if colorbar_position == "right":
                 cb_dict["position"] = (0, 1)
@@ -1448,18 +1075,18 @@ def multi_view_single_element_layout(
                 col_weights = [1]
                 cb_dict["position"] = (n_views, 0)
                 cb_dict["orientation"] = "horizontal"
+
             colorbar_list.append(cb_dict)
     else:
         optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_views)
         for view_idx in range(n_views):
             pos = positions[view_idx]
             brain_positions[(0, 0, view_idx)] = pos
-            colormap_limits[(0, 0, view_idx)] = map_limits
+
         if not colorbar:
             shape = list(optimal_grid)
             row_weights = [1] * optimal_grid[0]
             col_weights = [1] * optimal_grid[1]
-            groups = []
         else:
             shape = [optimal_grid[0], optimal_grid[1] + 1]
             row_weights = [1] * optimal_grid[0]
@@ -1469,12 +1096,9 @@ def multi_view_single_element_layout(
             cb_dict = {}
             cb_dict["colormap"] = colormap
             cb_dict["map_name"] = map_name
-            cb_dict["vmin"] = map_limits[0]
-            cb_dict["vmax"] = map_limits[1]
-            if colorbar_title:
-                cb_dict["title"] = colorbar_title
-            else:
-                cb_dict["title"] = map_name
+            cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+            cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+            cb_dict["title"] = colorbar_title
 
             if colorbar_position == "right":
                 cb_dict["position"] = (0, optimal_grid[1])
@@ -1491,6 +1115,7 @@ def multi_view_single_element_layout(
                 groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
                 cb_dict["position"] = (optimal_grid[0], 0)
                 cb_dict["orientation"] = "horizontal"
+
             colorbar_list.append(cb_dict)
 
     layout_config = {
@@ -1506,240 +1131,141 @@ def multi_view_single_element_layout(
 
 ###############################################################################################
 def multi_view_multi_surface_layout(
-    objs2plot,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     valid_views,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
-    orientation,
     colorbar,
+    orientation,
     colorbar_position,
-    colormap_style,
+    colorbar_style,
     colorbar_size,
 ):
     """Handle multiple views and multiple objs2plot case."""
-    n_surfaces = len(objs2plot)
+    map_name = list(maps_dict.keys())[0]
+    colormap = charac_dict["shared"]["colormap"]
+    colorbar_title = charac_dict["shared"]["colorbar_title"]
+
+    dims = visutils.get_plot_config_dimensions(colormap_limits)
+    n_objs = dims[1]
     n_views = len(valid_views)
+
     brain_positions = {}
-    colormap_limits = {}
+
     colorbar_list = []
     if orientation == "horizontal":
+        for surf_idx in range(n_objs):
+            for view_idx in range(n_views):
+                brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
+
         if not colorbar:
-            shape = [n_surfaces, n_views]
-            row_weights = [1] * n_surfaces
+            shape = [n_objs, n_views]
+            row_weights = [1] * n_objs
             col_weights = [1] * n_views
             groups = []
 
-            # Views in columns, objs2plot in rows
-            for view_idx in range(n_views):
-                for surf_idx in range(n_surfaces):
-                    brain_positions[(0, surf_idx, view_idx)] = (surf_idx, view_idx)
-                    map_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot[surf_idx],
-                        map_name=maps_names[0],
-                        colormap_style="individual",
-                        v_limits=v_limits[0],
-                    )[0]
-                    colormap_limits[(0, surf_idx, view_idx)] = map_limits
         else:
+            if colorbar_style == "individual":
 
-            if colormap_style == "individual":
-                shape = [n_surfaces, n_views + 1]
-                row_weights = [1] * n_surfaces
+                shape = [n_objs, n_views + 1]
+                row_weights = [1] * n_objs
                 col_weights = [1] * n_views + [colorbar_size]
                 groups = []
-                for surf_idx in range(n_surfaces):
+                for surf_idx in range(n_objs):
                     cb_dict = {}
                     cb_dict["position"] = (surf_idx, n_views)
                     cb_dict["orientation"] = "vertical"
-                    cb_dict["colormap"] = (
-                        colormaps[0] if 0 < len(colormaps) else "viridis"
-                    )
-                    cb_dict["map_name"] = maps_names[0]
-                    if colorbar_titles:
-                        cb_dict["title"] = colorbar_titles[0]
-                    else:
-                        cb_dict["title"] = maps_names[0]
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot[surf_idx],
-                        map_name=maps_names[0],
-                        colormap_style="individual",
-                        v_limits=v_limits[0],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
+                    cb_dict["colormap"] = colormap
+                    cb_dict["map_name"] = map_name
+                    cb_dict["title"] = colorbar_title
+                    cb_dict["vmin"] = colormap_limits[(0, surf_idx, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(0, surf_idx, 0)][0][1]
 
-                    for view_idx in range(n_views):
-                        brain_positions[(0, surf_idx, view_idx)] = (
-                            surf_idx,
-                            view_idx,
-                        )
-                        colormap_limits[(0, surf_idx, view_idx)] = limits_list[0]
                     colorbar_list.append(cb_dict)
             else:
-                # View-wise limits
-                views_limits = []
-                for view_idx in range(n_views):
-                    view_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[0],
-                        colormap_style="shared",
-                        v_limits=v_limits[0],
-                    )[0]
-                    views_limits.append(view_limits)
-
-                ######### Global colorbar #########
-                # Compute the global limits
-                global_limits = (
-                    min(l[0] for l in views_limits),
-                    max(l[1] for l in views_limits),
-                )
                 cb_dict = {}
-                cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
-                cb_dict["map_name"] = maps_names[0]
-                cb_dict["vmin"] = global_limits[0]
-                cb_dict["vmax"] = global_limits[1]
-                if colorbar_titles:
-                    cb_dict["title"] = colorbar_titles[0]
-                else:
-                    cb_dict["title"] = maps_names[0]
-
-                for view_idx in range(n_views):
-                    for surf_idx in range(n_surfaces):
-                        brain_positions[(0, surf_idx, view_idx)] = (
-                            surf_idx,
-                            view_idx,
-                        )
-                        colormap_limits[(0, surf_idx, view_idx)] = global_limits + (
-                            maps_names[0],
-                        )
+                cb_dict["colormap"] = colormap
+                cb_dict["map_name"] = map_name
+                cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+                cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+                cb_dict["title"] = colorbar_title
 
                 if colorbar_position == "right":
-                    shape = [n_surfaces, n_views + 1]
-                    row_weights = [1] * n_surfaces
+                    shape = [n_objs, n_views + 1]
+                    row_weights = [1] * n_objs
                     col_weights = [1] * n_views + [colorbar_size]
-                    groups = [(slice(0, n_surfaces), n_views)]
+                    groups = [(slice(0, n_objs), n_views)]
 
                     cb_dict["position"] = (0, n_views)
                     cb_dict["orientation"] = "vertical"
 
                 elif colorbar_position == "bottom":
-                    shape = [n_surfaces + 1, n_views]
-                    row_weights = [1] * n_surfaces + [colorbar_size]
+                    shape = [n_objs + 1, n_views]
+                    row_weights = [1] * n_objs + [colorbar_size]
                     col_weights = [1] * n_views
-                    groups = [(n_surfaces, slice(0, n_views))]
+                    groups = [(n_objs, slice(0, n_views))]
 
-                    cb_dict["position"] = (n_surfaces, 0)
+                    cb_dict["position"] = (n_objs, 0)
                     cb_dict["orientation"] = "horizontal"
+
                 colorbar_list.append(cb_dict)
 
     else:  # vertical
+
+        for surf_idx in range(n_objs):
+            for view_idx in range(n_views):
+                brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
+
         if not colorbar:
             # Views in rows, objs2plot in columns
-            shape = [n_views, n_surfaces]
+            shape = [n_views, n_objs]
             row_weights = [1] * n_views
-            col_weights = [1] * n_surfaces
+            col_weights = [1] * n_objs
             groups = []
 
-            for view_idx in range(n_views):
-                for surf_idx in range(n_surfaces):
-                    brain_positions[(0, surf_idx, view_idx)] = (view_idx, surf_idx)
-                    map_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot[surf_idx],
-                        map_name=maps_names[0],
-                        colormap_style="individual",
-                        v_limits=v_limits[0],
-                    )[0]
-                    colormap_limits[(0, surf_idx, view_idx)] = map_limits
         else:
 
-            if colormap_style == "individual":
-                shape = [n_views + 1, n_surfaces]
+            if colorbar_style == "individual":
+                shape = [n_views + 1, n_objs]
                 row_weights = [1] * n_views + [colorbar_size]
-                col_weights = [1] * n_surfaces
+                col_weights = [1] * n_objs
                 groups = []
-                for surf_idx in range(n_surfaces):
+                for surf_idx in range(n_objs):
                     cb_dict = {}
                     cb_dict["position"] = (n_views, surf_idx)
                     cb_dict["orientation"] = "horizontal"
-                    cb_dict["colormap"] = (
-                        colormaps[0] if 0 < len(colormaps) else "viridis"
-                    )
-                    cb_dict["map_name"] = maps_names[0]
-                    if colorbar_titles:
-                        cb_dict["title"] = colorbar_titles[0]
-                    else:
-                        cb_dict["title"] = maps_names[0]
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot[surf_idx],
-                        map_name=maps_names[0],
-                        colormap_style="individual",
-                        v_limits=v_limits[0],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
+                    cb_dict["colormap"] = colormap
+                    cb_dict["map_name"] = map_name
+                    cb_dict["title"] = colorbar_title
 
-                    for view_idx in range(n_views):
-                        brain_positions[(0, surf_idx, view_idx)] = (
-                            view_idx,
-                            surf_idx,
-                        )
-                        colormap_limits[(0, surf_idx, view_idx)] = limits_list[0]
+                    cb_dict["vmin"] = colormap_limits[(0, surf_idx, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(0, surf_idx, 0)][0][1]
 
                     colorbar_list.append(cb_dict)
+
             else:
-                # View-wise limits
-                views_limits = []
-                for view_idx in range(n_views):
-                    view_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot,
-                        map_name=maps_names[0],
-                        colormap_style="shared",
-                        v_limits=v_limits[0],
-                    )[0]
-                    views_limits.append(view_limits)
 
-                ######### Global colorbar #########
-                # Compute the global limits
-                global_limits = (
-                    min(l[0] for l in views_limits),
-                    max(l[1] for l in views_limits),
-                )
                 cb_dict = {}
-                cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
-                cb_dict["map_name"] = maps_names[0]
-                cb_dict["vmin"] = global_limits[0]
-                cb_dict["vmax"] = global_limits[1]
-                if colorbar_titles:
-                    cb_dict["title"] = colorbar_titles[0]
-                else:
-                    cb_dict["title"] = maps_names[0]
-
-                for view_idx in range(n_views):
-                    for surf_idx in range(n_surfaces):
-                        brain_positions[(0, surf_idx, view_idx)] = (
-                            view_idx,
-                            surf_idx,
-                        )
-                        colormap_limits[(0, surf_idx, view_idx)] = global_limits + (
-                            maps_names[0],
-                        )
+                cb_dict["colormap"] = colormap
+                cb_dict["map_name"] = map_name
+                cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+                cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+                cb_dict["title"] = colorbar_title
 
                 if colorbar_position == "right":
-                    shape = [n_views, n_surfaces + 1]
+                    shape = [n_views, n_objs + 1]
                     row_weights = [1] * n_views
-                    col_weights = [1] * n_surfaces + [colorbar_size]
-                    groups = [(slice(0, n_views), n_surfaces)]
+                    col_weights = [1] * n_objs + [colorbar_size]
+                    groups = [(slice(0, n_views), n_objs)]
 
-                    cb_dict["position"] = (0, n_surfaces)
+                    cb_dict["position"] = (0, n_objs)
                     cb_dict["orientation"] = "vertical"
 
                 elif colorbar_position == "bottom":
-                    shape = [n_views + 1, n_surfaces]
+                    shape = [n_views + 1, n_objs]
                     row_weights = [1] * n_views + [colorbar_size]
-                    col_weights = [1] * n_surfaces
-                    groups = [(n_views, slice(0, n_surfaces))]
+                    col_weights = [1] * n_objs
+                    groups = [(n_views, slice(0, n_objs))]
 
                     cb_dict["position"] = (n_views, 0)
                     cb_dict["orientation"] = "horizontal"
@@ -1758,25 +1284,23 @@ def multi_view_multi_surface_layout(
 
 ###############################################################################################
 def multi_view_multi_map_layout(
-    objs2plot,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     valid_views,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
-    orientation,
     colorbar,
-    colormap_style,
+    orientation,
     colorbar_position,
+    colorbar_style,
     colorbar_size,
 ):
     """Handle multiple views and multiple maps case."""
 
     n_views = len(valid_views)
+    maps_names = list(maps_dict.keys())
     n_maps = len(maps_names)
 
     brain_positions = {}
-    colormap_limits = {}
     colorbar_list = []
     if orientation == "horizontal":
         if not colorbar:
@@ -1789,15 +1313,9 @@ def multi_view_multi_map_layout(
             for view_idx in range(n_views):
                 for map_idx in range(n_maps):
                     brain_positions[(map_idx, 0, view_idx)] = (map_idx, view_idx)
-                    map_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot[0],
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )[0]
-                    colormap_limits[(map_idx, 0, view_idx)] = map_limits
+
         else:
-            if colormap_style == "individual":
+            if colorbar_style == "individual":
                 shape = [n_maps, n_views + 1]
                 row_weights = [1] * n_maps
                 col_weights = [1] * n_views + [colorbar_size]
@@ -1806,75 +1324,40 @@ def multi_view_multi_map_layout(
                     cb_dict = {}
                     cb_dict["position"] = (map_idx, n_views)
                     cb_dict["orientation"] = "vertical"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
+
+                    colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                    colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
+
+                    cb_dict["colormap"] = colormap
                     cb_dict["map_name"] = maps_names[map_idx]
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot[0],
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
+                    cb_dict["title"] = colorbar_title
+                    cb_dict["vmin"] = colormap_limits[(map_idx, 0, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(map_idx, 0, 0)][0][1]
 
                     for view_idx in range(n_views):
                         brain_positions[(map_idx, 0, view_idx)] = (
                             map_idx,
                             view_idx,
                         )
-                        colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
-                    if maps_names[map_idx] not in objs2plot[0].colortables:
-                        colorbar_list.append(cb_dict)
 
+                    colorbar_list.append(cb_dict)
             else:
-                # Get the global limits
-                maps_limits = []
-                for map_idx in range(n_maps):
-                    if maps_names[map_idx] not in objs2plot[0].colortables:
-                        map_limits = visutils.get_map_limits(
-                            objs2plot=objs2plot,
-                            map_name=maps_names[map_idx],
-                            colormap_style="shared",
-                            v_limits=v_limits[map_idx],
-                        )[0]
-                        maps_limits.append(map_limits)
 
-                ######### Global colorbar #########
-                # Compute the global limits
-                global_limits = (
-                    min(l[0] for l in maps_limits),
-                    max(l[1] for l in maps_limits),
-                )
+                colorbar_title = charac_dict["shared"]["colorbar_title"]
+                colormap = charac_dict["shared"]["colormap"]
+
                 cb_dict = {}
-                cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                cb_dict["colormap"] = colormap
                 cb_dict["map_name"] = " + ".join(maps_names)
-                cb_dict["vmin"] = global_limits[0]
-                cb_dict["vmax"] = global_limits[1]
-                if colorbar_titles:
-                    cb_dict["title"] = colorbar_titles[0]
-                else:
-                    cb_dict["title"] = " + ".join(maps_names)
+                cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+                cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+                cb_dict["title"] = colorbar_title
 
                 for map_idx in range(n_maps):
                     for view_idx in range(n_views):
                         brain_positions[(map_idx, 0, view_idx)] = (
                             map_idx,
                             view_idx,
-                        )
-                        colormap_limits[(map_idx, 0, view_idx)] = global_limits + (
-                            maps_names[0],
                         )
 
                 if colorbar_position == "right":
@@ -1894,7 +1377,9 @@ def multi_view_multi_map_layout(
 
                     cb_dict["position"] = (n_maps, 0)
                     cb_dict["orientation"] = "horizontal"
+
                 colorbar_list.append(cb_dict)
+
     else:  # vertical
         if not colorbar:
             # Views in rows, maps in columns
@@ -1906,15 +1391,9 @@ def multi_view_multi_map_layout(
             for view_idx in range(n_views):
                 for map_idx in range(n_maps):
                     brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
-                    map_limits = visutils.get_map_limits(
-                        objs2plot=objs2plot[0],
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )[0]
-                    colormap_limits[(map_idx, 0, view_idx)] = map_limits
+
         else:
-            if colormap_style == "individual":
+            if colorbar_style == "individual":
                 shape = [n_views + 1, n_maps]
                 row_weights = [1] * n_views + [colorbar_size]
                 col_weights = [1] * n_maps
@@ -1924,75 +1403,39 @@ def multi_view_multi_map_layout(
                     cb_dict = {}
                     cb_dict["position"] = (n_views, map_idx)
                     cb_dict["orientation"] = "horizontal"
-                    cb_dict["colormap"] = (
-                        colormaps[map_idx]
-                        if map_idx < len(colormaps)
-                        else colormaps[-1]
-                    )
+
+                    colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                    colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
+                    cb_dict["colormap"] = colormap
                     cb_dict["map_name"] = maps_names[map_idx]
-                    if colorbar_titles:
-                        cb_dict["title"] = (
-                            colorbar_titles[map_idx]
-                            if map_idx < len(colorbar_titles)
-                            else colorbar_titles[-1]
-                        )
-                    else:
-                        cb_dict["title"] = maps_names[map_idx]
-                    limits_list = visutils.get_map_limits(
-                        objs2plot=objs2plot[0],
-                        map_name=maps_names[map_idx],
-                        colormap_style="individual",
-                        v_limits=v_limits[map_idx],
-                    )
-                    cb_dict["vmin"] = limits_list[0][0]
-                    cb_dict["vmax"] = limits_list[0][1]
+                    cb_dict["title"] = colorbar_title
+                    cb_dict["vmin"] = colormap_limits[(map_idx, 0, 0)][0][0]
+                    cb_dict["vmax"] = colormap_limits[(map_idx, 0, 0)][0][1]
 
                     for view_idx in range(n_views):
                         brain_positions[(map_idx, 0, view_idx)] = (
                             view_idx,
                             map_idx,
                         )
-                        colormap_limits[(map_idx, 0, view_idx)] = limits_list[0]
 
-                    if maps_names[map_idx] not in objs2plot[0].colortables:
-                        colorbar_list.append(cb_dict)
+                    colorbar_list.append(cb_dict)
+
             else:
-                # Get the global limits
-                maps_limits = []
-                for map_idx in range(n_maps):
-                    if maps_names[map_idx] not in objs2plot[0].colortables:
-                        map_limits = visutils.get_map_limits(
-                            objs2plot=objs2plot,
-                            map_name=maps_names[map_idx],
-                            colormap_style="shared",
-                            v_limits=v_limits[map_idx],
-                        )[0]
-                        maps_limits.append(map_limits)
 
-                ######### Global colorbar #########
-                # Compute the global limits
-                global_limits = (
-                    min(l[0] for l in maps_limits),
-                    max(l[1] for l in maps_limits),
-                )
+                colorbar_title = charac_dict["shared"]["colorbar_title"]
+                colormap = charac_dict["shared"]["colormap"]
+
                 cb_dict = {}
-                cb_dict["colormap"] = colormaps[0] if 0 < len(colormaps) else "viridis"
+                cb_dict["colormap"] = colormap
                 cb_dict["map_name"] = " + ".join(maps_names)
-                cb_dict["vmin"] = global_limits[0]
-                cb_dict["vmax"] = global_limits[1]
-                if colorbar_titles:
-                    cb_dict["title"] = colorbar_titles[0]
-                else:
-                    cb_dict["title"] = " + ".join(maps_names)
+                cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+                cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+                cb_dict["title"] = colorbar_title
+
                 for map_idx in range(n_maps):
                     for view_idx in range(n_views):
-                        brain_positions[(map_idx, 0, view_idx)] = (
-                            view_idx,
-                            map_idx,
-                        )
-                        colormap_limits[(map_idx, 0, view_idx)] = global_limits + (
-                            maps_names[0],
-                        )
+                        brain_positions[(map_idx, 0, view_idx)] = (view_idx, map_idx)
+
                 if colorbar_position == "right":
                     shape = [n_views, n_maps + 1]
                     row_weights = [1] * n_views
@@ -2010,7 +1453,9 @@ def multi_view_multi_map_layout(
 
                     cb_dict["position"] = (n_views, 0)
                     cb_dict["orientation"] = "horizontal"
+
                 colorbar_list.append(cb_dict)
+
     layout_config = {
         "shape": shape,
         "row_weights": row_weights,
@@ -2024,62 +1469,44 @@ def multi_view_multi_map_layout(
 
 ###############################################################################################
 def single_map_multi_surface_layout(
-    objs2plot,
-    maps_names,
-    v_limits,
-    colormaps,
-    colorbar_titles,
-    orientation,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    orientation,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle single map, multiple objs2plot case."""
-    brain_positions = {}
-    n_surfaces = len(objs2plot)
-
-    # Getting the limits for each surface and storing them in a list
-    limits_list = visutils.get_map_limits(
-        objs2plot=objs2plot,
-        map_name=maps_names[0],
-        colormap_style=colormap_style,
-        v_limits=v_limits[0],
-    )
 
     if orientation == "horizontal":
         return horizontal_multi_surface_layout(
-            objs2plot,
-            maps_names,
-            limits_list,
-            colormaps,
-            colorbar_titles,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
     elif orientation == "vertical":
         return vertical_multi_surface_layout(
-            objs2plot,
-            maps_names,
-            limits_list,
-            colormaps,
-            colorbar_titles,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
     else:  # grid
         return grid_multi_surface_layout(
-            objs2plot,
-            maps_names,
-            limits_list,
-            colormaps,
-            colorbar_titles,
+            maps_dict,
+            colormap_limits,
+            charac_dict,
             colorbar,
-            colormap_style,
+            colorbar_style,
             colorbar_position,
             colorbar_size,
         )
@@ -2087,120 +1514,105 @@ def single_map_multi_surface_layout(
 
 ###############################################################################################
 def horizontal_multi_surface_layout(
-    objs2plot,
-    maps_names,
-    limits_list,
-    colormaps,
-    colorbar_titles,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle horizontal layout for multiple objs2plot."""
     brain_positions = {}
-    colormap_limits = {}
+    dims = visutils.get_plot_config_dimensions(colormap_limits)
+    n_objs2plot = dims[1]
 
-    n_surfaces = len(objs2plot)
-    for surf_idx in range(n_surfaces):
-        brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
-        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+    map_name = list(maps_dict.keys())[0]
+
+    colormap = maps_dict[map_name]["colormap"]
+    colorbar_title = maps_dict[map_name]["colorbar_title"]
 
     colorbar_list = []
     if not colorbar:
-        shape = [1, n_surfaces]
+        shape = [1, n_objs2plot]
         row_weights = [1]
-        col_weights = [1] * n_surfaces
+        col_weights = [1] * n_objs2plot
         groups = []
 
+        for surf_idx in range(n_objs2plot):
+            brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
+
     else:
-        if colormap_style == "individual":
-            for surf_idx in range(n_surfaces):
-                if maps_names[0] in objs2plot[surf_idx].colortables:
-                    indiv_colorbar = False
-                else:
-                    indiv_colorbar = True
-
-                if indiv_colorbar:
-                    groups = []
-                    cb_dict = {}
-
-                    cb_dict["vmin"] = limits_list[surf_idx][0]
-                    cb_dict["vmax"] = limits_list[surf_idx][1]
-
-                    if colorbar_titles:
-                        if colorbar_titles[0]:
-                            cb_dict["title"] = colorbar_titles[0]
-                        else:
-                            cb_dict["title"] = maps_names[0]
-                    else:
-                        cb_dict["title"] = maps_names[0]
-
-                    cb_dict["colormap"] = colormaps[0]
-                    cb_dict["map_name"] = maps_names[0]
-
-                    if colorbar_position == "right":
-                        shape = [1, n_surfaces * 2]
-                        row_weights = [1]
-                        col_weights = [1, colorbar_size] * n_surfaces
-                        brain_positions[(0, surf_idx, 0)] = (0, surf_idx * 2)
-                        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
-
-                        cb_dict["position"] = (0, surf_idx * 2 + 1)
-                        cb_dict["orientation"] = "vertical"
-
-                    else:  # bottom
-                        shape = [2, n_surfaces]
-                        row_weights = [1, colorbar_size]
-                        col_weights = [1] * n_surfaces
-                        brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
-                        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
-
-                        cb_dict["position"] = (1, surf_idx)
-                        cb_dict["orientation"] = "horizontal"
-                else:
-                    cb_dict = False
-
-                colorbar_list.append(cb_dict)
-
-        else:  # shared colorbar
-            cb_dict = {}
-            if colorbar_titles:
-                cb_dict["title"] = colorbar_titles[0]
-            else:
-                cb_dict["title"] = maps_names[0]
-
-            cb_dict["colormap"] = colormaps[0]
-            cb_dict["map_name"] = maps_names[0]
-
-            cb_dict["vmin"] = limits_list[0][0]
-            cb_dict["vmax"] = limits_list[0][1]
-
+        if colorbar_style == "individual":
+            groups = []
+            # Define layout parameters outside the loop
             if colorbar_position == "right":
-                shape = [1, n_surfaces + 1]
+                shape = [1, n_objs2plot * 2]
                 row_weights = [1]
-                col_weights = [1] * n_surfaces + [colorbar_size]
-                groups = []
-                cb_dict["position"] = (0, n_surfaces)  # Colorbar in last column
-                cb_dict["orientation"] = "vertical"
-
-                for surf_idx in range(n_surfaces):
-                    brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
-                    colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+                col_weights = [1, colorbar_size] * n_objs2plot
+                cb_orientation = "vertical"
 
             else:  # bottom
-                shape = [2, n_surfaces]
+                shape = [2, n_objs2plot]
                 row_weights = [1, colorbar_size]
-                col_weights = [1] * n_surfaces
-                groups = [(1, slice(0, n_surfaces))]  # Colorbar in last row
-                cb_dict["position"] = (1, 0)  # Color
-                cb_dict["orientation"] = "horizontal"
+                col_weights = [1] * n_objs2plot
+                cb_orientation = "horizontal"
 
-                for surf_idx in range(n_surfaces):
+            for surf_idx in range(n_objs2plot):
+                # Calculate positions based on layout
+                if colorbar_position == "right":
+                    brain_positions[(0, surf_idx, 0)] = (0, surf_idx * 2)
+                    cb_position = (0, surf_idx * 2 + 1)
+                else:  # bottom
                     brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
-                    colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+                    cb_position = (1, surf_idx)
 
-            colorbar_list.append(cb_dict)
+                # Build colorbar dict in one go
+                colorbar_list.append(
+                    {
+                        "vmin": colormap_limits[(0, surf_idx, 0)][0][0],
+                        "vmax": colormap_limits[(0, surf_idx, 0)][0][1],
+                        "colormap": colormap,
+                        "title": colorbar_title,
+                        "map_name": map_name,
+                        "position": cb_position,
+                        "orientation": cb_orientation,
+                    }
+                )
+
+        else:  # shared colorbar
+            # Configure layout based on colorbar position
+            if colorbar_position == "right":
+                shape = [1, n_objs2plot + 1]
+                row_weights = [1]
+                col_weights = [1] * n_objs2plot + [colorbar_size]
+                groups = []
+                cb_position = (0, n_objs2plot)
+                cb_orientation = "vertical"
+            else:  # bottom
+                shape = [2, n_objs2plot]
+                row_weights = [1, colorbar_size]
+                col_weights = [1] * n_objs2plot
+                groups = [(1, slice(0, n_objs2plot))]
+                cb_position = (1, 0)
+                cb_orientation = "horizontal"
+
+            # Set brain positions
+            for surf_idx in range(n_objs2plot):
+                brain_positions[(0, surf_idx, 0)] = (0, surf_idx)
+
+            # Build colorbar dict
+            colorbar_list.append(
+                {
+                    "title": charac_dict["shared"]["colorbar_title"],
+                    "colormap": colormap,
+                    "map_name": map_name,
+                    "vmin": colormap_limits[(0, 0, 0)][0][0],
+                    "vmax": colormap_limits[(0, 0, 0)][0][1],
+                    "position": cb_position,
+                    "orientation": cb_orientation,
+                }
+            )
 
     layout_config = {
         "shape": shape,
@@ -2216,104 +1628,105 @@ def horizontal_multi_surface_layout(
 
 ###############################################################################################
 def vertical_multi_surface_layout(
-    objs2plot,
-    maps_names,
-    limits_list,
-    colormaps,
-    colorbar_titles,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle vertical layout for multiple objs2plot."""
     brain_positions = {}
-    colormap_limits = {}
+    dims = visutils.get_plot_config_dimensions(colormap_limits)
+    n_objs2plot = dims[1]
 
-    n_surfaces = len(objs2plot)
-
-    for surf_idx in range(n_surfaces):
-        brain_positions[(0, surf_idx, 0)] = (surf_idx, 0)
-        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+    map_name = list(maps_dict.keys())[0]
+    colormap = maps_dict[map_name]["colormap"]
+    colorbar_title = maps_dict[map_name]["colorbar_title"]
 
     colorbar_list = []
+
     if not colorbar:
-        shape = [n_surfaces, 1]
-        row_weights = [1] * n_surfaces
+        shape = [n_objs2plot, 1]
+        row_weights = [1] * n_objs2plot
         col_weights = [1]
         groups = []
 
+        for surf_idx in range(n_objs2plot):
+            brain_positions[(0, surf_idx, 0)] = (surf_idx, 0)
+
     else:
+        if colorbar_style == "individual":
+            groups = []
 
-        if colormap_style == "individual":
-            for surf_idx in range(n_surfaces):
-                cb_dict = {}
+            # Define layout parameters outside the loop
+            if colorbar_position == "right":
+                shape = [n_objs2plot, 2]
+                row_weights = [1] * n_objs2plot
+                col_weights = [1, colorbar_size]
+                cb_orientation = "vertical"
+            else:  # bottom
+                shape = [n_objs2plot * 2, 1]
+                row_weights = [1, colorbar_size] * n_objs2plot
+                col_weights = [1]
+                cb_orientation = "horizontal"
 
-                cb_dict["vmin"] = limits_list[surf_idx][0]
-                cb_dict["vmax"] = limits_list[surf_idx][1]
-
-                if colorbar_titles:
-                    cb_dict["title"] = colorbar_titles[0]
-                else:
-                    cb_dict["title"] = maps_names[0]
-
-                cb_dict["colormap"] = colormaps[0]
-                cb_dict["map_name"] = maps_names[0]
-
+            for surf_idx in range(n_objs2plot):
+                # Calculate positions based on layout
                 if colorbar_position == "right":
-                    shape = [n_surfaces, 2]
-                    row_weights = [1] * n_surfaces
-                    col_weights = [1, colorbar_size]
-                    groups = []
-
-                    cb_dict["position"] = (surf_idx, 1)
-                    cb_dict["orientation"] = "vertical"
                     brain_positions[(0, surf_idx, 0)] = (surf_idx, 0)
-                    colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
-
-                elif colorbar_position == "bottom":
-                    shape = [n_surfaces * 2, 1]
-                    row_weights = [1, colorbar_size] * n_surfaces
-                    col_weights = [1]
-                    groups = []
-
-                    cb_dict["position"] = (surf_idx * 2 + 1, 0)
-                    cb_dict["orientation"] = "horizontal"
+                    cb_position = (surf_idx, 1)
+                else:  # bottom
                     brain_positions[(0, surf_idx, 0)] = (surf_idx * 2, 0)
-                    colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+                    cb_position = (surf_idx * 2 + 1, 0)
 
-                colorbar_list.append(cb_dict)
+                # Build colorbar dict in one go
+                colorbar_list.append(
+                    {
+                        "vmin": colormap_limits[(0, surf_idx, 0)][0][0],
+                        "vmax": colormap_limits[(0, surf_idx, 0)][0][1],
+                        "colormap": colormap,
+                        "title": colorbar_title,
+                        "map_name": map_name,
+                        "position": cb_position,
+                        "orientation": cb_orientation,
+                    }
+                )
 
         else:  # shared colorbar
-            cb_dict = {}
-            if colorbar_titles:
-                cb_dict["title"] = colorbar_titles[0]
-            else:
-                cb_dict["title"] = maps_names[0]
-
-            cb_dict["colormap"] = colormaps[0]
-            cb_dict["map_name"] = maps_names[0]
-
-            cb_dict["vmin"] = limits_list[0][0]
-            cb_dict["vmax"] = limits_list[0][1]
-
+            # Configure layout based on colorbar position
             if colorbar_position == "right":
-                shape = [n_surfaces, 2]
-                row_weights = [1] * n_surfaces
+                shape = [n_objs2plot, 2]
+                row_weights = [1] * n_objs2plot
                 col_weights = [1, colorbar_size]
-                groups = [(slice(0, n_surfaces), 1)]
-                cb_dict["position"] = (0, 1)
-                cb_dict["orientation"] = "vertical"
-
-            elif colorbar_position == "bottom":
-                shape = [n_surfaces + 1, 1]
-                row_weights = [1] * n_surfaces + [colorbar_size]
+                groups = [(slice(0, n_objs2plot), 1)]
+                cb_position = (0, 1)
+                cb_orientation = "vertical"
+            else:  # bottom
+                shape = [n_objs2plot + 1, 1]
+                row_weights = [1] * n_objs2plot + [colorbar_size]
                 col_weights = [1]
-                groups = [(n_surfaces, slice(0, 1))]
-                cb_dict["position"] = (n_surfaces, 0)
-                cb_dict["orientation"] = "horizontal"
+                groups = [(n_objs2plot, slice(0, 1))]
+                cb_position = (n_objs2plot, 0)
+                cb_orientation = "horizontal"
 
-            colorbar_list.append(cb_dict)
+            # Set brain positions
+            for surf_idx in range(n_objs2plot):
+                brain_positions[(0, surf_idx, 0)] = (surf_idx, 0)
+
+            # Build colorbar dict
+            colorbar_list.append(
+                {
+                    "title": charac_dict["shared"]["colorbar_title"],
+                    "colormap": colormap,
+                    "map_name": map_name,
+                    "vmin": colormap_limits[(0, 0, 0)][0][0],
+                    "vmax": colormap_limits[(0, 0, 0)][0][1],
+                    "position": cb_position,
+                    "orientation": cb_orientation,
+                }
+            )
 
     layout_config = {
         "shape": shape,
@@ -2323,109 +1736,115 @@ def vertical_multi_surface_layout(
         "brain_positions": brain_positions,
         "colormap_limits": colormap_limits,
     }
+
     return layout_config, colorbar_list
 
 
 ###############################################################################################
 def grid_multi_surface_layout(
-    objs2plot,
-    maps_names,
-    limits_list,
-    colormaps,
-    colorbar_titles,
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     colorbar,
-    colormap_style,
+    colorbar_style,
     colorbar_position,
     colorbar_size,
 ):
     """Handle grid layout for multiple objs2plot."""
-
-    n_surfaces = len(objs2plot)
-    optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_surfaces)
     brain_positions = {}
-    colormap_limits = {}
+    dims = visutils.get_plot_config_dimensions(colormap_limits)
+    n_objs2plot = dims[1]
 
-    for surf_idx in range(n_surfaces):
-        brain_positions[(0, surf_idx, 0)] = positions[surf_idx]
-        colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+    optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_objs2plot)
+
+    map_name = list(maps_dict.keys())[0]
+    colormap = maps_dict[map_name]["colormap"]
+    colorbar_title = maps_dict[map_name]["colorbar_title"]
 
     colorbar_list = []
+
     if not colorbar:
         shape = optimal_grid
         row_weights = [1] * optimal_grid[0]
         col_weights = [1] * optimal_grid[1]
         groups = []
 
+        for surf_idx in range(n_objs2plot):
+            brain_positions[(0, surf_idx, 0)] = positions[surf_idx]
+
     else:
-        if colormap_style == "individual":
-            for surf_idx in range(n_surfaces):
-                cb_dict = {}
+        if colorbar_style == "individual":
+            groups = []
 
-                cb_dict["vmin"] = limits_list[surf_idx][0]
-                cb_dict["vmax"] = limits_list[surf_idx][1]
+            # Define layout parameters outside the loop
+            if colorbar_position == "right":
+                shape = [optimal_grid[0], optimal_grid[1] * 2]
+                row_weights = [1] * optimal_grid[0]
+                col_weights = [1, colorbar_size] * optimal_grid[1]
+                cb_orientation = "vertical"
+            else:  # bottom
+                shape = [optimal_grid[0] * 2, optimal_grid[1]]
+                row_weights = [1, colorbar_size] * optimal_grid[0]
+                col_weights = [1] * optimal_grid[1]
+                cb_orientation = "horizontal"
 
-                if colorbar_titles:
-                    cb_dict["title"] = colorbar_titles[0]
-                else:
-                    cb_dict["title"] = maps_names[0]
-
-                cb_dict["colormap"] = colormaps[0]
-                cb_dict["map_name"] = maps_names[0]
-
+            for surf_idx in range(n_objs2plot):
                 pos = positions[surf_idx]
-                colormap_limits[(0, surf_idx, 0)] = limits_list[surf_idx]
+
+                # Calculate positions based on layout
                 if colorbar_position == "right":
-                    shape = [optimal_grid[0], optimal_grid[1] * 2]
-                    row_weights = [1] * optimal_grid[0]
-                    col_weights = [1, colorbar_size] * optimal_grid[1]
-                    groups = []
-
                     brain_positions[(0, surf_idx, 0)] = (pos[0], pos[1] * 2)
-
-                    cb_dict["position"] = (pos[0], pos[1] * 2 + 1)
-                    cb_dict["orientation"] = "vertical"
-
-                else:
-                    shape = [optimal_grid[0] * 2, optimal_grid[1]]
-                    row_weights = [1, colorbar_size] * optimal_grid[0]
-                    col_weights = [1] * optimal_grid[1]
-                    groups = []
-
+                    cb_position = (pos[0], pos[1] * 2 + 1)
+                else:  # bottom
                     brain_positions[(0, surf_idx, 0)] = (pos[0] * 2, pos[1])
+                    cb_position = (pos[0] * 2 + 1, pos[1])
 
-                    cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
-                    cb_dict["orientation"] = "horizontal"
+                # Build colorbar dict in one go
+                colorbar_list.append(
+                    {
+                        "vmin": colormap_limits[(0, surf_idx, 0)][0][0],
+                        "vmax": colormap_limits[(0, surf_idx, 0)][0][1],
+                        "colormap": colormap,
+                        "title": colorbar_title,
+                        "map_name": map_name,
+                        "position": cb_position,
+                        "orientation": cb_orientation,
+                    }
+                )
 
-                colorbar_list.append(cb_dict)
         else:  # shared colorbar
-            cb_dict = {}
-            if colorbar_titles:
-                cb_dict["title"] = colorbar_titles[0]
-            else:
-                cb_dict["title"] = maps_names[0]
-
-            cb_dict["colormap"] = colormaps[0]
-            cb_dict["map_name"] = maps_names[0]
-            cb_dict["vmin"] = limits_list[0][0]
-            cb_dict["vmax"] = limits_list[0][1]
-
+            # Configure layout based on colorbar position
             if colorbar_position == "right":
                 shape = [optimal_grid[0], optimal_grid[1] + 1]
                 row_weights = [1] * optimal_grid[0]
                 col_weights = [1] * optimal_grid[1] + [colorbar_size]
                 groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
-                cb_dict["position"] = (0, optimal_grid[1])
-                cb_dict["orientation"] = "vertical"
-
+                cb_position = (0, optimal_grid[1])
+                cb_orientation = "vertical"
             else:  # bottom
                 shape = [optimal_grid[0] + 1, optimal_grid[1]]
                 row_weights = [1] * optimal_grid[0] + [colorbar_size]
                 col_weights = [1] * optimal_grid[1]
                 groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
-                cb_dict["position"] = (optimal_grid[0], 0)
-                cb_dict["orientation"] = "horizontal"
+                cb_position = (optimal_grid[0], 0)
+                cb_orientation = "horizontal"
 
-            colorbar_list.append(cb_dict)
+            # Set brain positions
+            for surf_idx in range(n_objs2plot):
+                brain_positions[(0, surf_idx, 0)] = positions[surf_idx]
+
+            # Build colorbar dict
+            colorbar_list.append(
+                {
+                    "title": charac_dict["shared"]["colorbar_title"],
+                    "colormap": colormap,
+                    "map_name": map_name,
+                    "vmin": colormap_limits[(0, 0, 0)][0][0],
+                    "vmax": colormap_limits[(0, 0, 0)][0][1],
+                    "position": cb_position,
+                    "orientation": cb_orientation,
+                }
+            )
 
     layout_config = {
         "shape": shape,
@@ -2435,6 +1854,7 @@ def grid_multi_surface_layout(
         "brain_positions": brain_positions,
         "colormap_limits": colormap_limits,
     }
+
     return layout_config, colorbar_list
 
 
@@ -2470,7 +1890,7 @@ def hemispheres_layout(
     map_limits = visutils.get_map_limits(
         objs2plot=[surf_lh, surf_rh, surf_merg],
         map_name=map_name,
-        colormap_style="individual",
+        colorbar_style="individual",
         v_limits=(vmin, vmax),
     )
 
