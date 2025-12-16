@@ -1857,100 +1857,191 @@ def preview_theme(plotobj, theme_name: str) -> None:
 
 
 ################################################################################################
-def get_shared_limits(
-    objs2plot: Union[List[cltsurf.Surface], List[clttract.Tractogram]],
-    map_name: str,
-    vmin: float,
-    vmax: float,
-) -> Tuple[float, float]:
+def get_shared_limits(objs2plot, map_name, vmin, vmax):
+    """Get shared vmin and vmax across all objects."""
+
+    all_objects = flatten_objects(objs2plot)
+    all_min_values = []
+    all_max_values = []
+
+    for obj in all_objects:
+        if isinstance(obj, cltsurf.Surface):
+            data = obj.mesh.point_data[map_name]
+        elif isinstance(obj, clttract.Tractogram):
+            if map_name in obj.data_per_point.keys():
+                data = obj.data_per_point[map_name]
+            elif map_name in obj.data_per_streamline.keys():
+                data = obj.data_per_streamline[map_name]
+            else:
+                raise KeyError(f"Map name '{map_name}' not found in Tractogram data.")
+
+        # Handle list or ArraySequence data
+        if isinstance(data, (list, ArraySequence)):
+            data = np.concatenate(data)
+
+        all_min_values.append(np.min(data))
+        all_max_values.append(np.max(data))
+
+    # Compute shared limits
+    shared_vmin = np.min(all_min_values) if vmin is None else vmin
+    shared_vmax = np.max(all_max_values) if vmax is None else vmax
+
+    return shared_vmin, shared_vmax
+
+
+################################################################################################
+def get_plot_config_dimensions(limits: dict) -> tuple:
     """
-    Get shared vmin and vmax from surfaces if not provided.
+    Get the number of objects, surfaces, and views from the limits dictionary.
+
+    Parameters
+    ----------
+    limits : dict
+        Dictionary where keys are (n_obj, n_surf, n_view) tuples.
+
+    Returns
+    -------
+    tuple
+        Tuple containing (n_obj, n_surf, n_view).
+    Raises
+    ------
+    ValueError
+        If limits dictionary is empty.
+
+    ValueError
+        If keys in limits dictionary are not tuples of length 3.
+
+    """
+    if not limits:
+        raise ValueError("Limits dictionary is empty.")
+
+    for key in limits.keys():
+        if not (isinstance(key, tuple) and len(key) == 3):
+            raise ValueError("Keys in limits dictionary must be tuples of length 3.")
+
+    #
+    tuples_list = list(limits.keys())
+    result = tuple(max(values) for values in zip(*tuples_list))
+
+    n_map = result[0] + 1
+    n_surf = result[1] + 1
+    n_view = result[2] + 1
+
+    return (n_map, n_surf, n_view)
+
+
+#################################################################################################
+def get_map_characteristics(objs2plot, maps_dict: dict):
+    """
+    Compute vmin and vmax for each map based on the specified style.
 
     Parameters
     ----------
     objs2plot : list
-        List of Surface or Tractogram objects to plot.
+        List of Surface or Tractogram objects to plot, or nested lists of objects.
 
-    map_name : str
-        Name of the data array to use for color mapping.
-
-    vmin : float or None
-        Minimum value for color mapping. If None, will be computed.
-
-    vmax : float or None
-        Maximum value for color mapping. If None, will be computed.
+    maps_dict : dict
+        Dictionary where keys are map names and values.
 
     Returns
     -------
-    Tuple[float, float]
-        (vmin, vmax) values for color mapping.
+    limits_dict : dict
+        Dictionary with vmin and vmax for each map and overall shared limits.
+
+    charact_dict : dict
+        Dictionary with colormap and colorbar title for each map and overall shared characteristics.
 
     Raises
     ------
     ValueError
-        If no data found for the specified map_name.
-
-    KeyError
-        If map_name is not found in any of the objects.
-
-    TypeError
-        If objs2plot contains unsupported object types.
-
-    Examples
-    --------
-    >>> vmin, vmax = _get_shared_limits([surf1, surf2], "thickness", None, None)
-    >>> print(f"Shared limits: vmin={vmin}, vmax={vmax}")
+        If an invalid style is provided.
 
 
     """
 
-    if not isinstance(objs2plot, list):
-        objs2plot = [objs2plot]
+    maps_names = list(maps_dict)
 
-    # Concatenate data from all the surfaces/tractograms
-    for i, obj2plot in enumerate(objs2plot):
-        if isinstance(obj2plot, cltsurf.Surface):
-            if map_name in obj2plot.mesh.point_data:
-                if i == 0:
-                    data = obj2plot.mesh.point_data[map_name]
-                else:
-                    data = np.concatenate((data, obj2plot.mesh.point_data[map_name]))
+    n_maps = len(maps_names)
+    limits_dict = {}
+    charact_dict = {}
+    n_objs = len(objs2plot)
 
-        elif isinstance(obj2plot, clttract.Tractogram):
-            if map_name in (obj2plot.data_per_point.keys()):
-                if i == 0:
-                    data = obj2plot.data_per_point[map_name]
-                else:
-                    data = np.concatenate((data, obj2plot.data_per_point[map_name]))
+    cat_bool = True
+    cont_global = 0
+    for map_idx in range(n_maps):
 
-            elif map_name in (obj2plot.data_per_streamline.keys()):
-                if i == 0:
-                    data = obj2plot.data_per_streamline[map_name]
-                else:
-                    data = np.concatenate(
-                        (data, obj2plot.data_per_streamline[map_name])
-                    )
+        map_name = maps_names[map_idx]
+        v_min = maps_dict[map_name]["vmin"]
+        v_max = maps_dict[map_name]["vmax"]
+        colormap = maps_dict[map_name]["colormap"]
+        colorbar_title = maps_dict[map_name]["colorbar_title"]
+
+        v_limits = (v_min, v_max)
+        obj_limits = get_map_limits(objs2plot, map_name, v_limits)
+        map_limits = {}
+        map_limits["individual"] = obj_limits
+
+        map_charact = {}
+        map_charact["colormap"] = colormap
+        map_charact["colorbar_title"] = colorbar_title
+
+        if colormap == "categorical":
+            map_limits["shared_by_map"] = (None, None, map_name)
 
         else:
-            raise TypeError(
-                f"Unsupported object type: {type(obj2plot)}. "
-                "Expected cltsurf.Surface or clttract.Tractogram."
-            )
+            cat_bool = False
+            cont = 0
+            for surf_idx in range(n_objs):
+                # Initialize overall shared limits
 
-    # Ensure data was found
-    if "data" not in locals():
-        raise ValueError(
-            f"No data found for map_name '{map_name}' in the provided objects."
-        )
+                if cont == 0:
+                    # Initialize shared limits per map
+                    shared_map_vmin = obj_limits[surf_idx][0]
+                    shared_map_vmax = obj_limits[surf_idx][1]
+                else:
+                    # Update shared limits per map
+                    shared_map_vmin = min(shared_map_vmin, obj_limits[surf_idx][0])
+                    shared_map_vmax = max(shared_map_vmax, obj_limits[surf_idx][1])
 
-    # Compute vmin and vmax if not provided
-    if vmin is None:
-        vmin = np.min(data)
+                cont += 1
 
-    if vmax is None:
-        vmax = np.max(data)
+            if cont_global == 0:
+                # Initialize overall shared limits
+                shared_vmin = shared_map_vmin
+                shared_vmax = shared_map_vmax
 
-    return vmin, vmax
+                shared_colormap = colormap
+                shared_colorbar_title = colorbar_title
+
+            else:
+
+                # Update overall shared limits
+                shared_vmin = min(shared_vmin, shared_map_vmin)
+                shared_vmax = max(shared_vmax, shared_map_vmax)
+
+                shared_colorbar_title = shared_colorbar_title + " + " + colorbar_title
+
+            cont_global += 1
+
+            map_limits["shared_by_map"] = (shared_map_vmin, shared_map_vmax, map_name)
+
+        limits_dict[map_name] = map_limits
+        charact_dict[map_name] = map_charact
+
+    if cat_bool:
+        limits_dict["shared"] = (None, None, map_name)
+        charact_dict["shared"] = {
+            "colormap": "categorical",
+            "colorbar_title": map_name,
+        }
+    else:
+        limits_dict["shared"] = (shared_vmin, shared_vmax, map_name)
+        charact_dict["shared"] = {
+            "colormap": shared_colormap,
+            "colorbar_title": shared_colorbar_title,
+        }
+
+    return limits_dict, charact_dict
 
 
 ################################################################################################
