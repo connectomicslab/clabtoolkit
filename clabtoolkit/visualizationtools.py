@@ -132,13 +132,10 @@ class BrainPlotter:
         views: list,
         hemi_id: str = ["lh", "rh"],
         orientation: str = "horizontal",
-        maps_names: Union[str, List[str]] = ["default"],
-        colormaps: Union[str, List[str]] = "viridis",
-        v_limits: Union[Tuple[float, float], List[Tuple[float, float]]] = (None, None),
-        surfaces: Union[Any, List[Any]] = None,  # cltsurf.Surface
-        colorbar: bool = False,
-        colorbar_titles: Union[str, List[str]] = None,
-        colormap_style: str = "individual",
+        objs2plot: Union[Any, List[Any]] = None,
+        maps_dict: Dict = {},
+        colorbar: bool = True,
+        colorbar_style: str = "individual",
         colorbar_position: str = "right",
     ):
         """
@@ -150,23 +147,16 @@ class BrainPlotter:
             (shape, row_weights, col_weights, groups, brain_positions, colorbar_positions)
         """
 
-        # Constants
-        colorbar_size = self.figure_conf["colorbar_size"]
-
         # Normalize inputs
-        maps_names = cltmisc.to_list(maps_names)
-        colormaps = cltmisc.to_list(colormaps)
-        v_limits = cltmisc.to_list(v_limits)
-        colorbar_titles = cltmisc.to_list(colorbar_titles) if colorbar_titles else None
-        surfaces = cltmisc.to_list(surfaces) if surfaces else []
-
+        objs2plot = cltmisc.to_list(objs2plot) if objs2plot else []
+        maps_names = list(maps_dict.keys())
         n_maps = len(maps_names)
-        n_surfaces = len(surfaces)
+        n_objs = len(objs2plot)
 
-        # Force single view when both maps and surfaces > 1
-        if n_maps > 1 and n_surfaces > 1:
+        # Force single view when both maps and objs2plot > 1
+        if n_maps > 1 and n_objs > 1 and len(views) > 1:
             print(
-                "🔧 FORCING single view (dorsal) because both n_maps > 1 and n_surfaces > 1"
+                "🔧 FORCING single view (dorsal) because n_maps > 1, n_objects > 1 and n_views > 1"
             )
             views = ["dorsal"]
 
@@ -174,30 +164,27 @@ class BrainPlotter:
         view_ids = visutils.get_views_to_plot(self, views, hemi_id=hemi_id)
         n_views = len(view_ids)
 
-        if n_maps > 1 and n_surfaces > 1:
+        if n_maps > 1 and n_objs > 1:
             view_ids = ["merg-dorsal"]
             n_views = 1
 
         print(
-            f"Number of views: {n_views}, Number of maps: {n_maps}, Number of surfaces: {n_surfaces}"
+            f"Number of views: {n_views}, Number of maps: {n_maps}, Number of surfaces: {n_objs}"
         )
 
         # Check if colorbar is needed
-        colorbar = colorbar and visutils.colorbar_needed(maps_names, surfaces)
+        # colorbar = colorbar and visutils.colorbar_needed(maps_names, surfaces)
 
         # Build configuration based on dimensions
         config, colorbar_list = vislayout.build_layout_config(
             self,
             view_ids,
-            maps_names,
-            surfaces,
-            v_limits,
-            colormaps,
-            orientation,
+            objs2plot,
+            maps_dict,
             colorbar,
-            colormap_style,
+            orientation,
+            colorbar_style,
             colorbar_position,
-            colorbar_titles,
         )
 
         return (
@@ -230,7 +217,7 @@ class BrainPlotter:
         save_path: Optional[str] = None,
         non_blocking: bool = True,
         colorbar: bool = True,
-        colormap_style: str = "individual",
+        colorbar_style: str = "individual",
         colorbar_titles: Union[str, List[str]] = None,
         colorbar_position: str = "right",
     ) -> None:
@@ -284,7 +271,7 @@ class BrainPlotter:
         colorbar : bool, default True
             Whether to show colorbars.
 
-        colormap_style : str, default "individual"
+        colorbar_style : str, default "individual"
             Style of colormap application.
 
         colorbar_titles : Union[str, List[str]], optional
@@ -309,34 +296,10 @@ class BrainPlotter:
             hemi_id = ["lh", "rh"]
 
         # Preparing the surfaces to be plotted
-        if isinstance(objs2plot, cltsurf.Surface):
+        if not isinstance(objs2plot, List):
             obj2plot = [copy.deepcopy(objs2plot)]
-
-        elif isinstance(objs2plot, clttract.Tractogram):
-            obj2plot = [copy.deepcopy(objs2plot)]
-
-        elif isinstance(objs2plot, list):
-            # If all the elements are of type cltsurf.Surface
-
-            obj2plot = []
-            for sing_obj in objs2plot:
-                if isinstance(sing_obj, (cltsurf.Surface, clttract.Tractogram)):
-                    obj2plot.append(copy.deepcopy(sing_obj))
-
-                elif isinstance(sing_obj, list) and all(
-                    hasattr(s, "mesh") for s in sing_obj
-                ):
-                    obj2plot.append(cltsurf.merge_surfaces(sing_obj))
-
-                elif isinstance(sing_obj, list) and all(
-                    hasattr(s, "tracts") for s in sing_obj
-                ):
-                    obj2plot.append(clttract.merge_tractograms(sing_obj))
-
-                else:
-                    raise TypeError(
-                        "All elements must be of type Surface, Tractogram or a list of such."
-                    )
+        else:
+            obj2plot = copy.deepcopy(objs2plot)
 
         # Number of objects to plot
         n_objects = len(obj2plot)
@@ -346,121 +309,45 @@ class BrainPlotter:
             map_names = [map_names]
         n_maps = len(map_names)
 
-        fin_map_names = []
-        for i, map_name in enumerate(map_names):
-            cont_map = 0
-            # Check if the map_name is available in any of the surfaces or tractograms
-            for sing_obj in obj2plot:
-                if isinstance(sing_obj, clttract.Tractogram):
-                    map_list_dict = sing_obj.list_maps()
-
-                    st_maps = map_list_dict["maps_per_streamline"]
-                    pt_maps = map_list_dict["maps_per_point"]
-
-                    if map_name in st_maps and map_name not in pt_maps:
-                        sing_obj.streamline_to_points(
-                            map_name=map_name,
-                            point_map_name=map_name,
-                        )
-
-                    available_maps = []
-                    if st_maps is not None:
-                        available_maps = available_maps + st_maps
-
-                    if pt_maps is not None:
-                        available_maps = available_maps + pt_maps
-
-                elif isinstance(sing_obj, cltsurf.Surface):
-                    available_maps = list(sing_obj.mesh.point_data.keys())
-
-                if map_name in available_maps:
-                    cont_map = cont_map + 1
-
-            #
-            if cont_map == n_objects:
-                fin_map_names.append(map_name)
-
         # Available overlays
-        map_names = fin_map_names
-        n_maps = len(map_names)
+        no_ctab_maps, map_names = visutils.find_common_map_names(obj2plot, map_names)
 
-        if n_maps == 0:
-            raise ValueError(
-                "No valid maps found in the provided surfaces. The map_names must be present in all surfaces."
+        # Preparing the maps dictionary
+        maps_dict = {}
+        no_ctab_maps_dict = {}
+        if len(no_ctab_maps) != 0:
+            no_ctab_maps_dict = visutils.prepare_map_plotting_params(
+                no_ctab_maps,
+                colormaps=colormaps,
+                v_limits=v_limits,
+                v_range=v_range,
+                range_color=range_color,
+                colorbar_titles=colorbar_titles,
             )
 
-        # Process and validate v_limits parameter
-        if isinstance(v_limits, Tuple):
-            if len(v_limits) != 2:
-                v_limits = (None, None)
-            v_limits = [v_limits] * n_maps
+        # Difference list between map_names and no_ctab_maps
+        diff_maps = list(set(map_names) - set(no_ctab_maps))
+        ctab_maps_dict = {}
+        if len(diff_maps) > 0:
+            for map_name in diff_maps:
+                ctab_maps_dict[map_name] = {
+                    "colormap": "categorical",
+                    "vmin": None,
+                    "vmax": None,
+                    "range_min": None,
+                    "range_max": None,
+                    "range_color": None,
+                    "colorbar": False,
+                    "colorbar_title": None,
+                }
+        # Merge both dictionaries
+        maps_dict.update(ctab_maps_dict)
+        maps_dict.update(no_ctab_maps_dict)
 
-        elif isinstance(v_limits, List[Tuple[float, float]]):
-            if len(v_limits) != n_maps:
-                v_limits = [(None, None)] * n_maps
-
-        if isinstance(v_range, Tuple):
-            if len(v_range) != 2:
-                v_range = (None, None)
-            v_range = [v_range] * n_maps
-
-        elif isinstance(v_range, List[Tuple[float, float]]):
-            if len(v_range) != n_maps:
-                v_range = [(None, None)] * n_maps
-
-        for vr in v_range:
-            if not (isinstance(vr, Tuple) and len(vr) == 2):
-                raise ValueError(
-                    "Each element in v_range must be a tuple of (min, max)."
-                )
-            # Check that the min is less than max if both are not None
-            if vr[0] is not None and vr[1] is not None:
-                if vr[0] >= vr[1]:
-                    raise ValueError(
-                        "In v_range, min value must be less than max value."
-                    )
-
-        for vl in v_limits:
-            if not (isinstance(vl, Tuple) and len(vl) == 2):
-                raise ValueError(
-                    "Each element in v_limits must be a tuple of (min, max)."
-                )
-
-            # Check that the min is less than max if both are not None
-            if vl[0] is not None and vl[1] is not None:
-                if vl[0] >= vl[1]:
-                    raise ValueError(
-                        "In v_limits, min value must be less than max value."
-                    )
-
-        for i, vl in enumerate(v_limits):
-            vr_tmp = v_range[i]
-            new_lower = vr_tmp[0] if vl[0] is None and vr_tmp[0] is not None else vl[0]
-            new_upper = vr_tmp[1] if vl[1] is None and vr_tmp[1] is not None else vl[1]
-            v_limits[i] = (new_lower, new_upper)
-
-        if isinstance(colormaps, str):
-            colormaps = [colormaps]
-
-        if len(colormaps) >= n_maps:
-            colormaps = colormaps[:n_maps]
-
-        else:
-            # If not enough colormaps are provided, repeat the first one
-            colormaps = [colormaps[0]] * n_maps
-
-        if colorbar_titles is not None:
-            if isinstance(colorbar_titles, str):
-                colorbar_titles = [colorbar_titles]
-
-            if len(colorbar_titles) != n_maps:
-                # If not enough titles are provided, repeat the first one
-                colorbar_titles = [colorbar_titles[0]] * n_maps
-
-        else:
-            colorbar_titles = map_names
-
-        # Check if the is colortable at any of the surfaces for any of the maps
+        # Assing the name of the map for the colorbar titles if not provided
+        for map_name in maps_dict.keys():
+            if maps_dict[map_name]["colorbar_title"] is None:
+                maps_dict[map_name]["colorbar_title"] = map_name
 
         (
             view_ids,
@@ -468,15 +355,12 @@ class BrainPlotter:
             colorbar_dict_list,
         ) = self._build_plotting_config(
             views=views,
-            maps_names=map_names,
-            surfaces=obj2plot,
-            colormaps=colormaps,
-            v_limits=v_limits,
+            objs2plot=obj2plot,
+            maps_dict=maps_dict,
+            colorbar=colorbar,
             orientation=views_orientation,
             hemi_id=hemi_id,
-            colorbar=colorbar,
-            colorbar_titles=colorbar_titles,
-            colormap_style=colormap_style,
+            colorbar_style=colorbar_style,
             colorbar_position=colorbar_position,
         )
 
@@ -573,86 +457,114 @@ class BrainPlotter:
             )
 
             # Geting the vmin and vmax for the current map
-            vmin, vmax, map_name = map_limits[map_idx, obj_idx, view_idx]
+            vmin, vmax, map_name = map_limits[map_idx, obj_idx, view_idx][0]
 
             # Select the colormap for the current map
             idx = [i for i, name in enumerate(map_names) if name == map_name]
-            colormap = colormaps[idx[0]] if idx else colormaps[0]
+            # colormap = colormaps[idx[0]] if idx else colormaps[0]
+
+            colormap = maps_dict[map_names[idx[0]]]["colormap"]
+            range_min = maps_dict[map_names[idx[0]]]["range_min"]
+            range_max = maps_dict[map_names[idx[0]]]["range_max"]
+            range_color = maps_dict[map_names[idx[0]]]["range_color"]
 
             # Add the brain surface mesh
-            tmp_obj = obj2plot[obj_idx]
-            tmp_obj = visutils.prepare_obj_for_plotting(
-                tmp_obj,
+            prep_obj = visutils.prepare_list_obj_for_plotting(
+                obj2plot[obj_idx],
                 map_names[map_idx],
                 colormap,
                 vmin=vmin,
                 vmax=vmax,
-                range_min=v_range[map_idx][0],
-                range_max=v_range[map_idx][1],
+                range_min=range_min,
+                range_max=range_max,
                 range_color=range_color,
             )
-            if isinstance(tmp_obj, clttract.Tractogram):
+            for tmp_obj in prep_obj:
+                if isinstance(tmp_obj, clttract.Tractogram):
 
-                tracts = tmp_obj.tracts
-                rgba_data = tmp_obj.data_per_point["rgba"]
+                    tracts = tmp_obj.tracts
+                    rgba_data = tmp_obj.data_per_point["rgba"]
 
-                # 1. Concatenate all points and colors
-                all_points = np.vstack(tracts)
-                all_rgba = np.vstack(rgba_data)
+                    # 1. Concatenate all points and colors
+                    all_points = np.vstack(tracts)
+                    all_rgba = np.vstack(rgba_data)
 
-                # 2. Build the lines connectivity array
-                #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
-                lines = []
-                offset = 0
-                for tract in tracts:
-                    n = len(tract)
-                    lines.append(n)
-                    lines.extend(range(offset, offset + n))
-                    offset += n
-                lines = np.array(lines, dtype=np.int_)
+                    if use_opacity is False:
+                        all_rgba = all_rgba[:, :3]
 
-                # 3. Create single PolyData with all curves
-                if tract_plot_style == "tube":
-                    # Create a PolyData object for tube representation
-                    # Create a PolyData object for tube representation
-                    poly = pv.PolyData()
-                    poly.points = all_points
-                    poly.lines = lines
+                    # 2. Build the lines connectivity array
+                    #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
+                    lines = []
+                    offset = 0
+                    for tract in tracts:
+                        n = len(tract)
+                        lines.append(n)
+                        lines.extend(range(offset, offset + n))
+                        offset += n
+                    lines = np.array(lines, dtype=np.int_)
 
-                    # Attach your RGBA scalars
-                    poly.point_data["rgba"] = all_rgba  # <-- important
+                    # 3. Create single PolyData with all curves
+                    if tract_plot_style == "tube":
+                        # Create a PolyData object for tube representation
+                        # Create a PolyData object for tube representation
+                        poly = pv.PolyData()
+                        poly.points = all_points
+                        poly.lines = lines
 
-                    # Add tube filter (tube cannot take scalars directly)
-                    tube_radius = 0.1
-                    tube_sides = 10
-                    tube_poly = poly.tube(
-                        radius=tube_radius,
-                        n_sides=tube_sides,
-                    )
+                        # Attach your RGBA scalars
+                        poly.point_data["rgba"] = all_rgba  # <-- important
 
-                    # Add the mesh with tube representation
+                        # Add tube filter (tube cannot take scalars directly)
+                        tube_radius = 0.1
+                        tube_sides = 10
+                        tube_poly = poly.tube(
+                            radius=tube_radius,
+                            n_sides=tube_sides,
+                        )
+
+                        # Add the mesh with tube representation
+                        pv_plotter.add_mesh(
+                            tube_poly,
+                            scalars="rgba",  # use the same name
+                            rgb=True,
+                            ambient=self.figure_conf["mesh_ambient"],
+                            diffuse=self.figure_conf["mesh_diffuse"],
+                            specular=self.figure_conf["mesh_specular"],
+                            specular_power=self.figure_conf["mesh_specular_power"],
+                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                            show_scalar_bar=False,
+                        )
+                    else:
+                        poly = pv.PolyData()
+                        poly.points = all_points
+                        poly.lines = lines
+                        poly.point_data["rgba"] = all_rgba
+
+                        # 4. Single add_mesh call
+                        pv_plotter.add_mesh(
+                            poly,
+                            scalars="rgba",
+                            line_width=2,
+                            rgb=True,
+                            ambient=self.figure_conf["mesh_ambient"],
+                            diffuse=self.figure_conf["mesh_diffuse"],
+                            specular=self.figure_conf["mesh_specular"],
+                            specular_power=self.figure_conf["mesh_specular_power"],
+                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                            show_scalar_bar=False,
+                        )
+
+                elif isinstance(tmp_obj, cltsurf.Surface):
+                    if not use_opacity:
+                        # delete the alpha channel if exists
+                        if "rgba" in tmp_obj.mesh.point_data:
+                            tmp_obj.mesh.point_data["rgba"] = tmp_obj.mesh.point_data[
+                                "rgba"
+                            ][:, :3]
+
                     pv_plotter.add_mesh(
-                        tube_poly,
-                        scalars="rgba",  # use the same name
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-                else:
-                    poly = pv.PolyData()
-                    poly.points = all_points
-                    poly.lines = lines
-                    poly.point_data["rgba"] = all_rgba
-
-                    # 4. Single add_mesh call
-                    pv_plotter.add_mesh(
-                        poly,
+                        copy.deepcopy(tmp_obj.mesh),
                         scalars="rgba",
-                        line_width=2,
                         rgb=True,
                         ambient=self.figure_conf["mesh_ambient"],
                         diffuse=self.figure_conf["mesh_diffuse"],
@@ -662,38 +574,18 @@ class BrainPlotter:
                         show_scalar_bar=False,
                     )
 
-            elif isinstance(tmp_obj, cltsurf.Surface):
-                if not use_opacity:
-                    # delete the alpha channel if exists
-                    if "rgba" in tmp_obj.mesh.point_data:
-                        tmp_obj.mesh.point_data["rgba"] = tmp_obj.mesh.point_data[
-                            "rgba"
-                        ][:, :3]
+                # Set the camera view
+                tmp_view = view_ids[view_idx]
 
-                pv_plotter.add_mesh(
-                    copy.deepcopy(tmp_obj.mesh),
-                    scalars="rgba",
-                    rgb=True,
-                    ambient=self.figure_conf["mesh_ambient"],
-                    diffuse=self.figure_conf["mesh_diffuse"],
-                    specular=self.figure_conf["mesh_specular"],
-                    specular_power=self.figure_conf["mesh_specular_power"],
-                    smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                    show_scalar_bar=False,
-                )
+                # Replace merg from the view id if needed
+                if "merg" in tmp_view:
+                    tmp_view = tmp_view.replace("merg", "lh")
 
-            # Set the camera view
-            tmp_view = view_ids[view_idx]
-
-            # Replace merg from the view id if needed
-            if "merg" in tmp_view:
-                tmp_view = tmp_view.replace("merg", "lh")
-
-            camera_params = self.views_conf[tmp_view]
-            pv_plotter.camera_position = camera_params["view"]
-            pv_plotter.camera.azimuth = camera_params["azimuth"]
-            pv_plotter.camera.elevation = camera_params["elevation"]
-            pv_plotter.camera.zoom(camera_params["zoom"])
+                camera_params = self.views_conf[tmp_view]
+                pv_plotter.camera_position = camera_params["view"]
+                pv_plotter.camera.azimuth = camera_params["azimuth"]
+                pv_plotter.camera.elevation = camera_params["elevation"]
+                pv_plotter.camera.zoom(camera_params["zoom"])
 
         # And place colorbars at their positions
         if len(colorbar_dict_list):
@@ -709,17 +601,20 @@ class BrainPlotter:
                     vmax = colorbar_dict["vmax"]
                     pv_plotter.subplot(row, col)
 
-                    visutils.add_colorbar(
-                        self,
-                        plotter=pv_plotter,
-                        colorbar_subplot=(row, col),
-                        vmin=vmin,
-                        vmax=vmax,
-                        map_name=colorbar_id,
-                        colormap=colormap,
-                        colorbar_title=colorbar_title,
-                        colorbar_position=orientation,
-                    )
+                    if colormap == "categorical":
+                        pass  # Currently, no colorbar for categorical maps is implemented
+                    else:
+                        visutils.add_colorbar(
+                            self,
+                            plotter=pv_plotter,
+                            colorbar_subplot=(row, col),
+                            vmin=vmin,
+                            vmax=vmax,
+                            map_name=colorbar_id,
+                            colormap=colormap,
+                            colorbar_title=colorbar_title,
+                            colorbar_position=orientation,
+                        )
 
         # Linking the cameras from the subplots with the same view
         unique_v_indices = set(key[2] for key in brain_positions.keys())
@@ -737,7 +632,28 @@ class BrainPlotter:
         for v_idx, positions in grouped_by_v_idx.items():
             if len(positions) > 1:
                 # Link all views in this group
-                pv_plotter.link_views(grouped_by_v_idx[v_idx])
+                try:
+                    pv_plotter.link_views(positions)
+                except:
+                    try:
+                        # Try substracting 1 from positions bigger than n_horz_plots
+                        # This is to handle the case when there are colorbars in the last column
+                        # and there are more than 2 rows
+
+                        # Get number of horizontal plots
+                        n_horz_plots = pv_plotter.shape[1] - 1
+                        # Substract 1 to all the elements in positions that are bigger than n_horz_plots
+                        new_positions = np.arange(len(pv_plotter.renderers)).tolist()
+
+                        # Remove the element equal to n_horz_plots-1 from new_positions
+                        if n_horz_plots in new_positions:
+                            new_positions.remove(n_horz_plots)
+
+                        pv_plotter.link_views(new_positions)
+                    except:
+                        print(
+                            f"Could not link views for view index {v_idx} at positions {positions}"
+                        )
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
