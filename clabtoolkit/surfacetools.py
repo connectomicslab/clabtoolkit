@@ -3163,6 +3163,7 @@ class Surface:
         range_min: np.float64 = None,
         range_max: np.float64 = None,
         range_color: Tuple = (128, 128, 128, 255),
+        use_opacity: bool = False,
         views: Union[str, List[str]] = ["lateral"],
         views_orientation: str = "grid",
         hemi: str = "lh",
@@ -3204,6 +3205,9 @@ class Surface:
 
         range_color : Tuple, default (128, 128, 128, 255)
             RGBA color for values outside the specified data range.
+
+        use_opacity : bool, default False
+            Whether to apply opacity based on data values.
 
         views : str or List[str], default ["lateral"]
             Camera view(s): 'lateral', 'medial', 'dorsal', 'ventral', 'anterior',
@@ -3269,6 +3273,7 @@ class Surface:
             map_names=overlay_name,
             colormaps=cmap,
             v_limits=(vmin, vmax),
+            use_opacity=use_opacity,
             range_color=range_color,
             v_range=(range_min, range_max),
             notebook=notebook,
