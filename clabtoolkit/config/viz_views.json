@@ -19,6 +19,22 @@
         "mesh_specular_power": 50,
         "mesh_smooth_shading": true
     },
+    "objs_conf": {
+            "surface":{"smooth": true,
+                        "smooth_iterations": 10
+            },
+            "tracts":{"tube_radius": 0.1,
+                        "tube_sides": 10,
+                        "smooth": true,
+                        "smooth_iterations": 10,
+                        "resampling": false, 
+                        "resampling_points": 5
+
+            },
+            "points":{"spheres": true,
+                        "spheres_radius": 10
+            }
+    },
     "views_conf": {
             
             "lh-lateral":{"title": "Lateral view",
