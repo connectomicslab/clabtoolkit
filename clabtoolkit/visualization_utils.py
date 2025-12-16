@@ -9,6 +9,7 @@ from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
 import pyvista as pv
 import threading
 from pathlib import Path
+import copy
 
 from nibabel.streamlines import ArraySequence
 
@@ -176,10 +177,21 @@ def colorbar_needed(maps_names, plotsobj) -> bool:
     if not plotsobj:
         return True
 
-    # Check if any map is not already on the surface
-    for map_name in maps_names:
-        if map_name not in plotsobj[0].colortables:
-            return True
+    # def flatten_objects(obj_list):
+    #     """Generator that yields all individual objects from nested lists"""
+    #     for item in obj_list:
+    #         if isinstance(item, list):
+    #             yield from flatten_objects(item)
+    #         else:
+    #             yield item
+
+    # Check if any map is not in any object's colortables
+    for obj in flatten_objects(plotsobj):
+        if hasattr(obj, "colortables"):
+            for map_name in maps_names:
+                if map_name not in obj.colortables:
+                    return True
+
     return False
 
 
@@ -346,6 +358,7 @@ def link_brain_subplot_cameras(pv_plotter, brain_positions):
     )
     return successful_links
 
+
 #################################################################################################
 def prepare_list_obj_for_plotting(
     obj2plot: Union[List[cltsurf.Surface], List[clttract.Tractogram]],
@@ -367,7 +380,6 @@ def prepare_list_obj_for_plotting(
 
     map_name : str
         Name of the data array to use for color mapping.
-        
     colormap : str
         Matplotlib colormap name to use for color mapping.
 
@@ -2048,7 +2060,6 @@ def get_map_characteristics(objs2plot, maps_dict: dict):
 def get_map_limits(
     objs2plot: Union[List[cltsurf.Surface], List[clttract.Tractogram]],
     map_name: str,
-    colormap_style: str,
     v_limits: Tuple[Optional[float], Optional[float]],
 ) -> List[Tuple[float, float, str]]:
     """
@@ -2057,13 +2068,10 @@ def get_map_limits(
     Parameters
     ----------
     objs2plot : list
-        List of Surface or Tractogram objects to plot, or a single Surface.
+        List of Surface or Tractogram objects to plot, or nested lists of objects.
 
     map_name : str
         Name of the data array to use for color mapping.
-
-    colormap_style : str
-        "individual" for separate limits per object, "shared" for same limits.
 
     v_limits : tuple
         (vmin, vmax) values for color mapping. Use None to compute automatically.
@@ -2074,61 +2082,371 @@ def get_map_limits(
         List of (vmin, vmax, map_name) tuples for each object.
 
     Raises
+    ------
+    KeyError
+        If map_name is not found in any object's data.
+
+
     """
     vmin, vmax = v_limits
-    real_limits = []
 
+    # Handle single object input
     if not isinstance(objs2plot, list):
         objs2plot = [objs2plot]
 
+    # Handle list of map names
     if isinstance(map_name, list):
         map_name = map_name[0]
 
-    if colormap_style == "individual":
-        for obj2plot in objs2plot:
-            if isinstance(obj2plot, cltsurf.Surface):
-                data = obj2plot.mesh.point_data[map_name]
+    real_limits = []
 
-            elif isinstance(obj2plot, clttract.Tractogram):
-                if map_name in (obj2plot.data_per_point.keys()):
-                    data = obj2plot.data_per_point[map_name]
-                elif map_name in (obj2plot.data_per_streamline.keys()):
-                    data = obj2plot.data_per_streamline[map_name]
-                else:
-                    raise KeyError(
-                        f"Map name '{map_name}' not found in Tractogram data."
-                    )
-            else:
-                raise TypeError(
-                    f"Unsupported object type: {type(obj2plot)}. "
-                    "Expected cltsurf.Surface or clttract.Tractogram."
-                )
+    # Process each element in objs2plot
+    for obj in objs2plot:
+        # If this element is a list, process all objects in it together
+        if isinstance(obj, list):
+            all_data = []
+            for obj_sing in obj:
+                data = get_data_from_object(obj_sing, map_name)
+                # Concatenate if data is a list of arrays
+                if isinstance(data, list):
+                    data = np.concatenate(data)
+                if isinstance(data, ArraySequence):
+                    data = np.concatenate(data)
+                all_data.append(data.flatten())
 
-            # Ensure data was found
-            if "data" not in locals():
-                raise ValueError(
-                    f"No data found for map_name '{map_name}' in the provided objects."
-                )
+            # Concatenate all data from this sublist
+            all_data = np.concatenate(all_data)
+
+        else:
+            # Single object - compute its min/max
+            all_data = get_data_from_object(obj, map_name)
             # Concatenate if data is a list of arrays
-            if isinstance(data, list):
-                data = np.concatenate(data)
+            if isinstance(all_data, list):
+                all_data = np.concatenate(all_data)
+            if isinstance(all_data, ArraySequence):  # Fixed: was 'data'
+                all_data = np.concatenate(all_data)
 
-            if isinstance(data, ArraySequence):
-                data = np.concatenate(data)
+        # Compute vmin and vmax
+        local_vmin = np.min(all_data) if vmin is None else vmin  # Fixed: was 'data'
+        local_vmax = np.max(all_data) if vmax is None else vmax  # Fixed: was 'data'
 
-            # Compute vmin and vmax if not provided
-            if vmin is None:
-                real_vmin = np.min(data)
+        real_limits.append((local_vmin, local_vmax, map_name))
+
+    return real_limits
+
+
+################################################################################################
+def flatten_objects(obj_list):
+    """
+    Recursively flatten nested lists and return all individual objects
+
+    Parameters
+    ----------
+    obj_list : list
+        List of objects or nested lists containing Tractogram/Surface objects
+
+    Returns
+    -------
+    flattened : list
+        Flattened list of individual objects
+
+    """
+    flattened = []
+    for item in obj_list:
+        if isinstance(item, list):
+            flattened.extend(flatten_objects(item))
+        else:
+            flattened.append(item)
+    return flattened
+
+
+################################################################################################
+def get_data_from_object(obj, map_name):
+    """
+    Extract data array from a single object
+
+    Parameters
+    ----------
+    obj : cltsurf.Surface or clttract.Tractogram
+        Object to extract data from.
+
+    map_name : str
+        Name of the data array to extract.
+
+    Returns
+    -------
+    np.ndarray
+        Data array corresponding to the map_name.
+
+    Raises
+    ------
+    KeyError
+        If map_name is not found in the object's data.
+
+
+    """
+    if isinstance(obj, cltsurf.Surface):
+        return obj.mesh.point_data[map_name]
+
+    elif isinstance(obj, clttract.Tractogram):
+        if map_name in obj.data_per_point.keys():
+            return obj.data_per_point[map_name]
+        elif map_name in obj.data_per_streamline.keys():
+            return obj.data_per_streamline[map_name]
+        else:
+            raise KeyError(f"Map name '{map_name}' not found in Tractogram data.")
+    else:
+        raise TypeError(
+            f"Unsupported object type: {type(obj)}. "
+            "Expected cltsurf.Surface or clttract.Tractogram."
+        )
+
+
+################################################################################################
+def find_common_map_names(obj2plot, map_names):
+    """
+    Find map names that are present in all objects.
+
+    Parameters:
+    -----------
+    obj2plot : list
+        List of objects or nested lists containing Tractogram/Surface objects
+
+    map_names : list
+        List of map names to check
+
+    Returns:
+    --------
+    no_ctab_maps : list
+        List of map names that do not have associated colortables in any object
+
+    fin_map_names : list
+        List of map names that are present in all objects
+    """
+
+    # Get all individual objects
+    all_objects = flatten_objects(obj2plot)
+    n_objects = len(all_objects)
+
+    fin_map_names = []
+    no_ctab_maps = []
+
+    for i, map_name in enumerate(map_names):
+        cont_map = 0
+
+        # Check if the map_name is available in all objects
+        for sing_obj in all_objects:
+            available_maps = []
+
+            if isinstance(sing_obj, clttract.Tractogram):
+                map_list_dict = sing_obj.list_maps()
+
+                st_maps = map_list_dict["maps_per_streamline"]
+                pt_maps = map_list_dict["maps_per_point"]
+
+                if map_name in st_maps and map_name not in pt_maps:
+                    sing_obj.streamline_to_points(
+                        map_name=map_name,
+                        point_map_name=map_name,
+                    )
+
+                if st_maps is not None:
+                    available_maps.extend(st_maps)
+
+                if pt_maps is not None:
+                    available_maps.extend(pt_maps)
+
+            elif isinstance(sing_obj, cltsurf.Surface):
+                available_maps = list(sing_obj.mesh.point_data.keys())
+
+            # Check if colortable is missing
+            if map_name not in sing_obj.colortables.keys():
+                no_ctab_maps.append(map_name)
+
+            if map_name in available_maps:
+                cont_map = cont_map + 1
+
+        # Check if map_name is in all objects
+        if cont_map == n_objects:
+            fin_map_names.append(map_name)
+
+        # Make unique list of maps without colortable
+        no_ctab_maps = list(set(no_ctab_maps))
+
+        # Intersect the no_ctab_maps with fin_map_names to remove them
+        no_ctab_maps = cltmisc.list_intercept(fin_map_names, no_ctab_maps)
+
+    return no_ctab_maps, fin_map_names
+
+
+################################################################################################
+def prepare_map_plotting_params(
+    map_names: List[str],
+    colormaps: Union[str, List[str]],
+    v_limits: Union[
+        Tuple[Optional[float], Optional[float]],
+        List[Tuple[Optional[float], Optional[float]]],
+    ],
+    v_range: Union[
+        Tuple[Optional[float], Optional[float]],
+        List[Tuple[Optional[float], Optional[float]]],
+    ],
+    range_color: tuple = (128, 128, 128, 255),
+    colorbar_titles: Optional[Union[str, List[str]]] = None,
+) -> dict:
+    """
+    Prepare and validate parameters for plotting maps on surfaces or tractograms.
+
+    Parameters
+    ----------
+    map_names : List[str]
+        List of map names to be plotted.
+
+    colormaps : str or List[str]
+        Colormap(s) to use for each map. If a single string is provided, it will be used for all maps.
+
+    v_limits : tuple or List[tuple]
+        Value limits for color mapping. Can be a single tuple (vmin, vmax) or a list of tuples for each map.
+
+    v_range : tuple or List[tuple]
+        Value ranges for color mapping. Can be a single tuple (min, max) or a list of tuples for each map.
+
+    range_color : tuple, default (128, 128, 128, 255)
+        RGBA color to use for values outside the specified range.
+
+    colorbar_titles : str or List[str], optional
+        Titles for the colorbars. If a single string is provided, it will be used for all maps.
+        If None, map names will be used as titles.
+
+    Returns
+    -------
+    dict
+        Dictionary containing plotting parameters for each map.
+
+    Raises
+    ------
+    ValueError
+        If input parameters are invalid or inconsistent.
+
+    Examples
+    --------
+    >>> map_names = ["map1", "map2"]
+    >>> colormaps = ["viridis", "plasma"]
+    >>> v_limits = [(0, 1), (10, 100)]
+    >>> v_range = [(0, 1), (10, 100)]
+    >>> colorbar_titles = ["Map 1", "Map 2"]
+    >>> plot_params = prepare_map_plotting_params(
+    ...     map_names, colormaps, v_limits, v_range, range_color=(255, 0, 0, 255), colorbar_titles=colorbar_titles
+    ... )
+    >>> print(plot_params)
+    {
+        'map1': {
+            'colormap': 'viridis',
+            'vmin': 0,
+            'vmax': 1,
+            'range_min': 0,
+            'range_max': 1,
+            'range_color': (255, 0, 0, 255),
+            'colorbar_title': 'Map 1'
+        },
+        'map2': {
+            'colormap': 'plasma',
+            'vmin': 10,
+            'vmax': 100,
+            'range_min': 10,
+            'range_max': 100,
+            'range_color': (255, 0, 0, 255),
+            'colorbar_title': 'Map 2'
+        }
+    }
+
+    """
+
+    n_maps = len(map_names)
+
+    # Process and validate v_limits parameter
+    if isinstance(v_limits, tuple):
+        if len(v_limits) != 2:
+            v_limits = (None, None)
+        v_limits = [v_limits] * n_maps
+
+    elif isinstance(v_limits, list):
+        if len(v_limits) != n_maps:
+            if len(v_limits[0]) != 2:
+                v_limits = [(None, None)] * n_maps
             else:
-                real_vmin = vmin
+                v_limits = [v_limits[0]] * n_maps
 
-            if vmax is None:
-                real_vmax = np.max(data)
+    # Process and validate v_range parameter
+    if isinstance(v_range, tuple):
+        if len(v_range) != 2:
+            v_range = (None, None)
+        v_range = [v_range] * n_maps
+
+    elif isinstance(v_range, list):
+        if len(v_range) != n_maps:
+            if len(v_range[0]) != 2:
+                v_range = [(None, None)] * n_maps
             else:
-                real_vmax = vmax
+                v_range = [v_range[0]] * n_maps
 
-            real_limits.append((real_vmin, real_vmax, map_name))
-        return real_limits
-    else:  # shared
-        vmin, vmax = get_shared_limits(objs2plot, map_name, vmin, vmax)
-        return [(vmin, vmax, map_name)] * len(objs2plot)
+    # Validate v_range elements
+    for vr in v_range:
+        if not (isinstance(vr, tuple) and len(vr) == 2):
+            raise ValueError("Each element in v_range must be a tuple of (min, max).")
+        # Check that the min is less than max if both are not None
+        if vr[0] is not None and vr[1] is not None:
+            if vr[0] >= vr[1]:
+                raise ValueError("In v_range, min value must be less than max value.")
+
+    # Validate v_limits elements
+    for vl in v_limits:
+        if not (isinstance(vl, tuple) and len(vl) == 2):
+            raise ValueError("Each element in v_limits must be a tuple of (min, max).")
+        # Check that the min is less than max if both are not None
+        if vl[0] is not None and vl[1] is not None:
+            if vl[0] >= vl[1]:
+                raise ValueError("In v_limits, min value must be less than max value.")
+
+    # Merge v_limits with v_range where needed
+    for i, vl in enumerate(v_limits):
+        vr_tmp = v_range[i]
+        new_lower = vr_tmp[0] if vl[0] is None and vr_tmp[0] is not None else vl[0]
+        new_upper = vr_tmp[1] if vl[1] is None and vr_tmp[1] is not None else vl[1]
+        v_limits[i] = (new_lower, new_upper)
+
+    if isinstance(colormaps, str):
+        colormaps = [colormaps]
+
+    if len(colormaps) >= n_maps:
+        colormaps = colormaps[:n_maps]
+
+    else:
+        # If not enough colormaps are provided, repeat the first one
+        colormaps = [colormaps[0]] * n_maps
+
+    if colorbar_titles is not None:
+        if isinstance(colorbar_titles, str):
+            colorbar_titles = [colorbar_titles]
+
+        if len(colorbar_titles) != n_maps:
+            # If not enough titles are provided, repeat the first one
+            colorbar_titles = [colorbar_titles[0]] * n_maps
+
+    else:
+        colorbar_titles = map_names
+
+    map_plot_config = {}
+    for i, map_name in enumerate(map_names):
+        map_plot_config[map_name] = {
+            "colorbar": True,
+            "colormap": colormaps[i],
+            "vmin": v_limits[i][0],
+            "vmax": v_limits[i][1],
+            "range_min": v_range[i][0],
+            "range_max": v_range[i][1],
+            "range_color": range_color,
+            "colorbar_title": colorbar_titles[i],
+        }
+
+    return map_plot_config
