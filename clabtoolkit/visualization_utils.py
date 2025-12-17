@@ -57,29 +57,16 @@ def load_configs(config_file: Union[str, Path]) -> None:
     >>> plotter._load_configs()  # Reloads configurations from file
     """
 
-    if isinstance(config_file, Path):
-        config_file = str(config_file)
+    configs = cltmisc.load_json(config_file)
 
-    if not os.path.isfile(config_file):
-        raise FileNotFoundError(f"Configuration file '{config_file}' not found")
+    # Validate structure and load configurations
+    if "figure_conf" not in configs:
+        raise KeyError("Missing 'figure_conf' key in configuration file")
 
-    # Load configurations from JSON file
-    try:
-        with open(config_file, "r") as f:
-            configs = json.load(f)
+    if "views_conf" not in configs:
+        raise KeyError("Missing 'views_conf' key in configuration file")
 
-        # Validate structure and load configurations
-        if "figure_conf" not in configs:
-            raise KeyError("Missing 'figure_conf' key in configuration file")
-        if "views_conf" not in configs:
-            raise KeyError("Missing 'views_conf' key in configuration file")
-
-        return configs
-
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Configuration file '{config_file}' not found")
-    except json.JSONDecodeError as e:
-        raise json.JSONDecodeError(f"Invalid JSON in configuration file: {e}")
+    return configs
 
 
 ##################################################################################################
