@@ -4208,6 +4208,196 @@ def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> di
     return result
 
 
+#####################################################################################################
+def print_dict_tree(data, indent="", is_last=True, max_str_len=50, max_items=None):
+    """
+    Print a dictionary as a tree structure.
+
+    Parameters:
+    -----------
+    data : dict, list, or any
+        The data structure to visualize
+
+    indent : str
+        Current indentation (used internally for recursion)
+
+    is_last : bool
+        Whether this is the last item at current level (used internally)
+
+    max_str_len : int
+        Maximum length for string values before truncation
+
+    max_items : int or None
+        Maximum number of items to show in lists/dicts (None for all)
+
+    Example:
+    --------
+    >>> data = {
+    ...     'project': 'neuroimaging',
+    ...     'metadata': {
+    ...         'subjects': 150,
+    ...         'scans': ['T1', 'T2', 'fMRI']
+    ...     }
+    ... }
+    >>> print_dict_tree(data)
+    """
+
+    if isinstance(data, dict):
+        items = list(data.items())
+        if max_items and len(items) > max_items:
+            items = items[:max_items]
+            truncated = True
+        else:
+            truncated = False
+
+        for i, (key, value) in enumerate(items):
+            is_last_item = (i == len(items) - 1) and not truncated
+
+            # Print the key
+            connector = "└── " if is_last_item else "├── "
+            print(f"{indent}{connector}{key}: ", end="")
+
+            # Handle the value
+            if isinstance(value, (dict, list)):
+                print(f"({type(value).__name__}, {len(value)} items)")
+                extension = "    " if is_last_item else "│   "
+                print_dict_tree(
+                    value, indent + extension, is_last_item, max_str_len, max_items
+                )
+            else:
+                value_str = str(value)
+                if len(value_str) > max_str_len:
+                    value_str = value_str[:max_str_len] + "..."
+                print(f"{value_str}")
+
+        if truncated:
+            connector = "└── " if is_last else "├── "
+            print(f"{indent}{connector}... ({len(data) - max_items} more items)")
+
+    elif isinstance(data, list):
+        items = data
+        if max_items and len(items) > max_items:
+            items = items[:max_items]
+            truncated = True
+        else:
+            truncated = False
+
+        for i, item in enumerate(items):
+            is_last_item = (i == len(items) - 1) and not truncated
+            connector = "└── " if is_last_item else "├── "
+
+            if isinstance(item, (dict, list)):
+                print(
+                    f"{indent}{connector}[{i}]: ({type(item).__name__}, {len(item)} items)"
+                )
+                extension = "    " if is_last_item else "│   "
+                print_dict_tree(
+                    item, indent + extension, is_last_item, max_str_len, max_items
+                )
+            else:
+                item_str = str(item)
+                if len(item_str) > max_str_len:
+                    item_str = item_str[:max_str_len] + "..."
+                print(f"{indent}{connector}[{i}]: {item_str}")
+
+        if truncated:
+            connector = "└── " if is_last else "├── "
+            print(f"{indent}{connector}... ({len(data) - max_items} more items)")
+
+    else:
+        # For non-dict, non-list items at the root level
+        value_str = str(data)
+        if len(value_str) > max_str_len:
+            value_str = value_str[:max_str_len] + "..."
+        print(value_str)
+
+
+#####################################################################################################
+def explore_dictionary(data, max_depth=None, current_depth=0):
+    """
+    Get a simplified structure of a nested dictionary showing only keys and types.
+
+    Parameters:
+    -----------
+    data : dict, list, or any
+        The data structure to analyze
+
+    max_depth : int or None
+        Maximum depth to explore (None for unlimited)
+
+    current_depth : int
+        Current depth level (used internally)
+
+    Returns:
+    --------
+    dict or str
+        Simplified structure representation
+
+    Example:
+    --------
+    >>> structure = get_dict_structure(data, max_depth=2)
+    >>> print_dict_tree(structure)
+    """
+    if max_depth is not None and current_depth >= max_depth:
+        return f"<{type(data).__name__}>"
+
+    if isinstance(data, dict):
+        return {
+            key: get_dict_structure(value, max_depth, current_depth + 1)
+            for key, value in data.items()
+        }
+    elif isinstance(data, list):
+        if len(data) == 0:
+            return "[]"
+        # Show structure of first item as representative
+        return [get_dict_structure(data[0], max_depth, current_depth + 1)]
+    else:
+        return f"<{type(data).__name__}>"
+
+
+#####################################################################################################
+def get_dict_info(data):
+    """
+    Print summary information about a dictionary structure.
+
+    Parameters:
+    -----------
+    data : dict, list, or any
+        The data structure to summarize
+    """
+
+    def count_items(obj, counts=None):
+        if counts is None:
+            counts = {"dicts": 0, "lists": 0, "total_keys": 0, "max_depth": 0}
+
+        def recurse(o, depth=0):
+            counts["max_depth"] = max(counts["max_depth"], depth)
+
+            if isinstance(o, dict):
+                counts["dicts"] += 1
+                counts["total_keys"] += len(o)
+                for v in o.values():
+                    recurse(v, depth + 1)
+            elif isinstance(o, list):
+                counts["lists"] += 1
+                for item in o:
+                    recurse(item, depth + 1)
+
+        recurse(obj)
+        return counts
+
+    info = count_items(data)
+    print(f"Dictionary Summary:")
+    print(f"  Type: {type(data).__name__}")
+    if isinstance(data, dict):
+        print(f"  Top-level keys: {len(data)}")
+        print(f"  Total nested dicts: {info['dicts']}")
+    print(f"  Total nested lists: {info['lists']}")
+    print(f"  Total keys (all levels): {info['total_keys']}")
+    print(f"  Maximum depth: {info['max_depth']}")
+    print()
+
+
 ####################################################################################################
 def update_dict(orig_dict, new_dict, merge_lists=False, allow_new_keys=False):
     """
