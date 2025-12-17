@@ -4167,6 +4167,86 @@ def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> di
 
 
 ####################################################################################################
+def update_dict(orig_dict, update_dict, merge_lists=False, allow_new_keys=False):
+    """
+    Deep update dictionary with type safety and optional new key support.
+
+    Provides type-safe updates for existing keys while optionally allowing
+    new keys to be added. Type checking ensures that existing values can
+    only be updated with values of the same type.
+
+    Parameters
+    ----------
+    orig_dict : dict
+        The original dictionary to be updated. This dictionary is modified
+        in-place.
+
+    update_dict : dict
+        Dictionary containing the updates to apply.
+
+    merge_lists : bool, optional
+        If True, lists are extended rather than replaced. Default is False.
+
+    allow_new_keys : bool, optional
+        If True, new keys from update_dict are added to orig_dict.
+        If False, only existing keys can be updated. Default is False.
+
+    Returns
+    -------
+    dict
+        The updated original dictionary.
+
+    Raises
+    ------
+    TypeError
+        If an update value has a different type than the original value
+        for existing keys.
+
+    KeyError
+        If update_dict contains new keys and allow_new_keys is False.
+
+    Examples
+    --------
+    >>> # With allow_new_keys=True
+    >>> original = {'name': 'John', 'items': [1, 2]}
+    >>> updates = {'name': 'Jane', 'age': 30, 'items': [3, 4]}
+    >>> deep_update_flexible(original, updates, merge_lists=True, allow_new_keys=True)
+    {'name': 'Jane', 'items': [1, 2, 3, 4], 'age': 30}
+    """
+    for key, update_value in update_dict.items():
+        if key in orig_dict:
+            orig_value = orig_dict[key]
+
+            # Check type compatibility for existing keys
+            if type(orig_value) != type(update_value):
+                raise TypeError(
+                    f"Type mismatch for key '{key}': "
+                    f"expected {type(orig_value).__name__}, "
+                    f"got {type(update_value).__name__}"
+                )
+
+            # Handle different types
+            if isinstance(orig_value, dict):
+                update_dict(orig_value, update_value, merge_lists, allow_new_keys)
+
+            elif isinstance(orig_value, list):
+                if merge_lists:
+                    orig_dict[key].extend(update_value)
+                else:
+                    orig_dict[key] = update_value
+            else:
+                orig_dict[key] = update_value
+        else:
+            # Handle new keys
+            if allow_new_keys:
+                orig_dict[key] = update_value
+            else:
+                raise KeyError(f"Key '{key}' not found in original dictionary")
+
+    return orig_dict
+
+
+####################################################################################################
 def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
     """
     Expands df_add to match the number of rows in df and concatenates them along columns.
