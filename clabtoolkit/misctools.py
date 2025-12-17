@@ -3865,6 +3865,48 @@ def get_real_basename(file_name: str) -> str:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+def load_json_to_dictionary(json_file_path: Union[str, Path]) -> dict:
+    """
+    Loads a JSON file and returns its contents as a Python dictionary.
+
+    Parameters
+    ----------
+    json_file_path : Union[str, Path]
+        The path to the JSON file to be loaded.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the data from the JSON file.
+
+    Examples
+    --------
+    >>> data_dict = load_json_to_dictionary("data.json")
+    >>> print(data_dict)  # Output: Contents of the JSON file as a dictionary
+    """
+
+    # Check if the file path is valid
+    if not isinstance(json_file_path, (str, Path)):
+        raise ValueError("The file path must be a string or a Path object.")
+
+    if isinstance(json_file_path, str):
+        json_file_path = Path(json_file_path)
+
+    if not json_file_path.exists():
+        raise FileNotFoundError(f"The file {json_file_path} does not exist.")
+
+    ##
+    try:
+        with open(json_file_path, "r") as json_file:
+            data_dictionary = json.load(json_file)
+
+        return data_dictionary
+
+    except Exception as e:
+        raise ValueError(f"An error occurred while loading the JSON file: {e}")
+
+
+#####################################################################################################
 def remove_empty_keys_or_values(d: dict) -> dict:
     """
     Remove dictionary entries with empty keys, keys with only spaces, or empty values.
