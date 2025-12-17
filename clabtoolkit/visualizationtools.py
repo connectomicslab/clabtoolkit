@@ -13,6 +13,7 @@ import os
 import copy
 import numpy as np
 from typing import Union, List, Optional, Tuple, Dict, Any
+from pathlib import Path
 import pyvista as pv
 
 # Importing local modules
@@ -22,6 +23,8 @@ from . import plottools as cltplot
 # Use TYPE_CHECKING to avoid circular imports
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
+from . import pointstools as cltpts
+
 from . import visualization_utils as visutils
 from . import build_visualization_layout as vislayout
 
@@ -64,7 +67,7 @@ class BrainPlotter:
     """
 
     ###############################################################################################
-    def __init__(self, config_file: str = None):
+    def __init__(self, config_file: Union[str, Path, Dict] = None):
         """
         Initialize the SurfacePlotter with configuration file.
 
@@ -91,30 +94,38 @@ class BrainPlotter:
         >>>
         >>> plotter = SurfacePlotter("custom_views.json")  # Use custom config
         """
-        # Initialize configuration attributes
 
-        # Get the absolute of this file
-        if config_file is None:
-            cwd = os.path.dirname(os.path.abspath(__file__))
-            # Default to the standard configuration file
-            config_file = os.path.join(cwd, "config", "viz_views.json")
-        else:
+        # Loading the default configuration file
+        cwd = os.path.dirname(os.path.abspath(__file__))
+
+        # Default to the standard configuration file
+        def_config_file = os.path.join(cwd, "config", "viz_views.json")
+        configs = visutils.load_configs(def_config_file)
+        self.config_file = def_config_file
+
+        if config_file is not None:
             # Use the provided configuration file path
-            config_file = os.path.abspath(config_file)
+            try:
+                if isinstance(config_file, Dict):
+                    user_configs = copy.deepcopy(config_file)
 
-        # Check if the configuration file exists
-        if not os.path.exists(config_file):
-            raise FileNotFoundError(f"Configuration file '{config_file}' not found")
+                elif isinstance(config_file, str) or isinstance(config_file, Path):
+                    user_configs = cltmisc.load_json(config_file)
+                    self.config_file = config_file
 
-        # Load configurations from the tractogram file
-        self.config_file = config_file
-        configs = visutils.load_configs(self.config_file)
+                else:
+                    raise TypeError("config_file must be a str, Path, or Dict")
+
+                # Update default configs with user configs
+                configs = cltmisc.update_dict(configs, user_configs)
+
+            except Exception as e:
+                print(f"Error loading configuration file: {e}")
 
         # Create attributes
-        self.figure_conf = configs["figure_conf"]
-        self.views_conf = configs["views_conf"]
-        self.layouts_conf = configs["layouts_conf"]
-        self.themes_conf = configs["themes_conf"]
+        config_keys = list(configs.keys())
+        for key in config_keys:
+            setattr(self, key, configs[key])
 
         # Define mapping from simple view names to configuration titles
         self._view_name_mapping = {
@@ -125,6 +136,43 @@ class BrainPlotter:
             "rostral": ["Rostral view"],
             "caudal": ["Caudal view"],
         }
+
+    ################################################################################################
+    def _update_configs(self, config_file: Union[str, Path, Dict]):
+        """
+        Update the plotting configurations from a new configuration file.
+
+        Parameters
+        ----------
+        config_file : str, Path, Dict
+            Path to the new JSON configuration file or a dictionary with configurations.
+        """
+
+        # Load new configurations
+        if isinstance(config_file, Dict):
+            configs = copy.deepcopy(config_file)
+
+        else:
+            configs = cltmisc.load_json(config_file)
+
+        # Create attributes
+        config_keys = list(configs.keys())
+        for key in config_keys:
+            if key in self.__dict__:
+                tmp = getattr(self, key)
+                upd_dict = cltmisc.update_dict(
+                    tmp, configs[key], merge_lists=True, allow_new_keys=True
+                )
+                setattr(
+                    self,
+                    key,
+                    upd_dict,
+                )
+
+            else:
+                print(
+                    f"Warning: Key '{key}' not found in existing attributes. Skipping update."
+                )
 
     ###############################################################################################
     def _build_plotting_config(
@@ -196,7 +244,7 @@ class BrainPlotter:
     ###############################################################################
     def plot(
         self,
-        objs2plot: Union[cltsurf.Surface, clttract.Tractogram, List],
+        objs2plot: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List],
         hemi_id: Union[str, List[str]] = "both",
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
@@ -212,7 +260,6 @@ class BrainPlotter:
         ),
         range_color: Tuple = (128, 128, 128, 255),
         use_opacity: bool = True,
-        tract_plot_style: str = "tube",
         colormaps: Union[str, List[str]] = "BrBG",
         save_path: Optional[str] = None,
         non_blocking: bool = True,
@@ -220,15 +267,15 @@ class BrainPlotter:
         colorbar_style: str = "individual",
         colorbar_titles: Union[str, List[str]] = None,
         colorbar_position: str = "right",
+        config_file: Union[str, Path, Dict] = None,
     ) -> None:
         """
         Plot brain surfaces with optional threading and screenshot support.
 
         Parameters
         ----------
-        objs2plot : Union[cltsurf.Surface, clttract.Tractogram, List[cltsurf.Surface], List[List[cltsurf.Surface]], List[clttract.Tractogram], List[List[clttract.Tractogram]]]
-            Single or list of brain surface objects (cltsurf.Surface) or tractogram objects (clttract.Tractogram).
-            Each element can also be a list of such objects to be merged and plotted together.
+        objs2plot : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List]
+            Object(s) to plot. Can be a single object or a list of objects.
 
         hemi_id : List[str], default ["lh"]
             Hemisphere identifiers.
@@ -294,6 +341,16 @@ class BrainPlotter:
 
         if "both" in hemi_id and len(hemi_id) > 1:
             hemi_id = ["lh", "rh"]
+
+        # Loading custom configuration file if provided
+        if config_file is not None:
+            try:
+                self._update_configs(config_file)
+
+            except Exception as e:
+                print(
+                    f"Error loading configuration file: {e}. Using existing configurations."
+                )
 
         # Preparing the surfaces to be plotted
         if not isinstance(objs2plot, List):
@@ -504,7 +561,7 @@ class BrainPlotter:
                     lines = np.array(lines, dtype=np.int_)
 
                     # 3. Create single PolyData with all curves
-                    if tract_plot_style == "tube":
+                    if self.objs_conf["tracts"]["tubes"]:
                         # Create a PolyData object for tube representation
                         # Create a PolyData object for tube representation
                         poly = pv.PolyData()
@@ -515,8 +572,8 @@ class BrainPlotter:
                         poly.point_data["rgba"] = all_rgba  # <-- important
 
                         # Add tube filter (tube cannot take scalars directly)
-                        tube_radius = 0.1
-                        tube_sides = 10
+                        tube_radius = self.objs_conf["tracts"]["tube_radius"]
+                        tube_sides = self.objs_conf["tracts"]["tube_sides"]
                         tube_poly = poly.tube(
                             radius=tube_radius,
                             n_sides=tube_sides,
@@ -553,6 +610,26 @@ class BrainPlotter:
                             smooth_shading=self.figure_conf["mesh_smooth_shading"],
                             show_scalar_bar=False,
                         )
+
+                elif isinstance(tmp_obj, cltpts.PointCloud):
+
+                    rgba_data = tmp_obj.point_data["rgba"]
+                    if use_opacity is False:
+                        rgba_data = rgba_data[:, :3]
+
+                    pv_plotter.add_points(
+                        tmp_obj.coords,
+                        render_points_as_spheres=self.objs_conf["points"]["spheres"],
+                        point_size=self.objs_conf["points"]["spheres_radius"],
+                        scalars=rgba_data,
+                        rgb=True,
+                        ambient=self.figure_conf["mesh_ambient"],
+                        diffuse=self.figure_conf["mesh_diffuse"],
+                        specular=self.figure_conf["mesh_specular"],
+                        specular_power=self.figure_conf["mesh_specular_power"],
+                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                        show_scalar_bar=False,
+                    )
 
                 elif isinstance(tmp_obj, cltsurf.Surface):
                     if not use_opacity:
