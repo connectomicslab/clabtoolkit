@@ -4209,7 +4209,7 @@ def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> di
 
 
 ####################################################################################################
-def update_dict(orig_dict, update_dict, merge_lists=False, allow_new_keys=False):
+def update_dict(orig_dict, new_dict, merge_lists=False, allow_new_keys=False):
     """
     Deep update dictionary with type safety and optional new key support.
 
@@ -4223,14 +4223,14 @@ def update_dict(orig_dict, update_dict, merge_lists=False, allow_new_keys=False)
         The original dictionary to be updated. This dictionary is modified
         in-place.
 
-    update_dict : dict
+    new_dict : dict
         Dictionary containing the updates to apply.
 
     merge_lists : bool, optional
         If True, lists are extended rather than replaced. Default is False.
 
     allow_new_keys : bool, optional
-        If True, new keys from update_dict are added to orig_dict.
+        If True, new keys from new_dict are added to orig_dict.
         If False, only existing keys can be updated. Default is False.
 
     Returns
@@ -4255,7 +4255,7 @@ def update_dict(orig_dict, update_dict, merge_lists=False, allow_new_keys=False)
     >>> deep_update_flexible(original, updates, merge_lists=True, allow_new_keys=True)
     {'name': 'Jane', 'items': [1, 2, 3, 4], 'age': 30}
     """
-    for key, update_value in update_dict.items():
+    for key, update_value in new_dict.items():
         if key in orig_dict:
             orig_value = orig_dict[key]
 
