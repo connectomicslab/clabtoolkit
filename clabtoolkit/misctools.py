@@ -3865,7 +3865,7 @@ def get_real_basename(file_name: str) -> str:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def load_json_to_dictionary(json_file_path: Union[str, Path]) -> dict:
+def load_json(json_file_path: Union[str, Path]) -> dict:
     """
     Loads a JSON file and returns its contents as a Python dictionary.
 
