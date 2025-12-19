@@ -123,21 +123,17 @@ class Parcellation:
                         tsv_file = parc_file.replace(".nii.gz", ".tsv")
                         lut_file = parc_file.replace(".nii.gz", ".lut")
 
-                        if os.path.isfile(tsv_file):
-                            self.load_colortable(lut_file=tsv_file, lut_type="tsv")
-
-                        elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
-                            self.load_colortable(lut_file=lut_file, lut_type="lut")
-
                     elif parc_file.endswith(".nii"):
                         tsv_file = parc_file.replace(".nii", ".tsv")
                         lut_file = parc_file.replace(".nii", ".lut")
 
-                        if os.path.isfile(tsv_file):
-                            self.load_colortable(lut_file=tsv_file, lut_type="tsv")
+                    if os.path.isfile(tsv_file):
+                        lut_2_load = tsv_file
 
-                        elif not os.path.isfile(tsv_file) and os.path.isfile(lut_file):
-                            self.load_colortable(lut_file=lut_file, lut_type="lut")
+                    elif os.path.isfile(lut_file) and not os.path.isfile(tsv_file):
+                        lut_2_load = lut_file
+
+                    self.load_colortable(lut_file=lut_2_load)
 
                     # Adding index, name and color attributes
                     if not hasattr(self, "index"):
