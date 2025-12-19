@@ -30,6 +30,7 @@ from . import segmentationtools as cltseg
 from . import freesurfertools as cltfree
 from . import surfacetools as cltsurf
 from . import bidstools as cltbids
+from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -2046,7 +2047,7 @@ class Parcellation:
                 )
 
     ######################################################################################################
-    def load_colortable(self, lut_file: Union[str, dict] = None, lut_type: str = "lut"):
+    def load_colortable(self, lut_file: Union[str, dict] = None):
         """
         Load lookup table to associate codes with names and colors.
 
@@ -2076,14 +2077,15 @@ class Parcellation:
             if os.path.exists(lut_file):
                 self.lut_file = lut_file
 
-                if lut_type == "lut":
-                    col_dict = self.read_luttable(in_file=lut_file)
+                col_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
+                # if lut_type == "lut":
+                #     col_dict = self.read_luttable(in_file=lut_file)
 
-                elif lut_type == "tsv":
-                    col_dict = self.read_tsvtable(in_file=lut_file)
+                # elif lut_type == "tsv":
+                #     col_dict = self.read_tsvtable(in_file=lut_file)
 
-                else:
-                    raise ValueError("The lut_type must be 'lut' or 'tsv'")
+                # else:
+                #     raise ValueError("The lut_type must be 'lut' or 'tsv'")
 
                 if "index" in col_dict.keys() and "name" in col_dict.keys():
                     st_codes = col_dict["index"]
@@ -2096,7 +2098,9 @@ class Parcellation:
                 if "color" in col_dict.keys():
                     st_colors = col_dict["color"]
                 else:
-                    st_colors = None
+                    st_colors = cltcol.create_distinguishable_colors(
+                        len(self.index), output_format="hex"
+                    )
 
                 self.index = st_codes
                 self.name = st_names
