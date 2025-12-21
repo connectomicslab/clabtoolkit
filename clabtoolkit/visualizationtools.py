@@ -1,12 +1,14 @@
 """
-Brain Surface Visualization Tools
-
-This module provides comprehensive tools for visualizing brain surfaces with various
-anatomical views and data overlays. It supports FreeSurfer surface formats and
-provides flexible layout options for publication-quality figures.
+Visualization tools for neuroimaging data using PyVista.
+Provides classes and functions for plotting brain surfaces, tractograms, and point clouds
+with customizable views and color mappings.
 
 Classes:
-    SurfacePlotter: Main class for creating multi-view brain surface layouts
+- BrainPlotter: A class for visualizing brain surfaces with various view configurations,
+colormaps, and optional colorbars.
+
+Functions:
+- (Additional functions can be added here as needed)
 """
 
 import os
@@ -1348,7 +1350,7 @@ class BrainPlotter:
         ----------
         theme_name : str
             Name of the theme to apply. Available themes:
-            - "dark" : Dark background with white text (default)
+            - "dark" : Dark background with white text
             - "light" : Light background with dark text
             - "high_contrast" : Maximum contrast for presentations
             - "minimal" : Clean, minimal styling
@@ -1365,7 +1367,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>>
         >>> # Apply light theme for presentations
         >>> plotter.apply_theme("light")
