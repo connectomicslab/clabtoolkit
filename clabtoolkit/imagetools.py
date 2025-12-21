@@ -21,6 +21,7 @@ from skimage import measure
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 from . import parcellationtools as cltparc
+from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -1500,7 +1501,7 @@ def create_spams(
     # Check if str or Path and if it exists
     if lut_table is None:
         sts_ids = np.unique(all_subj)
-        lut_dict = cltmisc.create_lut_dictionary(sts_ids)
+        lut_dict = cltcol.create_lut_dictionary(sts_ids)
 
     else:
         if isinstance(lut_table, dict):
@@ -1517,7 +1518,7 @@ def create_spams(
                 lut_table = Path(lut_table)
 
                 if not lut_table.exists():
-                    lut_dict = cltmisc.create_lut_dictionary(np.unique(all_subj))
+                    lut_dict = cltcol.create_lut_dictionary(np.unique(all_subj))
 
                 else:
                     with open(lut_table, "r") as f:
@@ -1536,13 +1537,13 @@ def create_spams(
     sts_ids = lut_dict["index"]
     sts_names = lut_dict["name"]
     sts_colors = lut_dict["color"]
-    sts_colors = cltmisc.multi_hex2rgb(sts_colors)
+    sts_colors = cltcol.multi_hex2rgb(sts_colors)
 
     if rgb255:
-        sts_colors = cltmisc.harmonize_colors(sts_colors, output_format="rgb")
+        sts_colors = cltcol.harmonize_colors(sts_colors, output_format="rgb")
 
     else:
-        sts_colors = cltmisc.harmonize_colors(sts_colors, output_format="rgbnorm")
+        sts_colors = cltcol.harmonize_colors(sts_colors, output_format="rgbnorm")
 
     # Create the SPAM image
     spam_image = create_spams_from_volume(all_subj, sts_ids)

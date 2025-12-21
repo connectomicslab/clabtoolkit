@@ -31,6 +31,7 @@ from rich.panel import Panel
 from . import misctools as cltmisc
 from . import bidstools as cltbids
 from . import pipelinetools as cltpipe
+from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -651,12 +652,12 @@ class AnnotParcellation:
         See Also
         --------
         pandas.DataFrame.to_csv : For saving DataFrames in various formats
-        cltmisc.multi_rgb2hex : For converting RGB values to hexadecimal
-        cltmisc.correct_names : For applying prefixes to region names
+        cltcol.multi_rgb2hex : For converting RGB values to hexadecimal
+        cltcol.correct_names : For applying prefixes to region names
         """
 
         # Creating the hexadecimal colors for the regions
-        parc_hexcolor = cltmisc.multi_rgb2hex(self.regtable[:, 0:3])
+        parc_hexcolor = cltcol.multi_rgb2hex(self.regtable[:, 0:3])
 
         # Creating the region names
         parc_names = self.regnames
@@ -2057,7 +2058,7 @@ class AnnotParcellation:
             lobe_regions = lobes_dict["lobes"][lobe]
             lobe_colors = lobes_dict["colors"][lobe]
 
-            rgb = cltmisc.hex2rgb(lobe_colors)
+            rgb = cltcol.hex2rgb(lobe_colors)
 
             # Detect the codes of the regions that belong to the lobe
             reg_indexes = cltmisc.get_indexes_by_substring(self.regnames, lobe_regions)
@@ -3998,7 +3999,7 @@ class FreeSurferSubject:
                 selected_fs_name = [fs_names[i] for i in idx]
                 selected_fs_color = [fs_colors[i] for i in idx]
 
-                selected_fs_color = cltmisc.multi_rgb2hex(selected_fs_color)
+                selected_fs_color = cltcol.multi_rgb2hex(selected_fs_color)
 
                 lh_ctx_parc = os.path.join(
                     self.subjs_dir, self.subj_id, "label", "lh." + atlas + ".annot"
@@ -4049,8 +4050,8 @@ class FreeSurferSubject:
                     rh_wm_code = [x + 2000 for x in rh_ctx_code]
 
                     # Invert the colors lh_wm_color and rh_wm_color
-                    ilh_wm_color = cltmisc.invert_colors(lh_ctx_color)
-                    irh_wm_color = cltmisc.invert_colors(rh_ctx_color)
+                    ilh_wm_color = cltcol.invert_colors(lh_ctx_color)
+                    irh_wm_color = cltcol.invert_colors(rh_ctx_color)
 
                     all_codes = (
                         selected_fs_code
@@ -4949,7 +4950,7 @@ def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarr
             "The color table must have 5 columns: R, G, B, A, and packed RGB value"
         )
 
-    return cltmisc.get_colors_from_colortable(labels, reg_ctable)
+    return cltcol.get_colors_from_colortable(labels, reg_ctable)
 
 
 #####################################################################################################
@@ -4985,7 +4986,7 @@ def colors2colortable(colors: Union[list, np.ndarray]):
     >>> print(f"Color table shape: {ctab.shape}")
     """
 
-    colortable = cltmisc.colors_to_table(colors)
+    colortable = cltcol.colors_to_table(colors)
 
     # Ensure the color table has 5 columns: R, G, B, A, packed RGB and they are integer type
     colortable = colortable.astype(np.uint32)

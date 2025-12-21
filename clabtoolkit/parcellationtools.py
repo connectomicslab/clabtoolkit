@@ -1512,6 +1512,10 @@ class Parcellation:
         if hasattr(self, "color"):
             self.color = [self.color[i] for i in indexes]
 
+        #  If opacity is an attribute of self
+        if hasattr(self, "opacity"):
+            self.opacity = [self.opacity[i] for i in indexes]
+
         self.parc_range()
 
     ######################################################################################################
@@ -2043,7 +2047,7 @@ class Parcellation:
                 )
 
     ######################################################################################################
-    def load_colortable(self, lut_file: Union[str, dict] = None):
+    def load_colortable(self, lut_file: Union[str, Path, dict] = None):
         """
         Load lookup table to associate codes with names and colors.
 
@@ -2069,19 +2073,11 @@ class Parcellation:
             freesurfer_home = os.getenv("FREESURFER_HOME")
             lut_file = os.path.join(freesurfer_home, "FreeSurferColorLUT.txt")
 
-        if isinstance(lut_file, str):
+        if isinstance(lut_file, (str, Path)):
             if os.path.exists(lut_file):
                 self.lut_file = lut_file
 
                 col_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
-                # if lut_type == "lut":
-                #     col_dict = self.read_luttable(in_file=lut_file)
-
-                # elif lut_type == "tsv":
-                #     col_dict = self.read_tsvtable(in_file=lut_file)
-
-                # else:
-                #     raise ValueError("The lut_type must be 'lut' or 'tsv'")
 
                 if "index" in col_dict.keys() and "name" in col_dict.keys():
                     st_codes = col_dict["index"]
@@ -2101,6 +2097,8 @@ class Parcellation:
                 self.index = st_codes
                 self.name = st_names
                 self.color = st_colors
+                self.opacity = col_dict["opacity"]
+                self.headerlines = col_dict["headerlines"]
 
             else:
                 raise ValueError("The lut file does not exist")
@@ -2120,6 +2118,16 @@ class Parcellation:
                 self.color = None
             else:
                 self.color = lut_file["color"]
+
+            if "opacity" in lut_file.keys():
+                self.opacity = lut_file["opacity"]
+            else:
+                self.opacity = [1.0] * len(self.index)
+
+            if "headerlines" in lut_file.keys():
+                self.headerlines = lut_file["headerlines"]
+            else:
+                self.headerlines = []
 
         self.adjust_values()
         self.parc_range()
@@ -2146,7 +2154,7 @@ class Parcellation:
         self,
         out_file: str,
         lut_type: str = "lut",
-        headerlines: Union[list, str] = None,
+        headerlines: Union[list, str] = [],
         force: bool = True,
     ):
         """
@@ -2175,9 +2183,11 @@ class Parcellation:
         >>> parc.export_colortable('regions.tsv', lut_type='tsv')
         """
 
-        if headerlines is not None:
-            if isinstance(headerlines, str):
-                headerlines = [headerlines]
+        if isinstance(headerlines, str):
+            headerlines = [headerlines]
+
+        if len(headerlines) == 0:
+            headerlines = self.headerlines
 
         if (
             not hasattr(self, "index")
@@ -2210,12 +2220,27 @@ class Parcellation:
         if hasattr(self, "color"):
             self.color = [self.color[i] for i in indexes]
 
+        if hasattr(self, "opacity"):
+            self.opacity = [self.opacity[i] for i in indexes]
+
+        # Create color dictionary
+        now = datetime.now()
+        date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
+
+        if len(headerlines) == 0:
+            headerlines = ["# $Id: {} {} \n".format(out_file, date_time)]
+
+            if os.path.isfile(self.parc_file):
+                headerlines.append(
+                    "# Corresponding parcellation: {} \n".format(self.parc_file)
+                )
+
         if lut_type == "lut":
 
             now = datetime.now()
             date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
 
-            if headerlines is None:
+            if len(headerlines) == 0:
                 headerlines = ["# $Id: {} {} \n".format(out_file, date_time)]
 
                 if os.path.isfile(self.parc_file):
@@ -2223,15 +2248,6 @@ class Parcellation:
                         "# Corresponding parcellation: {} \n".format(self.parc_file)
                     )
 
-                headerlines.append(
-                    "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
-                        "#No.", "Label Name:", "R", "G", "B", "A"
-                    )
-                )
-
-            self.write_luttable(
-                self.index, self.name, self.color, out_file, headerlines=headerlines
-            )
         elif lut_type == "tsv":
 
             if self.index is None or self.name is None:
@@ -2255,9 +2271,16 @@ class Parcellation:
                 elif isinstance(self.color, np.ndarray):
                     tsv_df["color"] = cltmisc.multi_rgb2hex(self.color)
 
-            self.write_tsvtable(tsv_df, out_file, force=force)
-        else:
-            raise ValueError("The lut_type must be 'lut' or 'tsv'")
+        col_dict = {
+            "index": self.index,
+            "name": self.name,
+            "color": self.color,
+            "opacity": self.opacity,
+            "headerlines": headerlines,
+        }
+
+        col_obj = cltcol.ColorTableLoader(col_dict)
+        col_obj.export(out_file, out_format=lut_type, overwrite=force)
 
     ######################################################################################################
     def replace_values(
@@ -2592,614 +2615,6 @@ class Parcellation:
         self.volumetable = volume_table
 
         return volume_table
-
-    ######################################################################################################
-    @staticmethod
-    def lut_to_fsllut(lut_file_fs: str, lut_file_fsl: str):
-        """
-        Convert FreeSurfer LUT file to FSL format.
-
-        Parameters
-        ----------
-        lut_file_fs : str
-            Path to FreeSurfer LUT file.
-
-        lut_file_fsl : str
-            Path for output FSL LUT file.
-
-        Examples
-        --------
-        >>> Parcellation.lut_to_fsllut('FreeSurferColorLUT.txt', 'fsl_colors.lut')
-        """
-
-        # Reading FreeSurfer color lut
-        lut_dict = Parcellation.read_luttable(lut_file_fs)
-        st_codes_lut = lut_dict["index"]
-        st_names_lut = lut_dict["name"]
-        st_colors_lut = lut_dict["color"]
-
-        st_colors_lut = cltmisc.multi_hex2rgb(st_colors_lut)
-
-        lut_lines = []
-        for roi_pos, st_code in enumerate(st_codes_lut):
-            st_name = st_names_lut[roi_pos]
-            lut_lines.append(
-                "{:<4} {:>3.5f} {:>3.5f} {:>3.5f} {:<40} ".format(
-                    st_code,
-                    st_colors_lut[roi_pos, 0] / 255,
-                    st_colors_lut[roi_pos, 1] / 255,
-                    st_colors_lut[roi_pos, 2] / 255,
-                    st_name,
-                )
-            )
-
-        with open(lut_file_fsl, "w") as colorLUT_f:
-            colorLUT_f.write("\n".join(lut_lines))
-
-    ######################################################################################################
-    @staticmethod
-    def lut_to_nilearnlut(
-        input_lut_path: Union[str, Path],
-        output_lut_path: Union[str, Path],
-        overwrite: bool = False,
-    ) -> str:
-        """
-        Convert a FreeSurfer-style color lookup table to nilearn-compatible format.
-
-        This function reads a color lookup table (LUT) file with the format:
-        "#No. Label Name: R G B A" and converts it to a pandas-readable format
-        that nilearn's NiftiLabelsMasker can use.
-
-        Parameters
-        ----------
-        input_lut_path : str or Path
-            Path to the input LUT file. Must exist.
-            Expected format: "label name R G B A" (will be converted to 'index' for nilearn)
-
-        output_lut_path : str or Path
-            Path for the output file. Directory must exist.
-
-        overwrite : bool, optional
-            Whether to overwrite the output file if it already exists.
-            Default: False
-
-        Returns
-        -------
-        str
-            Path to the created nilearn-compatible LUT file
-
-        Raises
-        ------
-        FileNotFoundError
-            If input_lut_path doesn't exist or output directory doesn't exist
-        FileExistsError
-            If output file exists and overwrite=False
-        ValueError
-            If no valid data lines are found in the input file
-
-        Examples
-        --------
-        >>> # Convert LUT file
-        >>> nilearn_lut = convert_colorlut_to_nilearn(
-        ...     'parcellation.lut',
-        ...     'parcellation_nilearn.lut'
-        ... )
-
-        >>> # Convert with overwrite enabled
-        >>> nilearn_lut = convert_colorlut_to_nilearn(
-        ...     'parcellation.lut',
-        ...     'parcellation_nilearn.lut',
-        ...     overwrite=True
-        ... )
-
-        >>> # Use with NiftiLabelsMasker
-        >>> from nilearn.maskers import NiftiLabelsMasker
-        >>> masker = NiftiLabelsMasker(labels_img='parcellation.nii.gz', lut=nilearn_lut)
-        """
-        # Convert to Path objects
-        input_path = Path(input_lut_path)
-        output_path = Path(output_lut_path)
-
-        # Check if input file exists
-        if not input_path.exists():
-            raise FileNotFoundError(f"Input LUT file not found: {input_path}")
-
-        # Check if output directory exists
-        if not output_path.parent.exists():
-            raise FileNotFoundError(
-                f"Output directory does not exist: {output_path.parent}"
-            )
-
-        # Check if output file exists and handle overwrite
-        if output_path.exists() and not overwrite:
-            raise FileExistsError(
-                f"Output file already exists: {output_path}. Use overwrite=True to overwrite."
-            )
-
-        print(f"Converting: {input_path} -> {output_path}")
-
-        # Parse the input file
-        data_rows = []
-
-        with open(input_path, "r") as file:
-            for line in file:
-                line = line.strip()
-
-                # Skip empty lines and comments
-                if not line or line.startswith("#"):
-                    continue
-
-                # Split line and extract data
-                parts = line.split()
-                if len(parts) >= 6:
-                    try:
-                        # Format: index name R G B A (nilearn expects 'index' column)
-                        label = int(parts[0])
-                        r, g, b, a = map(int, parts[-4:])  # Last 4 are RGBA
-                        name_parts = parts[1:-4]  # Everything between label and RGBA
-                        name = "-".join(name_parts) if name_parts else f"region_{label}"
-
-                        data_rows.append(
-                            {
-                                "index": label,  # nilearn expects 'index' not 'label'
-                                "name": name,
-                                "R": r,
-                                "G": g,
-                                "B": b,
-                                "A": a,
-                            }
-                        )
-                    except ValueError:
-                        print(f"Warning: Skipping invalid line: {line}")
-                        continue
-
-        # Check if we found any data
-        if not data_rows:
-            raise ValueError(f"No valid data lines found in {input_path}")
-
-        # Create DataFrame and save
-        df = pd.DataFrame(data_rows)
-        df = df.sort_values("index").reset_index(drop=True)
-        df.to_csv(output_path, sep=" ", index=False)
-
-        print(f"✓ Converted {len(data_rows)} regions")
-        print(f"✓ Saved to: {output_path}")
-
-        return str(output_path)
-
-    ######################################################################################################
-    @staticmethod
-    def read_luttable(
-        in_file: str, filter_by_name: Union[str, List[str]] = None
-    ) -> dict:
-        """
-        Read FreeSurfer lookup table file.
-
-        Parameters
-        ----------
-        in_file : str
-            Path to LUT file.
-
-        filter_by_name : str or list, optional
-            Filter regions by name substring(s). Default is None.
-
-        Returns
-        -------
-        dict
-            Dictionary with 'index', 'name', and 'color' keys.
-
-        Examples
-        --------
-        >>> lut_dict = Parcellation.read_luttable('FreeSurferColorLUT.txt')
-        >>> print(f"Found {len(lut_dict['index'])} regions")
-        >>>
-        >>> # Filter for hippocampus
-        >>> hippo_dict = Parcellation.read_luttable(
-        ...     'FreeSurferColorLUT.txt',
-        ...     filter_by_name='hippocampus'
-        ... )
-        """
-
-        # Read the LUT file content
-        with open(in_file, "r", encoding="utf-8") as f:
-            lut_content = f.readlines()
-
-        # Initialize lists to store parsed data
-        region_codes = []
-        region_names = []
-        region_colors_rgb = []
-
-        # Parse each non-comment line in the file
-        for line in lut_content:
-            # Skip comments and empty lines
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("\\\\"):
-                continue
-
-            # Split line into components
-            parts = line.split()
-            if len(parts) < 5:  # Need at least code, name, R, G, B
-                continue
-
-            # Extract data
-            try:
-                code = int(parts[0])  # Using Python's built-in int, not numpy.int32
-                name = parts[1]
-                r, g, b = int(parts[2]), int(parts[3]), int(parts[4])
-
-                region_codes.append(code)
-                region_names.append(name)
-                region_colors_rgb.append([r, g, b])
-            except (ValueError, IndexError):
-                # Skip malformed lines
-                continue
-
-        # Convert RGB colors to hex format
-        try:
-            # Use the existing multi_rgb2hex function if available
-            region_colors_hex = cltmisc.multi_rgb2hex(np.array(region_colors_rgb))
-        except (NameError, AttributeError):
-            # Fallback to direct conversion if the function isn't available
-            region_colors_hex = [
-                f"#{r:02x}{g:02x}{b:02x}" for r, g, b in region_colors_rgb
-            ]
-        if filter_by_name is not None:
-            if isinstance(filter_by_name, str):
-                filter_by_name = [filter_by_name]
-
-            filtered_indices = cltmisc.get_indexes_by_substring(
-                region_names, filter_by_name
-            )
-
-            # Filter the LUT based on the provided names
-            # filtered_indices = [
-            #     i for i, name in enumerate(region_names) if name in filter_by_name
-            # ]
-            region_codes = [region_codes[i] for i in filtered_indices]
-            region_names = [region_names[i] for i in filtered_indices]
-            region_colors_hex = [region_colors_hex[i] for i in filtered_indices]
-
-        # Create and return the result dictionary
-        return {
-            "index": region_codes,  # Now contains standard Python integers
-            "name": region_names,
-            "color": region_colors_hex,
-        }
-
-    ######################################################################################################
-    @staticmethod
-    def read_tsvtable(
-        in_file: str, filter_by_name: Union[str, List[str]] = None
-    ) -> dict:
-        """
-        Read TSV lookup table file.
-
-        Parameters
-        ----------
-        in_file : str
-            Path to TSV file.
-
-        filter_by_name : str or list, optional
-            Filter regions by name substring(s). Default is None.
-
-        Returns
-        -------
-        dict
-            Dictionary with column names as keys.
-
-        Raises
-        ------
-        ValueError
-            If required columns 'index' and 'name' are missing.
-
-        Examples
-        --------
-        >>> tsv_dict = Parcellation.read_tsvtable('regions.tsv')
-        >>> print(f"Columns: {list(tsv_dict.keys())}")
-        """
-
-        # Check if file exists
-        if not os.path.exists(in_file):
-            raise FileNotFoundError(f"TSV file not found: {in_file}")
-
-        try:
-            # Read the TSV file into a pandas DataFrame
-            tsv_df = pd.read_csv(in_file, sep="\t")
-
-            # Check for required columns
-            required_columns = ["index", "name"]
-            missing_columns = [
-                col for col in required_columns if col not in tsv_df.columns
-            ]
-            if missing_columns:
-                raise ValueError(
-                    f"TSV file missing required columns: {', '.join(missing_columns)}"
-                )
-
-            # Convert DataFrame to dictionary
-            tsv_dict = tsv_df.to_dict(orient="list")
-
-            # Convert index values to integers
-            if "index" in tsv_dict:
-                tsv_dict["index"] = [int(x) for x in tsv_dict["index"]]
-
-            if filter_by_name is not None:
-                if isinstance(filter_by_name, str):
-                    filter_by_name = [filter_by_name]
-
-                filtered_indices = cltmisc.get_indexes_by_substring(
-                    tsv_dict["name"], filter_by_name
-                )
-
-                # Filter the TSV based on the provided names
-                tsv_dict = {
-                    key: [tsv_dict[key][i] for i in filtered_indices]
-                    for key in tsv_dict.keys()
-                }
-
-            return tsv_dict
-
-        except pd.errors.EmptyDataError:
-            raise ValueError("The TSV file is empty or improperly formatted")
-        except pd.errors.ParserError:
-            raise ValueError("The TSV file could not be parsed correctly")
-        except Exception as e:
-            raise ValueError(f"Error reading TSV file: {str(e)}")
-
-    #######################################################################################################
-    @staticmethod
-    def write_luttable(
-        codes: list,
-        names: list,
-        colors: Union[list, np.ndarray],
-        out_file: str = None,
-        headerlines: Union[list, str] = None,
-        boolappend: bool = False,
-        force: bool = True,
-    ):
-        """
-        Write FreeSurfer format lookup table file.
-
-        Parameters
-        ----------
-        codes : list
-            Region codes.
-
-        names : list
-            Region names.
-
-        colors : list or np.ndarray
-            Region colors (RGB or hex).
-
-        out_file : str, optional
-            Output file path. Default is None.
-
-        headerlines : list or str, optional
-            Header lines. Default is None.
-
-        boolappend : bool, optional
-            Whether to append to existing file. Default is False.
-
-        force : bool, optional
-            Whether to overwrite existing files. Default is True.
-
-        Returns
-        -------
-        list
-            List of formatted LUT lines.
-
-        Examples
-        --------
-        >>> Parcellation.write_luttable(
-        ...     [1, 2, 3],
-        ...     ['region1', 'region2', 'region3'],
-        ...     ['#FF0000', '#00FF00', '#0000FF'],
-        ...     'output.lut'
-        ... )
-        """
-
-        # Check if the file already exists and if the force parameter is False
-        if out_file is not None:
-            if os.path.exists(out_file) and not force:
-                print("Warning: The file already exists. It will be overwritten.")
-
-            out_dir = os.path.dirname(out_file)
-            if not os.path.exists(out_dir):
-                os.makedirs(out_dir)
-
-        happend_bool = True  # Boolean to append the headerlines
-        if headerlines is None:
-            happend_bool = (
-                False  # Only add this if it is the first time the file is created
-            )
-            now = datetime.now()
-            date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
-            headerlines = [
-                "# $Id: {} {} \n".format(out_file, date_time),
-                "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
-                    "#No.", "Label Name:", "R", "G", "B", "A"
-                ),
-            ]
-
-        elif isinstance(headerlines, str):
-            headerlines = [headerlines]
-
-        elif isinstance(headerlines, list):
-            pass
-
-        else:
-            raise ValueError("The headerlines parameter must be a list or a string")
-
-        if boolappend:
-            if not os.path.exists(out_file):
-                raise ValueError("The file does not exist")
-            else:
-                with open(out_file, "r") as file:
-                    luttable = file.readlines()
-
-                luttable = [l.strip("\n\r") for l in luttable]
-                luttable = ["\n" if element == "" else element for element in luttable]
-
-                if happend_bool:
-                    luttable = luttable + headerlines
-
-        else:
-            luttable = headerlines
-
-        if isinstance(colors, list):
-            if isinstance(colors[0], str):
-                colors = cltmisc.harmonize_colors(colors)
-                colors = cltmisc.multi_hex2rgb(colors)
-            elif isinstance(colors[0], list):
-                colors = np.array(colors)
-            elif isinstance(colors[0], np.ndarray):
-                colors = np.vstack(colors)
-
-        # Table for parcellation
-        for roi_pos, roi_name in enumerate(names):
-
-            if roi_pos == 0:
-                luttable.append("\n")
-
-            luttable.append(
-                "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
-                    codes[roi_pos],
-                    names[roi_pos],
-                    colors[roi_pos, 0],
-                    colors[roi_pos, 1],
-                    colors[roi_pos, 2],
-                    0,
-                )
-            )
-        luttable.append("\n")
-
-        if out_file is not None:
-            if os.path.isfile(out_file) and force:
-                # Save the lut table
-                with open(out_file, "w") as colorLUT_f:
-                    colorLUT_f.write("\n".join(luttable))
-            elif not os.path.isfile(out_file):
-                # Save the lut table
-                with open(out_file, "w") as colorLUT_f:
-                    colorLUT_f.write("\n".join(luttable))
-
-        return luttable
-
-    #######################################################################################################
-    @staticmethod
-    def write_tsvtable(
-        tsv_df: Union[pd.DataFrame, dict],
-        out_file: str,
-        boolappend: bool = False,
-        force: bool = False,
-    ):
-        """
-        Write TSV format lookup table file.
-
-        Parameters
-        ----------
-        tsv_df : pd.DataFrame or dict
-            Data to write with index/name/color information.
-
-        out_file : str
-            Output file path.
-
-        boolappend : bool, optional
-            Whether to append to existing file. Default is False.
-
-        force : bool, optional
-            Whether to overwrite existing files. Default is False.
-
-        Returns
-        -------
-        str
-            Output file path.
-
-        Examples
-        --------
-        >>> data = {'index': [1, 2], 'name': ['region1', 'region2']}
-        >>> Parcellation.write_tsvtable(data, 'regions.tsv', force=True)
-        """
-
-        # Check if the file already exists and if the force parameter is False
-        if os.path.exists(out_file) and not force:
-            print("Warning: The TSV file already exists. It will be overwritten.")
-
-        out_dir = os.path.dirname(out_file)
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-
-        # Table for parcellation
-        # 1. Converting colors to hexidecimal string
-
-        if isinstance(tsv_df, pd.DataFrame):
-            tsv_dict = tsv_df.to_dict(orient="list")
-        else:
-            tsv_dict = tsv_df
-
-        if "name" not in tsv_dict.keys() or "index" not in tsv_dict.keys():
-            raise ValueError("The dictionary must contain the keys 'index' and 'name'")
-
-        codes = tsv_dict["index"]
-        names = tsv_dict["name"]
-
-        if "color" in tsv_dict.keys():
-            temp_colors = tsv_dict["color"]
-
-            if isinstance(temp_colors, list):
-                if isinstance(temp_colors[0], str):
-                    if temp_colors[0][0] != "#":
-                        raise ValueError("The colors must be in hexadecimal format")
-
-                elif isinstance(temp_colors[0], list):
-                    colors = np.array(temp_colors)
-                    seg_hexcol = cltmisc.multi_rgb2hex(colors)
-                    tsv_dict["color"] = seg_hexcol
-
-            elif isinstance(temp_colors, np.ndarray):
-                seg_hexcol = cltmisc.multi_rgb2hex(temp_colors)
-                tsv_dict["color"] = seg_hexcol
-
-        if boolappend:
-            if not os.path.exists(out_file):
-                raise ValueError("The file does not exist")
-            else:
-                tsv_orig = Parcellation.read_tsvtable(in_file=out_file)
-
-                # Create a list with the common keys between tsv_orig and tsv_dict
-                common_keys = list(set(tsv_orig.keys()) & set(tsv_dict.keys()))
-
-                # List all the keys for both dictionaries
-                all_keys = list(set(tsv_orig.keys()) | set(tsv_dict.keys()))
-
-                # Concatenate values for those keys and the rest of the keys that are in tsv_orig add white space
-                for key in common_keys:
-                    tsv_orig[key] = tsv_orig[key] + tsv_dict[key]
-
-                for key in all_keys:
-                    if key not in common_keys:
-                        if key in tsv_orig.keys():
-                            tsv_orig[key] = tsv_orig[key] + [""] * len(tsv_dict["name"])
-                        elif key in tsv_dict.keys():
-                            tsv_orig[key] = [""] * len(tsv_orig["name"]) + tsv_dict[key]
-        else:
-            tsv_orig = tsv_dict
-
-        # Dictionary to dataframe
-        tsv_df = pd.DataFrame(tsv_orig)
-
-        if os.path.isfile(out_file) and force:
-
-            # Save the tsv table
-            with open(out_file, "w+") as tsv_file:
-                tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
-
-        elif not os.path.isfile(out_file):
-            # Save the tsv table
-            with open(out_file, "w+") as tsv_file:
-                tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
-
-        return out_file
 
     ######################################################################################################
     def print_properties(self):
