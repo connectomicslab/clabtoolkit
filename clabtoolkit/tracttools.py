@@ -13,7 +13,7 @@ import copy
 # Importing local modules
 from . import misctools as cltmisc
 from . import parcellationtools as cltparc
-from . import colortools as cltcol
+from . import colorstools as cltcol
 
 from dipy.segment.clustering import QuickBundlesX, QuickBundles
 from dipy.tracking.streamline import set_number_of_points
