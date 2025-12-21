@@ -328,8 +328,7 @@ class Tractogram:
             )
 
         # Load the colortable using the utility function
-        if lut_type == "lut":
-            lut_dict = cltparc.Parcellation.read_luttable(lut_file)
+        lut_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
 
         colors = lut_dict["color"]
         if map_name in self.data_per_streamline or map_name not in self.data_per_point:
