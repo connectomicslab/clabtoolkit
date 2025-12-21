@@ -20,6 +20,7 @@ from . import plottools as cltplot
 # Use TYPE_CHECKING to avoid circular imports
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
+from . import pointstools as cltpts
 
 
 ####################################################################################################
@@ -397,7 +398,9 @@ def prepare_list_obj_for_plotting(
 
     prepared_objects = []
     for obj in obj2plot:
-        if not isinstance(obj, (cltsurf.Surface, clttract.Tractogram)):
+        if not isinstance(
+            obj, (cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud)
+        ):
             raise TypeError(
                 "All objects in obj2plot must be Surface or Tractogram instances"
             )
@@ -525,10 +528,60 @@ def prepare_obj_for_plotting(
             map_name, colormap, vmin, vmax, range_min, range_max, range_color
         )
 
+        # # Apply gray color to values outside the specified range
+        # if range_min is not None or range_max is not None:
+        #     data_values = obj2plot.mesh.point_data[map_name]
+        #     rgba_colors = obj2plot.mesh.point_data["rgba"]
+
+        #     # Create mask for out-of-range values
+        #     mask = np.zeros(len(data_values), dtype=bool)
+        #     if range_min is not None:
+        #         mask |= data_values < range_min
+        #     if range_max is not None:
+        #         mask |= data_values > range_max
+
+        #     # Set out-of-range values to a specified color
+        #     if rgba_colors.shape[1] == 4:  # RGBA
+        #         rgba_colors[mask] = range_color
+
+        #     elif rgba_colors.shape[1] == 3:  # RGB
+        #         rgba_colors[mask] = range_color[:3]
+
+        #     obj2plot.mesh.point_data["rgba"] = rgba_colors
+
+    elif isinstance(obj2plot, cltpts.PointCloud):
+        if vmin is None:
+            if range_min is not None:
+                vmin = range_min
+            else:
+                vmin = np.min(obj2plot.point_data[map_name])
+
+        if vmax is None:
+            if range_max is not None:
+                vmax = range_max
+            else:
+                vmax = np.max(obj2plot.point_data[map_name])
+
+        try:
+            point_values = obj2plot.point_data[map_name]
+            point_values = np.nan_to_num(
+                point_values,
+                nan=0.0,
+            )  # Handle NaNs and infinities
+            obj2plot.point_data[map_name] = point_values
+
+        except KeyError:
+            raise ValueError(f"Data array '{map_name}' not found in point cloud data")
+
+        # Apply colors to point data
+        obj2plot.point_data["rgba"] = obj2plot.get_pointwise_colors(
+            map_name, colormap, vmin, vmax, range_min, range_max, range_color
+        )
+
         # Apply gray color to values outside the specified range
         if range_min is not None or range_max is not None:
-            data_values = obj2plot.mesh.point_data[map_name]
-            rgba_colors = obj2plot.mesh.point_data["rgba"]
+            data_values = obj2plot.point_data[map_name]
+            rgba_colors = obj2plot.point_data["rgba"]
 
             # Create mask for out-of-range values
             mask = np.zeros(len(data_values), dtype=bool)
@@ -544,7 +597,7 @@ def prepare_obj_for_plotting(
             elif rgba_colors.shape[1] == 3:  # RGB
                 rgba_colors[mask] = range_color[:3]
 
-            obj2plot.mesh.point_data["rgba"] = rgba_colors
+            obj2plot.point_data["rgba"] = rgba_colors
 
     else:
         raise TypeError("obj2plot must be a Surface or Tractogram instance")
@@ -1474,7 +1527,7 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
         print(f"💾 Changes saved to: {plotobj.config_file}")
 
 
-def apply_theme(plotobj, theme_name: str, auto_save: bool = True) -> None:
+def apply_theme(plotobj, theme_name: str, auto_save: bool = False) -> None:
     """
     Apply predefined visual themes to quickly customize plot appearance.
 
@@ -1502,7 +1555,7 @@ def apply_theme(plotobj, theme_name: str, auto_save: bool = True) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>>
     >>> # Apply light theme for presentations
     >>> plotter.apply_theme("light")
@@ -2045,7 +2098,9 @@ def get_map_characteristics(objs2plot, maps_dict: dict):
 
 ################################################################################################
 def get_map_limits(
-    objs2plot: Union[List[cltsurf.Surface], List[clttract.Tractogram]],
+    objs2plot: Union[
+        List[cltsurf.Surface], List[clttract.Tractogram], List[cltpts.PointCloud]
+    ],
     map_name: str,
     v_limits: Tuple[Optional[float], Optional[float]],
 ) -> List[Tuple[float, float, str]]:
@@ -2175,6 +2230,9 @@ def get_data_from_object(obj, map_name):
     if isinstance(obj, cltsurf.Surface):
         return obj.mesh.point_data[map_name]
 
+    elif isinstance(obj, cltpts.PointCloud):
+        return obj.point_data[map_name]
+
     elif isinstance(obj, clttract.Tractogram):
         if map_name in obj.data_per_point.keys():
             return obj.data_per_point[map_name]
@@ -2185,7 +2243,7 @@ def get_data_from_object(obj, map_name):
     else:
         raise TypeError(
             f"Unsupported object type: {type(obj)}. "
-            "Expected cltsurf.Surface or clttract.Tractogram."
+            "Expected cltsurf.Surface, cltpts.PointCloud, clttract.Tractogram."
         )
 
 
@@ -2245,6 +2303,9 @@ def find_common_map_names(obj2plot, map_names):
 
             elif isinstance(sing_obj, cltsurf.Surface):
                 available_maps = list(sing_obj.mesh.point_data.keys())
+
+            elif isinstance(sing_obj, cltpts.PointCloud):
+                available_maps = list(sing_obj.point_data.keys())
 
             # Check if colortable is missing
             if map_name not in sing_obj.colortables.keys():
