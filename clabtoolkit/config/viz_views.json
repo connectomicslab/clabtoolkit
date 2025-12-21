@@ -23,7 +23,8 @@
             "surface":{"smooth": true,
                         "smooth_iterations": 10
             },
-            "tracts":{"tube_radius": 0.1,
+            "tracts":{"tubes": true,
+                "tube_radius": 0.1,
                         "tube_sides": 10,
                         "smooth": true,
                         "smooth_iterations": 10,
