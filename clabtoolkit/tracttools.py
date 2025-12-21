@@ -13,6 +13,7 @@ import copy
 # Importing local modules
 from . import misctools as cltmisc
 from . import parcellationtools as cltparc
+from . import colortools as cltcol
 
 from dipy.segment.clustering import QuickBundlesX, QuickBundles
 from dipy.tracking.streamline import set_number_of_points
@@ -86,9 +87,9 @@ class Tractogram:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
 
-        tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
+        tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
         tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
@@ -360,9 +361,9 @@ class Tractogram:
                         f"Colortable in {lut_file} does not cover all IDs in data_per_point for map '{map_name}'."
                     )
 
-            color_table = cltmisc.colors_to_table(colors=colors, values=values)
+            color_table = cltcol.colors_to_table(colors=colors, values=values)
         else:
-            color_table = cltmisc.colors_to_table(colors=colors)
+            color_table = cltcol.colors_to_table(colors=colors)
 
         if isinstance(opacity, (int, float)):
             # opacity is a scalar, no need to check length
@@ -995,7 +996,7 @@ class Tractogram:
 
         # Create a new colortable entry for tract IDs
         n_tractograms = len(all_tractograms)
-        tract_id_colors = cltmisc.create_distinguishable_colors(n_tractograms)
+        tract_id_colors = cltcol.create_distinguishable_colors(n_tractograms)
 
         merged_colortables["tract_id"] = {
             "names": [f"Tractogram_{i}" for i in range(n_tractograms)],
@@ -1186,8 +1187,8 @@ class Tractogram:
                 cluster_ids[idx] = cluster_id
 
         # Store the cluster IDs in data_per_streamline
-        colors = cltmisc.create_distinguishable_colors(len(self.centroids))
-        colortable = cltmisc.colors_to_table(
+        colors = cltcol.create_distinguishable_colors(len(self.centroids))
+        colortable = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=range(len(self.centroids))
         )
         colortable[:, :3] = colortable[:, :3] / 255  # Ensure colors are between 0 and 1
@@ -1613,12 +1614,12 @@ class Tractogram:
             if overlay_name in dict_ctables.keys():
                 # Use the colortable associated with the parcellation
 
-                point_colors = cltmisc.get_colors_from_colortable(
+                point_colors = cltcol.get_colors_from_colortable(
                     all_data, self.colortables[overlay_name]["color_table"]
                 )
             else:
                 # Use the colormap for scalar data
-                point_colors = cltmisc.values2colors(
+                point_colors = cltcol.values2colors(
                     all_data,
                     cmap=colormap,
                     output_format="rgb",
@@ -1629,7 +1630,7 @@ class Tractogram:
                     range_color=range_color,
                 )
         else:
-            point_colors = cltmisc.values2colors(
+            point_colors = cltcol.values2colors(
                 all_data,
                 cmap=colormap,
                 output_format="rgb",
@@ -2135,7 +2136,7 @@ class Tractogram:
         views: Union[str, List[str]] = ["lateral"],
         hemi: str = "lh",
         use_opacity: bool = True,
-        tract_plot_style: str = "tube",
+        plot_style: str = "tube",
         vis_percentage: float = 100,
         force_reduction: bool = True,
         notebook: bool = False,
@@ -2177,7 +2178,7 @@ class Tractogram:
         use_opacity : bool, default True
             Whether to use opacity settings from the tractogram overlays.
 
-        tract_plot_style : str, default "tube"
+        plot_style : str, default "tube"
             Style for rendering streamlines: 'tube' or 'line'.
 
         vis_percentage : float, default 100
@@ -2259,7 +2260,7 @@ class Tractogram:
             range_color=range_color,
             v_range=(range_min, range_max),
             use_opacity=use_opacity,
-            tract_plot_style=tract_plot_style,
+            plot_style=plot_style,
             notebook=notebook,
             colorbar=show_colorbar,
             colorbar_titles=colorbar_title,
@@ -2514,8 +2515,8 @@ def merge_tractograms(
 
     # Creating a colortable in case it is not provided
     if color_table is None:
-        colors = cltmisc.create_distinguishable_colors(n_tracts)
-        color_table = cltmisc.colors_to_table(
+        colors = cltcol.create_distinguishable_colors(n_tracts)
+        color_table = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=range(n_tracts)
         )
         color_table[:, :3] = (
