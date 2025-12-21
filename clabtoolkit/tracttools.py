@@ -301,7 +301,6 @@ class Tractogram:
         lut_file: Union[str, Path],
         map_name: str = "default",
         opacity: np.ndarray = 1.0,
-        lut_type: str = "lut",
     ) -> None:
         """
         Loads a colortable from a file and associates it with a specified map name.
