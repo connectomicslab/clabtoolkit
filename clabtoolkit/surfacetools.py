@@ -11,6 +11,7 @@ import warnings
 # Importing local modules
 from . import freesurfertools as cltfree
 from . import misctools as cltmisc
+from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -132,9 +133,9 @@ class Surface:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
 
-        tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
+        tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
         tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
@@ -245,7 +246,7 @@ class Surface:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
 
         # Load the surface geometry
         try:
@@ -340,7 +341,7 @@ class Surface:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
 
         self.surf = surface_file
         self.mesh = self.create_mesh_from_arrays(vertices, faces)
@@ -408,7 +409,7 @@ class Surface:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltmisc.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
 
         # Ensure mesh has default surface colors if not present
         self._create_default_parcellation(color=color, alpha=alpha)
@@ -458,7 +459,7 @@ class Surface:
         assigned to all vertices.
         """
 
-        tmp_ctable = cltmisc.colors_to_table(colors=color, alpha_values=alpha)
+        tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
         tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         self._store_parcellation_data(
@@ -1541,9 +1542,9 @@ class Surface:
             self.mesh.point_data["components"] = labels
 
             n_components = len(np.unique(labels))
-            colors = cltmisc.create_distinguishable_colors(n_components)
+            colors = cltcol.create_distinguishable_colors(n_components)
 
-            ctab = cltmisc.colors_to_table(colors, alpha_values=255)
+            ctab = cltcol.colors_to_table(colors, alpha_values=255)
             new_labels = np.zeros_like(labels, dtype=np.int32)
 
             # Reassign labels to match color indices
@@ -1700,7 +1701,7 @@ class Surface:
                     tmp_ctab["color_table"] = tmp_ctab["color_table"][index, :]
                     tmp_ctab["names"] = [tmp_ctab["names"][index[0]]]
                 else:
-                    single_color_ctab = cltmisc.colors_to_table(
+                    single_color_ctab = cltcol.colors_to_table(
                         np.array([[240, 240, 240]]), alpha_values=255
                     )
                     tmp_ctab["color_table"] = single_color_ctab
@@ -2222,12 +2223,12 @@ class Surface:
             if overlay_name in dict_ctables.keys():
                 # Use the colortable associated with the parcellation
 
-                vertices_colors = cltmisc.get_colors_from_colortable(
+                vertices_colors = cltcol.get_colors_from_colortable(
                     vertex_values, self.colortables[overlay_name]["color_table"]
                 )
             else:
                 # Use the colormap for scalar data
-                vertices_colors = cltmisc.values2colors(
+                vertices_colors = cltcol.values2colors(
                     vertex_values,
                     cmap=colormap,
                     output_format="rgb",
@@ -2238,7 +2239,7 @@ class Surface:
                     range_color=range_color,
                 )
         else:
-            vertices_colors = cltmisc.values2colors(
+            vertices_colors = cltcol.values2colors(
                 vertex_values,
                 cmap=colormap,
                 output_format="rgb",
@@ -3332,8 +3333,8 @@ def merge_surfaces(
         color_table_array = color_table["color_table"]
     else:
         # Create default color table
-        colors = cltmisc.create_distinguishable_colors(n_surfaces)
-        color_table_array = cltmisc.colors_to_table(
+        colors = cltcol.create_distinguishable_colors(n_surfaces)
+        color_table_array = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=range(n_surfaces)
         )
         color_table_array[:, :3] = color_table_array[:, :3] / 255
@@ -3446,9 +3447,9 @@ def create_surface_colortable(
         raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
     # Handle color input
-    colors = cltmisc.harmonize_colors(colors, output_format="rgb") / 255
+    colors = cltcol.harmonize_colors(colors, output_format="rgb") / 255
 
-    tmp_ctable = cltmisc.colors_to_table(colors=colors, alpha_values=alpha)
+    tmp_ctable = cltcol.colors_to_table(colors=colors, alpha_values=alpha)
     tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
     if struct_names is None:

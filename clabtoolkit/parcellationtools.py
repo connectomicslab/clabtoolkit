@@ -146,7 +146,7 @@ class Parcellation:
                         self.name = cltmisc.create_names_from_indices(self.index)
 
                     if not hasattr(self, "color"):
-                        self.color = cltmisc.create_distinguishable_colors(
+                        self.color = cltcol.create_distinguishable_colors(
                             len(self.index), output_format="hex"
                         )
 
@@ -182,7 +182,7 @@ class Parcellation:
 
                 if len(self.index) > 0:
                     # Generate the colors
-                    self.color = cltmisc.create_distinguishable_colors(
+                    self.color = cltcol.create_distinguishable_colors(
                         len(self.index), output_format="hex"
                     )
                 else:
@@ -1604,7 +1604,7 @@ class Parcellation:
             if isinstance(new_colors, list):
 
                 if isinstance(new_colors[0], str):
-                    new_colors = cltmisc.multi_hex2rgb(new_colors)
+                    new_colors = cltcol.multi_hex2rgb(new_colors)
 
                 elif isinstance(new_colors[0], np.ndarray):
                     new_colors = np.array(new_colors)
@@ -1622,7 +1622,7 @@ class Parcellation:
                     "The new_colors must be a list of colors or a numpy array"
                 )
 
-            new_colors = cltmisc.readjust_colors(new_colors)
+            new_colors = cltcol.readjust_colors(new_colors)
 
             if new_colors.shape[0] != n_groups:
                 raise ValueError(
@@ -1737,7 +1737,7 @@ class Parcellation:
             if isinstance(new_colors, list):
 
                 if isinstance(new_colors[0], str):
-                    new_colors = cltmisc.multi_hex2rgb(new_colors)
+                    new_colors = cltcol.multi_hex2rgb(new_colors)
 
                 elif isinstance(new_colors[0], np.ndarray):
                     new_colors = np.array(new_colors)
@@ -1755,7 +1755,7 @@ class Parcellation:
                     "The new_colors must be a list of colors or a numpy array"
                 )
 
-            new_colors = cltmisc.readjust_colors(new_colors)
+            new_colors = cltcol.readjust_colors(new_colors)
 
             if new_colors.shape[0] != n_groups:
                 raise ValueError(
@@ -1791,7 +1791,7 @@ class Parcellation:
             self.color = new_colors
         else:
             # If new_colors is not provided, the colors will be created
-            self.color = cltmisc.create_distinguishable_colors(n_groups)
+            self.color = cltcol.create_distinguishable_colors(n_groups)
 
         # Detect minimum and maximum labels
         self.parc_range()
@@ -1939,17 +1939,17 @@ class Parcellation:
                                 elif isinstance(
                                     tmp_parc_obj.color, list
                                 ) and isinstance(self.color, np.ndarray):
-                                    temp_color = cltmisc.readjust_colors(self.color)
-                                    temp_color = cltmisc.multi_rgb2hex(temp_color)
+                                    temp_color = cltcol.readjust_colors(self.color)
+                                    temp_color = cltcol.multi_rgb2hex(temp_color)
 
                                     self.color = temp_color + tmp_parc_obj.color
                                 elif isinstance(
                                     tmp_parc_obj.color, np.ndarray
                                 ) and isinstance(self.color, list):
-                                    temp_color = cltmisc.readjust_colors(
+                                    temp_color = cltcol.readjust_colors(
                                         tmp_parc_obj.color
                                     )
-                                    temp_color = cltmisc.multi_rgb2hex(temp_color)
+                                    temp_color = cltcol.multi_rgb2hex(temp_color)
 
                                     self.color = self.color + temp_color
 
@@ -1966,7 +1966,7 @@ class Parcellation:
                 raise ValueError("The list is empty")
 
         if hasattr(self, "color"):
-            self.color = cltmisc.harmonize_colors(self.color)
+            self.color = cltcol.harmonize_colors(self.color)
 
         # Detect minimum and maximum labels
         self.parc_range()
@@ -2266,10 +2266,10 @@ class Parcellation:
                         else:
                             tsv_df["color"] = self.color
                     else:
-                        tsv_df["color"] = cltmisc.multi_rgb2hex(self.color)
+                        tsv_df["color"] = cltcol.multi_rgb2hex(self.color)
 
                 elif isinstance(self.color, np.ndarray):
-                    tsv_df["color"] = cltmisc.multi_rgb2hex(self.color)
+                    tsv_df["color"] = cltcol.multi_rgb2hex(self.color)
 
         col_dict = {
             "index": self.index,

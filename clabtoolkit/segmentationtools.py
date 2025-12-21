@@ -4,15 +4,13 @@ import sys
 import subprocess
 from pathlib import Path
 from glob import glob
-from typing import Union
 import numpy as np
-import nibabel as nib
 
 # Importing local modules
 from . import misctools as cltmisc
 from . import bidstools as cltbids
-from . import imagetools as cltimg
 from . import parcellationtools as cltparc
+from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -338,7 +336,7 @@ def tissue_seg_table(tsv_filename):
     nrows, ncols = seg_rgbcol.shape
     for i in np.arange(0, nrows):
         seg_hexcol.append(
-            cltmisc.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2])
+            cltcol.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2])
         )
 
     seg_df = pd.DataFrame(
