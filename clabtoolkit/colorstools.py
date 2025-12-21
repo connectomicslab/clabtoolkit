@@ -1,13 +1,11 @@
 import numpy as np
-
+import os
+import copy
+from datetime import datetime
 from typing import Union, List, Any, Optional
-
-
-import pandas as pd
 import re
 import pandas as pd
 from IPython.display import HTML
-
 from pathlib import Path
 from colorama import init, Fore, Style, Back
 
@@ -21,7 +19,8 @@ from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
 
 import textwrap
 
-from typing import Union, List, Optional
+
+import clabtoolkit.misctools as cltmisc
 
 
 ####################################################################################################
@@ -1937,3 +1936,1302 @@ def visualize_colors(
     # Adjust aspect ratio
     ax.set_aspect("auto")
     plt.show()
+
+
+######################################################################################################
+class ColorTableLoader:
+    """Class for loading and managing color lookup tables."""
+
+    def __init__(self, ctab_file: Union[str, Path, dict]):
+        """
+        Initialize ColorTableLoader by loading a color lookup table from a file.
+
+        Parameters
+        ----------
+        ctab_file : str, Path, or dict
+            Path to the color lookup table file (.txt, .lut, or .tsv)
+            or a dictionary containing color table data.
+            Attributes
+            ----------
+            index : list of int
+                List of integer region codes (standard Python integers)
+
+            name : list of str
+                List of region name strings
+
+            color : list
+                List of color codes (format depends on source file)
+
+            opacity : list of float
+                List of opacity values (0-1)
+
+            headerlines : list of str
+                List of header lines from the color table file
+
+        Raises
+        ------
+        FileNotFoundError
+            If the specified file does not exist
+
+        ValueError
+            If the file format cannot be determined or is invalid
+
+        Examples
+        --------
+        >>> # Load a FreeSurfer LUT file
+        >>> lut_loader = ColorTableLoader('FreeSurferColorLUT.txt')
+        >>> print(lut_loader.index[:3])
+        [0, 1, 2]
+        >>> print(lut_loader.name[:3])
+        """
+
+        if isinstance(ctab_file, (str, Path)):
+            col_dict = ColorTableLoader.load_colortable(
+                in_file=ctab_file, filter_by_name=None
+            )
+        elif isinstance(ctab_file, dict):
+            col_dict = copy.deepcopy(ctab_file)
+
+            # Validate required keys (index amd name)
+            required_keys = ["index"]
+            for key in required_keys:
+                if key not in col_dict:
+                    raise ValueError(
+                        f"Missing required key '{key}' in color table dictionary"
+                    )
+
+            if "name" not in col_dict.keys():
+                col_dict["name"] = [f"Region_{idx}" for idx in col_dict["index"]]
+
+            if "color" not in col_dict.keys():
+                col_dict["color"] = create_distinguishable_colors(
+                    n=len(col_dict["index"]), output_format="hex"
+                )
+
+            if "opacity" not in col_dict.keys():
+                col_dict["opacity"] = [1.0] * len(col_dict["index"])
+
+            if "headerlines" not in col_dict.keys():
+                col_dict["headerlines"] = []
+
+        else:
+            raise ValueError("ctab_file must be a string or a dictionary")
+
+        # Verify lengths of lists
+        n_entries = len(col_dict["index"])
+        for key in ["name", "color", "opacity"]:
+            if len(col_dict[key]) != n_entries:
+                raise ValueError(
+                    f"Length of '{key}' does not match length of 'index' in color table dictionary"
+                )
+
+        self.index = col_dict["index"]
+        self.name = col_dict["name"]
+        self.color = col_dict["color"]
+        self.opacity = col_dict["opacity"]
+        self.headerlines = col_dict["headerlines"]
+
+    @staticmethod
+    def load_colortable(
+        in_file: str, filter_by_name: Union[str, List[str]] = None
+    ) -> dict:
+        """
+        Automatically detect and load a color lookup table from either LUT or TSV format.
+
+        This method intelligently determines the file format (FreeSurfer LUT or TSV) and uses
+        the appropriate parser to load the color table data. Detection is based on file extension
+        and/or file content analysis.
+
+        Parameters
+        ----------
+        in_file : str
+            Path to the color lookup table file (.txt, .lut, or .tsv)
+
+        filter_by_name : str or list of str, optional
+            Filter regions by name substring(s). Default is None.
+
+        Returns
+        -------
+        dict
+            Dictionary with the following keys:
+            - 'index': List of integer region codes (standard Python integers)
+            - 'name': List of region name strings
+            - 'color': List of color codes (format depends on source file)
+            - Additional keys may be present depending on the file format
+
+        Examples
+        --------
+        >>> # Load a FreeSurfer LUT file
+        >>> lut_dict = ColorTableLoader.load_colortable('FreeSurferColorLUT.txt')
+        >>> lut_dict['index'][:3]
+        [0, 1, 2]
+        >>> lut_dict['name'][:3]
+        ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter']
+
+        >>> # Load a TSV file
+        >>> tsv_dict = ColorTableLoader.load_colortable('regions.tsv')
+        >>> tsv_dict['index'][:3]
+        [0, 1, 2]
+
+        >>> # Load with filtering
+        >>> hippo_dict = ColorTableLoader.load_colortable(
+        ...     'FreeSurferColorLUT.txt',
+        ...     filter_by_name='hippocampus'
+        ... )
+
+        Raises
+        ------
+        FileNotFoundError
+            If the specified file does not exist
+        ValueError
+            If the file format cannot be determined or is invalid
+
+        Notes
+        -----
+        - File format detection uses both extension and content analysis
+        - .tsv files are assumed to be TSV format
+        - .txt and .lut files are analyzed to determine if they are LUT or TSV format
+        - LUT format is identified by comment lines starting with '#'
+        - TSV format is identified by tab-separated columns with headers
+        """
+        # Check if file exists
+        if not os.path.exists(in_file):
+            raise FileNotFoundError(f"Color table file not found: {in_file}")
+
+        # Get file extension
+        file_ext = os.path.splitext(in_file)[1].lower()
+
+        # Detect file format
+        file_format = ColorTableLoader._detect_format(in_file, file_ext)
+
+        # Load the file using the appropriate method
+        if file_format == "lut":
+            colors_dict = ColorTableLoader.read_luttable(
+                in_file, filter_by_name=filter_by_name
+            )
+        elif file_format == "tsv":
+            colors_dict = ColorTableLoader.read_tsvtable(
+                in_file, filter_by_name=filter_by_name
+            )
+        else:
+            raise ValueError(f"Could not determine file format for: {in_file}")
+
+        #  Force opacity values equal to 0 to be 255. This is because most
+        # of the neuroimaging software interpret 0 opacity as fully opaque.
+        #
+        colors_dict["opacity"] = [
+            255 if op == 0 else op for op in colors_dict["opacity"]
+        ]
+
+        # Force opacity values to be between 0 and 1
+        colors_dict["opacity"] = [min(max(op, 0), 1) for op in colors_dict["opacity"]]
+
+        return colors_dict
+
+    @staticmethod
+    def _detect_format(in_file: str, file_ext: str) -> str:
+        """
+        Detect the format of a color table file.
+
+        Parameters
+        ----------
+        in_file : str
+            Path to the file
+        file_ext : str
+            File extension (lowercase)
+
+        Returns
+        -------
+        str
+            Either 'lut' or 'tsv'
+
+        Raises
+        ------
+        ValueError
+            If file extension is unsupported or file is empty/invalid
+        """
+        if file_ext == ".tsv":
+            return "tsv"
+
+        if file_ext not in [".txt", ".lut", ""]:
+            raise ValueError(
+                f"Unsupported file extension: {file_ext}. Expected .txt, .lut, or .tsv"
+            )
+
+        # Analyze content for .txt, .lut, or extensionless files
+        try:
+            with open(in_file, "r", encoding="utf-8") as f:
+                lines_to_check = [line.strip() for line in f if line.strip()]
+        except UnicodeDecodeError:
+            with open(in_file, "r") as f:
+                lines_to_check = [line.strip() for line in f if line.strip()]
+
+        if not lines_to_check:
+            raise ValueError(f"File is empty: {in_file}")
+
+        # Check for format indicators
+        has_hash_comments = any(line.startswith("#") for line in lines_to_check)
+
+        # Find first non-comment line
+        first_non_comment = None
+        for line in lines_to_check:
+            if not line.startswith("#") and not line.startswith("\\\\"):
+                first_non_comment = line
+                break
+
+        if not first_non_comment:
+            raise ValueError(f"File contains only comments: {in_file}")
+
+        has_tabs = "\t" in first_non_comment
+        parts = first_non_comment.split("\t") if has_tabs else first_non_comment.split()
+
+        if not parts:
+            raise ValueError(f"First data line is empty or malformed: {in_file}")
+
+        # Check if first column is numeric
+        try:
+            int(parts[0])
+            is_numeric_first = True
+        except (ValueError, IndexError):
+            is_numeric_first = False
+
+        # Determine format based on heuristics:
+        # LUT format characteristics:
+        #   - Has # comments
+        #   - First non-comment line starts with a number (region code)
+        #   - Space-separated or tab-separated
+        # TSV format characteristics:
+        #   - First line is a header (starts with column names like "index", "name")
+        #   - Tab-separated
+        #   - First column is typically text (header name)
+
+        if has_tabs and not is_numeric_first:
+            # Tab-separated with text header -> TSV
+            return "tsv"
+        elif has_hash_comments and is_numeric_first:
+            # Has comments and numeric first column -> LUT
+            return "lut"
+        elif not has_tabs and is_numeric_first:
+            # Space-separated with numeric first column -> LUT
+            return "lut"
+        elif has_tabs and is_numeric_first:
+            # Tab-separated with numeric first column
+            # Could be TSV without header, check for column names in parts
+            if len(parts) >= 2 and parts[1].lower() in [
+                "index",
+                "name",
+                "label",
+                "region",
+            ]:
+                return "tsv"
+            else:
+                # Numeric data without clear header -> assume LUT
+                return "lut"
+        else:
+            # Default fallback based on comments
+            return "lut" if has_hash_comments else "tsv"
+
+    @staticmethod
+    def read_luttable(
+        in_file: str, filter_by_name: Union[str, List[str]] = None
+    ) -> dict:
+        """
+        Read and parse a FreeSurfer Color Lookup Table (LUT) file.
+
+        This method reads a FreeSurfer color lookup table file and parses its contents into
+        a structured dictionary containing region codes, names, and colors. The LUT file format
+        follows FreeSurfer's standard format where each non-comment line contains a region code,
+        name, and RGB color values.
+
+        Parameters
+        ----------
+        in_file : str
+            Path to the FreeSurfer color lookup table file (.txt or .lut)
+
+        filter_by_name : str or list of str, optional
+            Filter regions by name substring(s). If provided, only regions whose names
+            contain any of the specified substrings will be returned. Default is None.
+
+        Returns
+        -------
+        dict
+            Dictionary with the following keys:
+            - 'index': List of integer region codes (standard Python integers)
+            - 'name': List of region name strings
+            - 'color': List of hex color codes (format: '#RRGGBB')
+
+        Examples
+        --------
+        >>> lut_dict = ColorTableLoader.read_luttable('FreeSurferColorLUT.txt')
+        >>> print(f"Found {len(lut_dict['index'])} regions")
+        Found 1234 regions
+
+        >>> lut_dict['index'][:3]
+        [0, 1, 2]
+        >>> lut_dict['name'][:3]
+        ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter']
+        >>> lut_dict['color'][:3]
+        ['#000000', '#4682b4', '#f5f5f5']
+
+        >>> # Filter for hippocampus regions
+        >>> hippo_dict = ColorTableLoader.read_luttable(
+        ...     'FreeSurferColorLUT.txt',
+        ...     filter_by_name='hippocampus'
+        ... )
+        >>> print(hippo_dict['name'])
+        ['Left-Hippocampus', 'Right-Hippocampus', ...]
+
+        >>> # Filter for multiple patterns
+        >>> regions = ColorTableLoader.read_luttable(
+        ...     'FreeSurferColorLUT.txt',
+        ...     filter_by_name=['hippocampus', 'amygdala']
+        ... )
+
+        Notes
+        -----
+        - Comment lines (starting with '#') in the LUT file are ignored
+        - Each non-comment line should have at least 5 elements: code, name, R, G, B
+        - The returned region codes are standard Python integers, not numpy objects
+        - Color values are converted from RGB to hexadecimal format
+        - Filtering is case-insensitive and matches substrings
+        """
+        # Read the LUT file content
+        try:
+            with open(in_file, "r", encoding="utf-8") as f:
+                lut_content = f.readlines()
+        except UnicodeDecodeError:
+            with open(in_file, "r") as f:
+                lut_content = f.readlines()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"LUT file not found: {in_file}")
+        except PermissionError:
+            raise PermissionError(
+                f"Permission denied when accessing LUT file: {in_file}"
+            )
+
+        # Initialize lists to store parsed data
+        region_codes = []
+        region_names = []
+        region_colors_rgb = []
+        region_opacities = []
+
+        # Parse each non-comment line in the file
+        headerlines = []
+        for line in lut_content:
+            # Skip comments and empty lines
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("\\\\"):
+                parts = line.split()
+                if (
+                    line.startswith("#")
+                    and parts[-1].lower() != "a"
+                    and parts[-2].lower() != "b"
+                ):
+                    headerlines.append(line)
+
+            # Split line into components
+            parts = line.split()
+            if len(parts) < 5:  # Need at least code, name, R, G, B
+                continue
+
+            # Extract data
+            try:
+                code = int(parts[0])  # Using Python's built-in int
+                name = parts[1]
+
+                if len(parts) == 6:
+                    r, g, b, o = (
+                        int(parts[2]),
+                        int(parts[3]),
+                        int(parts[4]),
+                        int(parts[5]),
+                    )
+                else:
+                    r, g, b = int(parts[2]), int(parts[3]), int(parts[4])
+                    o = 1  # Default opacity if not provided
+
+                region_codes.append(code)
+                region_names.append(name)
+                region_colors_rgb.append([r, g, b])
+                region_opacities.append(o)
+
+            except (ValueError, IndexError):
+                # Skip malformed lines
+                continue
+
+        # Convert RGB colors to hex format
+        try:
+            # Use the existing multi_rgb2hex function if available
+            region_colors_hex = multi_rgb2hex(np.array(region_colors_rgb))
+        except (NameError, AttributeError):
+            # Fallback to direct conversion if the function isn't available
+            region_colors_hex = [
+                f"#{r:02x}{g:02x}{b:02x}" for r, g, b in region_colors_rgb
+            ]
+
+        # Apply name filtering if requested
+        if filter_by_name is not None:
+            if isinstance(filter_by_name, str):
+                filter_by_name = [filter_by_name]
+
+            filtered_indices = cltmisc.get_indexes_by_substring(
+                region_names, filter_by_name
+            )
+
+            # Filter the LUT based on the provided names
+            region_codes = [region_codes[i] for i in filtered_indices]
+            region_names = [region_names[i] for i in filtered_indices]
+            region_colors_hex = [region_colors_hex[i] for i in filtered_indices]
+            region_opacities = [region_opacities[i] for i in filtered_indices]
+
+        # Create and return the result dictionary
+        return {
+            "index": region_codes,
+            "name": region_names,
+            "color": region_colors_hex,
+            "opacity": region_opacities,
+            "headerlines": headerlines,
+        }
+
+    @staticmethod
+    def read_tsvtable(
+        in_file: str, filter_by_name: Union[str, List[str]] = None
+    ) -> dict:
+        """
+        Read and parse a TSV (Tab-Separated Values) lookup table file.
+
+        This method reads a TSV file containing parcellation information and returns a dictionary
+        with the data. The TSV file must contain at least 'index' and 'name' columns. If a 'color'
+        column is present, it will be included in the returned dictionary.
+
+        Parameters
+        ----------
+        in_file : str
+            Path to the TSV lookup table file
+
+        filter_by_name : str or list of str, optional
+            Filter regions by name substring(s). If provided, only regions whose names
+            contain any of the specified substrings will be returned. Default is None.
+
+        Returns
+        -------
+        dict
+            Dictionary with keys corresponding to column names in the TSV file.
+            Must include at least:
+            - 'index': List of integer region codes (standard Python integers)
+            - 'name': List of region name strings
+            May also include:
+            - 'color': List of color codes if present in the TSV file
+            - Any other columns present in the TSV file
+
+        Raises
+        ------
+        FileNotFoundError
+            If the specified TSV file does not exist
+        ValueError
+            If the TSV file does not contain required 'index' and 'name' columns,
+            is empty, or cannot be parsed
+
+        Examples
+        --------
+        >>> tsv_dict = ColorTableLoader.read_tsvtable('regions.tsv')
+        >>> print(f"Columns: {list(tsv_dict.keys())}")
+        Columns: ['index', 'name', 'color', 'abbreviation']
+
+        >>> tsv_dict['index'][:3]
+        [0, 1, 2]
+        >>> tsv_dict['name'][:3]
+        ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter']
+
+        >>> # Filter for specific regions
+        >>> filtered = ColorTableLoader.read_tsvtable(
+        ...     'regions.tsv',
+        ...     filter_by_name=['cortex', 'hippocampus']
+        ... )
+
+        Notes
+        -----
+        - The 'index' column values are converted to standard Python integers
+        - All other columns are preserved in their original format
+        - Filtering is case-insensitive and matches substrings
+        """
+        # Check if file exists
+        if not os.path.exists(in_file):
+            raise FileNotFoundError(f"TSV file not found: {in_file}")
+
+        try:
+            # Read the TSV file into a pandas DataFrame
+            tsv_df = pd.read_csv(in_file, sep="\t")
+
+            # Check for required columns
+            required_columns = ["index", "name"]
+            missing_columns = [
+                col for col in required_columns if col not in tsv_df.columns
+            ]
+            if missing_columns:
+                raise ValueError(
+                    f"TSV file missing required columns: {', '.join(missing_columns)}"
+                )
+
+            # Convert DataFrame to dictionary
+            tsv_dict = tsv_df.to_dict(orient="list")
+
+            # Convert index values to integers
+            if "index" in tsv_dict:
+                tsv_dict["index"] = [int(x) for x in tsv_dict["index"]]
+
+            if "opacity" in tsv_dict:
+                tsv_dict["opacity"] = [tsv_dict["opacity"][i] for i in filtered_indices]
+            else:
+                tsv_dict["opacity"] = [1] * len(tsv_dict["index"])
+
+            # Apply name filtering if requested
+            if filter_by_name is not None:
+                if isinstance(filter_by_name, str):
+                    filter_by_name = [filter_by_name]
+
+                filtered_indices = cltmisc.get_indexes_by_substring(
+                    tsv_dict["name"], filter_by_name
+                )
+
+                # Filter all columns based on the provided names
+                tsv_dict = {
+                    key: [tsv_dict[key][i] for i in filtered_indices]
+                    for key in tsv_dict.keys()
+                }
+
+                #
+
+            tsv_dict["headerlines"] = []
+
+            return tsv_dict
+
+        except pd.errors.EmptyDataError:
+            raise ValueError(
+                f"The TSV file is empty or improperly formatted: {in_file}"
+            )
+        except pd.errors.ParserError:
+            raise ValueError(f"The TSV file could not be parsed correctly: {in_file}")
+        except Exception as e:
+            raise ValueError(f"Error reading TSV file {in_file}: {str(e)}")
+
+    @staticmethod
+    def write_luttable(
+        lut_df: Union[pd.DataFrame, dict],
+        out_file: str = None,
+        boolappend: bool = False,
+        force: bool = True,
+    ):
+        """
+        Write a FreeSurfer format lookup table file.
+
+        This method creates a FreeSurfer-compatible color lookup table file from region
+        codes, names, and colors. The output follows the standard FreeSurfer LUT format
+        with optional header lines.
+
+        Parameters
+        ----------
+        lut_df : pd.DataFrame or dict
+            DataFrame or dictionary containing the following keys/columns:
+            - 'index': List of integer region codes
+            - 'name': List of region name strings
+            - 'color': List of colors in RGB format (as list/array of [R, G, B] values) or
+            hexadecimal format (as list of '#RRGGBB' strings)
+            - 'opacity': List of opacity values (0-1 range)
+            - 'headerlines': Optional list of header lines to include at the top of the file. If the list is empty, a default
+            header with timestamp will be generated. Default is None.
+            - If a dictionary is provided, it must contain the same keys.
+
+        out_file : str, optional
+            Output file path. If None, returns formatted lines without writing to file.
+            Default is None.
+
+        boolappend : bool, optional
+            If True, append to existing file. If False, create new file or overwrite.
+            Default is False.
+
+        force : bool, optional
+            If True, overwrite existing files without warning. If False, warn before
+            overwriting. Default is True.
+
+        Returns
+        -------
+        list
+            List of formatted LUT lines as strings
+
+        Examples
+        --------
+        >>> # Create a simple LUT file
+        >>> ColorTableLoader.write_luttable(
+        ...     codes=[1, 2, 3],
+        ...     names=['region1', 'region2', 'region3'],
+        ...     colors=['#FF0000', '#00FF00', '#0000FF'],
+        ...     out_file='output.lut'
+        ... )
+
+        >>> # Use RGB colors instead
+        >>> ColorTableLoader.write_luttable(
+        ...     codes=[1, 2],
+        ...     names=['cortex', 'white_matter'],
+        ...     colors=[[255, 0, 0], [255, 255, 255]],
+        ...     out_file='parcellation.lut'
+        ... )
+
+        >>> # Append to existing file
+        >>> ColorTableLoader.write_luttable(
+        ...     codes=[4],
+        ...     names=['new_region'],
+        ...     colors=['#FFFF00'],
+        ...     out_file='output.lut',
+        ...     boolappend=True
+        ... )
+
+        Notes
+        -----
+        - Output format follows FreeSurfer LUT specification
+        - RGB values should be in range [0, 255]
+        - Hex colors should be in format '#RRGGBB'
+        - Alpha channel is always set to 0 in output
+        """
+
+        codes = lut_df["index"]
+        names = lut_df["name"]
+        colors = lut_df["color"]
+        opacities = lut_df["opacity"]
+        headerlines = []
+
+        # Move the opacity to the range of 0-255
+        opacities = [int(op * 255) for op in opacities]
+
+        # Check if the file already exists and if the force parameter is False
+        if out_file is not None:
+            if os.path.exists(out_file) and not force:
+                print("Warning: The file already exists. It will be overwritten.")
+
+            out_dir = os.path.dirname(out_file)
+            if out_dir and not os.path.exists(out_dir):
+                os.makedirs(out_dir)
+
+        happend_bool = True  # Boolean to append the headerlines
+        if headerlines is None:
+            happend_bool = (
+                False  # Only add this if it is the first time the file is created
+            )
+            now = datetime.now()
+            date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
+            headerlines = [
+                "# $Id: {} {} \n".format(out_file, date_time),
+            ]
+        elif isinstance(headerlines, str):
+            headerlines = [headerlines]
+        elif isinstance(headerlines, list):
+            pass
+        else:
+            raise ValueError("The headerlines parameter must be a list or a string")
+
+        if boolappend:
+            if not os.path.exists(out_file):
+                raise ValueError(f"Cannot append: file does not exist: {out_file}")
+            else:
+                with open(out_file, "r") as file:
+                    luttable = file.readlines()
+
+                luttable = [l.strip("\n\r") for l in luttable]
+                luttable = ["\n" if element == "" else element for element in luttable]
+
+                if happend_bool:
+                    luttable = luttable + headerlines
+        else:
+            luttable = headerlines
+
+        luttable.append("#\n")
+        luttable.append(
+            "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
+                "#No.", "Label Name:", "R", "G", "B", "A"
+            )
+        )
+
+        # Handle different color input formats
+        if isinstance(colors, list):
+            if isinstance(colors[0], str):
+                colors = harmonize_colors(colors)
+                colors = multi_hex2rgb(colors)
+            elif isinstance(colors[0], list):
+                colors = np.array(colors)
+            elif isinstance(colors[0], np.ndarray):
+                colors = np.vstack(colors)
+        elif isinstance(colors, np.ndarray):
+            pass  # Already in correct format
+        else:
+            raise ValueError("Colors must be a list or numpy array")
+
+        # Add regions to table
+        for roi_pos, roi_name in enumerate(names):
+            if roi_pos == 0:
+                luttable.append("\n")
+
+            luttable.append(
+                "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
+                    codes[roi_pos],
+                    names[roi_pos],
+                    colors[roi_pos, 0],
+                    colors[roi_pos, 1],
+                    colors[roi_pos, 2],
+                    opacities[roi_pos],
+                )
+            )
+        luttable.append("\n")
+
+        # Write to file if path provided
+        if out_file is not None:
+            if os.path.isfile(out_file) and force:
+                with open(out_file, "w") as colorLUT_f:
+                    colorLUT_f.write("\n".join(luttable))
+            elif not os.path.isfile(out_file):
+                with open(out_file, "w") as colorLUT_f:
+                    colorLUT_f.write("\n".join(luttable))
+
+        return luttable
+
+    @staticmethod
+    def write_tsvtable(
+        tsv_df: Union[pd.DataFrame, dict],
+        out_file: str,
+        boolappend: bool = False,
+        force: bool = False,
+    ):
+        """
+        Write a TSV format lookup table file.
+
+        This method creates a tab-separated values (TSV) file from a pandas DataFrame or
+        dictionary containing parcellation information. The data must include at least
+        'index' and 'name' columns/keys.
+
+        Parameters
+        ----------
+        tsv_df : pd.DataFrame or dict
+            Data to write with index/name/color information. Must contain at least
+            'index' and 'name' keys/columns.
+
+        out_file : str
+            Output file path for the TSV file
+
+        boolappend : bool, optional
+            If True, append to existing TSV file. If False, create new file or overwrite.
+            Default is False.
+
+        force : bool, optional
+            If True, overwrite existing files without warning. If False, warn before
+            overwriting. Default is False.
+
+        Returns
+        -------
+        str
+            Path to the output TSV file
+
+        Raises
+        ------
+        ValueError
+            If the input data does not contain required 'index' and 'name' keys/columns,
+            if colors are not in hexadecimal format, or if append is requested but
+            file doesn't exist
+
+        Examples
+        --------
+        >>> # Write from dictionary
+        >>> data = {
+        ...     'index': [1, 2, 3],
+        ...     'name': ['region1', 'region2', 'region3'],
+        ...     'color': ['#FF0000', '#00FF00', '#0000FF']
+        ... }
+        >>> ColorTableLoader.write_tsvtable(data, 'regions.tsv', force=True)
+        'regions.tsv'
+
+        >>> # Write from DataFrame
+        >>> import pandas as pd
+        >>> df = pd.DataFrame(data)
+        >>> ColorTableLoader.write_tsvtable(df, 'regions.tsv', force=True)
+
+        >>> # Append to existing file
+        >>> new_data = {
+        ...     'index': [4],
+        ...     'name': ['region4'],
+        ...     'color': ['#FFFF00']
+        ... }
+        >>> ColorTableLoader.write_tsvtable(new_data, 'regions.tsv', boolappend=True)
+
+        Notes
+        -----
+        - Output is tab-separated with column headers
+        - RGB colors are automatically converted to hexadecimal format
+        - When appending, columns are matched by name; missing values are filled with empty strings
+        - The output file includes a header row with column names
+        """
+        # Check if the file already exists and if the force parameter is False
+        if os.path.exists(out_file) and not force and not boolappend:
+            print("Warning: The TSV file already exists. It will be overwritten.")
+
+        out_dir = os.path.dirname(out_file)
+        if out_dir and not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+
+        # Convert DataFrame to dictionary if needed
+        if isinstance(tsv_df, pd.DataFrame):
+            tsv_dict = tsv_df.to_dict(orient="list")
+        else:
+            tsv_dict = tsv_df.copy()  # Create a copy to avoid modifying original
+
+        # Validate required columns
+        if "name" not in tsv_dict.keys() or "index" not in tsv_dict.keys():
+            raise ValueError("The dictionary must contain the keys 'index' and 'name'")
+
+        # Process colors if present
+        if "color" in tsv_dict.keys():
+            temp_colors = tsv_dict["color"]
+
+            if isinstance(temp_colors, list):
+                if isinstance(temp_colors[0], str):
+                    if temp_colors[0][0] != "#":
+                        raise ValueError(
+                            "The colors must be in hexadecimal format (starting with #)"
+                        )
+                elif isinstance(temp_colors[0], list):
+                    colors = np.array(temp_colors)
+                    seg_hexcol = multi_rgb2hex(colors)
+                    tsv_dict["color"] = seg_hexcol
+            elif isinstance(temp_colors, np.ndarray):
+                seg_hexcol = multi_rgb2hex(temp_colors)
+                tsv_dict["color"] = seg_hexcol
+
+        # Handle append mode
+        if boolappend:
+            if not os.path.exists(out_file):
+                raise ValueError(f"Cannot append: file does not exist: {out_file}")
+            else:
+                tsv_orig = ColorTableLoader.read_tsvtable(in_file=out_file)
+
+                # Create a list with the common keys between tsv_orig and tsv_dict
+                common_keys = list(set(tsv_orig.keys()) & set(tsv_dict.keys()))
+
+                # List all the keys for both dictionaries
+                all_keys = list(set(tsv_orig.keys()) | set(tsv_dict.keys()))
+
+                # Concatenate values for common keys
+                for key in common_keys:
+                    tsv_orig[key] = tsv_orig[key] + tsv_dict[key]
+
+                # Fill missing values for non-common keys
+                for key in all_keys:
+                    if key not in common_keys:
+                        if key in tsv_orig.keys():
+                            tsv_orig[key] = tsv_orig[key] + [""] * len(tsv_dict["name"])
+                        elif key in tsv_dict.keys():
+                            tsv_orig[key] = [""] * len(tsv_orig["name"]) + tsv_dict[key]
+
+                tsv_dict = tsv_orig
+
+        # Convert dictionary to DataFrame
+        tsv_df = pd.DataFrame(tsv_dict)
+
+        # Write to file
+        if os.path.isfile(out_file) and force:
+            with open(out_file, "w") as tsv_file:
+                tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
+        elif not os.path.isfile(out_file):
+            with open(out_file, "w") as tsv_file:
+                tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
+
+        return out_file
+
+    #################################################
+    def export(
+        self,
+        out_ctab: Union[str, Path],
+        out_format: str = "fsl",
+        headerlines: Union[list, str] = None,
+        append: bool = False,
+        overwrite: bool = True,
+    ):
+        """
+        Export the loaded color table to specified format.
+
+        Parameters
+        ----------
+        out_ctab : str
+            Path for output color table file.
+
+        out_format : str, optional
+            Output format. Options are 'lut', 'tsv', 'fsl' or 'nilearn'.
+            Default is 'fsl'.
+
+        overwrite : bool, optional
+            Whether to overwrite the output file if it already exists.
+            Default: True
+
+        Examples
+        --------
+        >>> parcellation.export_to_file('fsl_colors.lut', out_format='fslctab')
+        >>> parcellation.export_to_file('nilearn_colors.tsv', out_format='nilearnctab')
+        """
+
+        if out_format.lower() == "fsl":
+            self.export_to_fslctab(out_ctab, overwrite=overwrite)
+
+        elif out_format.lower() == "nilearn":
+            self.export_to_nilearnctab(out_ctab, overwrite=overwrite)
+
+        elif out_format.lower() == "lut":
+            self.export_to_lutctab(
+                out_ctab, overwrite=overwrite, headerlines=headerlines, append=append
+            )
+
+        elif out_format.lower() == "tsv":
+            self.export_to_tsvctab(out_ctab, overwrite=overwrite)
+
+        else:
+            raise ValueError(
+                f"Unsupported output format: {out_format}. "
+                "Supported formats are 'lut', 'tsv', 'fsl', or 'nilearn'."
+            )
+
+    ######################################################################################################
+    def export_to_fslctab(self, out_ctab: Union[str, Path], overwrite: bool = True):
+        """
+        Export the loaded color table to FSL LUT format.
+
+        Parameters
+        ----------
+        out_ctab : str
+            Path for output FSL LUT file.
+
+        Examples
+        --------
+
+        """
+
+        # Convert to Path objects
+        if isinstance(out_ctab, str):
+            out_ctab = Path(out_ctab)
+
+        # Check if output directory exists
+        if not out_ctab.parent.exists():
+            raise FileNotFoundError(
+                f"Output directory does not exist: {out_ctab.parent}"
+            )
+
+        # Check if output file exists and handle overwrite
+        if out_ctab.exists() and not overwrite:
+            raise FileExistsError(
+                f"Output file already exists: {out_ctab}. Use overwrite=True to overwrite."
+            )
+
+        st_codes_lut = self.index
+        st_names_lut = self.name
+        st_colors_lut = harmonize_colors(self.color, output_format="rgb")
+
+        lut_lines = []
+        for roi_pos, st_code in enumerate(st_codes_lut):
+            st_name = st_names_lut[roi_pos]
+            lut_lines.append(
+                "{:<4} {:>3.5f} {:>3.5f} {:>3.5f} {:<40} ".format(
+                    st_code,
+                    st_colors_lut[roi_pos, 0] / 255,
+                    st_colors_lut[roi_pos, 1] / 255,
+                    st_colors_lut[roi_pos, 2] / 255,
+                    st_name,
+                )
+            )
+
+        if os.path.isfile(out_ctab) or overwrite:
+            with open(out_ctab, "w") as colorLUT_f:
+                colorLUT_f.write("\n".join(lut_lines))
+
+    ######################################################################################################
+    def export_to_nilearnctab(
+        self, out_ctab: Union[str, Path], overwrite: bool = False
+    ) -> str:
+        """
+        Export the color table to nilearn-compatible format.
+
+        This function reads a color lookup table and converts it to a pandas-readable format
+        that nilearn's NiftiLabelsMasker can use.
+
+        Parameters
+        ----------
+
+        out_ctab : str or Path
+            Path for the output file. Directory must exist.
+
+        overwrite : bool, optional
+            Whether to overwrite the output file if it already exists.
+            Default: False
+
+
+        Raises
+        ------
+        FileNotFoundError
+            If input_lut_path doesn't exist or output directory doesn't exist
+        FileExistsError
+            If output file exists and overwrite=False
+        ValueError
+            If no valid data lines are found in the input file
+
+        Examples
+        --------
+
+        """
+        # Convert to Path objects
+        if isinstance(out_ctab, str):
+            out_ctab = Path(out_ctab)
+
+        # Check if output directory exists
+        if not out_ctab.parent.exists():
+            raise FileNotFoundError(
+                f"Output directory does not exist: {out_ctab.parent}"
+            )
+
+        # Check if output file exists and handle overwrite
+        if out_ctab.exists() and not overwrite:
+            raise FileExistsError(
+                f"Output file already exists: {out_ctab}. Use overwrite=True to overwrite."
+            )
+
+        rgb_colors = harmonize_colors(self.color, output_format="rgb")
+        r = rgb_colors[:, 0]
+        g = rgb_colors[:, 1]
+        b = rgb_colors[:, 2]
+
+        if self.opacity is not None:
+            # Ensure opacity values are in the correct range [0, 255]
+            a = [min(max(int(opacity * 255), 0), 255) for opacity in self.opacity]
+
+        else:
+            a = [255] * len(self.color)
+
+        df = pd.DataFrame(
+            {
+                "index": self.index,
+                "name": self.name,
+                "R": r,
+                "G": g,
+                "B": b,
+                "A": a,
+            }
+        )
+
+        df = df.sort_values("index").reset_index(drop=True)
+
+        if not os.path.isfile(out_ctab) or overwrite:
+            df.to_csv(out_ctab, sep=" ", index=False)
+
+    ######################################################################################################
+    def export_to_lutctab(
+        self,
+        out_ctab: Union[str, Path] = None,
+        headerlines: Union[list, str] = None,
+        append: bool = False,
+        overwrite: bool = False,
+    ) -> str:
+        """
+        Export the color table to LUT format.
+        This function writes the color table to a FreeSurfer-compatible LUT file.
+
+        Parameters
+        ----------
+        out_ctab : str or Path
+            Path for the output LUT file. If None, returns the LUT lines as a list of strings.
+
+        headerlines : list or str, optional
+            Custom header lines to include at the top of the file. If None, a default
+            header with timestamp will be generated. Default is None.
+
+        append : bool, optional
+            If True, append to existing file. If False, create new file or overwrite.
+            Default is False.
+
+        overwrite : bool, optional
+            Whether to overwrite the output file if it already exists.
+            Default: False
+
+        Raises
+        ------
+        FileNotFoundError
+            If output directory doesn't exist
+
+        FileExistsError
+            If output file exists and overwrite=False
+
+        """
+
+        if out_ctab is not None:
+            # Convert to Path objects
+            if isinstance(out_ctab, str):
+                out_ctab = Path(out_ctab)
+
+            # Check if output file exists and handle overwrite
+            if out_ctab.exists() and not overwrite and not append:
+                raise FileExistsError(
+                    f"Output file already exists: {out_ctab}. Use overwrite=True to overwrite."
+                )
+
+        # Write LUT file
+        codes = self.index
+        names = self.name
+        colors = self.color
+
+        if self.opacity is not None:
+            opacities = self.opacity
+
+            # Ensure opacity values are in the correct range [0, 255]
+            opacities = [min(max(int(opacity * 255), 0), 255) for opacity in opacities]
+
+        else:
+            opacities = [255] * len(self.color)
+
+        if headerlines is None:
+            happend_bool = (
+                False  # Only add this if it is the first time the file is created
+            )
+            now = datetime.now()
+            date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
+            headerlines = ["# $Id: {} {} \n".format(str(out_ctab), date_time)]
+        elif isinstance(headerlines, str):
+            headerlines = [headerlines]
+
+        elif isinstance(headerlines, list):
+            pass
+        else:
+            raise ValueError("The headerlines parameter must be a list or a string")
+
+        if append:
+            with open(str(out_ctab), "r") as file:
+                luttable = file.readlines()
+
+            luttable = [l.strip("\n\r") for l in luttable]
+            luttable = ["\n" if element == "" else element for element in luttable]
+
+            if happend_bool:
+                luttable = luttable + headerlines
+
+        else:
+            luttable = headerlines
+
+        headerlines.append(
+            "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
+                "#No.", "Label Name:", "R", "G", "B", "A"
+            )
+        )
+
+        # Handle different color input formats
+        if isinstance(colors, list):
+            if isinstance(colors[0], str):
+                colors = harmonize_colors(colors)
+                colors = multi_hex2rgb(colors)
+
+            elif isinstance(colors[0], list):
+                colors = np.array(colors)
+
+            elif isinstance(colors[0], np.ndarray):
+                colors = np.vstack(colors)
+
+        elif isinstance(colors, np.ndarray):
+            pass  # Already in correct format
+
+        else:
+            raise ValueError("Colors must be a list or numpy array")
+
+        # Add regions to table
+        for roi_pos, roi_name in enumerate(names):
+            if roi_pos == 0:
+                luttable.append("\n")
+
+            luttable.append(
+                "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
+                    codes[roi_pos],
+                    names[roi_pos],
+                    colors[roi_pos, 0],
+                    colors[roi_pos, 1],
+                    colors[roi_pos, 2],
+                    opacities[roi_pos],
+                )
+            )
+        luttable.append("\n")
+
+        # Write to file if path provided
+        if out_ctab is not None:
+            if not os.path.isfile(out_ctab) or overwrite:
+                with open(out_ctab, "w") as colorLUT_f:
+                    colorLUT_f.write("\n".join(luttable))
+
+            return str(out_ctab)
+
+        else:
+            return luttable
+
+    ###########################################################################################
+    def export_to_tsvctab(
+        self, out_ctab: Union[str, Path] = None, overwrite: bool = False
+    ) -> str:
+        """
+        Export the color table to TSV format.
+
+        This function writes the color table to a tab-separated values (TSV) file.
+
+        Parameters
+        ----------
+        out_ctab : str or Path
+            Path for the output TSV file.
+
+        overwrite : bool, optional
+            Whether to overwrite the output file if it already exists.
+            Default: False
+
+        Raises
+        ------
+        FileNotFoundError
+            If output directory doesn't exist
+
+        FileExistsError
+            If output file exists and overwrite=False
+
+        """
+
+        if out_ctab is not None:
+            # Convert to Path objects
+            if isinstance(out_ctab, str):
+                out_ctab = Path(out_ctab)
+
+            # Check if output directory exists
+            if not out_ctab.parent.exists():
+                raise FileNotFoundError(
+                    f"Output directory does not exist: {out_ctab.parent}"
+                )
+
+            # Check if output file exists and handle overwrite
+            if out_ctab.exists() and not overwrite:
+                raise FileExistsError(
+                    f"Output file already exists: {out_ctab}. Use overwrite=True to overwrite."
+                )
+
+        colors = harmonize_colors(self.color, output_format="hex")
+        opaciity = self.opacity if self.opacity is not None else [1] * len(self.color)
+
+        df = pd.DataFrame(
+            {
+                "index": self.index,
+                "name": self.name,
+                "color": colors,
+                "opacity": opaciity,
+            }
+        )
+
+        df = df.sort_values("index").reset_index(drop=True)
+
+        if out_ctab is not None:
+            if not os.path.isfile(out_ctab) or overwrite:
+                df.to_csv(out_ctab, sep="\t", index=False)
+
+            return str(out_ctab)
+
+        else:
+            return df
