@@ -738,10 +738,10 @@ class BrainPlotter:
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
 
     ###########################################################################
-    def plot_surface_hemispheres(
+    def plot_hemispheres(
         self,
-        surf_rh: cltsurf.Surface,
-        surf_lh: cltsurf.Surface,
+        obj_rh: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List],
+        obj_lh: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List],
         map_name: str = "default",
         views: Union[str, List[str]] = "dorsal",
         vmin: Optional[float] = None,
@@ -757,25 +757,26 @@ class BrainPlotter:
         notebook: bool = False,
         non_blocking: bool = False,
         save_path: Optional[str] = None,
+        config_file: Union[str, Path, Dict] = None,
     ):
         """
         Plot brain hemispheres with multiple views.
 
         Parameters
         ----------
-        surf_rh : cltsurf.Surface
-            Right hemisphere surface with associated data.
+        obj_rh : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud]
+            Right hemisphere object to plot. Can be a Surface, Tractogram, or PointCloud.
 
-        surf_lh : cltsurf.Surface
-            Left hemisphere surface with associated data.
+        obj_lh : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud]
+            Left hemisphere object to plot. Can be a Surface, Tractogram, or PointCloud.
 
         map_name : str "default"
-            Name of the data maps to visualize. Must be present in both surfaces.
+            Name of the data maps to visualize. Must be present in all the objects.
 
         views : str or list of str, default "dorsal"
-            View(s) to display. Options include 'dorsal', 'ventral', 'lateral', 'medial', 'anterior', 'posterior'.
+            Views to display. Options include 'dorsal', 'ventral', 'lateral', 'medial', 'anterior', 'posterior'.
             Can be a single view or a list of views. It can also include different multiple views specified as layouts:
-            >>> plotter = SurfacePlotter("configs.json")
+            >>> plotter = BrainPlotter("configs.json")
             >>> layouts = plotter.list_available_layouts()
 
         vmin : float, optional
@@ -817,87 +818,104 @@ class BrainPlotter:
             File path to save the rendered figure. If provided, the figure is saved to this path
             instead of being displayed.
 
+        config_file : Union[str, Path, Dict], optional
+            Path to a custom configuration file (JSON) or a dictionary containing configuration settings.
+            If provided, this configuration will override the default settings for plotting.
+
         Returns
         -------
         None
             The function does not return any value. It either displays the plot or saves it to a
             file, depending on the parameters provided.
 
-        Raises
-        ------
-        ValueError
-            If no valid maps are found in the provided surfaces, or if multiple maps are provided
-            but the function is not set up to handle them.
-
-        ValueError
-            If the provided views are not valid or if the orientation is incorrect.
-
-        ValueError
-            If the colormap style or colorbar position is invalid.
-
-        Examples
-        --------
-        >>> plotter = SurfacePlotter("configs.json")
-        >>> plotter.plot_surface_hemispheres(surf_lh, surf_rh, map_name="thickness",
-        ...                                 views=["lateral", "medial", "dorsal"],
-        ...                                 colorbar=True)
         """
 
-        # Check that the map_name is a str. If is a list select the first element
-        if isinstance(map_name, list):
-            map_name = map_name[0]
+        # Loading custom configuration file if provided
+        if config_file is not None:
+            try:
+                self._update_configs(config_file)
 
-        if isinstance(colormap, list):
-            colormap = colormap[0]
-
-        if isinstance(colorbar_title, list):
-            colorbar_title = colorbar_title[0]
-
-        if vmin is None and range_min is not None:
-            vmin = range_min
-
-        if vmax is None and range_max is not None:
-            vmax = range_max
-
-        # Creating the merge surface
-        surf_merg = cltsurf.merge_surfaces([surf_lh, surf_rh])
-        colorbar_size = self.figure_conf["colorbar_size"]
-
-        # Check if the map_name is available in any of the surfaces
-        for surf in [surf_lh, surf_rh, surf_merg]:
-            available_maps = list(surf.mesh.point_data.keys())
-            if map_name not in available_maps:
-                raise ValueError(
-                    f"Map '{map_name}' not found in one of the provided surfaces. Available maps: {available_maps}"
+            except Exception as e:
+                print(
+                    f"Error loading configuration file: {e}. Using existing configurations."
                 )
 
-        if colorbar_title is None:
-            colorbar_title = map_name
+        # Preparing the surfaces to be plotted
+        if not isinstance(obj_lh, List):
+            obj_lh = [copy.deepcopy(obj_lh)]
 
-        # Get view configuration
-        view_ids = visutils.get_views_to_plot(self, views, ["lh", "rh"])
+        if not isinstance(obj_rh, List):
+            obj_rh = [copy.deepcopy(obj_rh)]
 
-        # Determine rendering mode based on save_path, environment, and threading preference
-        save_mode, use_off_screen, use_notebook, use_threading = (
-            visutils.determine_render_mode(save_path, notebook, non_blocking)
+        # Filter to only available maps
+
+        if isinstance(map_name, str):
+            map_name = [map_name]
+
+        all_objects = visutils.flatten_objects(obj_lh + obj_rh)
+
+        # Available overlays
+        no_ctab_map, map_name = visutils.find_common_map_names(all_objects, map_name)
+
+        # Preparing the maps dictionary
+        maps_dict = {}
+        no_ctab_maps_dict = {}
+        if len(no_ctab_map) != 0:
+            no_ctab_maps_dict = visutils.prepare_map_plotting_params(
+                no_ctab_map,
+                colormaps=colormap,
+                v_limits=(vmin, vmax),
+                v_range=(range_min, range_max),
+                range_color=range_color,
+                colorbar_titles=colorbar_title,
+            )
+
+        # Difference list between map_names and no_ctab_maps
+        diff_maps = list(set(map_name) - set(no_ctab_map))
+        ctab_maps_dict = {}
+        if len(diff_maps) > 0:
+            for map_name in diff_maps:
+                ctab_maps_dict[map_name] = {
+                    "colormap": "categorical",
+                    "vmin": None,
+                    "vmax": None,
+                    "range_min": None,
+                    "range_max": None,
+                    "range_color": None,
+                    "colorbar": False,
+                    "colorbar_title": None,
+                }
+        # Merge both dictionaries
+        maps_dict.update(ctab_maps_dict)
+        maps_dict.update(no_ctab_maps_dict)
+
+        # Assing the name of the map for the colorbar titles if not provided
+        for map_name in maps_dict.keys():
+            if maps_dict[map_name]["colorbar_title"] is None:
+                maps_dict[map_name]["colorbar_title"] = map_name
+
+        valid_views = visutils.get_views_to_plot(self, views, ["lh", "rh"])
+
+        n_views = len(valid_views)
+        colorbar_size = self.figure_conf["colorbar_size"]
+
+        limits_dict, charac_dict = visutils.get_map_characteristics(
+            all_objects, maps_dict
         )
 
-        # Detecting the screen size for the plotter
-        screen_size = cltplot.get_current_monitor_size()
+        ##### Determine colormap limits based on colorbar style #####
+        colormap_limits = {}
+        for view_idx in range(n_views):
+            colormap_limits[(0, 0, view_idx)] = [limits_dict["shared"]]
 
-        config_dict, colorbar_dict_list = vislayout.hemispheres_layout(
-            surf_lh,
-            surf_rh,
-            surf_merg,
-            view_ids,
-            map_name,
-            vmin,
-            vmax,
-            colormap,
-            colorbar_title=colorbar_title,
-            colorbar=colorbar,
-            colorbar_position=colorbar_position,
-            colorbar_size=colorbar_size,
+        config_dict, colorbar_list = vislayout.grid_multi_views_layout(
+            maps_dict,
+            colormap_limits,
+            charac_dict,
+            valid_views,
+            colorbar,
+            colorbar_position,
+            colorbar_size,
         )
 
         # Determine rendering mode based on save_path, environment, and threading preference
@@ -925,14 +943,27 @@ class BrainPlotter:
 
         pv_plotter = pv.Plotter(**plotter_kwargs)
 
+        # Now you can place brain objects at specific positions
+        pv_plotter.set_background(self.figure_conf["background_color"])
+
         brain_positions = config_dict["brain_positions"]
+
+        # Computing the plot indexes
+
         map_limits = config_dict["colormap_limits"]
+
+        # Geting the vmin and vmax for the current map
+        vmin, vmax, map_name = map_limits[0, 0, 0][0]
+        colormap = maps_dict[map_name]["colormap"]
+        range_min = maps_dict[map_name]["range_min"]
+        range_max = maps_dict[map_name]["range_max"]
+        range_color = maps_dict[map_name]["range_color"]
+
         for (map_idx, obj_idx, view_idx), (row, col) in brain_positions.items():
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
-
-            tmp_view_name = view_ids[view_idx]
+            tmp_view_name = valid_views[view_idx]
 
             # Split the view name if it contains '_'
             if "-" in tmp_view_name:
@@ -942,11 +973,11 @@ class BrainPlotter:
                 tmp_view_name = tmp_view_name.capitalize()
 
                 # Detecting if the view is left or right
-                if "lh" in view_ids[view_idx]:
+                if "lh" in valid_views[view_idx]:
                     subplot_title = "Left hemisphere: " + tmp_view_name + " view"
-                elif "rh" in view_ids[view_idx]:
+                elif "rh" in valid_views[view_idx]:
                     subplot_title = "Right hemisphere: " + tmp_view_name + " view"
-                elif "merg" in view_ids[view_idx]:
+                elif "merg" in valid_views[view_idx]:
                     subplot_title = tmp_view_name + " view"
 
             pv_plotter.add_text(
@@ -958,62 +989,175 @@ class BrainPlotter:
                 font=self.figure_conf["title_font_type"],
             )
 
-            # Geting the vmin and vmax for the current map
-            vmin, vmax, map_name = map_limits[0, 0, view_idx]
-
             # Add the brain surface mesh
-            if "lh" in view_ids[view_idx]:
-                surf = copy.deepcopy(surf_lh)
+            if "lh" in valid_views[view_idx]:
+                prep_obj = visutils.prepare_list_obj_for_plotting(
+                    obj_lh,
+                    map_name,
+                    colormap,
+                    vmin=vmin,
+                    vmax=vmax,
+                    range_min=range_min,
+                    range_max=range_max,
+                    range_color=range_color,
+                )
 
-            elif "rh" in view_ids[view_idx]:
-                surf = copy.deepcopy(surf_rh)
+            elif "rh" in valid_views[view_idx]:
+                prep_obj = visutils.prepare_list_obj_for_plotting(
+                    obj_rh,
+                    map_name,
+                    colormap,
+                    vmin=vmin,
+                    vmax=vmax,
+                    range_min=range_min,
+                    range_max=range_max,
+                    range_color=range_color,
+                )
 
-            elif "merg" in view_ids[view_idx]:
-                surf = copy.deepcopy(surf_merg)
+            elif "merg" in valid_views[view_idx]:
+                prep_obj = visutils.prepare_list_obj_for_plotting(
+                    all_objects,
+                    map_name,
+                    colormap,
+                    vmin=vmin,
+                    vmax=vmax,
+                    range_min=range_min,
+                    range_max=range_max,
+                    range_color=range_color,
+                )
 
-            surf = visutils.prepare_obj_for_plotting(
-                surf,
-                map_name,
-                colormap,
-                vmin=vmin,
-                vmax=vmax,
-                range_min=range_min,
-                range_max=range_max,
-                range_color=range_color,
-            )
+            for tmp_obj in prep_obj:
+                if isinstance(tmp_obj, clttract.Tractogram):
 
-            if not use_opacity:
-                # delete the alpha channel if exists
-                if "rgba" in surf.mesh.point_data:
-                    surf.mesh.point_data["rgba"] = surf.mesh.point_data["rgba"][:, :3]
+                    tracts = tmp_obj.tracts
+                    rgba_data = tmp_obj.data_per_point["rgba"]
 
-            pv_plotter.add_mesh(
-                copy.deepcopy(surf.mesh),
-                scalars="rgba",
-                rgb=True,
-                ambient=self.figure_conf["mesh_ambient"],
-                diffuse=self.figure_conf["mesh_diffuse"],
-                specular=self.figure_conf["mesh_specular"],
-                specular_power=self.figure_conf["mesh_specular_power"],
-                smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                show_scalar_bar=False,
-            )
+                    # 1. Concatenate all points and colors
+                    all_points = np.vstack(tracts)
+                    all_rgba = np.vstack(rgba_data)
 
-            # Set the camera view
-            tmp_view = view_ids[view_idx]
-            if tmp_view.startswith("merg"):
-                tmp_view = tmp_view.replace("merg", "lh")
+                    if use_opacity is False:
+                        all_rgba = all_rgba[:, :3]
 
-            camera_params = self.views_conf[tmp_view]
-            pv_plotter.camera_position = camera_params["view"]
-            pv_plotter.camera.azimuth = camera_params["azimuth"]
-            pv_plotter.camera.elevation = camera_params["elevation"]
-            pv_plotter.camera.zoom(camera_params["zoom"])
+                    # 2. Build the lines connectivity array
+                    #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
+                    lines = []
+                    offset = 0
+                    for tract in tracts:
+                        n = len(tract)
+                        lines.append(n)
+                        lines.extend(range(offset, offset + n))
+                        offset += n
+                    lines = np.array(lines, dtype=np.int_)
+
+                    # 3. Create single PolyData with all curves
+                    if self.objs_conf["tracts"]["tubes"]:
+                        # Create a PolyData object for tube representation
+                        # Create a PolyData object for tube representation
+                        poly = pv.PolyData()
+                        poly.points = all_points
+                        poly.lines = lines
+
+                        # Attach your RGBA scalars
+                        poly.point_data["rgba"] = all_rgba  # <-- important
+
+                        # Add tube filter (tube cannot take scalars directly)
+                        tube_radius = self.objs_conf["tracts"]["tube_radius"]
+                        tube_sides = self.objs_conf["tracts"]["tube_sides"]
+                        tube_poly = poly.tube(
+                            radius=tube_radius,
+                            n_sides=tube_sides,
+                        )
+
+                        # Add the mesh with tube representation
+                        pv_plotter.add_mesh(
+                            tube_poly,
+                            scalars="rgba",  # use the same name
+                            rgb=True,
+                            ambient=self.figure_conf["mesh_ambient"],
+                            diffuse=self.figure_conf["mesh_diffuse"],
+                            specular=self.figure_conf["mesh_specular"],
+                            specular_power=self.figure_conf["mesh_specular_power"],
+                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                            show_scalar_bar=False,
+                        )
+                    else:
+                        poly = pv.PolyData()
+                        poly.points = all_points
+                        poly.lines = lines
+                        poly.point_data["rgba"] = all_rgba
+
+                        # 4. Single add_mesh call
+                        pv_plotter.add_mesh(
+                            poly,
+                            scalars="rgba",
+                            line_width=2,
+                            rgb=True,
+                            ambient=self.figure_conf["mesh_ambient"],
+                            diffuse=self.figure_conf["mesh_diffuse"],
+                            specular=self.figure_conf["mesh_specular"],
+                            specular_power=self.figure_conf["mesh_specular_power"],
+                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                            show_scalar_bar=False,
+                        )
+
+                elif isinstance(tmp_obj, cltpts.PointCloud):
+
+                    rgba_data = tmp_obj.point_data["rgba"]
+                    if use_opacity is False:
+                        rgba_data = rgba_data[:, :3]
+
+                    pv_plotter.add_points(
+                        tmp_obj.coords,
+                        render_points_as_spheres=self.objs_conf["points"]["spheres"],
+                        point_size=self.objs_conf["points"]["spheres_radius"],
+                        scalars=rgba_data,
+                        rgb=True,
+                        ambient=self.figure_conf["mesh_ambient"],
+                        diffuse=self.figure_conf["mesh_diffuse"],
+                        specular=self.figure_conf["mesh_specular"],
+                        specular_power=self.figure_conf["mesh_specular_power"],
+                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                        show_scalar_bar=False,
+                    )
+
+                elif isinstance(tmp_obj, cltsurf.Surface):
+                    if not use_opacity:
+                        # delete the alpha channel if exists
+                        if "rgba" in tmp_obj.mesh.point_data:
+                            tmp_obj.mesh.point_data["rgba"] = tmp_obj.mesh.point_data[
+                                "rgba"
+                            ][:, :3]
+
+                    pv_plotter.add_mesh(
+                        copy.deepcopy(tmp_obj.mesh),
+                        scalars="rgba",
+                        rgb=True,
+                        ambient=self.figure_conf["mesh_ambient"],
+                        diffuse=self.figure_conf["mesh_diffuse"],
+                        specular=self.figure_conf["mesh_specular"],
+                        specular_power=self.figure_conf["mesh_specular_power"],
+                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                        show_scalar_bar=False,
+                    )
+
+                # Set the camera view
+                tmp_view = valid_views[view_idx]
+
+                # Replace merg from the view id if needed
+                if "merg" in tmp_view:
+                    tmp_view = tmp_view.replace("merg", "lh")
+
+                camera_params = self.views_conf[tmp_view]
+                pv_plotter.camera_position = camera_params["view"]
+                pv_plotter.camera.azimuth = camera_params["azimuth"]
+                pv_plotter.camera.elevation = camera_params["elevation"]
+                pv_plotter.camera.zoom(camera_params["zoom"])
 
         # And place colorbars at their positions
-        if len(colorbar_dict_list):
+        if len(colorbar_list):
 
-            for colorbar_dict in colorbar_dict_list:
+            for colorbar_dict in colorbar_list:
                 if colorbar_dict is not False:
                     row, col = colorbar_dict["position"]
                     orientation = colorbar_dict["orientation"]
@@ -1024,17 +1168,20 @@ class BrainPlotter:
                     vmax = colorbar_dict["vmax"]
                     pv_plotter.subplot(row, col)
 
-                    visutils.add_colorbar(
-                        self,
-                        plotter=pv_plotter,
-                        colorbar_subplot=(row, col),
-                        vmin=vmin,
-                        vmax=vmax,
-                        map_name=colorbar_id,
-                        colormap=colormap,
-                        colorbar_title=colorbar_title,
-                        colorbar_position=orientation,
-                    )
+                    if colormap == "categorical":
+                        pass  # Currently, no colorbar for categorical maps is implemented
+                    else:
+                        visutils.add_colorbar(
+                            self,
+                            plotter=pv_plotter,
+                            colorbar_subplot=(row, col),
+                            vmin=vmin,
+                            vmax=vmax,
+                            map_name=colorbar_id,
+                            colormap=colormap,
+                            colorbar_title=colorbar_title,
+                            colorbar_position=orientation,
+                        )
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
