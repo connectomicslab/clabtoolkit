@@ -2420,14 +2420,14 @@ def explore_dictionary(data, max_depth=None, current_depth=0):
 
     if isinstance(data, dict):
         return {
-            key: get_dict_structure(value, max_depth, current_depth + 1)
+            key: explore_dictionary(value, max_depth, current_depth + 1)
             for key, value in data.items()
         }
     elif isinstance(data, list):
         if len(data) == 0:
             return "[]"
         # Show structure of first item as representative
-        return [get_dict_structure(data[0], max_depth, current_depth + 1)]
+        return [explore_dictionary(data[0], max_depth, current_depth + 1)]
     else:
         return f"<{type(data).__name__}>"
 
