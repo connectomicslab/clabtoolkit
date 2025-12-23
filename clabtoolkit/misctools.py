@@ -1495,52 +1495,37 @@ def rename_folders(
     folder_paths: List[str], replacements: Dict[str, str], bool_case: bool = True
 ) -> List[Tuple[str, str]]:
     """
-    Rename folders by replacing specified strings in their paths.
-
-    This function identifies all unique directory paths that need renaming (including parent
-    directories) and renames them from deepest to shallowest to avoid conflicts.
+    Rename folders based on specified string replacements. Handles nested directories and avoids conflicts.
 
     Parameters
     ----------
     folder_paths : List[str]
         List of folder paths to be renamed.
+
     replacements : Dict[str, str]
-        Dictionary where keys are old strings to replace and values are new strings.
-        Replacements are applied in order of string length (longest first) to avoid
-        partial matches.
-    bool_case : bool, optional
-        If True (default), performs case-sensitive replacement.
-        If False, performs case-insensitive replacement.
+        Dictionary mapping substrings to be replaced (keys) with their replacements (values).
+
+    bool_case : bool
+        If True, replacements are case-sensitive; if False, they are case-insensitive.
 
     Returns
     -------
     List[Tuple[str, str]]
-        List of tuples containing (old_path, new_path) for successfully renamed folders.
+        List of tuples containing (old_path, new_path) for each successfully renamed folder.
 
-    Raises
-    ------
-    OSError
-        If there are permission issues or filesystem errors during renaming.
-    FileNotFoundError
-        If a folder path doesn't exist when attempting to rename.
-    FileExistsError
-        If the target path already exists.
-
-    Example
-    -------
-    >>> folder_paths = [
-    ...     '/data/sub-CHUVL488/ses-V1/dwi',
-    ...     '/data/sub-CHUVL488/ses-V1/func'
-    ... ]
-    >>> replacements = {"CHUVL488": "L488", "V1": "S1"}
-    >>> renamed = rename_folders(folder_paths, replacements, bool_case=True)
-    >>> print(f"Renamed {len(renamed)} folders")
+    Examples
+    --------------
+        >>> folder_paths = ["/data/sub-01/session1", "/data/sub-02/session2"]
+        >>> replacements = {"sub-": "subject-", "session": "sess"}
+        >>> renamed = rename_folders(folder_paths, replacements, bool_case=True)
+        >>> print(renamed)
+        [('/data/sub-01/session1', '/data/subject-01/sess1'),
+        ('/data/sub-02/session2', '/data/subject-02/sess2')]
     """
 
     def apply_replacements(path: str) -> str:
         """Apply all replacements to a path string."""
         new_path = path
-        # Sort replacements by length (longer strings first) to avoid partial matches
         sorted_replacements = sorted(
             replacements.items(), key=lambda x: len(x[0]), reverse=True
         )
@@ -1553,55 +1538,60 @@ def rename_folders(
                 new_path = re.sub(pattern, new_str, new_path, flags=re.IGNORECASE)
         return new_path
 
-    # Collect all unique directory paths that need to be considered for renaming
-    all_directories: Set[str] = set()
+    # Find unique directories that need renaming
+    dirs_to_process = set()
 
     for folder_path in folder_paths:
-        # Add the folder itself and all its parent directories
-        current_path = folder_path
-        while current_path and current_path != "/":
-            all_directories.add(current_path)
-            current_path = os.path.dirname(current_path)
+        # Add this path and all its parents
+        current = folder_path
+        while current and current != "/":
+            dirs_to_process.add(current)
+            current = os.path.dirname(current)
 
-    # Build rename operations for directories that actually need renaming
+    # Find which directories actually need renaming
     rename_operations = []
-
-    for old_path in all_directories:
+    for old_path in dirs_to_process:
         new_path = apply_replacements(old_path)
-
-        # Only add to operations if path actually changed
-        if old_path != new_path:
+        if old_path != new_path and os.path.exists(old_path):
             rename_operations.append((old_path, new_path))
 
-    # Sort by path depth (deepest first) to avoid parent-child conflicts
-    rename_operations.sort(key=lambda x: x[0].count("/"), reverse=True)
+    # Sort by depth (shallowest first)
+    rename_operations.sort(key=lambda x: x[0].count("/"))
 
-    # Execute rename operations
-    successfully_renamed = []
-
+    # Remove any child directories of directories we're already renaming
+    filtered_operations = []
     for old_path, new_path in rename_operations:
+        # Check if this is a child of something we're already renaming
+        is_child = False
+        for parent_old, parent_new in filtered_operations:
+            if old_path.startswith(parent_old + "/"):
+                is_child = True
+                break
+
+        if not is_child:
+            filtered_operations.append((old_path, new_path))
+
+    # Execute the renames
+    successfully_renamed = []
+    for old_path, new_path in filtered_operations:
         try:
-            if os.path.exists(old_path):
-                # Create parent directories of new path if they don't exist
-                parent_dir = os.path.dirname(new_path)
-                if parent_dir:
-                    os.makedirs(parent_dir, exist_ok=True)
+            # Create parent directory if needed
+            parent_dir = os.path.dirname(new_path)
+            if parent_dir and not os.path.exists(parent_dir):
+                os.makedirs(parent_dir, exist_ok=True)
 
-                # Check if target already exists
-                if os.path.exists(new_path):
-                    print(f"Warning: Target already exists, skipping: {new_path}")
-                    continue
+            # Check if target exists
+            if os.path.exists(new_path):
+                print(f"Warning: Target already exists, skipping: {new_path}")
+                continue
 
-                # Perform the rename
-                os.rename(old_path, new_path)
-                successfully_renamed.append((old_path, new_path))
-                print(f"Renamed: {old_path} -> {new_path}")
-            else:
-                print(f"Warning: Path does not exist: {old_path}")
+            # Rename
+            os.rename(old_path, new_path)
+            successfully_renamed.append((old_path, new_path))
+            print(f"Renamed: {old_path} -> {new_path}")
 
         except OSError as e:
             print(f"Error renaming {old_path}: {e}")
-            continue
 
     return successfully_renamed
 
