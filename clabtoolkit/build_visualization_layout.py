@@ -1044,6 +1044,16 @@ def multi_view_single_element_layout(
 
             colorbar_list.append(cb_dict)
 
+        layout_config = {
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits,
+        }
+        return layout_config, colorbar_list
+
     elif orientation == "vertical":
         for view_idx in range(n_views):
             brain_positions[(0, 0, view_idx)] = (view_idx, 0)
@@ -1077,56 +1087,28 @@ def multi_view_single_element_layout(
                 cb_dict["orientation"] = "horizontal"
 
             colorbar_list.append(cb_dict)
+
+        layout_config = {
+            "shape": shape,
+            "row_weights": row_weights,
+            "col_weights": col_weights,
+            "groups": groups,
+            "brain_positions": brain_positions,
+            "colormap_limits": colormap_limits,
+        }
+        return layout_config, colorbar_list
+
     else:
-        optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_views)
-        for view_idx in range(n_views):
-            pos = positions[view_idx]
-            brain_positions[(0, 0, view_idx)] = pos
 
-        if not colorbar:
-            shape = list(optimal_grid)
-            row_weights = [1] * optimal_grid[0]
-            col_weights = [1] * optimal_grid[1]
-        else:
-            shape = [optimal_grid[0], optimal_grid[1] + 1]
-            row_weights = [1] * optimal_grid[0]
-            col_weights = [1] * optimal_grid[1] + [colorbar_size]
-            groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
-
-            cb_dict = {}
-            cb_dict["colormap"] = colormap
-            cb_dict["map_name"] = map_name
-            cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
-            cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
-            cb_dict["title"] = colorbar_title
-
-            if colorbar_position == "right":
-                cb_dict["position"] = (0, optimal_grid[1])
-                cb_dict["orientation"] = "vertical"
-                shape = [optimal_grid[0], optimal_grid[1] + 1]
-                row_weights = [1] * optimal_grid[0]
-                col_weights = [1] * optimal_grid[1] + [colorbar_size]
-                groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
-
-            else:  # bottom
-                shape = [optimal_grid[0] + 1, optimal_grid[1]]
-                row_weights = [1] * optimal_grid[0] + [colorbar_size]
-                col_weights = [1] * optimal_grid[1]
-                groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
-                cb_dict["position"] = (optimal_grid[0], 0)
-                cb_dict["orientation"] = "horizontal"
-
-            colorbar_list.append(cb_dict)
-
-    layout_config = {
-        "shape": shape,
-        "row_weights": row_weights,
-        "col_weights": col_weights,
-        "groups": groups,
-        "brain_positions": brain_positions,
-        "colormap_limits": colormap_limits,
-    }
-    return layout_config, colorbar_list
+        return grid_multi_views_layout(
+            maps_dict,
+            colormap_limits,
+            charac_dict,
+            valid_views,
+            colorbar,
+            colorbar_position,
+            colorbar_size,
+        )
 
 
 ###############################################################################################
@@ -1859,91 +1841,58 @@ def grid_multi_surface_layout(
 
 
 ###############################################################################################
-def hemispheres_layout(
-    surf_lh,
-    surf_rh,
-    surf_merg,
+def grid_multi_views_layout(
+    maps_dict,
+    colormap_limits,
+    charac_dict,
     valid_views,
-    map_name,
-    vmin,
-    vmax,
-    colormap,
-    colorbar_title,
     colorbar,
     colorbar_position,
     colorbar_size,
 ):
-    """Handle multiple views and multiple maps case."""
+    """Handle multiple views, single map, single surface case."""
 
     n_views = len(valid_views)
-
     brain_positions = {}
-    colormap_limits = {}
     colorbar_list = []
 
-    colorbar_data = any(
-        map_name not in surface.colortables for surface in [surf_lh, surf_rh, surf_merg]
-    )
-    if colorbar_data == False:
-        colorbar = False
-
-    map_limits = visutils.get_map_limits(
-        objs2plot=[surf_lh, surf_rh, surf_merg],
-        map_name=map_name,
-        colorbar_style="individual",
-        v_limits=(vmin, vmax),
-    )
-
-    optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_views)
     brain_positions = {}
-    colormap_limits = {}
+    map_name = list(maps_dict.keys())[0]
 
+    colormap = charac_dict[map_name]["colormap"]
+    colorbar_title = charac_dict[map_name]["colorbar_title"]
+    groups = []
+
+    """Handle grid layout for multiple objs2plot."""
+    optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_views)
     for view_idx in range(n_views):
         pos = positions[view_idx]
         brain_positions[(0, 0, view_idx)] = pos
-        if valid_views[view_idx].startswith("lh"):
-            colormap_limits[(0, 0, view_idx)] = map_limits[0]
 
-        elif valid_views[view_idx].startswith("rh"):
-            colormap_limits[(0, 0, view_idx)] = map_limits[1]
-
-        elif valid_views[view_idx].startswith("merg"):
-            colormap_limits[(0, 0, view_idx)] = map_limits[2]
-
-    colorbar_list = []
     if not colorbar:
         shape = list(optimal_grid)
         row_weights = [1] * optimal_grid[0]
         col_weights = [1] * optimal_grid[1]
-        groups = []
-
     else:
+        shape = [optimal_grid[0], optimal_grid[1] + 1]
+        row_weights = [1] * optimal_grid[0]
+        col_weights = [1] * optimal_grid[1] + [colorbar_size]
+        groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
+
         cb_dict = {}
         cb_dict["colormap"] = colormap
         cb_dict["map_name"] = map_name
-
-        # Compute the global limits
-        global_limits = (
-            min(l[0] for l in map_limits),
-            max(l[1] for l in map_limits),
-        )
-
-        cb_dict["vmin"] = global_limits[0]
-        cb_dict["vmax"] = global_limits[1]
-
-        if colorbar_title:
-            cb_dict["title"] = colorbar_title
-
-        else:
-            cb_dict["title"] = map_name
+        cb_dict["vmin"] = colormap_limits[(0, 0, 0)][0][0]
+        cb_dict["vmax"] = colormap_limits[(0, 0, 0)][0][1]
+        cb_dict["title"] = colorbar_title
 
         if colorbar_position == "right":
+            cb_dict["position"] = (0, optimal_grid[1])
+            cb_dict["orientation"] = "vertical"
             shape = [optimal_grid[0], optimal_grid[1] + 1]
             row_weights = [1] * optimal_grid[0]
             col_weights = [1] * optimal_grid[1] + [colorbar_size]
             groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
-            cb_dict["position"] = (0, optimal_grid[1])
-            cb_dict["orientation"] = "vertical"
 
         else:  # bottom
             shape = [optimal_grid[0] + 1, optimal_grid[1]]
@@ -1953,19 +1902,6 @@ def hemispheres_layout(
             cb_dict["position"] = (optimal_grid[0], 0)
             cb_dict["orientation"] = "horizontal"
 
-        for view_idx in range(n_views):
-            pos = positions[view_idx]
-            brain_positions[(0, 0, view_idx)] = pos
-            if valid_views[view_idx].startswith("lh"):
-                colormap_limits[(0, 0, view_idx)] = map_limits[0]
-
-            elif valid_views[view_idx].startswith("rh"):
-                colormap_limits[(0, 0, view_idx)] = map_limits[1]
-
-            elif valid_views[view_idx].startswith("merg"):
-                colormap_limits[(0, 0, view_idx)] = map_limits[2]
-
-        # Append colorbar dictionary to the list
         colorbar_list.append(cb_dict)
 
     layout_config = {
@@ -1976,4 +1912,5 @@ def hemispheres_layout(
         "brain_positions": brain_positions,
         "colormap_limits": colormap_limits,
     }
+
     return layout_config, colorbar_list
