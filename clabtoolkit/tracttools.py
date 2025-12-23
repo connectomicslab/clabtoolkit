@@ -2258,7 +2258,6 @@ class Tractogram:
             range_color=range_color,
             v_range=(range_min, range_max),
             use_opacity=use_opacity,
-            plot_style=plot_style,
             notebook=notebook,
             colorbar=show_colorbar,
             colorbar_titles=colorbar_title,
