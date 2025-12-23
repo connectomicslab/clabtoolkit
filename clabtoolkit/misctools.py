@@ -37,6 +37,8 @@ import textwrap
 
 from typing import Union, List, Optional
 
+from . import colorstools as cltcolors
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
@@ -2784,23 +2786,25 @@ def _format_signature_ansi(sig: inspect.Signature):
     - OKGRAY for default values
     - OKWHITE for punctuation (parentheses, commas)
     """
-    parts = [f"{bcolors.OKWHITE}({bcolors.ENDC}"]
+    parts = [f"{cltcolors.bcolors.OKWHITE}({cltcolors.bcolors.ENDC}"]
     params = list(sig.parameters.values())
     for i, p in enumerate(params):
-        param_str = f"{bcolors.DARKCYAN}{p.name}{bcolors.ENDC}"
+        param_str = f"{cltcolors.bcolors.DARKCYAN}{p.name}{cltcolors.bcolors.ENDC}"
         if p.annotation != inspect.Parameter.empty:
             annotation = (
                 p.annotation.__name__
                 if hasattr(p.annotation, "__name__")
                 else str(p.annotation)
             )
-            param_str += f": {bcolors.OKPURPLE}{annotation}{bcolors.ENDC}"
+            param_str += (
+                f": {cltcolors.bcolors.OKPURPLE}{annotation}{cltcolors.bcolors.ENDC}"
+            )
         if p.default != inspect.Parameter.empty:
-            param_str += f"{bcolors.OKGRAY} = {repr(p.default)}{bcolors.ENDC}"
+            param_str += f"{cltcolors.bcolors.OKGRAY} = {repr(p.default)}{cltcolors.bcolors.ENDC}"
         parts.append(param_str)
         if i < len(params) - 1:
-            parts.append(f"{bcolors.OKWHITE}, {bcolors.ENDC}")
-    parts.append(f"{bcolors.OKWHITE}){bcolors.ENDC}")
+            parts.append(f"{cltcolors.bcolors.OKWHITE}, {cltcolors.bcolors.ENDC}")
+    parts.append(f"{cltcolors.bcolors.OKWHITE}){cltcolors.bcolors.ENDC}")
     return "".join(parts)
 
 
@@ -2910,7 +2914,7 @@ def show_module_contents(module, show_private=False, show_inherited=True):
                     )
                 )
             else:
-                print(f"{bcolors.FAIL}{error_msg}{bcolors.ENDC}")
+                print(f"{cltcolors.bcolors.FAIL}{error_msg}{cltcolors.bcolors.ENDC}")
             return
         except Exception as e:
             error_msg = f"Error importing module '{module_name}': {e}"
@@ -2921,7 +2925,7 @@ def show_module_contents(module, show_private=False, show_inherited=True):
                     )
                 )
             else:
-                print(f"{bcolors.FAIL}{error_msg}{bcolors.ENDC}")
+                print(f"{cltcolors.bcolors.FAIL}{error_msg}{cltcolors.bcolors.ENDC}")
             return
     elif not isinstance(module, types.ModuleType):
         error_msg = "Invalid input: must be a module object or module name string."
@@ -2932,7 +2936,7 @@ def show_module_contents(module, show_private=False, show_inherited=True):
                 )
             )
         else:
-            print(f"{bcolors.FAIL}{error_msg}{bcolors.ENDC}")
+            print(f"{cltcolors.bcolors.FAIL}{error_msg}{cltcolors.bcolors.ENDC}")
         return
 
     # Helper function to filter private members
@@ -3101,26 +3105,32 @@ def _display_terminal_output(module, all_classes, all_functions, show_inherited=
     - Visual separators using Unicode characters
     """
     print(
-        f"{bcolors.HEADER}{bcolors.BOLD}📦 Contents of module '{module.__name__}':{bcolors.ENDC}\n"
+        f"{cltcolors.bcolors.HEADER}{cltcolors.bcolors.BOLD}📦 Contents of module '{module.__name__}':{cltcolors.bcolors.ENDC}\n"
     )
 
     if hasattr(module, "__file__") and module.__file__:
-        print(f"{bcolors.OKGRAY}   Path: {module.__file__}{bcolors.ENDC}\n")
+        print(
+            f"{cltcolors.bcolors.OKGRAY}   Path: {module.__file__}{cltcolors.bcolors.ENDC}\n"
+        )
 
     # Classes section
     if all_classes:
         print(
-            f"{bcolors.OKBLUE}{bcolors.BOLD}📘 Classes ({len(all_classes)}):{bcolors.ENDC}"
+            f"{cltcolors.bcolors.OKBLUE}{cltcolors.bcolors.BOLD}📘 Classes ({len(all_classes)}):{cltcolors.bcolors.ENDC}"
         )
 
         for name, cls in all_classes:
-            print(f"  {bcolors.OKBLUE}{bcolors.BOLD}{name}{bcolors.ENDC}")
+            print(
+                f"  {cltcolors.bcolors.OKBLUE}{cltcolors.bcolors.BOLD}{name}{cltcolors.bcolors.ENDC}"
+            )
 
             # Class docstring
             doc = inspect.getdoc(cls)
             if doc:
                 first_line = doc.split("\n")[0]
-                print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+                print(
+                    f"    {cltcolors.bcolors.OKGRAY}# {first_line}{cltcolors.bcolors.ENDC}"
+                )
 
             # Methods
             methods = []
@@ -3144,39 +3154,47 @@ def _display_terminal_output(module, all_classes, all_functions, show_inherited=
                         sig = inspect.signature(method)
                         formatted_sig = format_signature(sig, notebook_mode=False)
                         print(
-                            f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}"
+                            f"    {cltcolors.bcolors.OKYELLOW}• {method_name}{cltcolors.bcolors.ENDC}{formatted_sig}"
                         )
 
                         method_doc = inspect.getdoc(method)
                         if method_doc:
                             first_line = method_doc.split("\n")[0]
-                            print(f"      {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+                            print(
+                                f"      {cltcolors.bcolors.OKGRAY}# {first_line}{cltcolors.bcolors.ENDC}"
+                            )
                     except Exception:
                         print(
-                            f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC} (signature unavailable)"
+                            f"    {cltcolors.bcolors.OKYELLOW}• {method_name}{cltcolors.bcolors.ENDC} (signature unavailable)"
                         )
 
-            print(f"    {bcolors.OKWHITE}{'─' * 60}{bcolors.ENDC}\n")
+            print(
+                f"    {cltcolors.bcolors.OKWHITE}{'─' * 60}{cltcolors.bcolors.ENDC}\n"
+            )
 
     # Functions section
     if all_functions:
         print(
-            f"\n{bcolors.OKGREEN}{bcolors.BOLD}🔧 Functions ({len(all_functions)}):{bcolors.ENDC}"
+            f"\n{cltcolors.bcolors.OKGREEN}{cltcolors.bcolors.BOLD}🔧 Functions ({len(all_functions)}):{cltcolors.bcolors.ENDC}"
         )
 
         for name, func in all_functions:
             try:
                 sig = inspect.signature(func)
                 formatted_sig = format_signature(sig, notebook_mode=False)
-                print(f"  {bcolors.OKYELLOW}{name}{bcolors.ENDC}{formatted_sig}")
+                print(
+                    f"  {cltcolors.bcolors.OKYELLOW}{name}{cltcolors.bcolors.ENDC}{formatted_sig}"
+                )
 
                 doc = inspect.getdoc(func)
                 if doc:
                     first_line = doc.split("\n")[0]
-                    print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+                    print(
+                        f"    {cltcolors.bcolors.OKGRAY}# {first_line}{cltcolors.bcolors.ENDC}"
+                    )
             except Exception:
                 print(
-                    f"  {bcolors.OKYELLOW}{name}{bcolors.ENDC} (signature unavailable)"
+                    f"  {cltcolors.bcolors.OKYELLOW}{name}{cltcolors.bcolors.ENDC} (signature unavailable)"
                 )
         print()
 
@@ -3184,11 +3202,11 @@ def _display_terminal_output(module, all_classes, all_functions, show_inherited=
     total_items = len(all_classes) + len(all_functions)
     if total_items == 0:
         print(
-            f"{bcolors.WARNING}No public classes or functions found in this module.{bcolors.ENDC}"
+            f"{cltcolors.bcolors.WARNING}No public classes or functions found in this module.{cltcolors.bcolors.ENDC}"
         )
     else:
         print(
-            f"{bcolors.OKWHITE}Total: {len(all_classes)} classes, {len(all_functions)} functions{bcolors.ENDC}"
+            f"{cltcolors.bcolors.OKWHITE}Total: {len(all_classes)} classes, {len(all_functions)} functions{cltcolors.bcolors.ENDC}"
         )
 
 
@@ -3203,31 +3221,31 @@ def _display_terminal_output(module, all_classes, all_functions, show_inherited=
 #             module = sys.modules.get(module) or __import__(module)
 #         except ImportError:
 #             print(
-#                 f"{bcolors.FAIL}Module '{module}' could not be imported.{bcolors.ENDC}"
+#                 f"{cltcolors.bcolors.FAIL}Module '{module}' could not be imported.{cltcolors.bcolors.ENDC}"
 #             )
 #             return
 #     elif not isinstance(module, types.ModuleType):
 #         print(
-#             f"{bcolors.FAIL}Invalid input: must be a module object or module name string.{bcolors.ENDC}"
+#             f"{cltcolors.bcolors.FAIL}Invalid input: must be a module object or module name string.{cltcolors.bcolors.ENDC}"
 #         )
 #         return
 
 #     print(
-#         f"{bcolors.HEADER}{bcolors.BOLD}📦 Contents of module '{module.__name__}':{bcolors.ENDC}\n"
+#         f"{cltcolors.bcolors.HEADER}{cltcolors.bcolors.BOLD}📦 Contents of module '{module.__name__}':{cltcolors.bcolors.ENDC}\n"
 #     )
 
 #     # Classes
-#     print(f"{bcolors.OKBLUE}{bcolors.BOLD}📘 Classes:{bcolors.ENDC}")
+#     print(f"{cltcolors.bcolors.OKBLUE}{cltcolors.bcolors.BOLD}📘 Classes:{cltcolors.bcolors.ENDC}")
 #     for name in sorted(dir(module)):
 #         try:
 #             obj = getattr(module, name)
 #             if inspect.isclass(obj) and obj.__module__ == module.__name__:
-#                 print(f"  {bcolors.OKBLUE}- {name}{bcolors.ENDC}")
+#                 print(f"  {cltcolors.bcolors.OKBLUE}- {name}{cltcolors.bcolors.ENDC}")
 
 #                 doc = inspect.getdoc(obj)
 #                 if doc:
 #                     first_line = doc.split("\n")[0]
-#                     print(f"    {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+#                     print(f"    {cltcolors.bcolors.OKGRAY}# {first_line}{cltcolors.bcolors.ENDC}")
 
 #                 for method_name, method in inspect.getmembers(
 #                     obj, predicate=inspect.isfunction
@@ -3239,30 +3257,30 @@ def _display_terminal_output(module, all_classes, all_functions, show_inherited=
 #                         sig = inspect.signature(method)
 #                         formatted_sig = format_signature(sig)
 #                         print(
-#                             f"    {bcolors.OKYELLOW}• {method_name}{bcolors.ENDC}{formatted_sig}"
+#                             f"    {cltcolors.bcolors.OKYELLOW}• {method_name}{cltcolors.bcolors.ENDC}{formatted_sig}"
 #                         )
 #                         method_doc = inspect.getdoc(method)
 
 #                         if method_doc:
 #                             first_line = method_doc.split("\n")[0]
-#                             print(f"      {bcolors.OKGRAY}# {first_line}{bcolors.ENDC}")
+#                             print(f"      {cltcolors.bcolors.OKGRAY}# {first_line}{cltcolors.bcolors.ENDC}")
 
-#                 print(f"    {bcolors.OKWHITE}{'─'*60}{bcolors.ENDC}\n")
+#                 print(f"    {cltcolors.bcolors.OKWHITE}{'─'*60}{cltcolors.bcolors.ENDC}\n")
 #         except Exception:
 #             continue
 
 #     # Functions
-#     print(f"\n{bcolors.OKGREEN}{bcolors.BOLD}🔧 Functions:{bcolors.ENDC}")
+#     print(f"\n{cltcolors.bcolors.OKGREEN}{cltcolors.bcolors.BOLD}🔧 Functions:{cltcolors.bcolors.ENDC}")
 #     for name in sorted(dir(module)):
 #         try:
 #             obj = getattr(module, name)
 #             if inspect.isfunction(obj) and obj.__module__ == module.__name__:
 #                 sig = inspect.signature(obj)
 #                 formatted_sig = format_signature(sig)
-#                 print(f"  {bcolors.OKYELLOW}- {name}{bcolors.ENDC}{formatted_sig}")
+#                 print(f"  {cltcolors.bcolors.OKYELLOW}- {name}{cltcolors.bcolors.ENDC}{formatted_sig}")
 #                 doc = inspect.getdoc(obj)
 #                 if doc:
-#                     print(f"    {bcolors.OKGRAY}# {doc.splitlines()[0]}{bcolors.ENDC}")
+#                     print(f"    {cltcolors.bcolors.OKGRAY}# {doc.splitlines()[0]}{cltcolors.bcolors.ENDC}")
 #         except Exception:
 #             continue
 
@@ -3900,40 +3918,54 @@ def _display_object_terminal_output(
     headers, colored sections, and formatted information display.
     """
     # Print header
-    print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
-    print(f"{bcolors.BOLD}{bcolors.HEADER}✅ INSPECTION COMPLETE{bcolors.ENDC}")
-    print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
-    print(f"{bcolors.BOLD}{bcolors.HEADER}🔍 OBJECT INSPECTOR{bcolors.ENDC}")
-    print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*60}{cltcolors.bcolors.ENDC}"
+    )
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}✅ INSPECTION COMPLETE{cltcolors.bcolors.ENDC}"
+    )
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*60}{cltcolors.bcolors.ENDC}"
+    )
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}🔍 OBJECT INSPECTOR{cltcolors.bcolors.ENDC}"
+    )
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*60}{cltcolors.bcolors.ENDC}"
+    )
 
     # Object information
     print(
-        f"{bcolors.BOLD}{bcolors.OKCYAN}📦 Object:{bcolors.ENDC} {bcolors.OKWHITE}{obj_name}{bcolors.ENDC}"
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKCYAN}📦 Object:{cltcolors.bcolors.ENDC} {cltcolors.bcolors.OKWHITE}{obj_name}{cltcolors.bcolors.ENDC}"
     )
     print(
-        f"{bcolors.BOLD}{bcolors.OKCYAN}🏷️  Type:{bcolors.ENDC} {bcolors.OKWHITE}{obj_type.__name__}{bcolors.ENDC}"
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKCYAN}🏷️  Type:{cltcolors.bcolors.ENDC} {cltcolors.bcolors.OKWHITE}{obj_type.__name__}{cltcolors.bcolors.ENDC}"
     )
     print(
-        f"{bcolors.BOLD}{bcolors.OKCYAN}📁 Module:{bcolors.ENDC} {bcolors.OKWHITE}{module_name}{bcolors.ENDC}"
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKCYAN}📁 Module:{cltcolors.bcolors.ENDC} {cltcolors.bcolors.OKWHITE}{module_name}{cltcolors.bcolors.ENDC}"
     )
 
     # Class docstring
     doc = inspect.getdoc(obj)
     if doc:
-        print(f"\n{bcolors.BOLD}{bcolors.OKGREEN}📝 Description:{bcolors.ENDC}")
-        print(f"{bcolors.ITALIC}{bcolors.OKGRAY}{doc}{bcolors.ENDC}")
+        print(
+            f"\n{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKGREEN}📝 Description:{cltcolors.bcolors.ENDC}"
+        )
+        print(
+            f"{cltcolors.bcolors.ITALIC}{cltcolors.bcolors.OKGRAY}{doc}{cltcolors.bcolors.ENDC}"
+        )
 
     # Print Methods
     if methods:
         print(
-            f"\n{bcolors.BOLD}{bcolors.OKBLUE}{'─'*15} ⚙️  METHODS {'─'*15}{bcolors.ENDC}"
+            f"\n{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKBLUE}{'─'*15} ⚙️  METHODS {'─'*15}{cltcolors.bcolors.ENDC}"
         )
         for name, method in sorted(methods):
             try:
                 sig = inspect.signature(method)
                 formatted_sig = format_signature(sig, notebook_mode=False)
                 print(
-                    f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{formatted_sig}"
+                    f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKYELLOW}🔧 {name}{cltcolors.bcolors.ENDC}{formatted_sig}"
                 )
 
                 # Method docstring
@@ -3942,33 +3974,37 @@ def _display_object_terminal_output(
                     # Show first line of docstring
                     first_line = method_doc.split("\n")[0]
                     print(
-                        f"    {bcolors.ITALIC}{bcolors.OKGRAY}{first_line}{bcolors.ENDC}"
+                        f"    {cltcolors.bcolors.ITALIC}{cltcolors.bcolors.OKGRAY}{first_line}{cltcolors.bcolors.ENDC}"
                     )
             except (ValueError, TypeError):
                 print(
-                    f"{bcolors.BOLD}{bcolors.OKYELLOW}🔧 {name}{bcolors.ENDC}{bcolors.OKGRAY}(signature unavailable){bcolors.ENDC}"
+                    f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKYELLOW}🔧 {name}{cltcolors.bcolors.ENDC}{cltcolors.bcolors.OKGRAY}(signature unavailable){cltcolors.bcolors.ENDC}"
                 )
             print()
 
     # Print Properties
     if properties:
         print(
-            f"{bcolors.BOLD}{bcolors.OKMAGENTA}{'─'*15} 🏠 PROPERTIES {'─'*12}{bcolors.ENDC}"
+            f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKMAGENTA}{'─'*15} 🏠 PROPERTIES {'─'*12}{cltcolors.bcolors.ENDC}"
         )
         for name, prop in sorted(properties):
-            print(f"{bcolors.BOLD}{bcolors.PURPLE}🔑 {name}{bcolors.ENDC}")
+            print(
+                f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.PURPLE}🔑 {name}{cltcolors.bcolors.ENDC}"
+            )
 
             # Property docstring
             prop_doc = inspect.getdoc(prop)
             if prop_doc:
                 first_line = prop_doc.split("\n")[0]
-                print(f"    {bcolors.ITALIC}{bcolors.OKGRAY}{first_line}{bcolors.ENDC}")
+                print(
+                    f"    {cltcolors.bcolors.ITALIC}{cltcolors.bcolors.OKGRAY}{first_line}{cltcolors.bcolors.ENDC}"
+                )
             print()
 
     # Print Attributes
     if attributes:
         print(
-            f"{bcolors.BOLD}{bcolors.DARKCYAN}{'─'*15} 📊 ATTRIBUTES {'─'*12}{bcolors.ENDC}"
+            f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.DARKCYAN}{'─'*15} 📊 ATTRIBUTES {'─'*12}{cltcolors.bcolors.ENDC}"
         )
         for name, attr in sorted(attributes):
             attr_type = type(attr).__name__
@@ -3979,9 +4015,9 @@ def _display_object_terminal_output(
                 attr_repr = attr_repr[:47] + "..."
 
             print(
-                f"{bcolors.BOLD}{bcolors.OKCYAN}📌 {name}{bcolors.ENDC} "
-                f"{bcolors.OKGRAY}({attr_type}){bcolors.ENDC}: "
-                f"{bcolors.DARKWHITE}{attr_repr}{bcolors.ENDC}"
+                f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKCYAN}📌 {name}{cltcolors.bcolors.ENDC} "
+                f"{cltcolors.bcolors.OKGRAY}({attr_type}){cltcolors.bcolors.ENDC}: "
+                f"{cltcolors.bcolors.DARKWHITE}{attr_repr}{cltcolors.bcolors.ENDC}"
             )
 
     # MRO (Method Resolution Order) for classes
@@ -3989,15 +4025,17 @@ def _display_object_terminal_output(
         mro = inspect.getmro(obj)
         if len(mro) > 1:
             print(
-                f"\n{bcolors.BOLD}{bcolors.WARNING}{'─'*10} 🏗️  METHOD RESOLUTION ORDER {'─'*10}{bcolors.ENDC}"
+                f"\n{cltcolors.bcolors.BOLD}{cltcolors.bcolors.WARNING}{'─'*10} 🏗️  METHOD RESOLUTION ORDER {'─'*10}{cltcolors.bcolors.ENDC}"
             )
             for i, cls in enumerate(mro):
                 print(
-                    f"{bcolors.OKYELLOW}🔗 {i+1}.{bcolors.ENDC} {bcolors.OKWHITE}{cls.__name__}{bcolors.ENDC} "
-                    f"{bcolors.OKGRAY}({cls.__module__}){bcolors.ENDC}"
+                    f"{cltcolors.bcolors.OKYELLOW}🔗 {i+1}.{cltcolors.bcolors.ENDC} {cltcolors.bcolors.OKWHITE}{cls.__name__}{cltcolors.bcolors.ENDC} "
+                    f"{cltcolors.bcolors.OKGRAY}({cls.__module__}){cltcolors.bcolors.ENDC}"
                 )
 
-    print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*60}{bcolors.ENDC}")
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*60}{cltcolors.bcolors.ENDC}"
+    )
 
 
 ########################################################################################################
@@ -4056,7 +4094,7 @@ def print_dict_tree(
 
         if isinstance(value, dict):
             print(
-                f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKBLUE}{bcolors.BOLD}{key}/{bcolors.ENDC}"
+                f"{prefix}{cltcolors.bcolors.OKWHITE}{current_prefix}{cltcolors.bcolors.OKBLUE}{cltcolors.bcolors.BOLD}{key}/{cltcolors.bcolors.ENDC}"
             )
             extension = "    " if is_last_item else "│   "
             print_dict_tree(value, prefix + extension, is_last_item, max_value_length)
@@ -4067,7 +4105,7 @@ def print_dict_tree(
                 value_str = value_str[: max_value_length - 3] + "..."
 
             print(
-                f"{prefix}{bcolors.OKWHITE}{current_prefix}{bcolors.OKYELLOW}{key}{bcolors.ENDC}: {bcolors.OKGRAY}{value_str}{bcolors.ENDC}"
+                f"{prefix}{cltcolors.bcolors.OKWHITE}{current_prefix}{cltcolors.bcolors.OKYELLOW}{key}{cltcolors.bcolors.ENDC}: {cltcolors.bcolors.OKGRAY}{value_str}{cltcolors.bcolors.ENDC}"
             )
 
 
@@ -4097,9 +4135,11 @@ def search_methods(obj, keyword, case_sensitive=False):
         keyword = keyword.lower()
 
     print(
-        f"{bcolors.BOLD}{bcolors.HEADER}🔍 SEARCH RESULTS for '{keyword}'{bcolors.ENDC}"
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}🔍 SEARCH RESULTS for '{keyword}'{cltcolors.bcolors.ENDC}"
     )
-    print(f"{bcolors.BOLD}{bcolors.HEADER}{'='*40}{bcolors.ENDC}")
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*40}{cltcolors.bcolors.ENDC}"
+    )
 
     members = inspect.getmembers(obj)
     found = False
@@ -4115,13 +4155,15 @@ def search_methods(obj, keyword, case_sensitive=False):
 
         if name_match or doc_match:
             found = True
-            print(f"{bcolors.BOLD}{bcolors.OKYELLOW}✨ {name}{bcolors.ENDC}")
+            print(
+                f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKYELLOW}✨ {name}{cltcolors.bcolors.ENDC}"
+            )
 
             if inspect.ismethod(value) or inspect.isfunction(value):
                 try:
                     sig = inspect.signature(value)
                     print(
-                        f"  {bcolors.OKGRAY}📋 Signature:{bcolors.ENDC} {bcolors.OKWHITE}{sig}{bcolors.ENDC}"
+                        f"  {cltcolors.bcolors.OKGRAY}📋 Signature:{cltcolors.bcolors.ENDC} {cltcolors.bcolors.OKWHITE}{sig}{cltcolors.bcolors.ENDC}"
                     )
                 except:
                     pass
@@ -4130,12 +4172,16 @@ def search_methods(obj, keyword, case_sensitive=False):
                 first_line = doc.split("\n")[0]
                 if len(first_line) > 80:
                     first_line = first_line[:77] + "..."
-                print(f"  {bcolors.ITALIC}{bcolors.OKGRAY}{first_line}{bcolors.ENDC}")
+                print(
+                    f"  {cltcolors.bcolors.ITALIC}{cltcolors.bcolors.OKGRAY}{first_line}{cltcolors.bcolors.ENDC}"
+                )
 
             print()
 
     if not found:
-        print(f"{bcolors.WARNING}❌ No matches found for '{keyword}'{bcolors.ENDC}")
+        print(
+            f"{cltcolors.bcolors.WARNING}❌ No matches found for '{keyword}'{cltcolors.bcolors.ENDC}"
+        )
 
 
 ######################################################################################################
