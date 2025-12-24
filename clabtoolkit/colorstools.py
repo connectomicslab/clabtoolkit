@@ -952,9 +952,57 @@ def get_colormaps_names(n, cmap_type="sequential"):
     - Uses matplotlib's built-in colormaps
     - If n exceeds available colormaps, the list repeats to fulfill the request
     """
+    # Predefined lists of colormaps by type
+    sequential_cmaps = [
+        "viridis",
+        "plasma",
+        "inferno",
+        "magma",
+        "cividis",
+        "Greys",
+        "Purples",
+        "Blues",
+        "Greens",
+        "Oranges",
+        "Reds",
+        "YlOrBr",
+        "YlOrRd",
+        "OrRd",
+        "PuRd",
+        "RdPu",
+        "BuPu",
+        "GnBu",
+        "PuBu",
+        "YlGnBu",
+        "PuBuGn",
+        "BuGn",
+        "YlGn",
+    ]
 
-    # Get all colormaps of the specified type
-    cmap_list = [name for name in colormaps if colormaps[name].category == cmap_type]
+    diverging_cmaps = [
+        "PiYG",
+        "PRGn",
+        "BrBG",
+        "PuOr",
+        "RdGy",
+        "RdBu",
+        "RdYlBu",
+        "RdYlGn",
+        "Spectral",
+        "coolwarm",
+        "bwr",
+        "seismic",
+    ]
+
+    # Select the appropriate list
+    if cmap_type == "sequential":
+        cmap_list = sequential_cmaps
+    elif cmap_type == "diverging":
+        cmap_list = diverging_cmaps
+    else:
+        raise ValueError(
+            f"cmap_type must be 'sequential' or 'diverging', got '{cmap_type}'"
+        )
 
     # If n exceeds available colormaps, repeat them
     if n > len(cmap_list):
