@@ -13,6 +13,7 @@ init(autoreset=True)
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib import colormaps
 from matplotlib.colors import to_hex
 from matplotlib.colors import is_color_like as mpl_is_color_like
 from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
@@ -917,6 +918,50 @@ def create_random_colors(
             return colors / 255.0
         else:  # hex
             return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
+
+
+#####################################################################################################
+def get_colormaps_names(n, cmap_type="sequential"):
+    """
+    Get a list of colormap names from matplotlib. If n exceeds available colormaps, the list repeats.
+    It can return either sequential or diverging colormaps.
+
+    Parameters
+    ----------
+    n : int
+        Number of colormaps to return
+
+    cmap_type : str, optional
+        Type of colormaps: "sequential" or "diverging" (default: "sequential")
+
+    Returns
+    -------
+    list
+        List of colormap names (repeats if n exceeds available colormaps)
+
+    Examples
+    --------
+    >>> get_colormaps_names(5, cmap_type="sequential")
+    ['viridis', 'plasma', 'inferno', 'magma', 'cividis']
+
+    >>> get_colormaps_names(3, cmap_type="diverging")
+    ['PiYG', 'PRGn', 'BrBG']
+
+    Notes
+    -----
+    - Uses matplotlib's built-in colormaps
+    - If n exceeds available colormaps, the list repeats to fulfill the request
+    """
+
+    # Get all colormaps of the specified type
+    cmap_list = [name for name in colormaps if colormaps[name].category == cmap_type]
+
+    # If n exceeds available colormaps, repeat them
+    if n > len(cmap_list):
+        repeats = (n // len(cmap_list)) + 1
+        cmap_list = cmap_list * repeats
+
+    return cmap_list[:n]
 
 
 #########################################################################################################
