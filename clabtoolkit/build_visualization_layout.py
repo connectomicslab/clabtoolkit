@@ -73,7 +73,7 @@ def build_layout_config(
 
     if n_views == 1 and n_maps == 1 and n_objects == 1:  # Works fine!
 
-        if maps_dict[maps_names[0]]["colormap"] == "categorical":
+        if maps_dict[maps_names[0]]["colormap"] == "colortable":
             colorbar = False
 
         return single_element_layout(
