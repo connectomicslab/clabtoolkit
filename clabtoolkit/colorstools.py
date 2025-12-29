@@ -1584,7 +1584,7 @@ def get_colors_from_colortable(
     return colors
 
 
-###################################################################################################
+#####################################################################################################
 def values2colors(
     values: Union[List[Union[int, float]], np.ndarray],
     cmap: str = "viridis",
@@ -1625,10 +1625,12 @@ def values2colors(
         If True, invert the gradient of the colormap before mapping values.
 
     vmin : float or None, default None
-        Minimum value for colormap normalization. If None, uses min(values).
+        Minimum value for colormap normalization. If None, uses range_min if provided,
+        otherwise uses min of in-range values.
 
     vmax : float or None, default None
-        Maximum value for colormap normalization. If None, uses max(values).
+        Maximum value for colormap normalization. If None, uses range_max if provided,
+        otherwise uses max of in-range values.
 
     range_min : float or None, default None
         Minimum threshold for values. Values below this will be set to range_color.
@@ -1636,8 +1638,8 @@ def values2colors(
     range_max : float or None, default None
         Maximum threshold for values. Values above this will be set to range_color.
 
-    range_color : tuple, default (200, 200, 200, 255)
-        Color to assign to out-of-range values, in RGBA format.
+    range_color : tuple, default (200, 200, 200)
+        Color to assign to out-of-range values, in RGB or RGBA format.
 
     Returns
     -------
@@ -1665,37 +1667,20 @@ def values2colors(
     if not (isinstance(range_color, tuple) and len(range_color) in [3, 4]):
         raise ValueError("range_color must be a tuple of length 3 (RGB) or 4 (RGBA)")
 
-    # Prepare output array
-    if output_format == "hex":
-        all_colors = [""] * len(values)
-    else:
-        # all_colors will be the repeated range_color initially
-        if output_format == "rgb":
-            all_colors = np.tile(
-                np.array(range_color, dtype=np.uint8), (len(values), 1)
-            )
-        else:  # rgbnorm
-            all_colors = np.tile(
-                np.array(range_color, dtype=np.float32) / 255.0,
-                (len(values), 1),
-            )
-
-    # all_colors = np.ones((len(values), 4), dtype=np.uint8)
-    # all_colors[:, :3] = range_color[:3]
+    output_format = output_format.lower()
+    if output_format not in ["hex", "rgb", "rgbnorm"]:
+        raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
     # Create mask for out-of-range values
     mask = np.zeros(len(values), dtype=bool)
     if range_min is not None:
-        mask |= values.flatten() < range_min
+        mask |= values < range_min
 
     if range_max is not None:
-        mask |= values.flatten() > range_max
+        mask |= values > range_max
 
+    # Get values within range
     values_4_colors = values[~mask]
-
-    output_format = output_format.lower()
-    if output_format not in ["hex", "rgb", "rgbnorm"]:
-        raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
 
     # Get the matplotlib colormap
     try:
@@ -1710,12 +1695,21 @@ def values2colors(
     if invert_clmap:
         colormap = colormap.reversed()
 
-    # Set vmin and vmax
+    # Set vmin and vmax for normalization
+    # Priority: explicit vmin/vmax > range_min/range_max > min/max of in-range values
+    # Set vmin and vmax for normalization
+    # Priority: explicit vmin/vmax > min/max of in-range values
     if vmin is None:
-        vmin = np.nanmin(values_4_colors)
+        if len(values_4_colors) > 0:
+            vmin = np.nanmin(values_4_colors)
+        else:
+            vmin = 0.0
 
     if vmax is None:
-        vmax = np.nanmax(values_4_colors)
+        if len(values_4_colors) > 0:
+            vmax = np.nanmax(values_4_colors)
+        else:
+            vmax = 1.0
 
     # Handle edge cases
     if not np.isfinite(vmin):
@@ -1739,31 +1733,56 @@ def values2colors(
     normalized_values[nan_mask] = 0.5
 
     # Map normalized values to colors using the continuous colormap
-    mapped_colors = colormap(normalized_values)  # This returns RGBA values in [0,1]
-
-    # Assign computed colors to the output array
+    mapped_colors = colormap(normalized_values)  # Returns RGBA values in [0,1]
     mapped_colors = np.squeeze(mapped_colors)
 
-    # Move to values between 0 and 255
+    # Convert to 0-255 range
     mapped_colors = (mapped_colors * 255).astype(np.uint8)
 
-    all_colors[~mask, :] = mapped_colors
-
     # Remove alpha channel if present (take only RGB)
-    if all_colors.shape[-1] == 4:
-        all_colors = all_colors[..., :3]
+    if mapped_colors.ndim > 1 and mapped_colors.shape[-1] == 4:
+        mapped_colors = mapped_colors[..., :3]
+    elif mapped_colors.ndim == 1 and len(mapped_colors) == 4:
+        mapped_colors = mapped_colors[:3]
 
-    # Convert to the desired output format
-    if output_format == "rgbnorm":
-        result_colors = all_colors / 255.0
+    # Prepare range_color in RGB format
+    range_color_rgb = np.array(range_color[:3], dtype=np.uint8)
 
-    elif output_format == "rgb":
-        result_colors = all_colors
+    # Initialize output array with range_color and assign mapped colors to in-range values
+    if len(values_4_colors) == 0:
+        # All values are out of range
+        if output_format == "rgb":
+            all_colors = np.tile(range_color_rgb, (len(values), 1))
+        elif output_format == "rgbnorm":
+            all_colors = np.tile(range_color_rgb / 255.0, (len(values), 1))
+        else:  # hex
+            range_hex = f"#{range_color_rgb[0]:02x}{range_color_rgb[1]:02x}{range_color_rgb[2]:02x}"
+            all_colors = [range_hex] * len(values)
+    else:
+        if output_format == "rgb":
+            all_colors = np.tile(range_color_rgb, (len(values), 1))
+            all_colors[~mask] = mapped_colors
+        elif output_format == "rgbnorm":
+            all_colors = np.tile(range_color_rgb / 255.0, (len(values), 1))
+            all_colors[~mask] = mapped_colors / 255.0
+        else:  # hex
+            range_hex = f"#{range_color_rgb[0]:02x}{range_color_rgb[1]:02x}{range_color_rgb[2]:02x}"
+            all_colors = [range_hex] * len(values)
+            # Assign hex colors for in-range values
+            in_range_indices = np.where(~mask)[0]
+            if mapped_colors.ndim == 1:
+                # Single color for single value
+                r, g, b = mapped_colors[:3]
+                all_colors[in_range_indices[0]] = (
+                    f"#{int(r):02x}{int(g):02x}{int(b):02x}"
+                )
+            else:
+                # Multiple colors
+                for i, idx in enumerate(in_range_indices):
+                    r, g, b = mapped_colors[i]
+                    all_colors[idx] = f"#{int(r):02x}{int(g):02x}{int(b):02x}"
 
-    else:  # hex
-        result_colors = [
-            f"#{int(r):02x}{int(g):02x}{int(b):02x}" for r, g, b in mapped_colors
-        ]
+    result_colors = all_colors
 
     # Apply color inversion if requested
     if invert_cl:
