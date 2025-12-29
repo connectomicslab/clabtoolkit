@@ -219,7 +219,7 @@ class BrainPlotter:
             n_views = 1
 
         print(
-            f"Number of views: {n_views}, Number of maps: {n_maps}, Number of surfaces: {n_objs}"
+            f"Number of views: {n_views}, Number of maps: {n_maps}, Number of objects: {n_objs}"
         )
 
         # Check if colorbar is needed
@@ -247,7 +247,7 @@ class BrainPlotter:
     def plot(
         self,
         objs2plot: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List],
-        hemi_id: Union[str, List[str]] = "both",
+        hemi_id: Union[str, List[str]] = "lh",
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
         notebook: bool = False,
@@ -507,7 +507,7 @@ class BrainPlotter:
                 tmp_view_name = tmp_view_name.capitalize()
 
             pv_plotter.add_text(
-                f"{map_names[map_idx]}, Surface: {obj_idx}, View: {tmp_view_name}",
+                f"{map_names[map_idx]}, Object: {obj_idx}, View: {tmp_view_name}",
                 font_size=self.figure_conf["title_font_size"],
                 position="upper_edge",
                 color=self.figure_conf["title_font_color"],
@@ -876,7 +876,7 @@ class BrainPlotter:
         if len(diff_maps) > 0:
             for map_name in diff_maps:
                 ctab_maps_dict[map_name] = {
-                    "colormap": "categorical",
+                    "colormap": "colortable",
                     "vmin": None,
                     "vmax": None,
                     "range_min": None,
