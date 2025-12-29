@@ -54,7 +54,7 @@ def load_configs(config_file: Union[str, Path]) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> plotter._load_configs()  # Reloads configurations from file
     """
 
@@ -81,7 +81,7 @@ def get_views_to_plot(
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing views_conf and layouts_conf attributes.
 
     views : Union[str, List[str]]
@@ -974,7 +974,7 @@ def list_available_view_names(plotobj) -> List[str]:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter()
+    >>> plotter = BrainPlotter()
     >>> view_names = visutils.list_available_view_names(plotter)
     >>> print(f"Available views: {view_names}")
     """
@@ -1013,7 +1013,7 @@ def list_available_layouts(plotobj) -> Dict[str, Dict[str, Any]]:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> layouts = visutils.list_available_layouts(plotter)
     >>> print(f"Available layouts: {list(layouts.keys())}")
     >>>
@@ -1082,7 +1082,7 @@ def get_layout_details(plotobj, views: str) -> Optional[Dict[str, Any]]:
     Examples
     --------
 
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> details = visutils.get_layout_details("8_views")
     >>> if details:
     ...     print(f"Grid shape: {details['shape']}")
@@ -1150,7 +1150,7 @@ def reload_config(plotobj) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> # ... modify configs.json externally ...
     >>> plotter.reload_config()  # Pick up the changes
     """
@@ -1171,7 +1171,7 @@ def get_figure_config(plotobj) -> Dict[str, Any]:
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing figure configuration.
 
     Returns
@@ -1183,7 +1183,7 @@ def get_figure_config(plotobj) -> Dict[str, Any]:
     Examples
     --------
     >>> import cltvis.utils as visutils
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> fig_config = visutils.get_figure_config(plotter)
     >>> print(fig_config)
     """
@@ -1225,7 +1225,7 @@ def list_all_views_and_layouts(plotobj) -> List[str]:
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing view configurations.
 
     Returns
@@ -1235,7 +1235,7 @@ def list_all_views_and_layouts(plotobj) -> List[str]:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> layouts = list_all_views_and_layouts()
     >>> print(layouts)
     ['8_views', '8_views_8x1', '8_views_1x8', '6_views', '6_views_6x1', '6_views_1x6', '4_views', '4_views_4x1', '4_views_1x4', '2_views', 'lateral', 'medial', 'dorsal', 'ventral', 'rostral', 'caudal']
@@ -1260,7 +1260,7 @@ def list_multiviews_layouts(plotobj) -> List[str]:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> multiviews = plotter._list_multiviews_layouts()
     >>> print(multiviews)
     ['8_views', '6_views', '4_views', '8_views_8x1', '6_views_6x1', '4_views_4x1', '8_views_1x8', '6_views_1x6', '4_views_1x4', '2_views']
@@ -1312,7 +1312,7 @@ def get_valid_views(plotobj, views: Union[str, List[str]]) -> List[str]:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> valid_views = plotter._get_valid_views("8_views")
     >>> print(valid_views)
     ['lateral', 'medial', 'dorsal', 'ventral', 'rostral', 'caudal']
@@ -1383,7 +1383,7 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing the figure configuration.
 
     auto_save : bool, default True
@@ -1426,7 +1426,7 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>>
     >>> # Change background to white with black text
     >>> plotter.update_figure_config(
@@ -1533,7 +1533,7 @@ def apply_theme(plotobj, theme_name: str, auto_save: bool = False) -> None:
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing the figure configuration.
 
     theme_name : str
@@ -1605,13 +1605,13 @@ def list_available_themes(plotobj) -> None:
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing the figure configuration.
 
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> plotter.list_available_themes()
     """
 
@@ -1645,7 +1645,7 @@ def list_figure_config_options(plotobj) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> plotter.list_figure_config_options()
     """
 
@@ -1757,7 +1757,7 @@ def reset_figure_config(plotobj, auto_save: bool = True) -> None:
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing the figure configuration.
 
     auto_save : bool, default True
@@ -1765,7 +1765,7 @@ def reset_figure_config(plotobj, auto_save: bool = True) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> plotter.reset_figure_config()  # Reset to defaults
     """
 
@@ -1823,7 +1823,7 @@ def save_config(plotobj) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> plotter.update_figure_config(background_color="white", auto_save=False)
     >>> plotter.save_config()  # Manually save changes
     """
@@ -1852,7 +1852,7 @@ def preview_theme(plotobj, theme_name: str) -> None:
 
     Parameters
     ----------
-    plotobj : SurfacePlotter or TractogramPlotter
+    plotobj : BrainPlotter
         Instance of the plotting class containing the figure configuration.
 
     theme_name : str
@@ -1860,7 +1860,7 @@ def preview_theme(plotobj, theme_name: str) -> None:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("configs.json")
+    >>> plotter = BrainPlotter("configs.json")
     >>> plotter.preview_theme("light")  # See what light theme would change
     """
 
