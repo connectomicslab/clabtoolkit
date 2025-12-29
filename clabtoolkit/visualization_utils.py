@@ -475,7 +475,10 @@ def prepare_obj_for_plotting(
             raise ValueError(
                 f"Data array '{map_name}' not found in streamline or point data"
             )
-        elif map_name in obj2plot.data_per_streamline and not obj2plot.data_per_point:
+        elif (
+            map_name in obj2plot.data_per_streamline
+            and map_name not in obj2plot.data_per_point
+        ):
             # We have to convert it to data_per_point
             obj2plot.streamline_to_points(map_name)
 
