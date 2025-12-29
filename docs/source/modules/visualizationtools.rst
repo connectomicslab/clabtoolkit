@@ -20,7 +20,7 @@ Key Features
 Main Classes
 ------------
 
-SurfacePlotter
+BrainPlotter
 ~~~~~~~~~~~~~~
 Advanced brain surface visualization with multi-view layouts.
 
@@ -36,10 +36,10 @@ Common Usage Examples
 
 Basic surface visualization::
 
-    from clabtoolkit.visualizationtools import SurfacePlotter
+    from clabtoolkit.visualizationtools import BrainPlotter
     
     # Initialize plotter with default configuration
-    plotter = SurfacePlotter()
+    plotter = BrainPlotter()
     
     # Plot surface with scalar overlay
     plotter.plot_surface(
@@ -62,7 +62,7 @@ Multi-view layouts::
     }
     
     # Plot with multiple views
-    plotter = SurfacePlotter(config=view_config)
+    plotter = BrainPlotter(config=view_config)
     plotter.plot_multi_view(
         surface_files=["lh.pial", "rh.pial"],
         scalar_files=["lh.thickness.mgh", "rh.thickness.mgh"]

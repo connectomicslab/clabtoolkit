@@ -4,7 +4,7 @@
 
 **clabtoolkit** is a comprehensive Python toolkit designed for neuroimaging data processing and analysis, with specialized focus on brain connectivity data, BIDS datasets, and various neuroimaging formats. Developed by Yasser Alemán-Gómez, this toolkit provides an end-to-end solution for connectomics research and surface-based brain analysis.
 
-**Version**: 0.3.3  
+**Version**: 0.4.0  
 **License**: Apache Software License 2.0  
 **Python Support**: 3.9+  
 **Documentation**: https://clabtoolkit.readthedocs.io  
@@ -380,7 +380,7 @@ abased_parcellation(
 
 **Key Classes**:
 
--   `SurfacePlotter`: Multi-view brain surface visualization
+-   `BrainPlotter`: Multi-view brain surface visualization
     -   Configurable view layouts
     -   Custom colormap support
     -   Publication-ready output
