@@ -955,6 +955,15 @@ def get_colormaps_names(n, cmap_type="sequential"):
     # Predefined lists of colormaps by type
     sequential_cmaps = [
         "viridis",
+        "jet",
+        "copper",
+        "hot",
+        "winter",
+        "autumn",
+        "spring",
+        "summer",
+        "bone",
+        "cool",
         "plasma",
         "inferno",
         "magma",
