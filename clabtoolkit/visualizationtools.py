@@ -390,7 +390,7 @@ class BrainPlotter:
         if len(diff_maps) > 0:
             for map_name in diff_maps:
                 ctab_maps_dict[map_name] = {
-                    "colormap": "categorical",
+                    "colormap": "colortable",
                     "vmin": None,
                     "vmax": None,
                     "range_min": None,
@@ -680,7 +680,7 @@ class BrainPlotter:
                     vmax = colorbar_dict["vmax"]
                     pv_plotter.subplot(row, col)
 
-                    if colormap == "categorical":
+                    if colormap == "colortable":
                         pass  # Currently, no colorbar for categorical maps is implemented
                     else:
                         visutils.add_colorbar(
@@ -1168,7 +1168,7 @@ class BrainPlotter:
                     vmax = colorbar_dict["vmax"]
                     pv_plotter.subplot(row, col)
 
-                    if colormap == "categorical":
+                    if colormap == "colortable":
                         pass  # Currently, no colorbar for categorical maps is implemented
                     else:
                         visutils.add_colorbar(

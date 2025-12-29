@@ -2037,7 +2037,7 @@ def get_map_characteristics(objs2plot, maps_dict: dict):
         map_charact["colormap"] = colormap
         map_charact["colorbar_title"] = colorbar_title
 
-        if colormap == "categorical":
+        if colormap == "colortable":
             map_limits["shared_by_map"] = (None, None, map_name)
 
         else:
@@ -2083,7 +2083,7 @@ def get_map_characteristics(objs2plot, maps_dict: dict):
     if cat_bool:
         limits_dict["shared"] = (None, None, map_name)
         charact_dict["shared"] = {
-            "colormap": "categorical",
+            "colormap": "colortable",
             "colorbar_title": map_name,
         }
     else:
