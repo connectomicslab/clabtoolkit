@@ -1186,6 +1186,344 @@ class BrainPlotter:
         # Handle final rendering - either save, display blocking, or display non-blocking
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
 
+    ###########################################################################
+    def plot_scene(
+        self,
+        scene_objects: Union[
+            cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List
+        ],
+        scene_config: Dict = None,
+        views: Union[str, List[str]] = "dorsal",
+        notebook: bool = False,
+        colorbar: bool = True,
+        colorbar_position: str = "right",
+        use_opacity: bool = True,
+        non_blocking: bool = False,
+        save_path: Optional[str] = None,
+        config_file: Union[str, Path, Dict] = None,
+    ):
+
+        # Loading custom configuration file if provided
+        if config_file is not None:
+            try:
+                self._update_configs(config_file)
+
+            except Exception as e:
+                print(
+                    f"Error loading configuration file: {e}. Using existing configurations."
+                )
+
+        fin_obj_config = visutils.create_final_object_config(
+            scene_objects, maps_config=scene_config
+        )
+
+        valid_views = visutils.get_views_to_plot(self, views, ["lh", "rh"])
+
+        n_views = len(valid_views)
+        colorbar_size = self.figure_conf["colorbar_size"]
+
+        config_dict = vislayout.scene_layout(
+            valid_views, colorbar, colorbar_position, colorbar_size
+        )
+
+        # Determine rendering mode based on save_path, environment, and threading preference
+        save_mode, use_off_screen, use_notebook, use_threading = (
+            visutils.determine_render_mode(save_path, notebook, non_blocking)
+        )
+
+        # Detecting the screen size for the plotter
+        screen_size = cltplot.get_current_monitor_size()
+
+        # Create PyVista plotter with appropriate rendering mode
+        plotter_kwargs = {
+            "notebook": use_notebook,
+            "window_size": [screen_size[0], screen_size[1]],
+            "off_screen": use_off_screen,
+            "shape": config_dict["shape"],
+            "row_weights": config_dict["row_weights"],
+            "col_weights": config_dict["col_weights"],
+            "border": self.figure_conf.get("subplot_border", True),
+        }
+
+        groups = config_dict["groups"]
+        if groups:
+            plotter_kwargs["groups"] = groups
+
+        pv_plotter = pv.Plotter(**plotter_kwargs)
+
+        # Now you can place brain objects at specific positions
+        pv_plotter.set_background(self.figure_conf["background_color"])
+
+        brain_positions = config_dict["brain_positions"]
+
+        for (map_idx, obj_idx, view_idx), (row, col) in brain_positions.items():
+            pv_plotter.subplot(row, col)
+            # Set background color from figure configuration
+            pv_plotter.set_background(self.figure_conf["background_color"])
+            tmp_view_name = valid_views[view_idx]
+
+            # Split the view name if it contains '_'
+            if "-" in tmp_view_name:
+                tmp_view_name = tmp_view_name.split("-")[1]
+
+                # Capitalize the first letter
+                tmp_view_name = tmp_view_name.capitalize()
+
+                # Detecting if the view is left or right
+                if "lh" in valid_views[view_idx]:
+                    subplot_title = "Left hemisphere: " + tmp_view_name + " view"
+                elif "rh" in valid_views[view_idx]:
+                    subplot_title = "Right hemisphere: " + tmp_view_name + " view"
+                elif "merg" in valid_views[view_idx]:
+                    subplot_title = tmp_view_name + " view"
+
+            pv_plotter.add_text(
+                subplot_title,
+                font_size=self.figure_conf["title_font_size"],
+                position="upper_edge",
+                color=self.figure_conf["title_font_color"],
+                shadow=self.figure_conf["title_shadow"],
+                font=self.figure_conf["title_font_type"],
+            )
+
+            prep_obj = []
+            for idx, obj in enumerate(scene_objects):
+                map_name = fin_obj_config[idx]["map_name"]
+                colormap = fin_obj_config[idx]["colormap"]
+                vmin = fin_obj_config[idx]["v_limits"][0]
+                vmax = fin_obj_config[idx]["v_limits"][1]
+                range_min = fin_obj_config[idx]["v_range"][0]
+                range_max = fin_obj_config[idx]["v_range"][1]
+                range_color = fin_obj_config[idx]["range_color"]
+                opacity = fin_obj_config[idx]["opacity"]
+
+                prep_obj.extend(
+                    visutils.prepare_list_obj_for_plotting(
+                        obj,
+                        map_name,
+                        colormap,
+                        vmin=vmin,
+                        vmax=vmax,
+                        range_min=range_min,
+                        range_max=range_max,
+                        range_color=range_color,
+                    )
+                )
+
+            for idx, tmp_obj in enumerate(prep_obj):
+                opacity = fin_obj_config[idx]["opacity"]
+                if isinstance(tmp_obj, clttract.Tractogram):
+
+                    tracts = tmp_obj.tracts
+                    rgba_data = tmp_obj.data_per_point["rgba"]
+
+                    # 1. Concatenate all points and colors
+                    all_points = np.vstack(tracts)
+                    all_rgba = np.vstack(rgba_data)
+                    all_rgba = all_rgba[:, :3]
+                    if use_opacity is True:
+
+                        # Check if data is in 0-1 range or 0-255 range
+                        if all_rgba.max() <= 1.0:
+                            # Data is in 0-1 range
+                            alpha_column = np.ones(all_rgba.shape[0]) * opacity
+                        else:
+                            # Data is in 0-255 range
+                            alpha_column = np.ones(all_rgba.shape[0]) * opacity * 255
+
+                        # Add alpha channel
+                        rgba_with_alpha = np.column_stack([all_rgba, alpha_column])
+
+                        # Maintain the same dtype as original
+                        rgba_with_alpha = rgba_with_alpha.astype(all_rgba.dtype)
+
+                        # Assign back
+                        all_rgba = rgba_with_alpha
+
+                    # 2. Build the lines connectivity array
+                    #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
+                    lines = []
+                    offset = 0
+                    for tract in tracts:
+                        n = len(tract)
+                        lines.append(n)
+                        lines.extend(range(offset, offset + n))
+                        offset += n
+                    lines = np.array(lines, dtype=np.int_)
+
+                    # 3. Create single PolyData with all curves
+                    if self.objs_conf["tracts"]["tubes"]:
+                        # Create a PolyData object for tube representation
+                        # Create a PolyData object for tube representation
+                        poly = pv.PolyData()
+                        poly.points = all_points
+                        poly.lines = lines
+
+                        # Attach your RGBA scalars
+                        poly.point_data["rgba"] = all_rgba  # <-- important
+
+                        # Add tube filter (tube cannot take scalars directly)
+                        tube_radius = self.objs_conf["tracts"]["tube_radius"]
+                        tube_sides = self.objs_conf["tracts"]["tube_sides"]
+                        tube_poly = poly.tube(
+                            radius=tube_radius,
+                            n_sides=tube_sides,
+                        )
+
+                        # Add the mesh with tube representation
+                        pv_plotter.add_mesh(
+                            tube_poly,
+                            scalars="rgba",  # use the same name
+                            rgb=True,
+                            ambient=self.figure_conf["mesh_ambient"],
+                            diffuse=self.figure_conf["mesh_diffuse"],
+                            specular=self.figure_conf["mesh_specular"],
+                            specular_power=self.figure_conf["mesh_specular_power"],
+                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                            show_scalar_bar=False,
+                        )
+                    else:
+                        poly = pv.PolyData()
+                        poly.points = all_points
+                        poly.lines = lines
+                        poly.point_data["rgba"] = all_rgba
+
+                        # 4. Single add_mesh call
+                        pv_plotter.add_mesh(
+                            poly,
+                            scalars="rgba",
+                            line_width=2,
+                            rgb=True,
+                            ambient=self.figure_conf["mesh_ambient"],
+                            diffuse=self.figure_conf["mesh_diffuse"],
+                            specular=self.figure_conf["mesh_specular"],
+                            specular_power=self.figure_conf["mesh_specular_power"],
+                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                            show_scalar_bar=False,
+                        )
+
+                elif isinstance(tmp_obj, cltpts.PointCloud):
+
+                    rgba_data = tmp_obj.point_data["rgba"]
+
+                    # Check if data is in 0-1 range or 0-255 range
+                    if rgba_data.max() <= 1.0:
+                        # Data is in 0-1 range
+                        alpha_column = np.ones(rgba_data.shape[0]) * opacity
+                    else:
+                        # Data is in 0-255 range
+                        alpha_column = np.ones(rgba_data.shape[0]) * opacity * 255
+
+                    # Add alpha channel
+                    rgba_with_alpha = np.column_stack([rgba_data, alpha_column])
+
+                    # Maintain the same dtype as original
+                    rgba_with_alpha = rgba_with_alpha.astype(rgba_data.dtype)
+
+                    # Assign back
+                    tmp_obj.point_data["rgba"] = rgba_with_alpha
+
+                    if use_opacity is False:
+                        rgba_data = rgba_data[:, :3]
+
+                    pv_plotter.add_points(
+                        tmp_obj.coords,
+                        render_points_as_spheres=self.objs_conf["points"]["spheres"],
+                        point_size=self.objs_conf["points"]["spheres_radius"],
+                        scalars=rgba_data,
+                        rgb=True,
+                        ambient=self.figure_conf["mesh_ambient"],
+                        diffuse=self.figure_conf["mesh_diffuse"],
+                        specular=self.figure_conf["mesh_specular"],
+                        specular_power=self.figure_conf["mesh_specular_power"],
+                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                        show_scalar_bar=False,
+                    )
+
+                elif isinstance(tmp_obj, cltsurf.Surface):
+                    if not use_opacity:
+                        # delete the alpha channel if exists
+                        if "rgba" in tmp_obj.mesh.point_data:
+
+                            rgba_data = tmp_obj.mesh.point_data["rgba"][:, :3]
+
+                    else:
+                        rgba_data = tmp_obj.mesh.point_data["rgba"][:, :3]
+
+                        # Check if data is in 0-1 range or 0-255 range
+                        if rgba_data.max() <= 1.0:
+                            # Data is in 0-1 range
+                            alpha_column = np.ones(rgba_data.shape[0]) * opacity
+                        else:
+                            # Data is in 0-255 range
+                            alpha_column = np.ones(rgba_data.shape[0]) * opacity * 255
+
+                        # Add alpha channel
+                        rgba_with_alpha = np.column_stack([rgba_data, alpha_column])
+
+                        # Maintain the same dtype as original
+                        rgba_with_alpha = rgba_with_alpha.astype(rgba_data.dtype)
+
+                        # Assign back
+                        tmp_obj.mesh.point_data["rgba"] = rgba_with_alpha
+
+                    pv_plotter.add_mesh(
+                        copy.deepcopy(tmp_obj.mesh),
+                        scalars="rgba",
+                        rgb=True,
+                        ambient=self.figure_conf["mesh_ambient"],
+                        diffuse=self.figure_conf["mesh_diffuse"],
+                        specular=self.figure_conf["mesh_specular"],
+                        specular_power=self.figure_conf["mesh_specular_power"],
+                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
+                        show_scalar_bar=False,
+                    )
+
+                # Set the camera view
+                tmp_view = valid_views[view_idx]
+
+                # Replace merg from the view id if needed
+                if "merg" in tmp_view:
+                    tmp_view = tmp_view.replace("merg", "lh")
+
+                camera_params = self.views_conf[tmp_view]
+                pv_plotter.camera_position = camera_params["view"]
+                pv_plotter.camera.azimuth = camera_params["azimuth"]
+                pv_plotter.camera.elevation = camera_params["elevation"]
+                pv_plotter.camera.zoom(camera_params["zoom"])
+
+        # # And place colorbars at their positions
+        # if len(colorbar_list):
+
+        #     for colorbar_dict in colorbar_list:
+        #         if colorbar_dict is not False:
+        #             row, col = colorbar_dict["position"]
+        #             orientation = colorbar_dict["orientation"]
+        #             colorbar_id = colorbar_dict["map_name"]
+        #             colormap = colorbar_dict["colormap"]
+        #             colorbar_title = colorbar_dict["title"]
+        #             vmin = colorbar_dict["vmin"]
+        #             vmax = colorbar_dict["vmax"]
+        #             pv_plotter.subplot(row, col)
+
+        #             if colormap == "colortable":
+        #                 pass  # Currently, no colorbar for categorical maps is implemented
+        #             else:
+        #                 visutils.add_colorbar(
+        #                     self,
+        #                     plotter=pv_plotter,
+        #                     colorbar_subplot=(row, col),
+        #                     vmin=vmin,
+        #                     vmax=vmax,
+        #                     map_name=colorbar_id,
+        #                     colormap=colormap,
+        #                     colorbar_title=colorbar_title,
+        #                     colorbar_position=orientation,
+        #                 )
+
+        # Handle final rendering - either save, display blocking, or display non-blocking
+        visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
+
     ###############################################################################################
     def list_available_view_names(self) -> List[str]:
         """
