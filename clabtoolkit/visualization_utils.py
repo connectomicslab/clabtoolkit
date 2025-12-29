@@ -21,6 +21,7 @@ from . import plottools as cltplot
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
 from . import pointstools as cltpts
+from . import colorstools as cltcolor
 
 
 ####################################################################################################
