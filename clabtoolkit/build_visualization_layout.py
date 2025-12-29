@@ -1914,3 +1914,80 @@ def grid_multi_views_layout(
     }
 
     return layout_config, colorbar_list
+
+
+###############################################################################################
+def scene_layout(
+    valid_views,
+    colorbar,
+    colorbar_position,
+    colorbar_size,
+):
+    """
+    Handle scene layout for single map, single object,
+    multiple views case.
+
+    Parameters
+    ----------
+    valid_views : list
+        List of valid views to plot.
+
+    colorbar : bool
+        Whether to include a colorbar in the layout.
+
+    colorbar_position : str
+        Position of the colorbar ('right' or 'bottom').
+
+    colorbar_size : int
+        Size of the colorbar.
+
+    Returns
+    -------
+    layout_config : dict
+        Configuration dictionary for the layout.
+
+
+    """
+
+    n_views = len(valid_views)
+    brain_positions = {}
+
+    groups = []
+
+    """Handle grid layout for multiple objs2plot."""
+    optimal_grid, positions = cltplot.calculate_optimal_subplots_grid(n_views)
+    for view_idx in range(n_views):
+        pos = positions[view_idx]
+        brain_positions[(0, 0, view_idx)] = pos
+
+    if not colorbar:
+        shape = list(optimal_grid)
+        row_weights = [1] * optimal_grid[0]
+        col_weights = [1] * optimal_grid[1]
+    else:
+        shape = [optimal_grid[0], optimal_grid[1] + 1]
+        row_weights = [1] * optimal_grid[0]
+        col_weights = [1] * optimal_grid[1] + [colorbar_size]
+        groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
+
+        if colorbar_position == "right":
+            shape = [optimal_grid[0], optimal_grid[1] + 1]
+            row_weights = [1] * optimal_grid[0]
+            col_weights = [1] * optimal_grid[1] + [colorbar_size]
+            groups = [(slice(0, optimal_grid[0]), optimal_grid[1])]
+
+        else:  # bottom
+            shape = [optimal_grid[0] + 1, optimal_grid[1]]
+            row_weights = [1] * optimal_grid[0] + [colorbar_size]
+            col_weights = [1] * optimal_grid[1]
+            groups = [(optimal_grid[0], slice(0, optimal_grid[1]))]
+
+    layout_config = {
+        "shape": shape,
+        "row_weights": row_weights,
+        "col_weights": col_weights,
+        "groups": groups,
+        "brain_positions": brain_positions,
+    }
+
+    return layout_config
