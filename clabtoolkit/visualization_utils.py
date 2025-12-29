@@ -2247,6 +2247,456 @@ def get_data_from_object(obj, map_name):
         )
 
 
+##################################################################################################
+def create_default_object_config(obj2plot):
+    """
+    Create default configuration for each object to plot.
+
+    Parameters:
+    -----------
+    obj2plot : list
+        List of objects or nested lists containing Tractogram/Surface objects
+
+    Returns:
+    --------
+    obj_characts_list : list
+        List of dictionaries with default characteristics for each object.
+    """
+    all_objects = flatten_objects(obj2plot)
+    maps_config_default = create_default_map_config(all_objects)
+
+    obj_characts_list = []
+
+    for sing_obj in all_objects:
+        obj_characts = {}
+
+        # Get map names and data based on object type
+        if isinstance(sing_obj, clttract.Tractogram):
+            map_list_dict = sing_obj.list_maps()
+            st_maps = map_list_dict.get("maps_per_streamline", [])
+            pt_maps = map_list_dict.get("maps_per_point", [])
+            all_maps = st_maps + pt_maps
+
+            def get_tract_data(map_name):
+                """Get data for a tractogram map."""
+                # Prioritize point data if available in both
+                if map_name in pt_maps:
+                    return np.concatenate(sing_obj.data_per_point[map_name])
+                else:
+                    return sing_obj.data_per_streamline[map_name]
+
+            map_data_pairs = [(name, get_tract_data(name)) for name in all_maps]
+
+        elif isinstance(sing_obj, cltsurf.Surface):
+            all_maps = list(sing_obj.mesh.point_data.keys())
+            map_data_pairs = [
+                (name, sing_obj.mesh.point_data[name]) for name in all_maps
+            ]
+
+        elif isinstance(sing_obj, cltpts.PointCloud):
+            all_maps = list(sing_obj.point_data.keys())
+            map_data_pairs = [(name, sing_obj.point_data[name]) for name in all_maps]
+
+        else:
+            obj_characts_list.append(obj_characts)
+            continue
+
+        # Process all maps for this object
+        for map_name, data in map_data_pairs:
+            has_colortable = map_name in sing_obj.colortables
+
+            if has_colortable:
+                obj_characts[map_name] = {
+                    "colormap": "colortable",
+                    "v_limits": (None, None),
+                    "v_range": (None, None),
+                    "range_color": (128, 128, 128, 255),
+                    "opacity": 1.0,
+                    "colorbar": False,
+                    "colorbar_title": map_name,
+                }
+            else:
+                min_val = np.min(data)
+                max_val = np.max(data)
+
+                obj_characts[map_name] = {
+                    "colormap": maps_config_default[map_name]["colormap"],
+                    "v_limits": (min_val, max_val),
+                    "v_range": (min_val, max_val),
+                    "range_color": (128, 128, 128, 255),
+                    "opacity": 1.0,
+                    "colorbar": True,
+                    "colorbar_title": map_name,
+                }
+
+        obj_characts_list.append(obj_characts)
+
+    return obj_characts_list
+
+
+#################################################################################################
+def create_default_map_config(obj2plot):
+    """
+    Get all unique map names from a list of objects.
+
+    Parameters:
+    -----------
+    obj2plot : list
+        List of objects or nested lists containing Tractogram/Surface objects
+
+    Returns:
+    --------
+    map_characts_dict : dict
+        Dictionary of map characteristics including colormap, limits, ranges, object indices, etc.
+    """
+    all_objects = flatten_objects(obj2plot)
+    map_characts_dict = {}
+
+    def init_map_config(map_name):
+        """Initialize map configuration if it doesn't exist."""
+        if map_name not in map_characts_dict:
+            map_characts_dict[map_name] = {
+                "objects": [],
+                "colormap": "viridis",
+                "v_limits": [None, None],
+                "v_range": [None, None],
+                "range_color": (128, 128, 128, 255),
+                "opacity": 1.0,
+                "colorbar": True,
+                "colorbar_title": map_name,
+            }
+
+    def update_range(map_name, min_val, max_val):
+        """Update the min/max range for a map."""
+        config = map_characts_dict[map_name]
+
+        # Update min
+        if config["v_range"][0] is None:
+            config["v_range"][0] = min_val
+        else:
+            config["v_range"][0] = min(config["v_range"][0], min_val)
+
+        # Update max
+        if config["v_range"][1] is None:
+            config["v_range"][1] = max_val
+        else:
+            config["v_range"][1] = max(config["v_range"][1], max_val)
+
+        # Sync v_limits with v_range
+        config["v_limits"] = config["v_range"].copy()
+
+    def process_map(map_name, data, has_colortable, obj_idx):
+        """Process a single map and update its configuration."""
+        init_map_config(map_name)
+
+        # Add object index if not already present
+        if obj_idx not in map_characts_dict[map_name]["objects"]:
+            map_characts_dict[map_name]["objects"].append(obj_idx)
+
+        if has_colortable:
+            map_characts_dict[map_name]["colormap"] = "colortable"
+        else:
+            min_val = data.min()
+            max_val = data.max()
+            update_range(map_name, min_val, max_val)
+
+    # Process all objects
+    for obj_idx, sing_obj in enumerate(all_objects):
+        if isinstance(sing_obj, clttract.Tractogram):
+            map_list_dict = sing_obj.list_maps()
+
+            # Process streamline maps
+            st_maps = map_list_dict.get("maps_per_streamline")
+            if st_maps:
+                for map_name in st_maps:
+                    has_colortable = map_name in sing_obj.colortables
+                    data = sing_obj.data_per_streamline[map_name]
+                    process_map(map_name, data, has_colortable, obj_idx)
+
+            # Process point maps
+            pt_maps = map_list_dict.get("maps_per_point")
+            if pt_maps:
+                for map_name in pt_maps:
+                    has_colortable = map_name in sing_obj.colortables
+                    data = np.concatenate(sing_obj.data_per_point[map_name])
+                    process_map(map_name, data, has_colortable, obj_idx)
+
+        elif isinstance(sing_obj, cltsurf.Surface):
+            for map_name in sing_obj.mesh.point_data.keys():
+                has_colortable = map_name in sing_obj.colortables
+                data = sing_obj.mesh.point_data[map_name]
+                process_map(map_name, data, has_colortable, obj_idx)
+
+        elif isinstance(sing_obj, cltpts.PointCloud):
+            for map_name in sing_obj.point_data.keys():
+                has_colortable = map_name in sing_obj.colortables
+                data = sing_obj.point_data[map_name]
+                process_map(map_name, data, has_colortable, obj_idx)
+
+    # Classify maps and assign colormaps
+    div_maps = []
+    seq_maps = []
+
+    for map_name, config in map_characts_dict.items():
+        if config["colormap"] != "colortable":
+            min_val = config["v_limits"][0]
+            max_val = config["v_limits"][1]
+
+            if round(min_val, 3) < 0 and round(max_val, 3) > 0:
+                div_maps.append(map_name)
+            else:
+                seq_maps.append(map_name)
+
+    # Assign colormaps
+    seq_cmaps = cltcolor.get_colormaps_names(len(seq_maps), cmap_type="sequential")
+    div_cmaps = cltcolor.get_colormaps_names(len(div_maps), cmap_type="diverging")
+
+    for i, map_name in enumerate(seq_maps):
+        map_characts_dict[map_name]["colormap"] = seq_cmaps[i]
+
+    for i, map_name in enumerate(div_maps):
+        map_characts_dict[map_name]["colormap"] = div_cmaps[i]
+
+    return map_characts_dict
+
+
+#####################################################################################################
+def create_final_object_config(obj2plot, maps_config: dict):
+    """
+    Create final configuration for each object to plot based on maps configuration.
+
+    Parameters:
+    -----------
+    obj2plot : list
+        List of objects or nested lists containing Tractogram/Surface objects
+
+    maps_config : dict
+        Dictionary specifying maps configuration either by map names or by object indices.
+        - If keys are strings, they represent map names with associated settings.
+        - If keys are integers, they represent object indices with associated settings.
+        It is not mandatory to specify all maps or all objects; unspecified entries will use default settings.
+
+    Returns:
+    --------
+    fin_obj_config : list
+        List of dictionaries with final characteristics for each object.
+    """
+    import warnings
+
+    def _compute_limits_and_range(user_config, default_v_limits, default_v_range):
+        """
+        Helper to compute v_limits and v_range based on user config and defaults.
+
+        Returns:
+        --------
+        tuple: (v_limits_min, v_limits_max, v_range_min, v_range_max)
+        """
+        user_v_range = user_config.get("v_range")
+        user_v_limits = user_config.get("v_limits")
+
+        if user_v_range is not None:
+            # v_range specified
+            v_range_min = (
+                user_v_range[0] if user_v_range[0] is not None else default_v_range[0]
+            )
+            v_range_max = (
+                user_v_range[1] if user_v_range[1] is not None else default_v_range[1]
+            )
+
+            # Determine v_limits based on v_range
+            if user_v_limits is not None:
+                v_limits_min = (
+                    user_v_limits[0] if user_v_limits[0] is not None else v_range_min
+                )
+                v_limits_max = (
+                    user_v_limits[1] if user_v_limits[1] is not None else v_range_max
+                )
+            else:
+                v_limits_min = v_range_min
+                v_limits_max = v_range_max
+        else:
+            # v_range not specified, sync with v_limits
+            if user_v_limits is not None:
+                v_limits_min = (
+                    user_v_limits[0]
+                    if user_v_limits[0] is not None
+                    else default_v_limits[0]
+                )
+                v_limits_max = (
+                    user_v_limits[1]
+                    if user_v_limits[1] is not None
+                    else default_v_limits[1]
+                )
+            else:
+                v_limits_min = default_v_limits[0]
+                v_limits_max = default_v_limits[1]
+
+            v_range_min = v_limits_min
+            v_range_max = v_limits_max
+
+        return v_limits_min, v_limits_max, v_range_min, v_range_max
+
+    # Flatten objects and get default configuration
+    all_objects = flatten_objects(obj2plot)
+    default_objects_config = create_default_object_config(all_objects)
+    n_objects = len(default_objects_config)
+
+    # Return default configuration if maps_config is empty
+    if not maps_config:
+        return [
+            {"map_name": "default", **obj_conf["default"]}
+            for obj_conf in default_objects_config
+        ]
+
+    # Detect configuration type
+    first_key = next(iter(maps_config.keys()))
+    config_type = "maps" if isinstance(first_key, str) else "objects"
+
+    # Initialize final configuration with defaults
+    fin_obj_config = [
+        {"map_name": "default", **obj_conf["default"]}
+        for obj_conf in default_objects_config
+    ]
+
+    # Handle map-based configuration.
+    if config_type == "maps":
+        for map_name, map_config in maps_config.items():
+            obj_indices = map_config.get("objects", [])
+
+            # Validate and filter object indices
+            valid_indices = [idx for idx in obj_indices if 0 <= idx < n_objects]
+            invalid_indices = [idx for idx in obj_indices if idx not in valid_indices]
+
+            if invalid_indices:
+                warnings.warn(
+                    f"Map '{map_name}': Ignoring invalid object indices {invalid_indices}. "
+                    f"Valid range is 0-{n_objects-1}."
+                )
+
+            if not valid_indices:
+                warnings.warn(
+                    f"Map '{map_name}': No valid object indices specified. Skipping."
+                )
+                continue
+
+            # Compute global min/max across valid objects
+            limits = []
+            ranges = []
+
+            for idx in valid_indices:
+                # Use 'default' if map_name not available for this object
+                obj_map_name = (
+                    map_name if map_name in default_objects_config[idx] else "default"
+                )
+                obj_config = default_objects_config[idx][obj_map_name]
+
+                if obj_config["colormap"] == "colortable":
+                    warnings.warn(
+                        f"Map '{map_name}': Object {idx} uses 'colortable' colormap. "
+                        "Skipping from global limits calculation."
+                    )
+                else:
+                    limits.append(obj_config["v_limits"])
+                    ranges.append(obj_config["v_range"])
+
+            # Calculate global values from collected limits
+            if limits:
+                global_min = min(lim[0] for lim in limits)
+                global_max = max(lim[1] for lim in limits)
+            else:
+                global_min, global_max = None, None
+
+            if ranges:
+                global_range_min = min(rng[0] for rng in ranges)
+                global_range_max = max(rng[1] for rng in ranges)
+            else:
+                global_range_min, global_range_max = None, None
+
+            # Get default settings from first valid object
+            first_idx = valid_indices[0]
+            obj_map_name = (
+                map_name if map_name in default_objects_config[first_idx] else "default"
+            )
+            default_settings = default_objects_config[first_idx][obj_map_name]
+
+            # Compute final limits and range using helper function
+            v_limits_min, v_limits_max, v_range_min, v_range_max = (
+                _compute_limits_and_range(
+                    map_config,
+                    (global_min, global_max),
+                    (global_range_min, global_range_max),
+                )
+            )
+
+            # Apply configuration to all valid objects
+            final_config = {
+                "map_name": map_name,
+                "colorbar": map_config.get("colorbar", default_settings["colorbar"]),
+                "colorbar_title": map_config.get(
+                    "colorbar_title", default_settings["colorbar_title"]
+                ),
+                "colormap": map_config.get("colormap", default_settings["colormap"]),
+                "v_limits": (v_limits_min, v_limits_max),
+                "v_range": (v_range_min, v_range_max),
+                "range_color": map_config.get(
+                    "range_color", default_settings["range_color"]
+                ),
+                "opacity": map_config.get("opacity", default_settings["opacity"]),
+            }
+
+            for idx in valid_indices:
+                fin_obj_config[idx] = final_config.copy()
+
+    # Handle object-based configuration.
+    elif config_type == "objects":
+        for idx, obj_config in maps_config.items():
+            # Validate object index
+            if not (0 <= idx < n_objects):
+                warnings.warn(
+                    f"Invalid object index {idx}. Valid range is 0-{n_objects-1}. Skipping."
+                )
+                continue
+
+            map_name = obj_config.get("map_name")
+            if not map_name:
+                warnings.warn(f"Object {idx}: 'map_name' not specified. Using default.")
+                continue
+
+            # Check if map exists for this object
+            if map_name not in default_objects_config[idx]:
+                warnings.warn(
+                    f"Object {idx}: Map '{map_name}' not available. Using 'default' map."
+                )
+                map_name = "default"
+
+            default_config = default_objects_config[idx][map_name]
+
+            # Compute limits and range using helper function
+            v_limits_min, v_limits_max, v_range_min, v_range_max = (
+                _compute_limits_and_range(
+                    obj_config, default_config["v_limits"], default_config["v_range"]
+                )
+            )
+
+            # Build configuration with fallbacks to defaults
+            fin_obj_config[idx] = {
+                "map_name": map_name,
+                "colorbar": obj_config.get("colorbar", default_config["colorbar"]),
+                "colorbar_title": obj_config.get(
+                    "colorbar_title", default_config["colorbar_title"]
+                ),
+                "colormap": obj_config.get("colormap", default_config["colormap"]),
+                "v_limits": (v_limits_min, v_limits_max),
+                "v_range": (v_range_min, v_range_max),
+                "range_color": obj_config.get(
+                    "range_color", default_config["range_color"]
+                ),
+                "opacity": obj_config.get("opacity", default_config["opacity"]),
+            }
+
+    return fin_obj_config
+
+
 ################################################################################################
 def find_common_map_names(obj2plot, map_names):
     """
