@@ -60,7 +60,7 @@ class BrainPlotter:
 
     Examples
     --------
-    >>> plotter = SurfacePlotter("brain_plot_configs.json")
+    >>> plotter = BrainPlotter("brain_plot_configs.json")
     >>> plotter.plot_hemispheres(surf_lh, surf_rh, map_name="thickness",
     ...                          views="8_views", colorbar=True)
     >>>
@@ -71,7 +71,7 @@ class BrainPlotter:
     ###############################################################################################
     def __init__(self, config_file: Union[str, Path, Dict] = None):
         """
-        Initialize the SurfacePlotter with configuration file.
+        Initialize the BrainPlotter with configuration file.
 
         Parameters
         ----------
@@ -92,9 +92,9 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter()  # Use default config
+        >>> plotter = BrainPlotter()  # Use default config
         >>>
-        >>> plotter = SurfacePlotter("custom_views.json")  # Use custom config
+        >>> plotter = BrainPlotter("custom_views.json")  # Use custom config
         """
 
         # Loading the default configuration file
@@ -1537,7 +1537,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter()
+        >>> plotter = BrainPlotter()
         >>> view_names = plotter.list_available_view_names()
         >>> print(f"Available views: {view_names}")
         """
@@ -1558,7 +1558,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> layouts = plotter.list_available_layouts()
         >>> print(f"Available layouts: {list(layouts.keys())}")
         >>>
@@ -1588,7 +1588,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> details = plotter.get_layout_details("8_views")
         >>> if details:
         ...     print(f"Grid shape: {details['shape']}")
@@ -1613,7 +1613,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> fig_config = plotter.get_figure_config()
         >>> print(f"Background color: {fig_config['background_color']}")
         >>> print(f"Title font: {fig_config['title_font_type']}")
@@ -1633,7 +1633,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> layouts = plotter._list_all_views_and_layouts()
         >>> print(layouts)
         ['8_views', '8_views_8x1', '8_views_1x8', '6_views', '6_views_6x1', '6_views_1x6', '4_views', '4_views_4x1', '4_views_1x4', '2_views', 'lateral', 'medial', 'dorsal', 'ventral', 'rostral', 'caudal']
@@ -1657,7 +1657,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> multiviews = plotter._list_multiviews_layouts()
         >>> print(multiviews)
         ['8_views', '6_views', '4_views', '8_views_8x1', '6_views_6x1', '4_views_4x1', '8_views_1x8', '6_views_1x6', '4_views_1x4', '2_views']
@@ -1697,7 +1697,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> plotter.list_available_themes()
         """
 
@@ -1742,7 +1742,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> valid_views = plotter._get_valid_views("8_views")
         >>> print(valid_views)
         ['lateral', 'medial', 'dorsal', 'ventral', 'rostral', 'caudal']
@@ -1800,7 +1800,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>>
         >>> # Change background to white with black text
         >>> plotter.update_figure_config(
@@ -1876,7 +1876,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> plotter.list_figure_config_options()
         """
 
@@ -1893,7 +1893,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> plotter.reset_figure_config()  # Reset to defaults
         """
 
@@ -1910,7 +1910,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> plotter.update_figure_config(background_color="white", auto_save=False)
         >>> plotter.save_config()  # Manually save changes
         """
@@ -1928,7 +1928,7 @@ class BrainPlotter:
 
         Examples
         --------
-        >>> plotter = SurfacePlotter("configs.json")
+        >>> plotter = BrainPlotter("configs.json")
         >>> plotter.preview_theme("light")  # See what light theme would change
         """
 
