@@ -788,12 +788,16 @@ def harmonize_colors(
 
         elif output_format == "rgbnorm":
             if np.issubdtype(rgb_array.dtype, np.integer):
-                rgb_array = rgb_array / 255.0
+                range_type = detect_rgb_range(rgb_array)
+                if range_type == "0-255":
+                    rgb_array = rgb_array / 255.0
             result.append(rgb_array.astype(np.float64))
 
         else:  # rgb format (0-255)
             if np.issubdtype(rgb_array.dtype, np.floating):
-                rgb_array = rgb_array * 255
+                range_type = detect_rgb_range(rgb_array)
+                if range_type == "0-1":
+                    rgb_array = rgb_array * 255
             result.append(rgb_array.astype(np.uint8))
 
     # Stacking the results
