@@ -2380,6 +2380,8 @@ class ColorTableLoader:
             - 'index': List of integer region codes (standard Python integers)
             - 'name': List of region name strings
             - 'color': List of hex color codes (format: '#RRGGBB')
+            - 'opacity': List of opacity values
+            - 'headerlines': List of comment lines before the R G B A header (without #)
 
         Examples
         --------
@@ -2415,6 +2417,7 @@ class ColorTableLoader:
         - The returned region codes are standard Python integers, not numpy objects
         - Color values are converted from RGB to hexadecimal format
         - Filtering is case-insensitive and matches substrings
+        - Header lines before "R G B A" are collected without the # symbol
         """
         # Read the LUT file content
         try:
@@ -2435,32 +2438,65 @@ class ColorTableLoader:
         region_names = []
         region_colors_rgb = []
         region_opacities = []
-
-        # Parse each non-comment line in the file
         headerlines = []
-        for line in lut_content:
-            # Skip comments and empty lines
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("\\\\"):
-                parts = line.split()
-                if (
-                    line.startswith("#")
-                    and parts[-1].lower() != "a"
-                    and parts[-2].lower() != "b"
-                ):
-                    headerlines.append(line)
 
-            # Split line into components
+        # Flag to track if we've found the R G B A header line
+        header_found = False
+
+        # Parse each line in the file
+        for line in lut_content:
+            line = line.strip()
+
+            # Skip empty lines
+            if not line:
+                continue
+
+            # Handle comment lines
+            if line.startswith("#") or line.startswith("\\\\"):
+                # Don't process further if we already found the header
+                if header_found:
+                    continue
+
+                parts = line.split()
+
+                # Check if this is the R G B A header line
+                # Look for R, G, B, A appearing consecutively (case-insensitive)
+                is_header = False
+                if len(parts) >= 4:
+                    parts_lower = [p.lower() for p in parts]
+                    # Search for consecutive R G B A pattern
+                    for i in range(len(parts_lower) - 3):
+                        if (
+                            parts_lower[i] == "r"
+                            and parts_lower[i + 1] == "g"
+                            and parts_lower[i + 2] == "b"
+                            and parts_lower[i + 3] == "a"
+                        ):
+                            is_header = True
+                            header_found = True
+                            break
+
+                # If this is not the header line and we haven't found header yet,
+                # collect it as a header line (without the # symbol)
+                if not is_header and not header_found:
+                    # Remove leading # or \\ symbols
+                    cleaned_line = line.lstrip("#\\").strip()
+                    if cleaned_line:  # Only add non-empty lines
+                        headerlines.append(cleaned_line)
+
+                continue
+
+            # Parse data lines (non-comment lines)
             parts = line.split()
             if len(parts) < 5:  # Need at least code, name, R, G, B
                 continue
 
             # Extract data
             try:
-                code = int(parts[0])  # Using Python's built-in int
+                code = int(parts[0])
                 name = parts[1]
 
-                if len(parts) == 6:
+                if len(parts) >= 6:
                     r, g, b, o = (
                         int(parts[2]),
                         int(parts[3]),
@@ -2469,7 +2505,7 @@ class ColorTableLoader:
                     )
                 else:
                     r, g, b = int(parts[2]), int(parts[3]), int(parts[4])
-                    o = 1  # Default opacity if not provided
+                    o = 0  # Default opacity if not provided
 
                 region_codes.append(code)
                 region_names.append(name)
