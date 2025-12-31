@@ -1,3 +1,63 @@
+"""
+## colorstools Module Description
+
+### Overview
+The `colorstools` module provides comprehensive functionality for working
+with colors in neuroimaging and scientific visualization contexts. It offers
+utilities for color validation, conversion, manipulation, and management of
+color lookup tables (LUTs) commonly used in FreeSurfer and other neuroimaging
+software packages.
+
+### Core Functionality
+
+**Color Validation and Detection**
+The module includes robust color validation functions that handle multiple
+input formats including hexadecimal strings, RGB arrays (both 0-255 and 0-1
+ranges), numpy arrays, and Python lists. It provides intelligent detection
+of RGB value ranges and validates color formats across different
+representations.
+
+**Color Conversion and Transformation**
+Extensive conversion utilities enable seamless transformation between
+different color formats (hex to RGB, RGB to hex, and normalized variants).
+The module supports batch conversions through functions like `multi_hex2rgb()`
+and `multi_rgb2hex()`, allowing efficient processing of large color datasets.
+Additional transformation capabilities include color inversion, lightening,
+darkening, and saturation adjustments performed in HSV color space.
+
+**Color Harmonization and Matching**
+The `harmonize_colors()` function standardizes mixed-format color inputs into
+a consistent output format, essential for visualization pipelines that accept
+diverse color specifications. The module also provides color matching utilities
+to find the closest colors within a palette and generate distinguishable color
+schemes for categorical data visualization.
+
+**Color Lookup Table Management**
+The `ColorTableLoader` class provides sophisticated handling of FreeSurfer-style
+color lookup tables (LUT files) and TSV-format color tables. It supports reading,
+writing, filtering, and exporting color tables in multiple formats. The class
+automatically detects file formats and handles headerlines, region codes, color
+specifications, and opacity values. It includes methods for converting between
+different color table formats and integrating with neuroimaging parcellation schemes.
+
+**Visualization Utilities**
+The module includes functions for visualizing color palettes, displaying color
+swatches with labels, and creating colormaps. These utilities facilitate quality
+control of color schemes and enable interactive exploration of color tables in
+Jupyter notebooks through HTML rendering.
+
+**Terminal Output Formatting**
+The `bcolors` class provides ANSI color codes for enhanced terminal output, enabling
+colored console messages for logging, debugging, and user feedback in command-line
+applications.
+
+### Use Cases
+This module is particularly valuable for neuroimaging researchers working with brain
+parcellations, creating publication-quality figures, managing custom color schemes
+for anatomical regions, and developing visualization tools that require consistent
+color handling across different data formats and software packages.
+"""
+
 import numpy as np
 import os
 import copy
