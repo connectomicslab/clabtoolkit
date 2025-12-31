@@ -1319,7 +1319,7 @@ def get_predefined_distinguishable_colors(
     rgb_colors = multi_hex2rgb(selected_colors)
     rgb_array = np.array(rgb_colors)
 
-    if output_format == "rgb":
+    if output_format.lower() == "rgb":
         return rgb_array
     else:  # rgbnorm
         return rgb_array / 255.0
