@@ -134,8 +134,8 @@ def is_color_like(color) -> bool:
     color : Any
         The color to validate. Can be:
         - Hex string (e.g., "#FF5733")
-        - Numpy array ([R,G,B] as integers 0-255 or floats 0-1)
-        - Python list ([R,G,B] as integers 0-255 or floats 0-1)
+        - Numpy array ([R,G,B] as integers 0-255 or floats 0-1 or floats 0-255)
+        - Python list/tuple ([R,G,B] as integers 0-255 or floats 0-1 or floats 0-255)
 
     Returns
     -------
@@ -143,37 +143,73 @@ def is_color_like(color) -> bool:
         True if the color is valid, False otherwise.
 
     Examples
-    --------------
-        >>> is_color_like("#FF5733")  # Hex string
-        True
-        >>> is_color_like(np.array([255, 87, 51]))  # Numpy array
-        True
-        >>> is_color_like([255, 87, 51])  # Python list (integer)
-        True
-        >>> is_color_like([1.0, 0.34, 0.5])  # Python list (float)
-        True
-        >>> is_color_like("invalid_color")
-        False
-        >>> is_color_like([256, 0, 0])  # Out of range
-        False
+    --------
+    >>> is_color_like("#FF5733")  # Hex string
+    True
+    >>> is_color_like(np.array([255, 87, 51]))  # Numpy array (int)
+    True
+    >>> is_color_like(np.array([1.0, 0.34, 0.2]))  # Numpy array (float 0-1)
+    True
+    >>> is_color_like(np.array([70., 130., 180.]))  # Numpy array (float 0-255)
+    True
+    >>> is_color_like([255, 87, 51])  # Python list (int)
+    True
+    >>> is_color_like([1.0, 0.34, 0.5])  # Python list (float 0-1)
+    True
+    >>> is_color_like([255.0, 128.0, 0.0])  # Integer-valued floats
+    True
+    >>> is_color_like((255, 128, 0))  # Tuple
+    True
+    >>> is_color_like("invalid_color")
+    False
+    >>> is_color_like([256, 0, 0])  # Out of range
+    False
     """
-    # Handle numpy arrays (existing functionality)
+    # Handle numpy arrays
     if isinstance(color, np.ndarray):
-        if color.shape == (3,) and np.issubdtype(color.dtype, np.integer):
+        if color.shape != (3,):
+            return False
+
+        # Integer arrays: must be in 0-255 range
+        if np.issubdtype(color.dtype, np.integer):
             return (color >= 0).all() and (color <= 255).all()
-        if color.shape == (3,) and np.issubdtype(color.dtype, np.floating):
-            return (color >= 0).all() and (color <= 1).all()
+
+        # Float arrays: can be either 0-1 or 0-255 range
+        if np.issubdtype(color.dtype, np.floating):
+            # Check if all values are in 0-1 range
+            if (color >= 0).all() and (color <= 1).all():
+                return True
+
+            # Check if all values are in 0-255 range and are whole numbers
+            if (color >= 0).all() and (color <= 255).all():
+                # Check if they're all whole numbers (e.g., 70.0, 130.0, 180.0)
+                return np.all(color == np.floor(color))
+
+            return False
+
         return False
 
-    # Handle Python lists
-    if isinstance(color, list):
+    # Handle Python lists and tuples
+    if isinstance(color, (list, tuple)):
         if len(color) == 3:
-            # Check if all elements are integers (0-255)
-            if all(isinstance(x, int) for x in color):
-                return all(0 <= x <= 255 for x in color)
-            # Check if all elements are floats (0-1)
-            if all(isinstance(x, (float, np.floating)) for x in color):
-                return all(0.0 <= x <= 1.0 for x in color)
+            try:
+                # Convert to numeric values
+                values = [float(x) for x in color]
+            except (ValueError, TypeError):
+                return False
+
+            # Check if values could be in 0-1 range (all <= 1)
+            if all(0.0 <= v <= 1.0 for v in values):
+                return True
+
+            # Check if values could be in 0-255 range
+            # Accept both exact integers and integer-valued floats (e.g., 255.0)
+            if all(0 <= v <= 255 for v in values):
+                # Check if they're all whole numbers (integers or integer-valued floats)
+                if all(v == int(v) for v in values):
+                    return True
+
+            return False
         return False
 
     # Default to matplotlib's validator for strings and other types
@@ -1391,8 +1427,8 @@ def get_predefined_distinguishable_colors(
 
 ###################################################################################################
 def colortable_visualization(
-    colortable: np.ndarray,
-    region_names: Union[str, List[str]],
+    colortable: Union[np.ndarray, str, Path],
+    region_names: Union[str, List[str]] = None,
     columns: int = 2,
     export_path: str = None,
     title: str = "Color Table",
@@ -1403,11 +1439,14 @@ def colortable_visualization(
 
     Parameters
     ----------
-    colortable : array-like, shape (N, 3), (N, 4), or (N, 5)
-        FreeSurfer color table: [R, G, B] or [R, G, B, Alpha] or [R, G, B, Alpha, Value]
+    colortable : array-like, str, or Path
+        Can be one of:
+        - Array-like with shape (N, 3), (N, 4), or (N, 5): [R, G, B] or [R, G, B, Alpha] or [R, G, B, Alpha, Value]
+        - String or Path to a LUT file (.txt, .lut) or TSV file (.tsv)
 
-    region_names : list of str
-        Region names corresponding to each row.
+    region_names : str or list of str, optional
+        Region names corresponding to each row. If None and loading from file,
+        uses the names from the file. Default is None.
 
     columns : int, default=2
         Number of columns in layout.
@@ -1415,10 +1454,10 @@ def colortable_visualization(
     export_path : str, optional
         Path to save PNG file.
 
-    title : str, default="FreeSurfer Color Table"
+    title : str, default="Color Table"
         Title displayed at the top.
 
-    alternating_bg : bool, default=True
+    alternating_bg : bool, default=False
         Whether to shade alternating rows for readability.
 
     Returns
@@ -1432,20 +1471,77 @@ def colortable_visualization(
         If colortable shape is invalid or region_names length mismatch.
     TypeError
         If region_names is not a string or a list of strings.
+    FileNotFoundError
+        If the specified file path does not exist.
 
     Examples
     --------
-    >>> # Example usage
+    >>> # Example 1: Using an array
     >>> colortable = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
     >>> region_names = ["Region 1", "Region 2", "Region 3"]
-    >>> fig = colortable_visualization(colortable
-    ...     , region_names, columns=1, title="My Color Table")
+    >>> fig = colortable_visualization(colortable, region_names,
+    ...     columns=1, title="My Color Table")
     >>> plt.show()
 
+    >>> # Example 2: Loading from a LUT file
+    >>> fig = colortable_visualization('FreeSurferColorLUT.txt',
+    ...     columns=2, title="FreeSurfer Regions")
+    >>> plt.show()
 
+    >>> # Example 3: Loading from file with custom names
+    >>> custom_names = ["Custom 1", "Custom 2", "Custom 3"]
+    >>> fig = colortable_visualization('regions.tsv',
+    ...     region_names=custom_names, columns=1)
+    >>> plt.show()
     """
 
+    # Handle file path input
+    if isinstance(colortable, (str, Path)):
+        file_path = Path(colortable)
+
+        # Check if file exists
+        if not file_path.exists():
+            raise FileNotFoundError(f"Color table file not found: {file_path}")
+
+        # Load the color table from file
+        ctab_dict = ColorTableLoader.load_colortable(str(file_path))
+
+        # Extract region names from file if not provided
+        if region_names is None:
+            region_names = ctab_dict["name"]
+
+        # Extract colors and convert to RGB format
+        colors = ctab_dict["color"]
+        colors = harmonize_colors(colors, output_format="rgb")
+
+        # Extract opacity if available
+        if "opacity" in ctab_dict and ctab_dict["opacity"] is not None:
+            opacities = np.array(ctab_dict["opacity"])
+            # Convert opacity from 0-1 to 0-255 range
+            opacities = (opacities * 255).astype(int)
+        else:
+            opacities = np.full(len(colors), 255, dtype=int)
+
+        # Build colortable array with RGB and opacity
+        colortable_array = np.column_stack([colors, opacities])
+
+        # Add index column if available
+        if "index" in ctab_dict:
+            indices = np.array(ctab_dict["index"]).reshape(-1, 1)
+            colortable_array = np.column_stack([colortable_array, indices])
+
+        colortable = colortable_array
+
+    # Now process as array
     colortable = np.array(colortable, dtype=float)
+
+    # Validate region_names is provided for array input
+    if region_names is None:
+        raise ValueError(
+            "region_names must be provided when colortable is an array. "
+            "To auto-extract names, provide a file path instead."
+        )
+
     n_regions = len(region_names)
 
     # Validate colortable shape
@@ -1454,7 +1550,7 @@ def colortable_visualization(
 
     if colortable.shape[0] != n_regions:
         raise ValueError(
-            "Length of region_names must match number of rows in colortable"
+            f"Length of region_names ({n_regions}) must match number of rows in colortable ({colortable.shape[0]})"
         )
 
     if not isinstance(region_names, (str, list)):
