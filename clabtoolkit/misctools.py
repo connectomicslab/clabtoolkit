@@ -1654,7 +1654,10 @@ def get_all_files(
 
 ####################################################################################################
 def rename_folders(
-    folder_paths: List[str], replacements: Dict[str, str], bool_case: bool = True
+    folder_paths: List[str],
+    replacements: Dict[str, str],
+    bool_case: bool = True,
+    simulate: bool = False,
 ) -> List[Tuple[str, str]]:
     """
     Rename folders based on specified string replacements. Handles nested directories and avoids conflicts.
@@ -1667,22 +1670,42 @@ def rename_folders(
     replacements : Dict[str, str]
         Dictionary mapping substrings to be replaced (keys) with their replacements (values).
 
-    bool_case : bool
+    bool_case : bool, optional
         If True, replacements are case-sensitive; if False, they are case-insensitive.
+        Default is True.
+
+    simulate : bool, optional
+        If True, only simulate the renaming and return what would be renamed without actually renaming.
+        If False, perform the actual renaming operations.
+        Default is False.
 
     Returns
     -------
     List[Tuple[str, str]]
-        List of tuples containing (old_path, new_path) for each successfully renamed folder.
+        List of tuples containing (old_path, new_path) for each folder that was (or would be) renamed.
+        In simulation mode, returns all planned renames without executing them.
+        In execution mode, returns only successfully renamed folders.
 
     Examples
-    --------------
-        >>> folder_paths = ["/data/sub-01/session1", "/data/sub-02/session2"]
-        >>> replacements = {"sub-": "subject-", "session": "sess"}
-        >>> renamed = rename_folders(folder_paths, replacements, bool_case=True)
-        >>> print(renamed)
-        [('/data/sub-01/session1', '/data/subject-01/sess1'),
-        ('/data/sub-02/session2', '/data/subject-02/sess2')]
+    --------
+    >>> folder_paths = ["/data/sub-01/session1", "/data/sub-02/session2"]
+    >>> replacements = {"sub-": "subject-", "session": "sess"}
+    >>>
+    >>> # Simulate renaming (doesn't require paths to exist)
+    >>> planned = rename_folders(folder_paths, replacements, bool_case=True, simulate=True)
+    >>> print(planned)
+    [('/data/sub-01', '/data/subject-01'),
+     ('/data/sub-01/session1', '/data/subject-01/sess1'),
+     ('/data/sub-02', '/data/subject-02'),
+     ('/data/sub-02/session2', '/data/subject-02/sess2')]
+    >>>
+    >>> # Actually rename (requires paths to exist)
+    >>> renamed = rename_folders(folder_paths, replacements, bool_case=True, simulate=False)
+    >>> print(renamed)
+    [('/data/sub-01', '/data/subject-01'),
+     ('/data/subject-01/session1', '/data/subject-01/sess1'),
+     ('/data/sub-02', '/data/subject-02'),
+     ('/data/subject-02/session2', '/data/subject-02/sess2')]
     """
 
     def apply_replacements(path: str) -> str:
@@ -1714,28 +1737,26 @@ def rename_folders(
     rename_operations = []
     for old_path in dirs_to_process:
         new_path = apply_replacements(old_path)
-        if old_path != new_path and os.path.exists(old_path):
-            rename_operations.append((old_path, new_path))
+        # In simulation mode, don't check if path exists
+        # In execution mode, only process existing paths
+        if old_path != new_path:
+            if simulate or os.path.exists(old_path):
+                rename_operations.append((old_path, new_path))
 
-    # Sort by depth (shallowest first)
+    # Sort by depth (shallowest first) - important for nested renames
     rename_operations.sort(key=lambda x: x[0].count("/"))
 
-    # Remove any child directories of directories we're already renaming
-    filtered_operations = []
-    for old_path, new_path in rename_operations:
-        # Check if this is a child of something we're already renaming
-        is_child = False
-        for parent_old, parent_new in filtered_operations:
-            if old_path.startswith(parent_old + "/"):
-                is_child = True
-                break
+    # If simulation mode, return ALL operations showing the final state
+    if simulate:
+        print(f"[SIMULATION MODE] Would rename {len(rename_operations)} folder(s):")
+        for old_path, new_path in rename_operations:
+            print(f"  {old_path} -> {new_path}")
+        return rename_operations
 
-        if not is_child:
-            filtered_operations.append((old_path, new_path))
-
-    # Execute the renames
+    # Execute the renames (updating paths as we go for nested directories)
     successfully_renamed = []
-    for old_path, new_path in filtered_operations:
+
+    for i, (old_path, new_path) in enumerate(rename_operations):
         try:
             # Create parent directory if needed
             parent_dir = os.path.dirname(new_path)
@@ -1751,6 +1772,15 @@ def rename_folders(
             os.rename(old_path, new_path)
             successfully_renamed.append((old_path, new_path))
             print(f"Renamed: {old_path} -> {new_path}")
+
+            # Update remaining operations: if any child paths start with old_path,
+            # update them to reflect the new parent path
+            for j in range(i + 1, len(rename_operations)):
+                child_old, child_new = rename_operations[j]
+                if child_old.startswith(old_path + "/"):
+                    # Update the old path to reflect parent rename
+                    updated_old = child_old.replace(old_path, new_path, 1)
+                    rename_operations[j] = (updated_old, child_new)
 
         except OSError as e:
             print(f"Error renaming {old_path}: {e}")
