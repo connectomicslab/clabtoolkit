@@ -1081,7 +1081,7 @@ def filter_by_substring(
 
 ####################################################################################################
 def remove_substrings(
-    list1: Union[str, List[str]], list2: Union[str, List[str]]
+    list1: Union[str, List[str]], list2: Union[str, List[str]], bool_case: bool = False
 ) -> List[str]:
     """
     Remove substrings from each element of list1 that match any string in list2.
@@ -1094,6 +1094,11 @@ def remove_substrings(
     list2 : Union[str, List[str]]
         A string or a list of strings to be removed from each element in list1.
         If a single string is provided, it will be converted to a list internally.
+
+    bool_case : bool, optional
+        Boolean to indicate if the search is case sensitive. Default is False.
+        If False, the removal is case-insensitive.
+        If True, the removal is case-sensitive.
 
     Returns
     -------
@@ -1112,6 +1117,17 @@ def remove_substrings(
 
     >>> remove_substrings(["apple_pie", "banana_pie", "cherry_pie"], ["pie", "_"])
     ['apple', 'banana', 'cherry']
+
+    >>> # Case-insensitive removal (default)
+    >>> remove_substrings(["Hello_WORLD", "test_World", "WORLDWIDE"], "world")
+    ['Hello_', 'test_', 'WIDE']
+
+    >>> # Case-sensitive removal
+    >>> remove_substrings(["Hello_WORLD", "test_World", "WORLDWIDE"], "world", bool_case=True)
+    ['Hello_WORLD', 'test_World', 'WORLDWIDE']
+
+    >>> remove_substrings(["Hello_WORLD", "test_World", "WORLDWIDE"], "WORLD", bool_case=True)
+    ['Hello_', 'test_World', 'WIDE']
     """
 
     if isinstance(list1, str):
@@ -1129,7 +1145,13 @@ def remove_substrings(
     result = []
     for item in list1:
         for sub in list2:
-            item = item.replace(sub, "")
+            if bool_case:
+                # Case-sensitive removal using str.replace()
+                item = item.replace(sub, "")
+            else:
+                # Case-insensitive removal using regex
+                pattern = re.escape(sub)
+                item = re.sub(pattern, "", item, flags=re.IGNORECASE)
         result.append(item)
 
     return result
