@@ -2282,7 +2282,13 @@ def remove_empty_keys_or_values(
     Parameters
     ----------
     d : dict
-        The dictionary to remove entries from.
+        The dictionary to clean.
+    remove_none : bool, optional
+        Also remove entries with None values (default: False)
+    remove_empty_collections : bool, optional
+        Remove empty lists, dicts, sets, tuples (default: True)
+    in_place : bool, optional
+        Modify the original dictionary instead of creating a copy (default: False)
 
     Returns
     -------
