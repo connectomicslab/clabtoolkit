@@ -5,7 +5,6 @@ import uuid
 from typing import Union, Dict, List, Tuple, Set, Any, Optional, Literal
 from collections.abc import Iterable
 
-
 import shlex
 import os
 import argparse
@@ -1506,110 +1505,149 @@ def get_all_files(
     or_filter: Union[str, List[str]] = None,
     and_filter: Union[str, List[str]] = None,
     bool_case: bool = False,
+    just_files: bool = True,
 ) -> list:
     """
-    Function to detect all the files in a directory and its subdirectories
+    Function to detect all the files in a directory and its subdirectories.
 
     Parameters
     ----------
-    in_dir : str
-        Input directory
+    in_dir : str or Path
+        Input directory path.
 
-    recursive : bool
-        If True, the function will search recursively in all subdirectories.
-        If False, it will only search in the specified directory.
+    recursive : bool, optional
+        If True, search recursively in all subdirectories.
+        If False, only search in the specified directory.
+        Default is True.
+
+    or_filter : str or list of str, optional
+        Filter for substring matching (OR logic). Any match includes the file.
+        Applied to filename only if just_files=True, otherwise to full path.
+        Default is None (no filtering).
+
+    and_filter : str or list of str, optional
+        Filter for substring matching (AND logic). All must match to include the file.
+        Applied to filename only if just_files=True, otherwise to full path.
+        Default is None (no filtering).
+
+    bool_case : bool, optional
+        If True, perform case-sensitive filtering.
+        If False, perform case-insensitive filtering.
+        Default is False.
+
+    just_files : bool, optional
+        If True, apply filters only to filenames (not full paths).
+        If False, apply filters to full paths.
+        Default is True.
+
+    Returns
+    -------
+    list
+        List of absolute file paths matching the criteria.
 
     Raises
     ------
     ValueError
-        If the input directory does not exist or is not a directory.
-    ValueError
-        If the input directory is empty.
-    ValueError
-        If the input directory is not a string.
-    ValueError
-        If the input directory is not a valid path.
-
-    Returns
-    -------
-    files: list
-        List of files in the directory and its subdirectories
+        If the input directory does not exist, is not a directory, is not absolute,
+        is a symlink, is a file, or is empty.
+    TypeError
+        If in_dir is not a string or Path object.
 
     Examples
-    ----------------
-        >>> in_dir = "/path/to/directory"
-        >>> files = get_all_files(in_dir)
-        >>> print(files)  # Output: List of files in the directory and its subdirectories
+    --------
+    >>> in_dir = "/path/to/directory"
+    >>> files = get_all_files(in_dir)
+    >>> print(files)  # Output: List of all files in directory and subdirectories
+
+    >>> files = get_all_files(in_dir, or_filter=[".nii", ".nii.gz"])
+    >>> print(files)  # Output: Only NIfTI files
+
+    >>> files = get_all_files(in_dir, and_filter=["sub-", "T1w"])
+    >>> print(files)  # Output: Files containing both "sub-" and "T1w"
     """
 
+    # Type validation and conversion
     if isinstance(in_dir, str):
         try:
             in_dir = Path(in_dir)
         except Exception as e:
             raise ValueError(f"Invalid input directory path: {in_dir}. Error: {e}")
     elif not isinstance(in_dir, Path):
-        raise ValueError("The input in_dir must be a string or a Path object.")
+        raise TypeError("The input in_dir must be a string or a Path object.")
 
-    # If the input directory is a file, raise an error
-    if in_dir.is_file():
-        raise ValueError(f"The input path is a file, not a directory: {in_dir}")
+    # Path validation checks (in logical order)
+    if not in_dir.exists():
+        raise ValueError(f"The input directory does not exist: {in_dir}")
 
-    # If the input directory is a symlink, raise an error
     if in_dir.is_symlink():
         raise ValueError(f"The input path is a symlink, not a directory: {in_dir}")
 
-    if not isinstance(in_dir, Path):
-        raise ValueError("The input in_dir must be a string or a Path object.")
+    if in_dir.is_file():
+        raise ValueError(f"The input path is a file, not a directory: {in_dir}")
 
-    if not in_dir.exists():
-        raise ValueError(f"The input directory does not exist: {in_dir}")
     if not in_dir.is_dir():
         raise ValueError(f"The input path is not a directory: {in_dir}")
 
     if not in_dir.is_absolute():
         raise ValueError(f"The input path is not an absolute path: {in_dir}")
 
-    if not os.listdir(in_dir):
+    if not any(in_dir.iterdir()):
         raise ValueError(f"The input directory is empty: {in_dir}")
 
+    # Validate filter parameters
     if or_filter is not None:
         if isinstance(or_filter, str):
             or_filter = [or_filter]
-
         if not isinstance(or_filter, list):
-            raise ValueError("The or_filter must be a string or a list of strings.")
-
-    # Initialize an empty list to store the file paths
-    if not recursive:
-        all_files = [
-            os.path.join(in_dir, f)
-            for f in os.listdir(in_dir)
-            if os.path.isfile(os.path.join(in_dir, f))
-        ]
-    else:
-
-        all_files = []
-        # r=root, d=directories, f = files
-        for r, d, f in os.walk(in_dir):
-            for file in f:
-                all_files.append(os.path.join(r, file))
-
-    if or_filter is not None:
-        all_files = filter_by_substring(
-            all_files, or_filter=or_filter, and_filter=None, bool_case=bool_case
-        )
+            raise TypeError("The or_filter must be a string or a list of strings.")
 
     if and_filter is not None:
-        all_files = filter_by_substring(
-            all_files,
-            or_filter=and_filter[0],
-            and_filter=and_filter,
-            bool_case=bool_case,
-        )
+        if isinstance(and_filter, str):
+            and_filter = [and_filter]
+        if not isinstance(and_filter, list):
+            raise TypeError("The and_filter must be a string or a list of strings.")
 
-    # Check if the list of files is empty
-    if not all_files:
-        raise ValueError(f"No files found in the directory: {in_dir}")
+    # Collect all files
+    if recursive:
+        all_files = [str(f.resolve()) for f in in_dir.rglob("*") if f.is_file()]
+    else:
+        all_files = [str(f.resolve()) for f in in_dir.iterdir() if f.is_file()]
+
+    # Apply OR filter
+    if or_filter is not None:
+        if just_files:
+            file_names = [os.path.basename(f) for f in all_files]
+            filtered_file_names = filter_by_substring(
+                file_names, or_filter=or_filter, and_filter=None, bool_case=bool_case
+            )
+            all_files = [
+                f for f in all_files if os.path.basename(f) in filtered_file_names
+            ]
+        else:
+            all_files = filter_by_substring(
+                all_files, or_filter=or_filter, and_filter=None, bool_case=bool_case
+            )
+
+    # Apply AND filter
+    if and_filter is not None:
+        if just_files:
+            file_names = [os.path.basename(f) for f in all_files]
+            filtered_file_names = filter_by_substring(
+                file_names,
+                or_filter=and_filter,
+                and_filter=and_filter,
+                bool_case=bool_case,
+            )
+            all_files = [
+                f for f in all_files if os.path.basename(f) in filtered_file_names
+            ]
+        else:
+            all_files = filter_by_substring(
+                all_files,
+                or_filter=and_filter,
+                and_filter=and_filter,
+                bool_case=bool_case,
+            )
 
     return all_files
 
