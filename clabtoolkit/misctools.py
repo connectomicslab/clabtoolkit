@@ -882,179 +882,6 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]) -> list:
     return out_ids
 
 
-#####################################################################################################
-def filter_by_substring(
-    input_list: list,
-    or_filter: Union[str, list],
-    and_filter: Union[str, list] = None,
-    bool_case: bool = False,
-    match_entire_word: bool = False,
-) -> list:
-    """
-    Function to filter a list of elements by substrings.
-
-    Parameters
-    ----------
-    input_list : list
-        List of string elements
-
-    or_filter : str or list
-        Substring to filter. It can be a string or a list of strings.
-        It functions as an OR filter, meaning that if any of the substrings are found in the element,
-        it will be included in the filtered list.
-
-    and_filter : str or list, optional
-        Substring to filter. It can be a string or a list of strings.
-        It functions as an AND filter, meaning that all of the substrings must be found in the element
-
-    bool_case : bool
-        Boolean to indicate if the search is case sensitive. Default is False
-
-    match_entire_word : bool
-        Boolean to indicate if the search should match entire words only. Default is False
-
-    Returns
-    -------
-    filtered_list: list
-        List of elements that contain the substring(s)
-
-    Examples
-    --------
-        >>> input_list = ["apple", "banana", "cherry", "date", "Apple Pie"]
-        >>> or_filter = ["app", "ch"]
-        >>> filtered_list = filter_by_substring(input_list, or_filter)
-        >>> print(filtered_list)  # Output: ['apple', 'cherry', 'Apple Pie']
-
-        >>> # Using AND filter
-        >>> filtered_list = filter_by_substring(input_list, or_filter="app", and_filter="pie")
-        >>> print(filtered_list)  # Output: ['Apple Pie']
-    """
-
-    # Get indexes using the get_indexes_by_substring function
-    indexes = get_indexes_by_substring(
-        input_list=input_list,
-        or_filter=or_filter,
-        and_filter=and_filter,
-        invert=False,
-        bool_case=bool_case,
-        match_entire_word=match_entire_word,
-    )
-
-    # Select elements with the indexes
-    filtered_list = [input_list[i] for i in indexes]
-
-    # Remove duplicates while preserving order
-    filtered_list = remove_duplicates(filtered_list)
-
-    return filtered_list
-
-
-# def filter_by_substring(
-#     input_list: list,
-#     or_filter: Union[str, list],
-#     and_filter: Union[str, list] = None,
-#     bool_case: bool = False,
-# ) -> list:
-#     """
-#     Function to filter a list of elements by substrings.
-
-#     Parameters
-#     ----------
-#     input_list : list
-#         List of string elements
-
-#     or_filter : str or list
-#         Substring to filter. It can be a string or a list of strings.
-#         It functions as an OR filter, meaning that if any of the substrings are found in the element,
-#         it will be included in the filtered list.
-
-#     and_filter : str or list, optional
-#         Substring to filter. It can be a string or a list of strings.
-#         It functions as an AND filter, meaning that all of the substrings must be found in the element
-
-#     bool_case : bool
-#         Boolean to indicate if the search is case sensitive. Default is False
-
-#     Returns
-#     -------
-#     filtered_list: list
-#         List of elements that contain the substring(s)
-
-#     Examples
-#     --------
-#         >>> input_list = ["apple", "banana", "cherry", "date", "Apple Pie"]
-#         >>> or_filter = ["app", "ch"]
-#         >>> filtered_list = filter_by_substring(input_list, or_filter)
-#         >>> print(filtered_list)  # Output: ['apple', 'cherry', 'Apple Pie']
-
-#         >>> # Using AND filter
-#         >>> filtered_list = filter_by_substring(input_list, or_filter="app", and_filter="pie")
-#         >>> print(filtered_list)  # Output: ['Apple Pie']
-
-#     """
-
-#     # Convert single string to list
-#     if isinstance(input_list, str):
-#         input_list = [input_list]
-
-#     # Raise an error if input_list is not a list
-#     if not isinstance(input_list, list):
-#         raise ValueError("The input input_list must be a list.")
-
-#     # Ensure all elements are strings
-#     if not all(isinstance(item, str) for item in input_list):
-#         raise ValueError("All elements in input_list must be strings.")
-
-#     # Convert the or_filter to a list
-#     if isinstance(or_filter, str):
-#         or_filter = [or_filter]
-
-#     # Convert to lower case if case-insensitive
-#     if not bool_case:
-#         tmp_substr = [e.lower() for e in or_filter]
-#         tmp_input_list = [e.lower() for e in input_list]
-#     else:
-#         tmp_substr = or_filter
-#         tmp_input_list = input_list
-
-#     # Get the indexes of list elements that contain any of the OR filter strings
-#     indexes = [
-#         i for i, x in enumerate(tmp_input_list) if any(a in x for a in tmp_substr)
-#     ]
-
-#     # Select elements with the indexes
-#     filtered_list = [input_list[i] for i in indexes]
-
-#     # Remove duplicates while preserving order
-#     filtered_list = remove_duplicates(filtered_list)
-
-#     # Apply AND filter if provided
-#     if and_filter is not None:
-#         # Convert the and_filter to a list
-#         if isinstance(and_filter, str):
-#             and_filter = [and_filter]
-
-#         # Convert to lower case if case-insensitive
-#         if not bool_case:
-#             tmp_and_filter = [e.lower() for e in and_filter]
-#             tmp_filtered_list = [e.lower() for e in filtered_list]
-#         else:
-#             tmp_and_filter = and_filter
-#             tmp_filtered_list = filtered_list
-
-#         # Get indexes of elements that contain ALL of the AND filter strings
-#         indexes = [
-#             i
-#             for i, x in enumerate(tmp_filtered_list)
-#             if all(a in x for a in tmp_and_filter)
-#         ]
-
-#         # Select filtered elements with the indexes
-#         filtered_list = [filtered_list[i] for i in indexes]
-
-#     return filtered_list
-
-
 ####################################################################################################
 def get_indexes_by_substring(
     input_list: list,
@@ -1183,6 +1010,73 @@ def get_indexes_by_substring(
         indexes = sorted(list(all_indexes - set(indexes)))
 
     return indexes
+
+
+#####################################################################################################
+def filter_by_substring(
+    input_list: list,
+    or_filter: Union[str, list],
+    and_filter: Union[str, list] = None,
+    bool_case: bool = False,
+    match_entire_word: bool = False,
+) -> list:
+    """
+    Function to filter a list of elements by substrings.
+
+    Parameters
+    ----------
+    input_list : list
+        List of string elements
+
+    or_filter : str or list
+        Substring to filter. It can be a string or a list of strings.
+        It functions as an OR filter, meaning that if any of the substrings are found in the element,
+        it will be included in the filtered list.
+
+    and_filter : str or list, optional
+        Substring to filter. It can be a string or a list of strings.
+        It functions as an AND filter, meaning that all of the substrings must be found in the element
+
+    bool_case : bool
+        Boolean to indicate if the search is case sensitive. Default is False
+
+    match_entire_word : bool
+        Boolean to indicate if the search should match entire words only. Default is False
+
+    Returns
+    -------
+    filtered_list: list
+        List of elements that contain the substring(s)
+
+    Examples
+    --------
+        >>> input_list = ["apple", "banana", "cherry", "date", "Apple Pie"]
+        >>> or_filter = ["app", "ch"]
+        >>> filtered_list = filter_by_substring(input_list, or_filter)
+        >>> print(filtered_list)  # Output: ['apple', 'cherry', 'Apple Pie']
+
+        >>> # Using AND filter
+        >>> filtered_list = filter_by_substring(input_list, or_filter="app", and_filter="pie")
+        >>> print(filtered_list)  # Output: ['Apple Pie']
+    """
+
+    # Get indexes using the get_indexes_by_substring function
+    indexes = get_indexes_by_substring(
+        input_list=input_list,
+        or_filter=or_filter,
+        and_filter=and_filter,
+        invert=False,
+        bool_case=bool_case,
+        match_entire_word=match_entire_word,
+    )
+
+    # Select elements with the indexes
+    filtered_list = [input_list[i] for i in indexes]
+
+    # Remove duplicates while preserving order
+    filtered_list = remove_duplicates(filtered_list)
+
+    return filtered_list
 
 
 ####################################################################################################
