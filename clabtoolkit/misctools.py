@@ -2011,22 +2011,23 @@ def remove_consecutive_duplicates(
 def create_names_from_indices(
     indices: Union[int, List[int], np.ndarray],
     prefix: str = "auto-roi",
-    sufix: str = None,
+    suffix: str = None,
+    padding: int = 6,
 ) -> list[str]:
     """
-    Generates a list of region names with the format "auto-roi-000001"
-    based on a list of indices, using list comprehension.
+    Generates a list of region names with customizable zero-padding
+    based on a list of indices.
 
     Parameters
     ----------
-    indices : int or list
-        A single integer or a list of integers representing the indices.
-
-    prefix : str
-        A prefix to add to the region names. Default is "auto-roi"
-
-    sufix : str
-        A sufix to add to the region names. Default is None
+    indices : int, list of int, or numpy.ndarray
+        A single integer or a list/array of integers representing the indices.
+    prefix : str, optional
+        Prefix to add to the region names. Default is "auto-roi".
+    suffix : str, optional
+        Suffix to add to the region names. Default is None.
+    padding : int, optional
+        Number of digits for zero-padding the index. Default is 6.
 
     Returns
     -------
@@ -2034,40 +2035,53 @@ def create_names_from_indices(
         A list of formatted region names.
 
     Examples
-    ---------
+    --------
+    Default padding (6 digits):
     >>> indices = [1, 2, 3]
-    >>> names = create_names_from_indices(indices)
-    >>> print(names)  # Output: ['auto-roi-000001', 'auto-roi-000002', 'auto-roi-000003']
+    >>> create_names_from_indices(indices)
+    ['auto-roi-000001', 'auto-roi-000002', 'auto-roi-000003']
 
-    >>> indices = 5
-    >>> names = create_names_from_indices(indices)
-    >>> print(names)  # Output: ['auto-roi-000005']
+    Custom padding (3 digits):
+    >>> indices = [1, 2, 3]
+    >>> create_names_from_indices(indices, padding=3)
+    ['auto-roi-001', 'auto-roi-002', 'auto-roi-003']
 
+    With suffix:
     >>> indices = np.array([10, 20, 30])
-    >>> names = create_names_from_indices(indices, sufix="lh")
-    >>> print(names)  # Output: ['auto-roi-000010-lh', 'auto-roi-000020-lh', 'auto-roi-000030-lh']
+    >>> create_names_from_indices(indices, suffix="lh", padding=4)
+    ['auto-roi-0010-lh', 'auto-roi-0020-lh', 'auto-roi-0030-lh']
 
+    Custom prefix and padding:
     >>> indices = [1, 2, 3]
-    >>> names = create_names_from_indices(indices, prefix="ctx")
-    >>> print(names)  # Output: ['ctx-000001', 'ctx-000002', 'ctx-000003']
+    >>> create_names_from_indices(indices, prefix="ctx", padding=2)
+    ['ctx-01', 'ctx-02', 'ctx-03']
+
+    Single index:
+    >>> create_names_from_indices(5, padding=8)
+    ['auto-roi-00000005']
 
     """
+    # Validate padding
+    if not isinstance(padding, int) or padding < 1:
+        raise ValueError("Padding must be a positive integer.")
 
-    # Check if indices is a single integer or a list of integers
+    # Normalize indices to list
     if isinstance(indices, int):
         indices = [indices]
     elif isinstance(indices, np.ndarray):
         indices = indices.tolist()
     elif not isinstance(indices, list):
         raise ValueError("Indices must be an integer, list, or numpy array.")
-    elif not all(isinstance(i, int) for i in indices):
+
+    # Validate that all elements are integers
+    if not all(isinstance(i, (int, np.integer)) for i in indices):
         raise ValueError("All elements in indices must be integers.")
 
-    if sufix is not None:
-        names = [f"{prefix}-{index:06d}-{sufix}" for index in indices]
+    # Generate names with customizable padding
+    if suffix is not None:
+        names = [f"{prefix}-{index:0{padding}d}-{suffix}" for index in indices]
     else:
-        # Generate names with the specified prefix and formatted index
-        names = [f"{prefix}-{index:06d}" for index in indices]
+        names = [f"{prefix}-{index:0{padding}d}" for index in indices]
 
     return names
 
