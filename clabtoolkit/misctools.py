@@ -1933,36 +1933,78 @@ def create_temporary_filename(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def rem_duplicate_char(strcad: str, dchar: str):
+def remove_consecutive_duplicates(
+    text: Union[str, list[str]], char: Union[str, list[str]]
+) -> Union[str, list[str]]:
     """
-    This function removes duplicate characters from strings.
+    Remove consecutive duplicate occurrences of specific character(s).
+
+    Keeps the first occurrence when multiple consecutive instances of the
+    specified character(s) are found. Supports both single strings and lists
+    of strings for both parameters.
 
     Parameters
     ----------
-    strcad : str
-        Input string
-    dchar : str
+    text : str or list of str
+        Input string(s) to process
+    char : str or list of str
+        Character(s) whose consecutive duplicates should be removed
 
     Returns
-    ---------
-    str or list
-        String with the duplicate characters removed.
+    -------
+    str or list of str
+        Processed string(s) with consecutive duplicates removed.
+        Returns same type as input text parameter.
+
+    Examples
+    --------
+    Single text, single char:
+    >>> remove_consecutive_duplicates("hello__world", "_")
+    'hello_world'
+
+    Single text, multiple chars:
+    >>> remove_consecutive_duplicates("hello__world//test", ["_", "/"])
+    'hello_world/test'
+
+    Multiple texts, single char:
+    >>> remove_consecutive_duplicates(["path//to", "file///here"], "/")
+    ['path/to', 'file/here']
+
+    Multiple texts, multiple chars:
+    >>> remove_consecutive_duplicates(["a__b", "c//d"], ["_", "/"])
+    ['a_b', 'c/d']
 
     """
 
-    chars = []
-    prev = None
+    def _remove_consecutive(s: str, chars: set[str]) -> str:
+        """Helper function to remove consecutive duplicates from a single string."""
+        if not s:
+            return s
 
-    for c in strcad:
-        if c != dchar:
-            chars.append(c)
-            prev = c
-        else:
-            if prev != c:
-                chars.append(c)
-                prev = c
+        result = []
+        prev_char = None
 
-    return "".join(chars)
+        for c in s:
+            # Add character if it's not a target char, or if it's different from previous
+            if c not in chars:
+                result.append(c)
+            elif c != prev_char:
+                result.append(c)
+            # else: skip (consecutive duplicate of target char)
+
+            prev_char = c
+
+        return "".join(result)
+
+    # Normalize char to a set for efficient lookup
+    chars_set = set(char) if isinstance(char, list) else {char}
+
+    # Handle single string
+    if isinstance(text, str):
+        return _remove_consecutive(text, chars_set)
+
+    # Handle list of strings
+    return [_remove_consecutive(s, chars_set) for s in text]
 
 
 ####################################################################################################
