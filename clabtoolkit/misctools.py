@@ -43,218 +43,12 @@ from .misctools_utils import ExplorerDict
 # Re-export for convenient access
 __all__ = ["ExplorerDict", "update_dict"]
 
-####################################################################################################
-####################################################################################################
-############                                                                            ############
-############                                                                            ############
-############         Section 1: Methods dedicated to improve the documentation          ############
-############                                                                            ############
-############                                                                            ############
-####################################################################################################
-####################################################################################################
-
-
-class SmartFormatter(argparse.HelpFormatter):
-    """
-    Class to format the help message
-
-    This class is used to format the help message in the argparse module. It allows to use the "R|" prefix to print the help message as raw text.
-
-    For example:
-    parser = argparse.ArgumentParser(description='''R|This is a raw text help message.
-    It can contain multiple lines.
-    It will be printed as raw text.''', formatter_class=SmartFormatter)
-
-    parser.print_help()
-
-    Parameters
-    ----------
-    argparse : argparse.HelpFormatter
-        HelpFormatter class from the argparse module
-
-    Returns
-    -------
-    argparse.HelpFormatter
-        HelpFormatter class from the argparse module
-
-    """
-
-    ###################################################################################################
-    def split_lines(self, text, width):
-        """
-        This function is used to split the lines of the help message.
-        It allows to use the "R|" prefix to print the help message as raw text.
-        For example:
-        parser = argparse.ArgumentParser(description='''R|This is a raw text help message.
-        It can contain multiple lines.
-        It will be printed as raw text.''', formatter_class=SmartFormatter)
-        parser.print_help()
-
-        Parameters
-        ----------
-        text : str
-            Text to be split
-        width : int
-            Width of the text
-
-        Returns
-        -------
-        text : str
-            Text split in lines
-
-        """
-        if text.startswith("R|"):
-            return text[2:].splitlines()
-        # this is the RawTextHelpFormatter.split_lines
-        return argparse.HelpFormatter.split_lines(self, text, width)
-
 
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############          Section 2: Methods dedicated to work with progress bar            ############
-############                                                                            ############
-############                                                                            ############
-####################################################################################################
-####################################################################################################
-# Print iterations progress
-def printprogressbar(
-    iteration,
-    total,
-    prefix="",
-    suffix="",
-    decimals=1,
-    length=100,
-    fill="█",
-    printend="\r",
-):
-    """
-    Call in a loop to create terminal progress bar
-
-    Parameters
-    ----------
-
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-        printend    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-
-    """
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filledlength = int(length * iteration // total)
-    bar = fill * filledlength + "-" * (length - filledlength)
-    print(f"\r{prefix} |{bar}| {percent}% {suffix}", end=printend)
-    # Print New Line on Complete
-    if iteration == total:
-        print()
-
-
-####################################################################################################
-####################################################################################################
-############                                                                            ############
-############                                                                            ############
-############              Section 4: Methods dedicated to work with dates               ############
-############                                                                            ############
-############                                                                            ############
-####################################################################################################
-####################################################################################################
-def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%d"):
-    """
-    Function to find the closest date in a list of dates with respect to a target date.
-    It also returns the index of the closest date in the list.
-
-    Parameters
-    ----------
-    dates_list : list
-        List of dates in string format.
-
-    target_date : str
-        Target date in string format.
-
-    date_fmt : str
-        Date format. Default is '%Y%m%d'
-
-    Returns
-    -------
-    closest_date : str
-        Closest date in the list to the target date
-
-    closest_index : int
-        Index of the closest date in the list
-
-    time_diff : int
-        Time difference in days between the target date and the closest date in the list.
-
-    Examples
-    --------
-    >>> dates_list = ["20230101", "20230201", "20230301"]
-    >>> target_date = "20230215"
-    >>> closest_date, closest_index, time_diff = find_closest_date(dates_list, target_date)
-    >>> print(closest_date)  # Output: "20230201"
-    >>> print(closest_index)  # Output: 1
-    >>> print(time_diff)      # Output: 14
-
-    Raises
-    ------
-    ValueError
-        If the target_date is not in the correct format or if the dates_list is empty.
-
-    TypeError
-        If the dates_list is not a list or contains non-string elements.
-    """
-
-    # Input validation
-    if not isinstance(dates_list, list):
-        raise TypeError("dates_list must be a list")
-
-    if not dates_list:
-        raise ValueError("dates_list cannot be empty")
-
-    # Convert target_date to datetime object
-    try:
-        target_dt = datetime.strptime(str(target_date), date_fmt)
-    except ValueError as e:
-        raise ValueError(
-            f"Invalid target_date '{target_date}' for format '{date_fmt}': {e}"
-        )
-
-    # Convert all dates and find closest in one comprehension
-    try:
-        dates_with_diff = [
-            (
-                i,
-                datetime.strptime(str(date), date_fmt),
-                abs((datetime.strptime(str(date), date_fmt) - target_dt).days),
-            )
-            for i, date in enumerate(dates_list)
-        ]
-    except ValueError as e:
-        # Find which date caused the error for better error message
-        for i, date in enumerate(dates_list):
-            try:
-                datetime.strptime(str(date), date_fmt)
-            except ValueError:
-                raise ValueError(
-                    f"Date at index {i} ('{date}') does not match format '{date_fmt}'"
-                )
-        raise e  # Shouldn't reach here, but just in case
-
-    # Find minimum by time difference
-    closest_index, closest_dt, time_diff = min(dates_with_diff, key=lambda x: x[2])
-
-    return closest_dt.strftime(date_fmt), closest_index, time_diff
-
-
-####################################################################################################
-####################################################################################################
-############                                                                            ############
-############                                                                            ############
-############      Section 5: Methods dedicated to create and work with indices,         ############
+############      Section 1: Methods dedicated to create and work with indices,         ############
 ############           to search for elements in a list, etc                            ############
 ############                                                                            ############
 ############                                                                            ############
@@ -1439,7 +1233,103 @@ def ismember(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############   Section 6: Methods dedicated to find directories, remove empty folders   ############
+############              Section 2: Methods dedicated to work with dates               ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%d"):
+    """
+    Function to find the closest date in a list of dates with respect to a target date.
+    It also returns the index of the closest date in the list.
+
+    Parameters
+    ----------
+    dates_list : list
+        List of dates in string format.
+
+    target_date : str
+        Target date in string format.
+
+    date_fmt : str
+        Date format. Default is '%Y%m%d'
+
+    Returns
+    -------
+    closest_date : str
+        Closest date in the list to the target date
+
+    closest_index : int
+        Index of the closest date in the list
+
+    time_diff : int
+        Time difference in days between the target date and the closest date in the list.
+
+    Examples
+    --------
+    >>> dates_list = ["20230101", "20230201", "20230301"]
+    >>> target_date = "20230215"
+    >>> closest_date, closest_index, time_diff = find_closest_date(dates_list, target_date)
+    >>> print(closest_date)  # Output: "20230201"
+    >>> print(closest_index)  # Output: 1
+    >>> print(time_diff)      # Output: 14
+
+    Raises
+    ------
+    ValueError
+        If the target_date is not in the correct format or if the dates_list is empty.
+
+    TypeError
+        If the dates_list is not a list or contains non-string elements.
+    """
+
+    # Input validation
+    if not isinstance(dates_list, list):
+        raise TypeError("dates_list must be a list")
+
+    if not dates_list:
+        raise ValueError("dates_list cannot be empty")
+
+    # Convert target_date to datetime object
+    try:
+        target_dt = datetime.strptime(str(target_date), date_fmt)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid target_date '{target_date}' for format '{date_fmt}': {e}"
+        )
+
+    # Convert all dates and find closest in one comprehension
+    try:
+        dates_with_diff = [
+            (
+                i,
+                datetime.strptime(str(date), date_fmt),
+                abs((datetime.strptime(str(date), date_fmt) - target_dt).days),
+            )
+            for i, date in enumerate(dates_list)
+        ]
+    except ValueError as e:
+        # Find which date caused the error for better error message
+        for i, date in enumerate(dates_list):
+            try:
+                datetime.strptime(str(date), date_fmt)
+            except ValueError:
+                raise ValueError(
+                    f"Date at index {i} ('{date}') does not match format '{date_fmt}'"
+                )
+        raise e  # Shouldn't reach here, but just in case
+
+    # Find minimum by time difference
+    closest_index, closest_dt, time_diff = min(dates_with_diff, key=lambda x: x[2])
+
+    return closest_dt.strftime(date_fmt), closest_index, time_diff
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############   Section 3: Methods dedicated to find directories, remove empty folders   ############
 ############     find all the files inside a certain directory, etc                     ############
 ############                                                                            ############
 ############                                                                            ############
@@ -1932,7 +1822,7 @@ def create_temporary_filename(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############        Section 7: Methods dedicated to strings and characters              ############
+############        Section 4: Methods dedicated to strings and characters              ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -2324,7 +2214,7 @@ def get_real_basename(file_name: str) -> str:
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############    Section 8: Methods dedicated to work with dictionaries and dataframes   ############
+############    Section 5: Methods dedicated to work with dictionaries and dataframes   ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -2788,7 +2678,7 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############        Section 9: Methods dedicated to containerization assistance         ############
+############        Section 6: Methods dedicated to containerization assistance         ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -2888,7 +2778,7 @@ def generate_container_command(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############       Section 10: Methods to print information and signatures              ############
+############       Section 7: Methods to print information and signatures              ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -3407,423 +3297,6 @@ def _display_terminal_output(module, all_classes, all_functions, show_inherited=
         )
 
 
-# ####################################################################################################
-# def show_module_contents(module):
-#     """
-#     Displays all classes and functions in a given module with colored formatting.
-#     Accepts a module object or module name (str).
-#     """
-#     if isinstance(module, str):
-#         try:
-#             module = sys.modules.get(module) or __import__(module)
-#         except ImportError:
-#             print(
-#                 f"{cltcolors.bcolors.FAIL}Module '{module}' could not be imported.{cltcolors.bcolors.ENDC}"
-#             )
-#             return
-#     elif not isinstance(module, types.ModuleType):
-#         print(
-#             f"{cltcolors.bcolors.FAIL}Invalid input: must be a module object or module name string.{cltcolors.bcolors.ENDC}"
-#         )
-#         return
-
-#     print(
-#         f"{cltcolors.bcolors.HEADER}{cltcolors.bcolors.BOLD}📦 Contents of module '{module.__name__}':{cltcolors.bcolors.ENDC}\n"
-#     )
-
-#     # Classes
-#     print(f"{cltcolors.bcolors.OKBLUE}{cltcolors.bcolors.BOLD}📘 Classes:{cltcolors.bcolors.ENDC}")
-#     for name in sorted(dir(module)):
-#         try:
-#             obj = getattr(module, name)
-#             if inspect.isclass(obj) and obj.__module__ == module.__name__:
-#                 print(f"  {cltcolors.bcolors.OKBLUE}- {name}{cltcolors.bcolors.ENDC}")
-
-#                 doc = inspect.getdoc(obj)
-#                 if doc:
-#                     first_line = doc.split("\n")[0]
-#                     print(f"    {cltcolors.bcolors.OKGRAY}# {first_line}{cltcolors.bcolors.ENDC}")
-
-#                 for method_name, method in inspect.getmembers(
-#                     obj, predicate=inspect.isfunction
-#                 ):
-#                     if (
-#                         method.__module__ == module.__name__
-#                         and method.__qualname__.startswith(obj.__name__ + ".")
-#                     ):
-#                         sig = inspect.signature(method)
-#                         formatted_sig = format_signature(sig)
-#                         print(
-#                             f"    {cltcolors.bcolors.OKYELLOW}• {method_name}{cltcolors.bcolors.ENDC}{formatted_sig}"
-#                         )
-#                         method_doc = inspect.getdoc(method)
-
-#                         if method_doc:
-#                             first_line = method_doc.split("\n")[0]
-#                             print(f"      {cltcolors.bcolors.OKGRAY}# {first_line}{cltcolors.bcolors.ENDC}")
-
-#                 print(f"    {cltcolors.bcolors.OKWHITE}{'─'*60}{cltcolors.bcolors.ENDC}\n")
-#         except Exception:
-#             continue
-
-#     # Functions
-#     print(f"\n{cltcolors.bcolors.OKGREEN}{cltcolors.bcolors.BOLD}🔧 Functions:{cltcolors.bcolors.ENDC}")
-#     for name in sorted(dir(module)):
-#         try:
-#             obj = getattr(module, name)
-#             if inspect.isfunction(obj) and obj.__module__ == module.__name__:
-#                 sig = inspect.signature(obj)
-#                 formatted_sig = format_signature(sig)
-#                 print(f"  {cltcolors.bcolors.OKYELLOW}- {name}{cltcolors.bcolors.ENDC}{formatted_sig}")
-#                 doc = inspect.getdoc(obj)
-#                 if doc:
-#                     print(f"    {cltcolors.bcolors.OKGRAY}# {doc.splitlines()[0]}{cltcolors.bcolors.ENDC}")
-#         except Exception:
-#             continue
-
-
-####################################################################################################
-def h5explorer(
-    file_path: str,
-    max_datasets_per_group: int = 20,
-    max_attrs: int = 5,
-    show_values: bool = True,
-) -> Dict[str, Any]:
-    """
-    Print the hierarchical structure of an HDF5 file with colors and tree visualization.
-
-    This function displays HDF5 file contents in a tree-like structure with color-coded
-    elements, detailed information about datasets and groups, and limits the number of
-    datasets shown per group to avoid overwhelming output.
-
-    Parameters
-    ----------
-    file_path : str
-        Path to the HDF5 file to analyze
-    max_datasets_per_group : int, default=20
-        Maximum number of datasets to display per group before truncating.
-        Groups will show all child groups but limit datasets to this number.
-    max_attrs : int, default=5
-        Maximum number of attributes to display per item before truncating
-    show_values : bool, default=True
-        Whether to show attribute values in the output. If False, only
-        attribute names are displayed.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Dictionary containing file statistics with keys:
-        - 'groups': total number of groups in the file
-        - 'datasets': total number of datasets in the file
-        - 'total_size_mb': total size of all datasets in megabytes
-        - 'file_path': path to the analyzed file
-
-    Raises
-    ------
-    FileNotFoundError
-        If the specified file does not exist
-    OSError
-        If the file cannot be opened or is not a valid HDF5 file
-    Exception
-        For other HDF5 reading errors or invalid file formats
-
-    Example
-    -------
-    >>> stats = print_h5_structure("/path/to/data.h5", max_datasets_per_group=10)
-    📁 data/ (group)
-    ├── 📊 measurements [1000 × 256] float64 (2.0 MB)
-    │   └── 🏷️ @units = 'volts'
-    ├── 📁 metadata/ (group)
-    │   └── 📊 info scalar string (0.0 MB)
-    └── 📊 results [100 × 50] complex128 (0.8 MB)
-
-    >>> print(f"File contains {stats['datasets']} datasets")
-    File contains 15 datasets
-
-    Notes
-    -----
-    - Groups are displayed with 📁 (red color)
-    - Datasets are displayed with 📊 (green color)
-    - Attributes are displayed with 🏷️ (yellow color)
-    - Tree structure uses Unicode box-drawing characters
-    - Large groups show first N datasets + truncation message
-    - Requires colorama package for colored output
-    """
-
-    def _get_tree_chars(is_last: bool, depth: int) -> str:
-        """Generate tree characters for visual hierarchy."""
-        if depth == 0:
-            return ""
-
-        chars = ""
-        for i in range(depth - 1):
-            chars += "│   "
-
-        if is_last:
-            chars += "└── "
-        else:
-            chars += "├── "
-
-        return chars
-
-    def _format_dtype(dtype: np.dtype) -> str:
-        """Format numpy dtype for display."""
-        if dtype.names:  # Compound dtype
-            return f"compound({len(dtype.names)} fields)"
-        return str(dtype)
-
-    def _format_shape(shape: Tuple[int, ...]) -> str:
-        """Format array shape for display."""
-        if shape == ():
-            return "scalar"
-        return f"[{' × '.join(map(str, shape))}]"
-
-    def _format_attribute_value(value: Any) -> str:
-        """Format an attribute value for display."""
-        if isinstance(value, np.ndarray):
-            if value.size == 1:
-                return f" = {value.item()}"
-            elif value.size <= 5:
-                return f" = {value.tolist()}"
-            else:
-                return f" = [{_format_shape(value.shape)} array]"
-        elif isinstance(value, (bytes, np.bytes_)):
-            return f" = '{value.decode('utf-8', errors='ignore')}'"
-        else:
-            return f" = {value}"
-
-    def _print_attributes(obj: h5py.HLObject, depth: int, prefix: str = "") -> None:
-        """Print attributes of an HDF5 object."""
-        if not obj.attrs:
-            return
-
-        attrs = list(obj.attrs.items())
-        for i, (name, value) in enumerate(attrs[:max_attrs]):
-            is_last_attr = i == len(attrs[:max_attrs]) - 1
-            attr_prefix = _get_tree_chars(is_last_attr, depth + 1)
-
-            # Format attribute value
-            if show_values:
-                val_str = _format_attribute_value(value)
-            else:
-                val_str = ""
-
-            print(
-                f"{prefix}{attr_prefix}"
-                f"{Fore.YELLOW}@{name}{Style.RESET_ALL}"
-                f"{Fore.CYAN}{val_str}{Style.RESET_ALL}"
-            )
-
-        if len(attrs) > max_attrs:
-            more_attrs = len(attrs) - max_attrs
-            attr_prefix = _get_tree_chars(True, depth + 1)
-            print(
-                f"{prefix}{attr_prefix}"
-                f"{Style.DIM}... {more_attrs} more attributes{Style.RESET_ALL}"
-            )
-
-    def _print_item(
-        name: str,
-        obj: h5py.HLObject,
-        depth: int = 0,
-        prefix: str = "",
-        is_last: bool = True,
-    ) -> None:
-        """Recursively print HDF5 items with proper handling of dataset limits."""
-        tree_chars = _get_tree_chars(is_last, depth)
-
-        if isinstance(obj, h5py.Group):
-            # Print group
-            print(
-                f"{prefix}{tree_chars}"
-                f"{Fore.RED}📁 {name}{Style.RESET_ALL} "
-                f"{Style.DIM}(group){Style.RESET_ALL}"
-            )
-
-            stats["groups"] += 1
-
-            # Print group attributes
-            _print_attributes(obj, depth, prefix)
-
-            # Print group contents with dataset limiting
-            items = list(obj.items())
-            datasets = [(n, o) for n, o in items if isinstance(o, h5py.Dataset)]
-            groups = [(n, o) for n, o in items if isinstance(o, h5py.Group)]
-
-            # Combine groups first, then limited datasets
-            display_items = groups + datasets[:max_datasets_per_group]
-
-            for i, (child_name, child_obj) in enumerate(display_items):
-                is_last_child = (i == len(display_items) - 1) and len(
-                    datasets
-                ) <= max_datasets_per_group
-                _print_item(child_name, child_obj, depth + 1, prefix, is_last_child)
-
-            # Show truncation message if needed
-            if len(datasets) > max_datasets_per_group:
-                truncated_count = len(datasets) - max_datasets_per_group
-                truncation_prefix = _get_tree_chars(True, depth + 1)
-                print(
-                    f"{prefix}{truncation_prefix}"
-                    f"{Style.DIM}... {truncated_count} more datasets (showing first {max_datasets_per_group}){Style.RESET_ALL}"
-                )
-
-        elif isinstance(obj, h5py.Dataset):
-            # Print dataset
-            shape_str = _format_shape(obj.shape)
-            dtype_str = _format_dtype(obj.dtype)
-            size_mb = obj.nbytes / (1024 * 1024)
-
-            print(
-                f"{prefix}{tree_chars}"
-                f"{Fore.GREEN}📊 {name}{Style.RESET_ALL} "
-                f"{Fore.BLUE}{shape_str}{Style.RESET_ALL} "
-                f"{Fore.MAGENTA}{dtype_str}{Style.RESET_ALL} "
-                f"{Style.DIM}({size_mb:.1f} MB){Style.RESET_ALL}"
-            )
-
-            stats["datasets"] += 1
-            stats["total_size"] += obj.nbytes
-
-            # Print dataset attributes
-            _print_attributes(obj, depth, prefix)
-
-    def _count_all_items(obj: h5py.HLObject, counts: Dict[str, int]) -> None:
-        """Recursively count all items in the HDF5 file."""
-        for item in obj.values():
-            if isinstance(item, h5py.Group):
-                counts["groups"] += 1
-                _count_all_items(item, counts)
-            elif isinstance(item, h5py.Dataset):
-                counts["datasets"] += 1
-                counts["total_size"] += item.nbytes
-
-    # Initialize statistics
-    stats = {"groups": 0, "datasets": 0, "total_size": 0}
-
-    try:
-        print(f"\n{Back.BLUE}{Fore.WHITE} HDF5 File Structure {Style.RESET_ALL}")
-        print(f"{Style.BRIGHT}File: {file_path}{Style.RESET_ALL}\n")
-
-        with h5py.File(file_path, "r") as f:
-            # Print root attributes if any
-            if f.attrs:
-                print(f"{Fore.YELLOW}Root Attributes:{Style.RESET_ALL}")
-                _print_attributes(f, -1, "")
-                print()
-
-            # Print file contents
-            items = list(f.items())
-            if not items:
-                print(f"{Style.DIM}(empty file){Style.RESET_ALL}")
-            else:
-                for i, (name, obj) in enumerate(items):
-                    is_last = i == len(items) - 1
-                    _print_item(name, obj, 0, "", is_last)
-
-            # Count all items for accurate statistics
-            total_counts = {"groups": 0, "datasets": 0, "total_size": 0}
-            _count_all_items(f, total_counts)
-
-        # Print legend
-        print(f"\n{Style.BRIGHT}Legend:{Style.RESET_ALL}")
-        print(f"📁 {Fore.RED}Groups{Style.RESET_ALL} - containers/folders")
-        print(f"📊 {Fore.GREEN}Datasets{Style.RESET_ALL} - data arrays")
-        print(f"🏷️ {Fore.YELLOW}Attributes{Style.RESET_ALL} - metadata")
-
-        # Print file statistics (use total counts, not display counts)
-        print(f"\n{Style.BRIGHT}File Statistics:{Style.RESET_ALL}")
-        print(f"📁 Total Groups: {total_counts['groups']}")
-        print(f"📊 Total Datasets: {total_counts['datasets']}")
-        print(f"💾 Total Size: {total_counts['total_size'] / (1024*1024):.1f} MB")
-
-        # Return statistics
-        return {
-            "groups": total_counts["groups"],
-            "datasets": total_counts["datasets"],
-            "total_size_mb": total_counts["total_size"] / (1024 * 1024),
-            "file_path": file_path,
-        }
-
-    except FileNotFoundError:
-        print(f"{Fore.RED}Error: File '{file_path}' not found{Style.RESET_ALL}")
-        raise
-    except OSError as e:
-        print(f"{Fore.RED}Error: Cannot open file '{file_path}' - {e}{Style.RESET_ALL}")
-        raise
-    except Exception as e:
-        print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
-        raise
-
-
-#####################################################################################################
-def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
-    """
-    Print a simplified version of the HDF5 structure without colors (for basic terminals).
-
-    Parameters
-    ----------
-    file_path : str
-        Path to the HDF5 file to analyze
-    max_datasets_per_group : int, default=20
-        Maximum number of datasets to display per group before truncating
-
-    Raises
-    ------
-    FileNotFoundError
-        If the specified file does not exist
-    OSError
-        If the file cannot be opened or is not a valid HDF5 file
-
-    Example
-    -------
-    >>> print_h5_structure_simple("data.h5", max_datasets_per_group=10)
-    HDF5 Structure: data.h5
-    --------------------------------------------------
-    📁 data/ (group)
-    📊 measurements [1000, 256] float64
-    📁 metadata/ (group)
-        📊 info () <U10
-    ... 5 more datasets
-    """
-
-    def _print_item_simple(name: str, obj: h5py.HLObject, depth: int = 0) -> None:
-        """Print items in simple format without colors."""
-        indent = "  " * depth
-
-        if isinstance(obj, h5py.Group):
-            print(f"{indent}📁 {name}/ (group)")
-
-            # Apply same dataset limiting logic
-            items = list(obj.items())
-            datasets = [(n, o) for n, o in items if isinstance(o, h5py.Dataset)]
-            groups = [(n, o) for n, o in items if isinstance(o, h5py.Group)]
-
-            # Show all groups, limited datasets
-            for child_name, child_obj in groups + datasets[:max_datasets_per_group]:
-                _print_item_simple(child_name, child_obj, depth + 1)
-
-            if len(datasets) > max_datasets_per_group:
-                truncated = len(datasets) - max_datasets_per_group
-                print(f"{'  ' * (depth + 1)}... {truncated} more datasets")
-
-        elif isinstance(obj, h5py.Dataset):
-            shape = obj.shape if obj.shape != () else "scalar"
-            print(f"{indent}📊 {name} {shape} {obj.dtype}")
-
-    try:
-        print(f"HDF5 Structure: {file_path}")
-        print("-" * 50)
-
-        with h5py.File(file_path, "r") as f:
-            for name, obj in f.items():
-                _print_item_simple(name, obj)
-
-    except Exception as e:
-        print(f"Error: {e}")
-        raise
-
-
 ######################################################################################################
 def show_object_content(obj, show_private=False, show_dunder=False):
     """
@@ -4235,75 +3708,346 @@ def _display_object_terminal_output(
     )
 
 
-########################################################################################################
-def print_dict_tree(
-    data: Dict[Any, Any],
-    prefix: str = "",
-    is_last: bool = True,
-    max_value_length: int = 50,
-) -> None:
+####################################################################################################
+def h5explorer(
+    file_path: str,
+    max_datasets_per_group: int = 20,
+    max_attrs: int = 5,
+    show_values: bool = True,
+) -> Dict[str, Any]:
     """
-    Print dictionary in a tree-like structure with ANSI colors.
+    Print the hierarchical structure of an HDF5 file with colors and tree visualization.
+
+    This function displays HDF5 file contents in a tree-like structure with color-coded
+    elements, detailed information about datasets and groups, and limits the number of
+    datasets shown per group to avoid overwhelming output.
 
     Parameters
     ----------
-    data (dict):
-        The dictionary to print
-
-    prefix (str):
-        Prefix for the current level (used for recursion)
-
-    is_last (bool):
-        Whether the current item is the last in its level
-
-    max_value_length (int):
-        Maximum length of value strings before truncation
+    file_path : str
+        Path to the HDF5 file to analyze
+    max_datasets_per_group : int, default=20
+        Maximum number of datasets to display per group before truncating.
+        Groups will show all child groups but limit datasets to this number.
+    max_attrs : int, default=5
+        Maximum number of attributes to display per item before truncating
+    show_values : bool, default=True
+        Whether to show attribute values in the output. If False, only
+        attribute names are displayed.
 
     Returns
     -------
-    None:
-        Prints the dictionary structure to stdout
+    Dict[str, Any]
+        Dictionary containing file statistics with keys:
+        - 'groups': total number of groups in the file
+        - 'datasets': total number of datasets in the file
+        - 'total_size_mb': total size of all datasets in megabytes
+        - 'file_path': path to the analyzed file
 
-    Examples
-    --------
-    >>> my_dict = {"key1": "value1", "key2": {"subkey1": "subvalue1", "subkey2": "subvalue2"}}
-    >>> print_dict_tree(my_dict)
-    ├── key1: value1
-    └── key2/
-        ├── subkey1: subvalue1
-        └── subkey2: subvalue2
+    Raises
+    ------
+    FileNotFoundError
+        If the specified file does not exist
+    OSError
+        If the file cannot be opened or is not a valid HDF5 file
+    Exception
+        For other HDF5 reading errors or invalid file formats
+
+    Example
+    -------
+    >>> stats = print_h5_structure("/path/to/data.h5", max_datasets_per_group=10)
+    📁 data/ (group)
+    ├── 📊 measurements [1000 × 256] float64 (2.0 MB)
+    │   └── 🏷️ @units = 'volts'
+    ├── 📁 metadata/ (group)
+    │   └── 📊 info scalar string (0.0 MB)
+    └── 📊 results [100 × 50] complex128 (0.8 MB)
+
+    >>> print(f"File contains {stats['datasets']} datasets")
+    File contains 15 datasets
 
     Notes
     -----
-    - Uses Unicode box-drawing characters for tree structure
-    - Color codes for keys and values for better readability
-    - Truncates long values to avoid clutter
-
+    - Groups are displayed with 📁 (red color)
+    - Datasets are displayed with 📊 (green color)
+    - Attributes are displayed with 🏷️ (yellow color)
+    - Tree structure uses Unicode box-drawing characters
+    - Large groups show first N datasets + truncation message
+    - Requires colorama package for colored output
     """
-    if not isinstance(data, dict):
-        return
 
-    items = list(data.items())
+    def _get_tree_chars(is_last: bool, depth: int) -> str:
+        """Generate tree characters for visual hierarchy."""
+        if depth == 0:
+            return ""
 
-    for i, (key, value) in enumerate(items):
-        is_last_item = i == len(items) - 1
-        current_prefix = "└── " if is_last_item else "├── "
+        chars = ""
+        for i in range(depth - 1):
+            chars += "│   "
 
-        if isinstance(value, dict):
-            print(
-                f"{prefix}{cltcolors.bcolors.OKWHITE}{current_prefix}{cltcolors.bcolors.OKBLUE}{cltcolors.bcolors.BOLD}{key}/{cltcolors.bcolors.ENDC}"
-            )
-            extension = "    " if is_last_item else "│   "
-            print_dict_tree(value, prefix + extension, is_last_item, max_value_length)
+        if is_last:
+            chars += "└── "
         else:
-            # Handle long values by truncating
-            value_str = str(value)
-            if len(value_str) > max_value_length:
-                value_str = value_str[: max_value_length - 3] + "..."
+            chars += "├── "
+
+        return chars
+
+    def _format_dtype(dtype: np.dtype) -> str:
+        """Format numpy dtype for display."""
+        if dtype.names:  # Compound dtype
+            return f"compound({len(dtype.names)} fields)"
+        return str(dtype)
+
+    def _format_shape(shape: Tuple[int, ...]) -> str:
+        """Format array shape for display."""
+        if shape == ():
+            return "scalar"
+        return f"[{' × '.join(map(str, shape))}]"
+
+    def _format_attribute_value(value: Any) -> str:
+        """Format an attribute value for display."""
+        if isinstance(value, np.ndarray):
+            if value.size == 1:
+                return f" = {value.item()}"
+            elif value.size <= 5:
+                return f" = {value.tolist()}"
+            else:
+                return f" = [{_format_shape(value.shape)} array]"
+        elif isinstance(value, (bytes, np.bytes_)):
+            return f" = '{value.decode('utf-8', errors='ignore')}'"
+        else:
+            return f" = {value}"
+
+    def _print_attributes(obj: h5py.HLObject, depth: int, prefix: str = "") -> None:
+        """Print attributes of an HDF5 object."""
+        if not obj.attrs:
+            return
+
+        attrs = list(obj.attrs.items())
+        for i, (name, value) in enumerate(attrs[:max_attrs]):
+            is_last_attr = i == len(attrs[:max_attrs]) - 1
+            attr_prefix = _get_tree_chars(is_last_attr, depth + 1)
+
+            # Format attribute value
+            if show_values:
+                val_str = _format_attribute_value(value)
+            else:
+                val_str = ""
 
             print(
-                f"{prefix}{cltcolors.bcolors.OKWHITE}{current_prefix}{cltcolors.bcolors.OKYELLOW}{key}{cltcolors.bcolors.ENDC}: {cltcolors.bcolors.OKGRAY}{value_str}{cltcolors.bcolors.ENDC}"
+                f"{prefix}{attr_prefix}"
+                f"{Fore.YELLOW}@{name}{Style.RESET_ALL}"
+                f"{Fore.CYAN}{val_str}{Style.RESET_ALL}"
             )
+
+        if len(attrs) > max_attrs:
+            more_attrs = len(attrs) - max_attrs
+            attr_prefix = _get_tree_chars(True, depth + 1)
+            print(
+                f"{prefix}{attr_prefix}"
+                f"{Style.DIM}... {more_attrs} more attributes{Style.RESET_ALL}"
+            )
+
+    def _print_item(
+        name: str,
+        obj: h5py.HLObject,
+        depth: int = 0,
+        prefix: str = "",
+        is_last: bool = True,
+    ) -> None:
+        """Recursively print HDF5 items with proper handling of dataset limits."""
+        tree_chars = _get_tree_chars(is_last, depth)
+
+        if isinstance(obj, h5py.Group):
+            # Print group
+            print(
+                f"{prefix}{tree_chars}"
+                f"{Fore.RED}📁 {name}{Style.RESET_ALL} "
+                f"{Style.DIM}(group){Style.RESET_ALL}"
+            )
+
+            stats["groups"] += 1
+
+            # Print group attributes
+            _print_attributes(obj, depth, prefix)
+
+            # Print group contents with dataset limiting
+            items = list(obj.items())
+            datasets = [(n, o) for n, o in items if isinstance(o, h5py.Dataset)]
+            groups = [(n, o) for n, o in items if isinstance(o, h5py.Group)]
+
+            # Combine groups first, then limited datasets
+            display_items = groups + datasets[:max_datasets_per_group]
+
+            for i, (child_name, child_obj) in enumerate(display_items):
+                is_last_child = (i == len(display_items) - 1) and len(
+                    datasets
+                ) <= max_datasets_per_group
+                _print_item(child_name, child_obj, depth + 1, prefix, is_last_child)
+
+            # Show truncation message if needed
+            if len(datasets) > max_datasets_per_group:
+                truncated_count = len(datasets) - max_datasets_per_group
+                truncation_prefix = _get_tree_chars(True, depth + 1)
+                print(
+                    f"{prefix}{truncation_prefix}"
+                    f"{Style.DIM}... {truncated_count} more datasets (showing first {max_datasets_per_group}){Style.RESET_ALL}"
+                )
+
+        elif isinstance(obj, h5py.Dataset):
+            # Print dataset
+            shape_str = _format_shape(obj.shape)
+            dtype_str = _format_dtype(obj.dtype)
+            size_mb = obj.nbytes / (1024 * 1024)
+
+            print(
+                f"{prefix}{tree_chars}"
+                f"{Fore.GREEN}📊 {name}{Style.RESET_ALL} "
+                f"{Fore.BLUE}{shape_str}{Style.RESET_ALL} "
+                f"{Fore.MAGENTA}{dtype_str}{Style.RESET_ALL} "
+                f"{Style.DIM}({size_mb:.1f} MB){Style.RESET_ALL}"
+            )
+
+            stats["datasets"] += 1
+            stats["total_size"] += obj.nbytes
+
+            # Print dataset attributes
+            _print_attributes(obj, depth, prefix)
+
+    def _count_all_items(obj: h5py.HLObject, counts: Dict[str, int]) -> None:
+        """Recursively count all items in the HDF5 file."""
+        for item in obj.values():
+            if isinstance(item, h5py.Group):
+                counts["groups"] += 1
+                _count_all_items(item, counts)
+            elif isinstance(item, h5py.Dataset):
+                counts["datasets"] += 1
+                counts["total_size"] += item.nbytes
+
+    # Initialize statistics
+    stats = {"groups": 0, "datasets": 0, "total_size": 0}
+
+    try:
+        print(f"\n{Back.BLUE}{Fore.WHITE} HDF5 File Structure {Style.RESET_ALL}")
+        print(f"{Style.BRIGHT}File: {file_path}{Style.RESET_ALL}\n")
+
+        with h5py.File(file_path, "r") as f:
+            # Print root attributes if any
+            if f.attrs:
+                print(f"{Fore.YELLOW}Root Attributes:{Style.RESET_ALL}")
+                _print_attributes(f, -1, "")
+                print()
+
+            # Print file contents
+            items = list(f.items())
+            if not items:
+                print(f"{Style.DIM}(empty file){Style.RESET_ALL}")
+            else:
+                for i, (name, obj) in enumerate(items):
+                    is_last = i == len(items) - 1
+                    _print_item(name, obj, 0, "", is_last)
+
+            # Count all items for accurate statistics
+            total_counts = {"groups": 0, "datasets": 0, "total_size": 0}
+            _count_all_items(f, total_counts)
+
+        # Print legend
+        print(f"\n{Style.BRIGHT}Legend:{Style.RESET_ALL}")
+        print(f"📁 {Fore.RED}Groups{Style.RESET_ALL} - containers/folders")
+        print(f"📊 {Fore.GREEN}Datasets{Style.RESET_ALL} - data arrays")
+        print(f"🏷️ {Fore.YELLOW}Attributes{Style.RESET_ALL} - metadata")
+
+        # Print file statistics (use total counts, not display counts)
+        print(f"\n{Style.BRIGHT}File Statistics:{Style.RESET_ALL}")
+        print(f"📁 Total Groups: {total_counts['groups']}")
+        print(f"📊 Total Datasets: {total_counts['datasets']}")
+        print(f"💾 Total Size: {total_counts['total_size'] / (1024*1024):.1f} MB")
+
+        # Return statistics
+        return {
+            "groups": total_counts["groups"],
+            "datasets": total_counts["datasets"],
+            "total_size_mb": total_counts["total_size"] / (1024 * 1024),
+            "file_path": file_path,
+        }
+
+    except FileNotFoundError:
+        print(f"{Fore.RED}Error: File '{file_path}' not found{Style.RESET_ALL}")
+        raise
+    except OSError as e:
+        print(f"{Fore.RED}Error: Cannot open file '{file_path}' - {e}{Style.RESET_ALL}")
+        raise
+    except Exception as e:
+        print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+        raise
+
+
+#####################################################################################################
+def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
+    """
+    Print a simplified version of the HDF5 structure without colors (for basic terminals).
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the HDF5 file to analyze
+    max_datasets_per_group : int, default=20
+        Maximum number of datasets to display per group before truncating
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified file does not exist
+    OSError
+        If the file cannot be opened or is not a valid HDF5 file
+
+    Example
+    -------
+    >>> print_h5_structure_simple("data.h5", max_datasets_per_group=10)
+    HDF5 Structure: data.h5
+    --------------------------------------------------
+    📁 data/ (group)
+    📊 measurements [1000, 256] float64
+    📁 metadata/ (group)
+        📊 info () <U10
+    ... 5 more datasets
+    """
+
+    def _print_item_simple(name: str, obj: h5py.HLObject, depth: int = 0) -> None:
+        """Print items in simple format without colors."""
+        indent = "  " * depth
+
+        if isinstance(obj, h5py.Group):
+            print(f"{indent}📁 {name}/ (group)")
+
+            # Apply same dataset limiting logic
+            items = list(obj.items())
+            datasets = [(n, o) for n, o in items if isinstance(o, h5py.Dataset)]
+            groups = [(n, o) for n, o in items if isinstance(o, h5py.Group)]
+
+            # Show all groups, limited datasets
+            for child_name, child_obj in groups + datasets[:max_datasets_per_group]:
+                _print_item_simple(child_name, child_obj, depth + 1)
+
+            if len(datasets) > max_datasets_per_group:
+                truncated = len(datasets) - max_datasets_per_group
+                print(f"{'  ' * (depth + 1)}... {truncated} more datasets")
+
+        elif isinstance(obj, h5py.Dataset):
+            shape = obj.shape if obj.shape != () else "scalar"
+            print(f"{indent}📊 {name} {shape} {obj.dtype}")
+
+    try:
+        print(f"HDF5 Structure: {file_path}")
+        print("-" * 50)
+
+        with h5py.File(file_path, "r") as f:
+            for name, obj in f.items():
+                _print_item_simple(name, obj)
+
+    except Exception as e:
+        print(f"Error: {e}")
+        raise
 
 
 #####################################################################################################
@@ -4381,3 +4125,94 @@ def search_methods(obj, keyword, case_sensitive=False):
         )
 
 
+####################################################################################################
+# Print iterations progress
+def printprogressbar(
+    iteration,
+    total,
+    prefix="",
+    suffix="",
+    decimals=1,
+    length=100,
+    fill="█",
+    printend="\r",
+):
+    """
+    Call in a loop to create terminal progress bar
+
+    Parameters
+    ----------
+
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printend    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledlength = int(length * iteration // total)
+    bar = fill * filledlength + "-" * (length - filledlength)
+    print(f"\r{prefix} |{bar}| {percent}% {suffix}", end=printend)
+    # Print New Line on Complete
+    if iteration == total:
+        print()
+
+
+#####################################################################################################
+class SmartFormatter(argparse.HelpFormatter):
+    """
+    Class to format the help message
+
+    This class is used to format the help message in the argparse module. It allows to use the "R|" prefix to print the help message as raw text.
+
+    For example:
+    parser = argparse.ArgumentParser(description='''R|This is a raw text help message.
+    It can contain multiple lines.
+    It will be printed as raw text.''', formatter_class=SmartFormatter)
+
+    parser.print_help()
+
+    Parameters
+    ----------
+    argparse : argparse.HelpFormatter
+        HelpFormatter class from the argparse module
+
+    Returns
+    -------
+    argparse.HelpFormatter
+        HelpFormatter class from the argparse module
+
+    """
+
+    ###################################################################################################
+    def split_lines(self, text, width):
+        """
+        This function is used to split the lines of the help message.
+        It allows to use the "R|" prefix to print the help message as raw text.
+        For example:
+        parser = argparse.ArgumentParser(description='''R|This is a raw text help message.
+        It can contain multiple lines.
+        It will be printed as raw text.''', formatter_class=SmartFormatter)
+        parser.print_help()
+
+        Parameters
+        ----------
+        text : str
+            Text to be split
+        width : int
+            Width of the text
+
+        Returns
+        -------
+        text : str
+            Text split in lines
+
+        """
+        if text.startswith("R|"):
+            return text[2:].splitlines()
+        # this is the RawTextHelpFormatter.split_lines
+        return argparse.HelpFormatter.split_lines(self, text, width)
