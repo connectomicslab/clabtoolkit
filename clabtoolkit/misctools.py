@@ -1291,40 +1291,60 @@ def to_list(item: Any) -> List:
 
 
 ####################################################################################################
-def list_intercept(list1: list, list2: list):
+def list_intercept(list1: List[Any], list2: List[Any]) -> List[Any]:
     """
-    Function to intercept the elements from 2 different lists.
+    Function to find the intersection of elements from 2 different lists.
+    Preserves the order of elements as they appear in list1.
 
     Parameters
     ----------
     list1 : list
         List of elements
+
     list2 : list
         List of elements
 
     Returns
     -------
     int_list: list
-        List of elements that are in both lists
+        List of elements that are in both lists, in the order they appear in list1.
+
+    Raises
+    ------
+    ValueError
+        If list1 or list2 are not lists.
 
     Examples
-    --------------
+    --------
         >>> list1 = [1, 2, 3, 4, 5]
         >>> list2 = [3, 4, 5, 6, 7]
         >>> int_list = list_intercept(list1, list2)
         >>> print(int_list)  # Output: [3, 4, 5]
 
+        >>> # Preserves order from list1
+        >>> list1 = [5, 3, 4, 1]
+        >>> list2 = [1, 2, 3, 4, 5]
+        >>> print(list_intercept(list1, list2))  # Output: [5, 3, 4, 1]
+
+        >>> # Handles duplicates in list1
+        >>> list1 = [1, 2, 2, 3, 3, 3]
+        >>> list2 = [2, 3, 4]
+        >>> print(list_intercept(list1, list2))  # Output: [2, 2, 3, 3, 3]
+
     """
 
-    # Rise an error if list1 or list2 are not lists
+    # Raise an error if list1 or list2 are not lists
     if not isinstance(list1, list):
         raise ValueError("The input list1 must be a list.")
 
     if not isinstance(list2, list):
         raise ValueError("The input list2 must be a list.")
 
+    # Convert list2 to a set for O(1) lookup time
+    set2 = set(list2)
+
     # Create a list of elements that are in both lists
-    int_list = [value for value in list1 if value in list2]
+    int_list = [value for value in list1 if value in set2]
 
     return int_list
 
