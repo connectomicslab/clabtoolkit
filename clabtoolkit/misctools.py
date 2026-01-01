@@ -2261,37 +2261,78 @@ def load_json(json_file_path: Union[str, Path]) -> dict:
 
 
 #####################################################################################################
-def remove_empty_keys_or_values(d: dict) -> dict:
+def remove_empty_keys_or_values(
+    d: dict,
+    remove_none: bool = False,
+    remove_empty_collections: bool = True,
+    in_place: bool = False,
+) -> dict:
     """
-    Remove dictionary entries with empty keys, keys with only spaces, or empty values.
+    Remove dictionary entries with empty/whitespace keys or empty values.
+
+    By default, removes:
+    - Empty string keys ('')
+    - Whitespace-only keys ('   ')
+    - Empty string values ('')
+    - Whitespace-only values ('   ')
+    - Empty collections ([], {}, set(), ())
+
+    Preserves valid falsy values like 0, False, None unless explicitly configured.
 
     Parameters
     ----------
-
     d : dict
         The dictionary to remove entries from.
 
     Returns
-    --------
-
-    d : dict
-        The dictionary with the empty entries removed.
+    -------
+    dict
+        The cleaned dictionary.
 
     Examples
-    --------------
-        >>> my_dict = {'key1': 'value1', 'key2': '', '': 'value3', 'key4': None}
-        >>> cleaned_dict = remove_empty_keys_or_values(my_dict)
-        >>> print(cleaned_dict)  # Output: {'key1': 'value1', 'key4': None}
-    """
-    keys_to_remove = [
-        key
-        for key in d
-        if not key
-        or (isinstance(key, str) and key.strip() == "")
-        or not d[key]
-        or (isinstance(d[key], str) and d[key].strip() == "")
-    ]
+    --------
+    >>> my_dict = {'key1': 'value1', 'key2': '', '': 'value3', '   ': 'value4',
+    ...            'key5': None, 'key6': 0, 'key7': False, 'key8': [], 'key9': {}}
 
+    >>> # Default behavior - removes empty strings and empty collections
+    >>> remove_empty_keys_or_values(my_dict)
+    {'key1': 'value1', 'key5': None, 'key6': 0, 'key7': False}
+
+    >>> # Also remove None
+    >>> remove_empty_keys_or_values(my_dict, remove_none=True)
+    {'key1': 'value1', 'key6': 0, 'key7': False}
+
+    >>> # Keep empty collections if needed
+    >>> remove_empty_keys_or_values(my_dict, remove_empty_collections=False)
+    {'key1': 'value1', 'key5': None, 'key6': 0, 'key7': False, 'key8': [], 'key9': {}}
+    """
+    # Work on copy unless in_place is True
+    result = d if in_place else d.copy()
+
+    keys_to_remove = []
+
+    for key, value in result.items():
+        # Check for empty/whitespace keys
+        if _is_empty_or_whitespace(key):
+            keys_to_remove.append(key)
+            continue
+
+        # Check for empty/whitespace string values
+        if _is_empty_or_whitespace(value):
+            keys_to_remove.append(key)
+            continue
+
+        # Optionally remove None
+        if remove_none and value is None:
+            keys_to_remove.append(key)
+            continue
+
+        # Remove empty collections (enabled by default)
+        if remove_empty_collections and _is_empty_collection(value):
+            keys_to_remove.append(key)
+            continue
+
+    # Remove identified keys
     for key in keys_to_remove:
         del d[key]
 
