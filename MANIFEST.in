@@ -14,6 +14,9 @@ recursive-include docs *.rst *.py *.bat *.png
 recursive-include docs Makefile
 include docs/make.bat
 
+# Include usage examples
+recursive-include usage_examples *.ipynb *.py *.md
+
 # EXCLUDE tests data completely  
 prune tests
 
