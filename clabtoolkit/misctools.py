@@ -38,7 +38,7 @@ import textwrap
 from typing import Union, List, Optional
 
 from . import colorstools as cltcolors
-from .misctools_utils import ExplorerDict, update_dict
+from .misctools_utils import ExplorerDict
 
 # Re-export for convenient access
 __all__ = ["ExplorerDict", "update_dict"]
