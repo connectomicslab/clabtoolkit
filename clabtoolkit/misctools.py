@@ -2088,91 +2088,197 @@ def create_names_from_indices(
 
 ####################################################################################################
 def correct_names(
-    regnames: list,
+    regnames: List[str],
     prefix: str = None,
-    sufix: str = None,
-    lower: bool = False,
-    remove: list = None,
-    replace: list = None,
-):
+    suffix: str = None,
+    case: Literal["lower", "upper", "title", "capitalize"] = None,
+    remove: List[str] = None,
+    replacements: Union[Dict[str, str], List[List[str]]] = None,
+    remove_consecutive: Union[str, List[str]] = None,
+    strip: bool = True,
+    skip_existing_prefix: bool = True,
+    skip_existing_suffix: bool = True,
+) -> List[str]:
     """
-    Correcting region names. It can be used to add a prefix or sufix to the region names, lower the region names, remove or replace substrings in the region names.
+    Transform region names with multiple operations: add prefix/suffix, change case,
+    remove/replace substrings, and remove consecutive duplicate characters.
+
+    Operations are applied in this order:
+    1. Strip whitespace (if strip=True)
+    2. Remove substrings
+    3. Replacements
+    4. Remove consecutive duplicates
+    5. Change case (lower/upper/title/capitalize)
+    6. Add prefix
+    7. Add suffix
 
     Parameters
     ----------
-    regnames : list
-        List of region names
-    prefix : str
-        Prefix to add to the region names. Default is None
-    sufix : str
-        Sufix to add to the region names. Default is None
-    lower : bool
-        Boolean to indicate if the region names should be lower case. Default is False
-    remove : list
-        List of substrings to remove from the region names. Default is None
-    replace : list
-        List of substrings to replace in the region names. Default is None.
-        It can be a list of tuples or a list of lists. The first element is the substring to replace and the second element is the substring to replace with.
-        For example: replace = [["old", "new"], ["old2", "new2"]]
+    regnames : list of str
+        List of region names to transform.
+    prefix : str, optional
+        Prefix to add to region names. Default is None.
+    suffix : str, optional
+        Suffix to add to region names. Default is None.
+    case : {'lower', 'upper', 'title', 'capitalize'}, optional
+        Case transformation to apply:
+        - 'lower': Convert to lowercase (e.g., 'HELLO' -> 'hello')
+        - 'upper': Convert to uppercase (e.g., 'hello' -> 'HELLO')
+        - 'title': Title case (e.g., 'hello world' -> 'Hello World')
+        - 'capitalize': Capitalize first letter (e.g., 'hello world' -> 'Hello world')
+        Default is None (no case transformation).
+    remove : list of str, optional
+        List of substrings to remove from region names. Default is None.
+    replacements : dict or list of lists, optional
+        Substrings to replace. Can be:
+        - Dictionary: {old: new, ...}
+        - List of pairs: [[old, new], ...]
+        Default is None.
+    remove_consecutive : str or list of str, optional
+        Character(s) whose consecutive duplicates should be removed.
+        Default is None.
+    strip : bool, optional
+        Strip leading/trailing whitespace from names. Default is True.
+    skip_existing_prefix : bool, optional
+        If True, don't add prefix if name already starts with it. Default is True.
+    skip_existing_suffix : bool, optional
+        If True, don't add suffix if name already ends with it. Default is True.
 
     Returns
     -------
-    regnames: list
-        List of corrected region names
+    list of str
+        List of transformed region names.
+
+    Raises
+    ------
+    ValueError
+        If case parameter has invalid value or if inputs are invalid.
+    TypeError
+        If regnames is not a list or contains non-string elements.
 
     Examples
-    --------------
-        >>> regnames = ["ctx-lh-1", "ctx-rh-2", "ctx-lh-3"]
-        >>> prefix = "ctx-"
-        >>> sufix = "-lh"
-        >>> lower = True
-        >>> remove = ["ctx-"]
-        >>> replace = [["lh", "left"], ["rh", "right"]]
-        >>> corrected_names = correct_names(regnames, prefix, sufix, lower, remove, replace)
-        >>> print(corrected_names)  # Output: ['left-1-lh', 'right-2-lh', 'left-3-lh']
+    --------
+    Case transformations:
+    >>> regnames = ["CTX-LH-1", "CTX-RH-2"]
+    >>> correct_names(regnames, case="lower")
+    ['ctx-lh-1', 'ctx-rh-2']
+
+    >>> correct_names(regnames, case="title")
+    ['Ctx-Lh-1', 'Ctx-Rh-2']
+
+    >>> regnames = ["hello world", "foo bar"]
+    >>> correct_names(regnames, case="capitalize")
+    ['Hello world', 'Foo bar']
+
+    Remove and replace:
+    >>> regnames = ["ctx-lh-1", "ctx-rh-2", "ctx-lh-3"]
+    >>> correct_names(regnames, remove=["ctx-"], replacements={"lh": "left", "rh": "right"})
+    ['left-1', 'right-2', 'left-3']
+
+    Using list format for replacements:
+    >>> regnames = ["ctx-lh-1", "ctx-rh-2"]
+    >>> correct_names(regnames, replacements=[["lh", "left"], ["rh", "right"]])
+    ['ctx-left-1', 'ctx-right-2']
+
+    Add prefix and suffix:
+    >>> regnames = ["region1", "region2"]
+    >>> correct_names(regnames, prefix="ctx-", suffix="-lh")
+    ['ctx-region1-lh', 'ctx-region2-lh']
+
+    Remove consecutive duplicates:
+    >>> regnames = ["path//to//region", "name__with__underscores"]
+    >>> correct_names(regnames, remove_consecutive=["/", "_"])
+    ['path/to/region', 'name_with_underscores']
+
+    Complex example:
+    >>> regnames = ["CTX__LH__1", "CTX__RH__2"]
+    >>> correct_names(
+    ...     regnames,
+    ...     remove=["CTX"],
+    ...     replacements={"LH": "left", "RH": "right"},
+    ...     remove_consecutive="_",
+    ...     case="lower",
+    ...     prefix="cortex-"
+    ... )
+    ['cortex-_left_1', 'cortex-_right_2']
 
     """
+    # Input validation
+    if not isinstance(regnames, list):
+        raise TypeError(f"regnames must be a list, got {type(regnames).__name__}")
 
-    # Add prefix to the region names
-    if prefix is not None:
-        # If temp_name do not starts with ctx- then add it
-        regnames = [
-            name if name.startswith(prefix) else prefix + "{}".format(name)
-            for name in regnames
-        ]
+    if not all(isinstance(name, str) for name in regnames):
+        raise TypeError("All elements in regnames must be strings")
 
-    # Add sufix to the region names
-    if sufix is not None:
-        # If temp_name do not ends with - then add it
-        regnames = [
-            name if name.endswith(sufix) else "{}".format(name) + sufix
-            for name in regnames
-        ]
+    # Validate case parameter
+    valid_cases = ["lower", "upper", "title", "capitalize"]
+    if case is not None and case not in valid_cases:
+        raise ValueError(f"case must be one of {valid_cases}, got '{case}'")
 
-    # Lower the region names
-    if lower:
-        regnames = [name.lower() for name in regnames]
+    # Work with a copy to avoid modifying the original
+    names = regnames.copy()
 
-    # Remove the substring item from the region names
+    # 1. Strip whitespace
+    if strip:
+        names = [name.strip() for name in names]
+
+    # 2. Remove substrings
     if remove is not None:
-
+        if not isinstance(remove, list):
+            raise TypeError("'remove' must be a list of strings")
         for item in remove:
+            names = [name.replace(item, "") for name in names]
 
-            # Remove the substring item from the region names
-            regnames = [name.replace(item, "") for name in regnames]
+    # 3. Apply replacements
+    if replacements is not None:
+        if isinstance(replacements, dict):
+            for old, new in replacements.items():
+                names = [name.replace(old, new) for name in names]
+        elif isinstance(replacements, list):
+            # Handle list of [old, new] pairs
+            for pair in replacements:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    raise ValueError(
+                        "Each replacement in list format must be [old, new] pair"
+                    )
+                old, new = pair
+                names = [name.replace(old, new) for name in names]
+        else:
+            raise TypeError("'replacements' must be a dict or list of [old, new] pairs")
 
-    # Replace the substring item from the region names
-    if replace is not None:
+    # 4. Remove consecutive duplicate characters
+    if remove_consecutive is not None:
+        names = remove_consecutive_duplicates(names, remove_consecutive)
 
-        if isinstance(replace, list):
-            if all(isinstance(item, list) for item in replace):
-                for item in replace:
-                    # Replace the substring item from the region names
-                    regnames = [name.replace(item[0], item[1]) for name in regnames]
-            else:
-                regnames = [name.replace(replace[0], replace[1]) for name in regnames]
+    # 5. Change case
+    if case == "lower":
+        names = [name.lower() for name in names]
+    elif case == "upper":
+        names = [name.upper() for name in names]
+    elif case == "title":
+        names = [name.title() for name in names]
+    elif case == "capitalize":
+        names = [name.capitalize() for name in names]
 
-    return regnames
+    # 6. Add prefix
+    if prefix is not None:
+        if skip_existing_prefix:
+            names = [
+                name if name.startswith(prefix) else f"{prefix}{name}" for name in names
+            ]
+        else:
+            names = [f"{prefix}{name}" for name in names]
+
+    # 7. Add suffix
+    if suffix is not None:
+        if skip_existing_suffix:
+            names = [
+                name if name.endswith(suffix) else f"{name}{suffix}" for name in names
+            ]
+        else:
+            names = [f"{name}{suffix}" for name in names]
+
+    return names
 
 
 #####################################################################################################
