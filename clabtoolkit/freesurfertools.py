@@ -3992,7 +3992,7 @@ class FreeSurferSubject:
                 # print them as integer numbers
                 unique_vals = unique_vals.astype(int)
 
-                values, idx = cltmisc.ismember_from_list(fs_codes, unique_vals.tolist())
+                values, idx = cltmisc.ismember(fs_codes, unique_vals.tolist())
 
                 # select the fs_names and fs_colors in the indexes idx
                 selected_fs_code = [fs_codes[i] for i in idx]

@@ -1350,38 +1350,67 @@ def list_intercept(list1: List[Any], list2: List[Any]) -> List[Any]:
 
 
 ####################################################################################################
-def ismember_from_list(a, b):
+def ismember(
+    a: Union[List[Any], np.ndarray], b: Union[List[Any], np.ndarray]
+) -> Tuple[List[Any], List[int]]:
     """
-    Function to check if elements of a are in b
+    Simpler version that returns matching values and their positions in 'a'.
 
     Parameters
     ----------
-    a : list
-        List of elements to check
-    b : list
-        List of elements to check against
+    a : list or np.ndarray
+        List or array of elements to check.
+
+    b : list or np.ndarray
+        List or array of elements to check against.
 
     Returns
     -------
-    values: list
-        List of unique elements in a
-    idx: list
-        List of indices of elements in a that are in b
+    matching_values : list
+        Values from 'a' that are also in 'b' (preserves order and duplicates from 'a').
+
+    positions : list
+        Indices in 'a' where matching values are found.
 
     Examples
-    --------------
+    --------
         >>> a = [1, 2, 3, 4, 5]
         >>> b = [3, 4, 5, 6, 7]
-        >>> values, idx = ismember_from_list(a, b)
-        >>> print(values)  # Output: [3, 4, 5]
-        >>> print(idx)     # Output: [0, 1, 2]
+        >>> values, positions = ismember_simple(a, b)
+        >>> print(values)      # Output: [3, 4, 5]
+        >>> print(positions)   # Output: [2, 3, 4]
+
+        >>> # With duplicates
+        >>> a = [1, 3, 2, 3, 5]
+        >>> b = [3, 5, 7]
+        >>> values, positions = ismember_simple(a, b)
+        >>> print(values)      # Output: [3, 3, 5]
+        >>> print(positions)   # Output: [1, 3, 4]
     """
 
-    values, indices = np.unique(a, return_inverse=True)
-    is_in_list = np.isin(a, b)
-    idx = indices[is_in_list].astype(int)
+    # Validate inputs
+    if not isinstance(a, (list, np.ndarray)):
+        raise ValueError("Input 'a' must be a list or numpy array.")
 
-    return values, idx
+    if not isinstance(b, (list, np.ndarray)):
+        raise ValueError("Input 'b' must be a list or numpy array.")
+
+    # Convert to list if numpy array
+    a_list = a.tolist() if isinstance(a, np.ndarray) else a
+
+    # Create set from 'b' for O(1) lookup
+    b_set = set(b.tolist() if isinstance(b, np.ndarray) else b)
+
+    # Find matching values and their positions
+    matching_values = []
+    positions = []
+
+    for i, val in enumerate(a_list):
+        if val in b_set:
+            matching_values.append(val)
+            positions.append(i)
+
+    return matching_values, positions
 
 
 ####################################################################################################
