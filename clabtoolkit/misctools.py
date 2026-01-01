@@ -2340,9 +2340,21 @@ def remove_empty_keys_or_values(
 
     # Remove identified keys
     for key in keys_to_remove:
-        del d[key]
+        del result[key]
 
-    return d
+    return result
+
+
+def _is_empty_or_whitespace(obj) -> bool:
+    """Check if object is an empty or whitespace-only string."""
+    if isinstance(obj, str):
+        return obj.strip() == ""
+    return False
+
+
+def _is_empty_collection(obj) -> bool:
+    """Check if object is an empty collection (list, dict, set, tuple)."""
+    return isinstance(obj, (list, dict, set, tuple)) and len(obj) == 0
 
 
 ####################################################################################################
@@ -4098,75 +4110,156 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
 
 
 #####################################################################################################
-def search_methods(obj, keyword, case_sensitive=False):
+def search_methods(
+    obj,
+    keyword,
+    case_sensitive=False,
+    include_private=False,
+    callables_only=True,
+    max_results=None,
+):
     """
     Search for methods/attributes containing a keyword in name or docstring.
 
     Parameters
-        obj: The object to search in
-        keyword (str): The keyword to search for
-        case_sensitive (bool): Whether the search should be case sensitive
-
-    Returns
-        None: Prints the search results to stdout
+    ----------
+    obj : object
+        The object to search in
+    keyword : str
+        The keyword to search for
+    case_sensitive : bool, optional
+        Whether the search should be case sensitive (default: False)
+    include_private : bool, optional
+        Include private/dunder methods (default: False)
+    callables_only : bool, optional
+        Only search callable methods/functions (default: True)
+    max_results : int, optional
+        Maximum number of results to show (default: None, show all)
 
     Examples
-        >>> search_methods(str, "find")
-        >>> search_methods(my_toolkit, "config", case_sensitive=True)
-        >>> search_methods(pandas.DataFrame, "drop")
-
-    Note:
-        Searches both method names and their docstrings for the keyword.
-        Results are displayed with colorized output showing matches.
+    --------
+    >>> search_methods(str, "find")
+    >>> search_methods(my_toolkit, "config", case_sensitive=True)
+    >>> search_methods(pandas.DataFrame, "drop", include_private=True)
     """
-    if not case_sensitive:
-        keyword = keyword.lower()
+    search_key = keyword if case_sensitive else keyword.lower()
 
     print(
         f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}🔍 SEARCH RESULTS for '{keyword}'{cltcolors.bcolors.ENDC}"
     )
     print(
-        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*40}{cltcolors.bcolors.ENDC}"
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*60}{cltcolors.bcolors.ENDC}\n"
     )
 
     members = inspect.getmembers(obj)
-    found = False
+    results = []
 
     for name, value in members:
-        name_match = keyword in (name.lower() if not case_sensitive else name)
-        doc_match = False
+        # Filter private/dunder methods if requested
+        if not include_private and (name.startswith("_")):
+            continue
 
-        # Check docstring
+        # Filter to only callables if requested
+        if callables_only and not callable(value):
+            continue
+
+        # Check name match
+        compare_name = name if case_sensitive else name.lower()
+        name_match = search_key in compare_name
+
+        # Check docstring match (only first line for efficiency)
         doc = inspect.getdoc(value)
+        doc_match = False
+        matched_line = None
+
         if doc:
-            doc_match = keyword in (doc.lower() if not case_sensitive else doc)
+            # Search in first paragraph or first 3 lines
+            doc_preview = "\n".join(doc.split("\n")[:3])
+            compare_doc = doc_preview if case_sensitive else doc_preview.lower()
+            if search_key in compare_doc:
+                doc_match = True
+                # Find which line matched
+                for line in doc.split("\n")[:3]:
+                    compare_line = line if case_sensitive else line.lower()
+                    if search_key in compare_line:
+                        matched_line = line.strip()
+                        break
 
         if name_match or doc_match:
-            found = True
-            print(
-                f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKYELLOW}✨ {name}{cltcolors.bcolors.ENDC}"
-            )
+            results.append((name, value, name_match, doc_match, matched_line, doc))
 
-            if inspect.ismethod(value) or inspect.isfunction(value):
-                try:
-                    sig = inspect.signature(value)
-                    print(
-                        f"  {cltcolors.bcolors.OKGRAY}📋 Signature:{cltcolors.bcolors.ENDC} {cltcolors.bcolors.OKWHITE}{sig}{cltcolors.bcolors.ENDC}"
-                    )
-                except:
-                    pass
+    # Apply max_results limit
+    if max_results and len(results) > max_results:
+        results = results[:max_results]
+        truncated = True
+    else:
+        truncated = False
 
-            if doc:
-                first_line = doc.split("\n")[0]
-                if len(first_line) > 80:
-                    first_line = first_line[:77] + "..."
+    # Display results
+    for name, value, name_match, doc_match, matched_line, doc in results:
+        # Header with match type indicator
+        match_type = []
+        if name_match:
+            match_type.append("NAME")
+        if doc_match:
+            match_type.append("DOC")
+
+        match_indicator = f"[{' + '.join(match_type)}]"
+
+        print(
+            f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.OKYELLOW}✨ {name}{cltcolors.bcolors.ENDC} "
+            f"{cltcolors.bcolors.OKGRAY}{match_indicator}{cltcolors.bcolors.ENDC}"
+        )
+
+        # Show signature for callables
+        if inspect.ismethod(value) or inspect.isfunction(value):
+            try:
+                sig = inspect.signature(value)
                 print(
-                    f"  {cltcolors.bcolors.ITALIC}{cltcolors.bcolors.OKGRAY}{first_line}{cltcolors.bcolors.ENDC}"
+                    f"  {cltcolors.bcolors.OKGRAY}📋 Signature:{cltcolors.bcolors.ENDC} "
+                    f"{cltcolors.bcolors.OKWHITE}{sig}{cltcolors.bcolors.ENDC}"
+                )
+            except:
+                pass
+
+        # Show matched docstring line or first line
+        if doc:
+            display_line = matched_line if matched_line else doc.split("\n")[0]
+            if len(display_line) > 80:
+                display_line = display_line[:77] + "..."
+
+            # Highlight the keyword in the line
+            if not case_sensitive:
+                # Case-insensitive highlighting
+                import re
+
+                pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+                display_line = pattern.sub(
+                    f"{cltcolors.bcolors.WARNING}\\g<0>{cltcolors.bcolors.OKGRAY}",
+                    display_line,
+                )
+            else:
+                display_line = display_line.replace(
+                    keyword,
+                    f"{cltcolors.bcolors.WARNING}{keyword}{cltcolors.bcolors.OKGRAY}",
                 )
 
-            print()
+            print(
+                f"  {cltcolors.bcolors.ITALIC}{cltcolors.bcolors.OKGRAY}{display_line}{cltcolors.bcolors.ENDC}"
+            )
 
-    if not found:
+        print()
+
+    # Summary
+    print(
+        f"{cltcolors.bcolors.BOLD}{cltcolors.bcolors.HEADER}{'='*60}{cltcolors.bcolors.ENDC}"
+    )
+    if results:
+        summary = f"Found {len(results)} match{'es' if len(results) != 1 else ''}"
+        if truncated:
+            summary += f" (showing first {max_results})"
+        print(f"{cltcolors.bcolors.OKGREEN}✓ {summary}{cltcolors.bcolors.ENDC}")
+    else:
         print(
             f"{cltcolors.bcolors.WARNING}❌ No matches found for '{keyword}'{cltcolors.bcolors.ENDC}"
         )
