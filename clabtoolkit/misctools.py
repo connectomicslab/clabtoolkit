@@ -3,6 +3,7 @@ import h5py
 import uuid
 
 from typing import Union, Dict, List, Tuple, Set, Any, Optional, Literal
+from collections.abc import Iterable
 
 
 import shlex
@@ -1242,14 +1243,14 @@ def replace_substrings(
 
 
 #################################################################################################
-def to_list(item):
+def to_list(item: Any) -> List:
     """
     Convert single items to lists for consistent handling.
 
     Parameters
     ----------
     item : any
-        A single item or a list of items.
+        A single item, list, tuple, or other iterable.
 
     Returns
     -------
@@ -1266,10 +1267,27 @@ def to_list(item):
     ['hello']
     >>> to_list(["a", "b"])
     ['a', 'b']
+    >>> to_list((1, 2, 3))
+    [1, 2, 3]
+    >>> to_list({1, 2, 3})
+    [1, 2, 3]
+    >>> to_list(range(3))
+    [0, 1, 2]
     """
-    if not isinstance(item, list):
+    # If already a list, return as is
+    if isinstance(item, list):
+        return item
+
+    # Strings are iterable but should be wrapped, not converted to list of chars
+    if isinstance(item, str):
         return [item]
-    return item
+
+    # Convert other iterables (tuple, set, range, etc.) to list
+    if isinstance(item, Iterable):
+        return list(item)
+
+    # For non-iterable items, wrap in a list
+    return [item]
 
 
 ####################################################################################################
