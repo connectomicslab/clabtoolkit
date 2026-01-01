@@ -12,8 +12,8 @@ import copy
 
 # Importing local modules
 from . import misctools as cltmisc
-from . import parcellationtools as cltparc
 from . import colorstools as cltcol
+from . import pointstools as cltpts
 
 from dipy.segment.clustering import QuickBundlesX, QuickBundles
 from dipy.tracking.streamline import set_number_of_points
@@ -429,7 +429,7 @@ class Tractogram:
         # Smooth individual streamlines
         for i, streamline in enumerate(streamlines):
 
-            smooth_st = cltmisc.smooth_curve_coordinates(
+            smooth_st = cltpts.smooth_curve_coordinates(
                 streamline, iterations=iterations, sigma=sigma
             )
             streamlines[i] = smooth_st
