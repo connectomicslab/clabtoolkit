@@ -1160,8 +1160,7 @@ def remove_substrings(
 ####################################################################################################
 def replace_substrings(
     strings: Union[str, List[str]],
-    substrings: Union[str, List[str]],
-    replaced_by: Union[str, List[str]],
+    replacements: Dict[str, str],
     bool_case: bool = True,
 ) -> List[str]:
     """
@@ -1171,10 +1170,11 @@ def replace_substrings(
     ----------
     strings : Union[str, List[str]]
         A string or a list of strings to modify.
-    substrings : Union[str, List[str]]
-        A string or list of substrings or regular expression patterns to search for.
-    replaced_by : Union[str, List[str]]
-        A string or list of replacement strings corresponding to each substring pattern.
+
+    replacements : Dict[str, str]
+        A dictionary where keys are substrings or regular expression patterns to search for,
+        and values are the replacement strings.
+
     bool_case : bool, optional
         If False, the matching will be case-insensitive. Default is True (case-sensitive).
 
@@ -1186,46 +1186,55 @@ def replace_substrings(
     Raises
     ------
     TypeError
-        If inputs are not strings or lists of strings.
+        If inputs are not of the correct type.
     ValueError
-        If `substrings` and `replaced_by` have different lengths.
+        If replacements dictionary is empty.
 
     Examples
     --------
-    >>> replace_substrings_regex("Hello_World", "World", "Earth", bool_case=False)
+    >>> replace_substrings("Hello_World", {"World": "Earth"}, bool_case=False)
     ['Hello_Earth']
 
-    >>> replace_substrings_regex(["abc123", "ABC123"], ["abc", "123"], ["xyz", "789"], bool_case=False)
+    >>> replace_substrings(["abc123", "ABC123"], {"abc": "xyz", "123": "789"}, bool_case=False)
     ['xyz789', 'xyz789']
+
+    >>> # Case-sensitive replacement
+    >>> replace_substrings(["Hello_World", "hello_world"], {"hello": "Hi"}, bool_case=True)
+    ['Hello_World', 'Hi_world']
+
+    >>> # Multiple replacements
+    >>> replace_substrings("apple_pie_and_cherry_pie", {"pie": "tart", "_and_": " & "})
+    ['apple_tart & cherry_tart']
     """
-    # Normalize inputs to lists
+    # Normalize strings to list
     if isinstance(strings, str):
         strings = [strings]
-    if isinstance(substrings, str):
-        substrings = [substrings]
-    if isinstance(replaced_by, str):
-        replaced_by = [replaced_by]
 
     # Validate inputs
-    if not (
-        isinstance(strings, list)
-        and all(isinstance(s, str) for s in strings)
-        and isinstance(substrings, list)
-        and all(isinstance(s, str) for s in substrings)
-        and isinstance(replaced_by, list)
-        and all(isinstance(s, str) for s in replaced_by)
+    if not isinstance(strings, list) or not all(isinstance(s, str) for s in strings):
+        raise TypeError("strings must be a string or a list of strings.")
+
+    if not isinstance(replacements, dict):
+        raise TypeError("replacements must be a dictionary.")
+
+    if not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in replacements.items()
     ):
-        raise TypeError("All inputs must be strings or lists of strings.")
+        raise TypeError("All keys and values in replacements must be strings.")
 
-    if len(substrings) != len(replaced_by):
-        raise ValueError("`substrings` and `replaced_by` must have the same length.")
+    if len(replacements) == 0:
+        raise ValueError("replacements dictionary cannot be empty.")
 
+    # Compile regex patterns with appropriate flags
     flags = 0 if bool_case else re.IGNORECASE
-    compiled_patterns = [re.compile(pat, flags) for pat in substrings]
+    compiled_patterns = {
+        re.compile(pattern, flags): replacement
+        for pattern, replacement in replacements.items()
+    }
 
     result = []
     for s in strings:
-        for pattern, replacement in zip(compiled_patterns, replaced_by):
+        for pattern, replacement in compiled_patterns.items():
             s = pattern.sub(replacement, s)
         result.append(s)
 
