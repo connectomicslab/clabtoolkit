@@ -1628,3 +1628,52 @@ def merge_pointclouds(
     merged_tractogram.colortables[map_name] = color_table_dict
 
     return merged_tractogram
+
+
+######################################################################################################
+def smooth_curve_coordinates(points, sigma=1.0, iterations=1, window_size=5):
+    """
+    Smooth a 3D curve using Gaussian-weighted neighborhood averaging.
+
+    Parameters
+    ----------
+    points : ndarray, shape (N, 3)
+        Array of 3D coordinates forming an ordered curve.
+    sigma : float, optional
+        Standard deviation for Gaussian weighting. Default is 1.0.
+    iterations : int, optional
+        Number of smoothing iterations. Default is 1.
+    window_size : int, optional
+        Size of the neighborhood window (must be odd). Default is 5.
+
+    Returns
+    -------
+    smoothed : ndarray, shape (N, 3)
+        Smoothed 3D coordinates.
+    """
+    smoothed = points.copy()
+    half_window = window_size // 2
+
+    # Create Gaussian weights
+    x = np.arange(-half_window, half_window + 1)
+    weights = np.exp(-0.5 * (x / sigma) ** 2)
+    weights /= weights.sum()
+
+    for _ in range(iterations):
+        new_points = np.zeros_like(smoothed)
+
+        for i in range(len(smoothed)):
+            start = max(0, i - half_window)
+            end = min(len(smoothed), i + half_window + 1)
+
+            w_start = half_window - (i - start)
+            w_end = w_start + (end - start)
+
+            local_weights = weights[w_start:w_end]
+            local_weights /= local_weights.sum()
+
+            new_points[i] = np.sum(smoothed[start:end] * local_weights[:, None], axis=0)
+
+        smoothed = new_points
+
+    return smoothed
