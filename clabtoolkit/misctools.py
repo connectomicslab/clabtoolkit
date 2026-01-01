@@ -178,24 +178,23 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 
     Returns
     -------
-    closest_date: str
+    closest_date : str
         Closest date in the list to the target date
 
-    closest_index: int
+    closest_index : int
         Index of the closest date in the list
 
-    time_diff: int
+    time_diff : int
         Time difference in days between the target date and the closest date in the list.
-        If the target date is not in the list, it will return the time difference in days.
 
     Examples
-    --------------
-        >>> dates_list = ["20230101", "20230201", "20230301"]
-        >>> target_date = "20230215"
-        >>> closest_date, closest_index, time_diff = find_closest_date(dates_list, target_date)
-        >>> print(closest_date)  # Output: "20230201"
-        >>> print(closest_index)  # Output: 1
-        >>> print(time_diff)      # Output: 14
+    --------
+    >>> dates_list = ["20230101", "20230201", "20230301"]
+    >>> target_date = "20230215"
+    >>> closest_date, closest_index, time_diff = find_closest_date(dates_list, target_date)
+    >>> print(closest_date)  # Output: "20230201"
+    >>> print(closest_index)  # Output: 1
+    >>> print(time_diff)      # Output: 14
 
     Raises
     ------
@@ -203,29 +202,49 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
         If the target_date is not in the correct format or if the dates_list is empty.
 
     TypeError
-        If the target_date is not a string or if the dates_list is not a list of strings.
-
+        If the dates_list is not a list or contains non-string elements.
     """
 
-    # Convert target_date to a datetime object
-    target_date = datetime.strptime(str(target_date), date_fmt)
+    # Input validation
+    if not isinstance(dates_list, list):
+        raise TypeError("dates_list must be a list")
 
-    # Convert all dates in the list to datetime objects
-    dates_list_dt = [datetime.strptime(str(date), date_fmt) for date in dates_list]
+    if not dates_list:
+        raise ValueError("dates_list cannot be empty")
 
-    # Find the index of the date with the minimum difference from the target date
-    closest_index = min(
-        range(len(dates_list_dt)), key=lambda i: abs(dates_list_dt[i] - target_date)
-    )
+    # Convert target_date to datetime object
+    try:
+        target_dt = datetime.strptime(str(target_date), date_fmt)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid target_date '{target_date}' for format '{date_fmt}': {e}"
+        )
 
-    # Get the closest date from the list using the index
-    closest_date = dates_list_dt[closest_index]
+    # Convert all dates and find closest in one comprehension
+    try:
+        dates_with_diff = [
+            (
+                i,
+                datetime.strptime(str(date), date_fmt),
+                abs((datetime.strptime(str(date), date_fmt) - target_dt).days),
+            )
+            for i, date in enumerate(dates_list)
+        ]
+    except ValueError as e:
+        # Find which date caused the error for better error message
+        for i, date in enumerate(dates_list):
+            try:
+                datetime.strptime(str(date), date_fmt)
+            except ValueError:
+                raise ValueError(
+                    f"Date at index {i} ('{date}') does not match format '{date_fmt}'"
+                )
+        raise e  # Shouldn't reach here, but just in case
 
-    # Get the time difference between the target date and the closest date in days
-    time_diff = abs(closest_date - target_date).days
+    # Find minimum by time difference
+    closest_index, closest_dt, time_diff = min(dates_with_diff, key=lambda x: x[2])
 
-    # Convert the closest date back to the 'YYYYMMDD' format
-    return closest_date.strftime(date_fmt), closest_index, time_diff
+    return closest_dt.strftime(date_fmt), closest_index, time_diff
 
 
 ####################################################################################################
