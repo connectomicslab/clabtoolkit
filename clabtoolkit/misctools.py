@@ -1789,29 +1789,39 @@ def rename_folders(
 
 
 ####################################################################################################
-def remove_empty_folders(start_path, deleted_folders=None):
+def remove_empty_folders(start_path, deleted_folders=None, simulate=False):
     """
     Recursively removes empty directories starting from start_path.
-    Returns a list of all directories that were deleted.
+    Returns a list of all directories that were deleted (or would be deleted in simulation mode).
 
     Parameters
     ----------
-        start_path : str
-            The directory path to start searching from
+    start_path : str
+        The directory path to start searching from.
 
-        deleted_folders : list
-            A list to store the paths of deleted directories. If None, a new list will be created.
+    deleted_folders : list, optional
+        A list to store the paths of deleted directories. If None, a new list will be created.
+        Default is None.
+
+    simulate : bool, optional
+        If True, only simulate the deletion and return what would be deleted without actually deleting.
+        If False, perform the actual deletion operations.
+        Default is False.
 
     Returns
     -------
-        deleted_folders : list
-            A list of all directories that were deleted.
+    list
+        A list of all directories that were deleted (or would be deleted in simulation mode).
 
     Examples
-    --------------
-        >>> deleted_folders = remove_empty_folders("/path/to/start")
-        >>> print("Deleted folders:", deleted_folders)
-    --------------
+    --------
+    >>> # Simulate deletion to see what would be removed
+    >>> would_delete = remove_empty_folders("/path/to/start", simulate=True)
+    >>> print("Would delete:", would_delete)
+
+    >>> # Actually delete empty folders
+    >>> deleted_folders = remove_empty_folders("/path/to/start", simulate=False)
+    >>> print("Deleted folders:", deleted_folders)
     """
     if deleted_folders is None:
         deleted_folders = []
@@ -1821,22 +1831,43 @@ def remove_empty_folders(start_path, deleted_folders=None):
         # Check each directory in current level
         for dir_name in dirs:
             dir_path = os.path.join(root, dir_name)
-            try:
-                # Try to remove the directory (will only succeed if empty)
-                os.rmdir(dir_path)
-                deleted_folders.append(dir_path)
-                # print(f"Removed empty directory: {dir_path}")  # Optional logging
-            except OSError:
-                # Directory not empty or other error - we'll ignore it
-                pass
 
-    # Finally, try to remove the starting directory itself if it's now empty
-    try:
-        os.rmdir(start_path)
-        deleted_folders.append(start_path)
-        # print(f"Removed empty directory: {start_path}")  # Optional logging
-    except OSError:
-        pass
+            if simulate:
+                # In simulation mode, check if directory is empty without deleting
+                try:
+                    if not os.listdir(dir_path):
+                        deleted_folders.append(dir_path)
+                except OSError:
+                    # Permission error or directory doesn't exist
+                    pass
+            else:
+                # In execution mode, actually try to remove
+                try:
+                    os.rmdir(dir_path)
+                    deleted_folders.append(dir_path)
+                except OSError:
+                    # Directory not empty or other error - ignore it
+                    pass
+
+    # Finally, try to check/remove the starting directory itself if it's now empty
+    if simulate:
+        try:
+            if not os.listdir(start_path):
+                deleted_folders.append(start_path)
+        except OSError:
+            pass
+    else:
+        try:
+            os.rmdir(start_path)
+            deleted_folders.append(start_path)
+        except OSError:
+            pass
+
+    # Print summary if in simulation mode
+    if simulate:
+        print(f"[SIMULATION MODE] Would delete {len(deleted_folders)} empty folder(s):")
+        for folder in deleted_folders:
+            print(f"  {folder}")
 
     return deleted_folders
 
