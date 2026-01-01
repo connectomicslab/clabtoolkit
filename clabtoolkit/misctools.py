@@ -1354,7 +1354,7 @@ def ismember(
     a: Union[List[Any], np.ndarray], b: Union[List[Any], np.ndarray]
 ) -> Tuple[List[Any], List[int]]:
     """
-    Simpler version that returns matching values and their positions in 'a'.
+    Check which elements of 'a' are members of 'b'. Similar to MATLAB's ismember function.
 
     Parameters
     ----------
