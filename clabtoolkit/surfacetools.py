@@ -1937,21 +1937,27 @@ class Surface:
         """
 
         if overlay_name not in self.mesh.point_data:
-            raise ValueError(f"Overlay '{overlay_name}' not found")
+            print(f"Overlay '{overlay_name}' not found")
+            info = {
+                "name": overlay_name,
+                "data_shape": None,
+                "data_type": None,
+                "has_colortable": False,
+            }
+        else:
+            info = {
+                "name": overlay_name,
+                "data_shape": self.mesh.point_data[overlay_name].shape,
+                "data_type": str(self.mesh.point_data[overlay_name].dtype),
+                "has_colortable": overlay_name in self.colortables,
+            }
 
-        info = {
-            "name": overlay_name,
-            "data_shape": self.mesh.point_data[overlay_name].shape,
-            "data_type": str(self.mesh.point_data[overlay_name].dtype),
-            "has_colortable": overlay_name in self.colortables,
-        }
-
-        # Add colortable info if available
-        if overlay_name in self.colortables:
-            ctable_info = self.colortables[overlay_name]
-            info["num_regions"] = len(ctable_info["names"])
-            info["region_names"] = ctable_info["names"]
-            info["has_annot_object"] = "annot_object" in ctable_info
+            # Add colortable info if available
+            if overlay_name in self.colortables:
+                ctable_info = self.colortables[overlay_name]
+                info["num_regions"] = len(ctable_info["names"])
+                info["region_names"] = ctable_info["names"]
+                info["has_annot_object"] = "annot_object" in ctable_info
 
         return info
 
