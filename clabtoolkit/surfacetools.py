@@ -3300,7 +3300,61 @@ def merge_surfaces(
     color_table: dict = None,
     map_name: str = "surf_id",
 ) -> Union[Surface, None]:
-    """[docstring unchanged]"""
+    """
+    Merge multiple surface meshes into a single surface with distinct region IDs.
+    Combines multiple surface meshes into one, assigning unique IDs to each
+    surface region for parcellation and visualization.
+
+    Parameters
+    ----------
+
+    surfaces : List[Union[str, Path, Surface]]
+        List of surface meshes to merge. Each item can be:
+        - Surface object
+        - File path (str or Path) to a surface file
+
+    color_table : dict, optional
+        Colortable dictionary defining names and colors for each surface.
+        If None, a default colortable with distinguishable colors is created.
+
+        The dictionary should have the following structure:
+        {
+            "names": List[str],  # List of surface names
+            "color_table": np.ndarray,  # Nx5 array of RGBA colors and IDs
+            "lookup_table": None  # Placeholder for future use
+        }
+
+    map_name : str, default "surf_id"
+        Name of the overlay map to store surface IDs in the merged surface.
+
+    Returns
+    -------
+    Union[Surface, None]
+        Merged Surface object with distinct region IDs, or None if merging fails.
+
+    Raises
+    ------
+    TypeError
+        If surfaces is not a list or contains invalid items.
+    ValueError
+        If color_table is invalid or does not match number of surfaces.
+    Examples
+    --------
+    Merge multiple surface files with a custom colortable:
+    >>> surfaces = ["lh.pial", "rh.pial", "lh.white", "rh.white"]
+    >>> color_table = {
+    ...     "names": ["Left Pial", "Right Pial", "Left White", "Right White"],
+    ...     "color_table": np.array([[255, 0, 0, 255, 1],
+    ...                              [0, 255, 0, 255, 2],
+    ...                              [0, 0, 255, 255, 3],
+    ...                              [255, 255, 0, 255, 4]])
+    ... }
+    >>> merged_surface = merge_surfaces(surfaces, color_table=color_table, map_name="region_id")
+    >>> print(merged_surface)
+    Merged Surface with 4 regions and distinct IDs.
+
+
+    """
 
     if not isinstance(surfaces, list):
         raise TypeError("surface_list must be a list")
