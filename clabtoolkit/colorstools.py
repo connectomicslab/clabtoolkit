@@ -128,14 +128,15 @@ class bcolors:
 def is_color_like(color) -> bool:
     """
     Extended color validation that handles numpy arrays and Python lists.
+    Supports both RGB (3 components) and RGBA (4 components) colors.
 
     Parameters
     ----------
     color : Any
         The color to validate. Can be:
-        - Hex string (e.g., "#FF5733")
-        - Numpy array ([R,G,B] as integers 0-255 or floats 0-1 or floats 0-255)
-        - Python list/tuple ([R,G,B] as integers 0-255 or floats 0-1 or floats 0-255)
+        - Hex string (e.g., "#FF5733" or "#FF5733FF")
+        - Numpy array ([R,G,B] or [R,G,B,A] as integers 0-255 or floats 0-1 or floats 0-255)
+        - Python list/tuple ([R,G,B] or [R,G,B,A] as integers 0-255 or floats 0-1 or floats 0-255)
 
     Returns
     -------
@@ -148,11 +149,15 @@ def is_color_like(color) -> bool:
     True
     >>> is_color_like(np.array([255, 87, 51]))  # Numpy array (int)
     True
+    >>> is_color_like(np.array([255, 87, 51, 255]))  # Numpy array with alpha
+    True
     >>> is_color_like(np.array([1.0, 0.34, 0.2]))  # Numpy array (float 0-1)
     True
     >>> is_color_like(np.array([70., 130., 180.]))  # Numpy array (float 0-255)
     True
     >>> is_color_like([255, 87, 51])  # Python list (int)
+    True
+    >>> is_color_like((255, 128, 0, 128))  # Tuple with alpha
     True
     >>> is_color_like([1.0, 0.34, 0.5])  # Python list (float 0-1)
     True
@@ -167,7 +172,8 @@ def is_color_like(color) -> bool:
     """
     # Handle numpy arrays
     if isinstance(color, np.ndarray):
-        if color.shape != (3,):
+        # Accept both RGB (3) and RGBA (4) components
+        if color.shape not in [(3,), (4,)]:
             return False
 
         # Integer arrays: must be in 0-255 range
@@ -191,25 +197,27 @@ def is_color_like(color) -> bool:
 
     # Handle Python lists and tuples
     if isinstance(color, (list, tuple)):
-        if len(color) == 3:
-            try:
-                # Convert to numeric values
-                values = [float(x) for x in color]
-            except (ValueError, TypeError):
-                return False
+        # Accept both RGB (3) and RGBA (4) components
+        if len(color) not in [3, 4]:
+            return False
 
-            # Check if values could be in 0-1 range (all <= 1)
-            if all(0.0 <= v <= 1.0 for v in values):
+        try:
+            # Convert to numeric values
+            values = [float(x) for x in color]
+        except (ValueError, TypeError):
+            return False
+
+        # Check if values could be in 0-1 range (all <= 1)
+        if all(0.0 <= v <= 1.0 for v in values):
+            return True
+
+        # Check if values could be in 0-255 range
+        # Accept both exact integers and integer-valued floats (e.g., 255.0)
+        if all(0 <= v <= 255 for v in values):
+            # Check if they're all whole numbers (integers or integer-valued floats)
+            if all(v == int(v) for v in values):
                 return True
 
-            # Check if values could be in 0-255 range
-            # Accept both exact integers and integer-valued floats (e.g., 255.0)
-            if all(0 <= v <= 255 for v in values):
-                # Check if they're all whole numbers (integers or integer-valued floats)
-                if all(v == int(v) for v in values):
-                    return True
-
-            return False
         return False
 
     # Default to matplotlib's validator for strings and other types
@@ -850,20 +858,23 @@ def invert_colors(
 
 ####################################################################################################
 def harmonize_colors(
-    colors: Union[str, List[Union[str, list, np.ndarray]], np.ndarray],
+    colors: Union[str, List[Union[str, list, np.ndarray]], np.ndarray, tuple],
     output_format: str = "hex",
-) -> Union[List[str], List[np.ndarray]]:
+) -> Union[List[str], np.ndarray]:
     """
     Convert all colors in a list to a consistent format.
-    Handles hex strings, RGB lists, and numpy arrays (both 0-255 and 0-1 ranges).
+    Handles hex strings, RGB/RGBA lists, tuples, and numpy arrays (both 0-255 and 0-1 ranges).
+    Note: Alpha channel is discarded if present.
 
     Parameters
     ----------
-    colors : list or numpy array
-        List containing:
-        - Hex strings (e.g., "#FF5733")
-        - Python lists ([R,G,B] as integers 0-255 or floats 0-1)
-        - Numpy arrays (integers 0-255 or floats 0-1)
+    colors : list, numpy array, str, or tuple
+        Input colors in various formats:
+        - Single color: str, list, tuple, or numpy array
+        - Multiple colors: list or numpy array containing:
+          * Hex strings (e.g., "#FF5733")
+          * Python lists or tuples ([R,G,B] or [R,G,B,A] as integers 0-255 or floats 0-1)
+          * Numpy arrays (integers 0-255 or floats 0-1)
     output_format : str, optional
         Output format ('hex', 'rgb', or 'rgbnorm'), defaults to 'hex'
         - 'hex': returns hexadecimal strings (e.g., '#ff5733')
@@ -872,32 +883,46 @@ def harmonize_colors(
 
     Returns
     -------
-    Union[List[str], List[np.ndarray]]
-        List of colors in the specified format
+    Union[List[str], np.ndarray]
+        - If output_format is 'hex': List of hexadecimal color strings
+        - If output_format is 'rgb' or 'rgbnorm': 2D numpy array where each row is a color
 
     Examples
     --------
-    >>> colors = ["#FF5733", [255, 87, 51], np.array([51, 87, 255])]
+    >>> colors = ["#FF5733", [255, 87, 51], (51, 87, 255)]
     >>> harmonize_colors(colors)
     ['#ff5733', '#ff5733', '#3357ff']
 
+    >>> colors = [(255, 87, 51, 255), (51, 87, 255, 128)]  # RGBA
+    >>> harmonize_colors(colors)
+    ['#ff5733', '#3357ff']
+
     >>> harmonize_colors(colors, output_format='rgb')
-    [array([255,  87,  51], dtype=uint8),
-    array([255,  87,  51], dtype=uint8),
-    array([ 51,  87, 255], dtype=uint8)]
+    array([[255,  87,  51],
+           [255,  87,  51],
+           [ 51,  87, 255]], dtype=uint8)
 
     >>> harmonize_colors(colors, output_format='rgbnorm')
-    [array([1.        , 0.34117647, 0.2       ]),
-    array([1.        , 0.34117647, 0.2       ]),
-    array([0.2       , 0.34117647, 1.        ])]
+    array([[1.        , 0.34117647, 0.2       ],
+           [1.        , 0.34117647, 0.2       ],
+           [0.2       , 0.34117647, 1.        ]])
+
+    >>> # Single color input
+    >>> harmonize_colors((255, 87, 51))
+    ['#ff5733']
     """
 
+    # Handle single color inputs
     if isinstance(colors, str):
         colors = [colors]
+    elif isinstance(colors, tuple):
+        colors = [colors]
 
+    # Validate input type
     if not isinstance(colors, (list, np.ndarray)):
-        raise TypeError("Input must be a list or numpy array")
+        raise TypeError("Input must be a string, tuple, list, or numpy array")
 
+    # Validate output format
     output_format = output_format.lower()
     if output_format not in ["hex", "rgb", "rgbnorm"]:
         raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
@@ -905,50 +930,69 @@ def harmonize_colors(
     result = []
 
     for color in colors:
+        # Validate color
         if not is_color_like(color):
             raise ValueError(f"Invalid color: {color}")
 
-        # Convert all inputs to numpy array first for consistent processing
+        # Convert all inputs to numpy array for consistent processing
         if isinstance(color, str):
             # Hex string -> convert to RGB array
-            # Single color string input, convert to list for processing
             if not color.startswith("#"):
                 try:
                     color = to_hex(color)
-
                 except ValueError:
                     color = "#f0f0f0"  # Default to light gray if invalid
 
             hex_color = color.lstrip("#")
+
+            # Handle both 6-char (#RRGGBB) and 8-char (#RRGGBBAA) hex strings
+            if len(hex_color) == 8:
+                # Strip alpha channel
+                hex_color = hex_color[:6]
+
             rgb_array = np.array([int(hex_color[i : i + 2], 16) for i in (0, 2, 4)])
-        elif isinstance(color, list):
-            # Python list -> convert to numpy array
+
+        elif isinstance(color, (list, tuple)):
+            # Python list or tuple -> convert to numpy array
             rgb_array = np.array(color)
+
+            # Strip alpha channel if present (4th component)
+            if len(rgb_array) == 4:
+                rgb_array = rgb_array[:3]
+
         else:
             # Already numpy array
             rgb_array = color
 
+            # Strip alpha channel if present (4th component)
+            if rgb_array.shape == (4,):
+                rgb_array = rgb_array[:3]
+
         # Process based on output format
         if output_format == "hex":
+            # Convert to hex format
             if np.issubdtype(rgb_array.dtype, np.integer):
+                # If integer type, assume 0-255 range and normalize
                 rgb_array = rgb_array / 255.0
             result.append(to_hex(rgb_array).lower())
 
         elif output_format == "rgbnorm":
+            # Convert to normalized RGB (0-1)
             if np.issubdtype(rgb_array.dtype, np.integer):
                 range_type = detect_rgb_range(rgb_array)
                 if range_type == "0-255":
                     rgb_array = rgb_array / 255.0
             result.append(rgb_array.astype(np.float64))
 
-        else:  # rgb format (0-255)
+        else:  # output_format == "rgb"
+            # Convert to RGB (0-255)
             if np.issubdtype(rgb_array.dtype, np.floating):
                 range_type = detect_rgb_range(rgb_array)
                 if range_type == "0-1":
                     rgb_array = rgb_array * 255
             result.append(rgb_array.astype(np.uint8))
 
-    # Stacking the results
+    # Stack results if not hex format
     if output_format != "hex":
         result = np.vstack(result)
 
@@ -1936,8 +1980,10 @@ def values2colors(
         raise ValueError("values array cannot be empty")
 
     # Check the range_color format
-    if not (isinstance(range_color, tuple) and len(range_color) in [3, 4]):
-        raise ValueError("range_color must be a tuple of length 3 (RGB) or 4 (RGBA)")
+    try:
+        range_color = harmonize_colors(range_color, output_format="rgb")
+    except Exception:
+        raise ValueError("range_color must be a value convertible to RGB format")
 
     output_format = output_format.lower()
     if output_format not in ["hex", "rgb", "rgbnorm"]:
