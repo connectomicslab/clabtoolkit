@@ -119,6 +119,7 @@ class Surface:
         self.surf = None
         self.mesh = None
         self.hemi = None
+        self.active_scalar = "default"
         self.colortables: Dict[str, Dict] = {}
 
         # Create the defalt colortable for the surface
@@ -1819,6 +1820,7 @@ class Surface:
             raise ValueError(f"Overlay '{overlay_name}' not found in mesh point data")
 
         self.mesh.set_active_scalars(overlay_name)
+        self.active_scalar = overlay_name
 
     ##############################################################################################
     def remove_overlay(self, overlay_name: str) -> None:
