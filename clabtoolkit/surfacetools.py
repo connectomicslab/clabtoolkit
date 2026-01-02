@@ -133,11 +133,10 @@ class Surface:
         if not (0 <= alpha <= 1):
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
-        # Handle color input
-        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb")
 
         tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
-        tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
+        tmp_ctable[:, :3] = tmp_ctable[:, :3]  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
         self.colortables["default"] = {
@@ -247,7 +246,7 @@ class Surface:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb")
 
         # Load the surface geometry
         try:
@@ -342,7 +341,7 @@ class Surface:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb")
 
         self.surf = surface_file
         self.mesh = self.create_mesh_from_arrays(vertices, faces)
@@ -410,7 +409,7 @@ class Surface:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb")
 
         # Ensure mesh has default surface colors if not present
         self._create_default_parcellation(color=color, alpha=alpha)
@@ -645,10 +644,6 @@ class Surface:
 
         Parameters
         ----------
-        faces : np.ndarray of shape (n_faces, 3)
-            Array where each row represents a triangular face defined by three
-            vertex indices. Vertex indices should be non-negative integers.
-
         return_counts : bool, optional
             If True, also return the count of how many faces each edge belongs to.
             This is useful for identifying boundary edges (count=1) vs interior
