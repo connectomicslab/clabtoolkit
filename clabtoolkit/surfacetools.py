@@ -802,12 +802,7 @@ class Surface:
         >>> print("Boundary edges:", boundary)
         """
 
-        # Getting the faces array from the mesh
-        faces = self.mesh.faces[
-            :, 1:4
-        ]  # Extract only the vertex indices, skip the first column
-
-        edges, counts = self.get_edges(faces, return_counts=True)
+        edges, counts = self.get_edges(return_counts=True)
         return edges[counts == 1]
 
     ###############################################################################################
