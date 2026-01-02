@@ -1998,137 +1998,19 @@ class Surface:
         if parc_name not in self.colortables:
             raise ValueError(f"Parcellation '{parc_name}' not found")
 
-        # Use AnnotParcellation object if available for more robust lookup
-        if "annot_object" in self.colortables[parc_name]:
-            annot_obj = self.colortables[parc_name]["annot_object"]
-            return annot_obj.get_region_vertices(region_name)
-        else:
-            # Fallback to manual lookup
-            if region_name not in self.colortables[parc_name]["names"]:
-                raise ValueError(
-                    f"Region '{region_name}' not found in parcellation '{parc_name}'"
-                )
+        # Fallback to manual lookup
+        if region_name not in self.colortables[parc_name]["names"]:
+            raise ValueError(
+                f"Region '{region_name}' not found in parcellation '{parc_name}'"
+            )
 
-            # Find the label value for this region
-            region_idx = self.colortables[parc_name]["names"].index(region_name)
-            label_value = self.colortables[parc_name]["color_table"][region_idx, 4]
+        # Find the label value for this region
+        region_idx = self.colortables[parc_name]["names"].index(region_name)
+        label_value = self.colortables[parc_name]["color_table"][region_idx, 4]
 
-            # Get vertices with this label
-            labels = self.mesh.point_data[parc_name]
-            return np.where(labels == label_value)[0]
-
-    ##############################################################################################
-    def get_region_info(self, parc_name: str, region_name: str) -> Dict:
-        """
-        Get comprehensive information about a region in a parcellation.
-
-        Parameters
-        ----------
-        parc_name : str
-            Name of the parcellation
-
-        region_name : str
-            Name of the region
-
-        Returns
-        -------
-        Dict
-            Dictionary with region information containing:
-            - 'name': str, region name
-            - 'index': int, region index in parcellation
-            - 'label_value': int, label value used in annotation
-            - 'color_rgb': np.ndarray, RGB color values (0-255)
-            - 'color_rgba': np.ndarray, RGBA color values (0-255)
-            - 'vertex_count': int, number of vertices in region
-            - 'vertex_indices': np.ndarray, indices of vertices in region
-
-        Raises
-        ------
-        ValueError
-            If the parcellation or region is not found
-
-        Examples
-        --------
-        >>> info = surface.get_region_info("aparc", "precentral")
-        >>> print(f"Region: {info['name']}")
-        >>> print(f"Vertices: {info['vertex_count']}")
-        >>> print(f"Color: {info['color_rgb']}")
-        """
-        if parc_name not in self.colortables:
-            raise ValueError(f"Parcellation '{parc_name}' not found")
-
-        # Use AnnotParcellation object if available
-        if "annot_object" in self.colortables[parc_name]:
-            annot_obj = self.colortables[parc_name]["annot_object"]
-            return annot_obj.get_region_info(region_name)
-        else:
-            # Fallback to manual calculation
-            vertices = self.get_region_vertices(parc_name, region_name)
-            region_idx = self.colortables[parc_name]["names"].index(region_name)
-            color_table = self.colortables[parc_name]["color_table"]
-
-            return {
-                "name": region_name,
-                "index": region_idx,
-                "label_value": color_table[region_idx, 4],
-                "color_rgb": color_table[region_idx, :3],
-                "color_rgba": color_table[region_idx, :4],
-                "vertex_count": len(vertices),
-                "vertex_indices": vertices,
-            }
-
-    ##############################################################################################
-    def list_regions(self, parc_name: str) -> Union[pd.DataFrame, Dict]:
-        """
-        Get a summary of all regions in a parcellation.
-
-        Parameters
-        ----------
-        parc_name : str
-            Name of the parcellation
-
-        Returns
-        -------
-        pd.DataFrame or Dict
-            DataFrame with region information if AnnotParcellation object is available,
-            otherwise a dictionary with basic information. Contains region names,
-            label values, vertices counts, and colors.
-
-        Raises
-        ------
-        ValueError
-            If the parcellation is not found
-
-        Examples
-        --------
-        >>> regions = surface.list_regions("aparc")
-        >>> if isinstance(regions, pd.DataFrame):
-        ...     print(regions.head())
-        ... else:
-        ...     for name, info in regions.items():
-        ...         print(f"{name}: {info['vertex_count']} vertices")
-        """
-
-        if parc_name not in self.colortables:
-            raise ValueError(f"Parcellation '{parc_name}' not found")
-
-        # Use AnnotParcellation object if available
-        if "annot_object" in self.colortables[parc_name]:
-            annot_obj = self.colortables[parc_name]["annot_object"]
-            return annot_obj.list_regions()
-        else:
-            # Fallback to basic information
-            ctable_info = self.colortables[parc_name]
-            regions = {}
-            for i, name in enumerate(ctable_info["names"]):
-                color_table = ctable_info["color_table"]
-                vertices = self.get_region_vertices(parc_name, name)
-                regions[name] = {
-                    "label_value": color_table[i, 4],
-                    "vertex_count": len(vertices),
-                    "color_rgb": color_table[i, :3].tolist(),
-                }
-            return regions
+        # Get vertices with this label
+        labels = self.mesh.point_data[parc_name]
+        return np.where(labels == label_value)[0]
 
     ##############################################################################################
     def get_vertexwise_colors(
@@ -3510,7 +3392,7 @@ def create_surface_colortable(
         raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
     # Handle color input
-    colors = cltcol.harmonize_colors(colors, output_format="rgb") / 255
+    colors = cltcol.harmonize_colors(colors, output_format="rgb")
 
     tmp_ctable = cltcol.colors_to_table(colors=colors, alpha_values=alpha)
     tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
