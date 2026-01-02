@@ -3160,7 +3160,7 @@ class Surface:
     ###############################################################################################
     def plot(
         self,
-        overlay_name: str = "default",
+        overlay_name: str = None,
         cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
@@ -3253,6 +3253,9 @@ class Surface:
         """
 
         # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
+
+        if overlay_name is None:
+            overlay_name = self.active_scalar
 
         dict_ctables = self.colortables
         if cmap is None:
