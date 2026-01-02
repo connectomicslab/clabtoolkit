@@ -3357,7 +3357,14 @@ def _display_terminal_output(module, all_classes, all_functions, show_inherited=
 
 
 ######################################################################################################
-def show_object_content(obj, show_private=False, show_dunder=False):
+def show_object_content(
+    obj,
+    show_private=False,
+    show_dunder=False,
+    show_methods=True,
+    show_properties=True,
+    show_attributes=True,
+):
     """
     Inspect and display object properties and methods with colored formatting.
 
@@ -3379,6 +3386,15 @@ def show_object_content(obj, show_private=False, show_dunder=False):
         Whether to show dunder/magic methods (starting and ending with __),
         by default False
 
+    show_methods : bool, optional
+        Whether to show methods, by default True
+
+    show_properties : bool, optional
+        Whether to show properties, by default True
+
+    show_attributes : bool, optional
+        Whether to show attributes, by default True
+
     Returns
     -------
     None
@@ -3387,22 +3403,13 @@ def show_object_content(obj, show_private=False, show_dunder=False):
     Examples
     --------
     >>> show_object_content(str)
-    ═══════════════════════════════════════════════════════════
-    🔍 OBJECT INSPECTOR
-    ═══════════════════════════════════════════════════════════
-    📦 Object: str
-    🏷️  Type: type
-    📁 Module: builtins
-    ...
+    # Shows everything
 
-    >>> class MyClass:
-    ...     def method(self): pass
-    >>> show_object_content(MyClass(), show_private=True)
-    # Shows private methods and attributes
+    >>> show_object_content(obj, show_methods=False, show_properties=False)
+    # Shows ONLY attributes
 
-    >>> import json
-    >>> show_object_content(json.loads, show_dunder=True)
-    # Shows function details with dunder methods
+    >>> show_object_content(obj, show_attributes=False)
+    # Shows only methods and properties
 
     Notes
     -----
@@ -3441,11 +3448,14 @@ def show_object_content(obj, show_private=False, show_dunder=False):
             continue
 
         if inspect.ismethod(value) or inspect.isfunction(value):
-            methods.append((name, value))
+            if show_methods:  # Only add if we want to show methods
+                methods.append((name, value))
         elif inspect.isdatadescriptor(value) or isinstance(value, property):
-            properties.append((name, value))
+            if show_properties:  # Only add if we want to show properties
+                properties.append((name, value))
         else:
-            attributes.append((name, value))
+            if show_attributes:  # Only add if we want to show attributes
+                attributes.append((name, value))
 
     # Build output based on environment
     if notebook_mode:
