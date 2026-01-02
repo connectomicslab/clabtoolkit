@@ -263,7 +263,14 @@ class Surface:
             self.mesh = mesh
 
         except Exception as e:
-            raise ValueError(f"Failed to load surface file '{self.surf}': {e}")
+            try:
+                # Try loading with PyVista directly for other formats
+                self.mesh = pv.read(self.surf)
+            except Exception as e2:
+                raise ValueError(
+                    f"Failed to load surface file {self.surf} with error: {e}\n"
+                    f"Also failed with PyVista: {e2}"
+                ) from e2
 
         # Hemisphere detection from filename
         if hemi is not None:
