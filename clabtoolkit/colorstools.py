@@ -893,7 +893,6 @@ def harmonize_colors(
     """
 
     if isinstance(colors, str):
-        # Single color string input, convert to list for processing
         colors = [colors]
 
     if not isinstance(colors, (list, np.ndarray)):
@@ -912,6 +911,14 @@ def harmonize_colors(
         # Convert all inputs to numpy array first for consistent processing
         if isinstance(color, str):
             # Hex string -> convert to RGB array
+            # Single color string input, convert to list for processing
+            if not color.startswith("#"):
+                try:
+                    color = to_hex(color)
+
+                except ValueError:
+                    color = "#f0f0f0"  # Default to light gray if invalid
+
             hex_color = color.lstrip("#")
             rgb_array = np.array([int(hex_color[i : i + 2], 16) for i in (0, 2, 4)])
         elif isinstance(color, list):
