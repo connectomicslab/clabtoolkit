@@ -2475,6 +2475,7 @@ class Surface:
                             merged_colortables[key] = value
 
         merged_surface.colortables = merged_colortables
+        merged_surface.active_scalar = self.active_scalar
 
         return merged_surface
 
