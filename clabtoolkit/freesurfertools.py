@@ -236,6 +236,11 @@ class AnnotParcellation:
         """
         self.id = annot_id
         self.codes = codes
+
+        # Check if the range of colors is between 0 and 255 in the regtable. If it is not. Convert it
+        if np.max(regtable[:, 0:3]) <= 1.0:
+            regtable[:, 0:3] = (regtable[:, 0:3] * 255).astype(int)
+
         self.regtable = regtable
         self.regnames = regnames
         self.hemi = hemi
