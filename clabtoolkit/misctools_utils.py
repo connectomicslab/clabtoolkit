@@ -76,6 +76,28 @@ class ExplorerDict(dict):
         except (NameError, AttributeError):
             return False
 
+    ###########################################################################
+    def to_dataframe(self):
+        """
+        Convert dictionary to pandas DataFrame.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame representation of the dictionary
+
+        Examples
+        --------
+        >>> data = ExplorerDict({'a': 1, 'b': 2})
+        >>> df = data.to_dataframe()
+        """
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas is required for to_dataframe method.")
+
+        return pd.DataFrame([self])
+
     def tree(
         self,
         max_depth: Optional[int] = None,
