@@ -96,7 +96,7 @@ class ExplorerDict(dict):
         except ImportError:
             raise ImportError("pandas is required for to_dataframe method.")
 
-        return pd.DataFrame([self])
+        return pd.DataFrame(self)
 
     ############################################################################
     def tree(
