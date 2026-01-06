@@ -98,6 +98,7 @@ class ExplorerDict(dict):
 
         return pd.DataFrame([self])
 
+    ############################################################################
     def tree(
         self,
         max_depth: Optional[int] = None,
@@ -138,6 +139,7 @@ class ExplorerDict(dict):
                 max_depth, max_items, max_str_len, show_types, show_shapes
             )
 
+    ############################################################################
     def _tree_terminal(
         self, max_depth, max_items, max_str_len, show_types, show_shapes
     ):
@@ -164,6 +166,7 @@ class ExplorerDict(dict):
         )
         print()
 
+    ############################################################################
     def _print_tree_terminal(
         self,
         obj,
@@ -290,6 +293,7 @@ class ExplorerDict(dict):
                 else:
                     print(f"{indent}└── ... [{len(obj) - max_items} more items]")
 
+    ############################################################################
     def _tree_html(self, max_depth, max_items, max_str_len, show_types, show_shapes):
         """Notebook output with HTML formatting - Dark theme."""
         if not HAS_IPYTHON:
@@ -325,6 +329,7 @@ class ExplorerDict(dict):
         """
         display(HTML(html))
 
+    ############################################################################
     def _build_tree_html(
         self,
         obj,
@@ -432,6 +437,7 @@ class ExplorerDict(dict):
 
         return html
 
+    ############################################################################
     def _get_type_info(self, obj, show_types, show_shapes):
         """Get formatted type and shape information."""
         if not show_types and not show_shapes:
@@ -457,6 +463,7 @@ class ExplorerDict(dict):
 
         return f"({', '.join(info_parts)})" if info_parts else ""
 
+    ############################################################################
     def _format_value(self, value, max_len):
         """Format a value for display."""
         if isinstance(value, np.ndarray):
@@ -472,6 +479,7 @@ class ExplorerDict(dict):
             return val_str[:max_len] + "..."
         return val_str
 
+    ############################################################################
     def summary(self, verbose: bool = False) -> Dict[str, Any]:
         """
         Get comprehensive summary statistics.
@@ -498,6 +506,7 @@ class ExplorerDict(dict):
         else:
             return self._summary_terminal(verbose)
 
+    ############################################################################
     def _summary_terminal(self, verbose):
         """Terminal summary with ANSI colors."""
         stats = self._collect_stats(self)
@@ -599,6 +608,7 @@ class ExplorerDict(dict):
 
         return stats
 
+    ############################################################################
     def _summary_html(self, verbose):
         """Notebook summary with HTML formatting - Dark theme."""
         if not HAS_IPYTHON:
@@ -662,6 +672,7 @@ class ExplorerDict(dict):
         display(HTML(html))
         return stats
 
+    ############################################################################
     def _collect_stats(self, obj, depth=0):
         """Collect detailed statistics recursively."""
         stats = defaultdict(int)
@@ -695,6 +706,7 @@ class ExplorerDict(dict):
         recurse(obj, depth)
         return dict(stats)
 
+    ############################################################################
     @staticmethod
     def _format_bytes(bytes_size):
         """Format bytes to human-readable string."""
@@ -704,6 +716,7 @@ class ExplorerDict(dict):
             bytes_size /= 1024
         return f"{bytes_size:.2f} TB"
 
+    ############################################################################
     def structure(self, max_depth: Optional[int] = 3) -> Dict:
         """
         Get simplified structure showing types and shapes.
@@ -726,6 +739,7 @@ class ExplorerDict(dict):
         """
         return self._build_structure(self, max_depth, 0)
 
+    ############################################################################
     def _build_structure(self, obj, max_depth, depth):
         """Recursively build structure representation."""
         if max_depth is not None and depth >= max_depth:
@@ -752,12 +766,14 @@ class ExplorerDict(dict):
         else:
             return self._type_repr(obj)
 
+    ############################################################################
     def _type_repr(self, obj):
         """Get type representation for leaf nodes."""
         if isinstance(obj, np.ndarray):
             return f"<ndarray: shape={obj.shape}, dtype={obj.dtype}>"
         return f"<{type(obj).__name__}>"
 
+    ############################################################################
     def search(self, pattern: str, case_sensitive: bool = False) -> List[str]:
         """Search for keys matching a pattern."""
         matches = []
@@ -826,6 +842,7 @@ class ExplorerDict(dict):
 
         return matches
 
+    ############################################################################
     def get_path(self, path: str) -> Any:
         """Get value at a specific path."""
         parts = path.replace("[", ".").replace("]", "").split(".")
