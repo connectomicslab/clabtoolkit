@@ -1326,8 +1326,8 @@ class Parcellation:
     #####################################################################################################
     def compute_region_adjacency(
         self,
-        struct_codes: Union[List[int], np.ndarray] = None,
-        struct_names: Union[List[str], str] = None,
+        roi_codes: Union[List[int], np.ndarray] = None,
+        roi_names: Union[List[str], str] = None,
         rearrange: bool = False,
     ) -> Tuple[np.ndarray, dict, dict]:
         """
@@ -1335,10 +1335,10 @@ class Parcellation:
 
         Parameters
         ----------
-        struct_codes : list or np.ndarray, optional
+        roi_codes : list or np.ndarray, optional
             Specific region codes to include. Default is None (all regions).
 
-        struct_names : list or str, optional
+        roi_names : list or str, optional
             Specific region names to include. Default is None.
 
         rearrange : bool, optional
@@ -1359,26 +1359,26 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both struct_codes and struct_names are specified.
+            If both roi_codes and roi_names are specified.
         """
 
         from .imagetools import MorphologicalOperations
 
         # Check if both inclusion criteria are specified
-        if struct_codes is not None and struct_names is not None:
+        if roi_codes is not None and roi_names is not None:
             raise ValueError(
-                "Cannot specify both struct_codes and struct_names. Please choose one."
+                "Cannot specify both roi_codes and roi_names. Please choose one."
             )
 
         # Work on a copy to avoid modifying original
         temp_parc = copy.deepcopy(self)
 
         # Apply filtering if specified
-        if struct_codes is not None:
-            temp_parc.keep_by_code(codes2keep=struct_codes, rearrange=rearrange)
+        if roi_codes is not None:
+            temp_parc.keep_by_code(codes2keep=roi_codes, rearrange=rearrange)
 
-        if struct_names is not None:
-            temp_parc.keep_by_name(names2keep=struct_names, rearrange=rearrange)
+        if roi_names is not None:
+            temp_parc.keep_by_name(names2keep=roi_names, rearrange=rearrange)
 
         data = temp_parc.data
         all_neigh_pairs = np.zeros((0, 2), dtype=int)
@@ -1454,8 +1454,8 @@ class Parcellation:
     ######################################################################################################
     def compute_centroids(
         self,
-        struct_codes: Union[List[int], np.ndarray] = None,
-        struct_names: Union[List[str], str] = None,
+        roi_codes: Union[List[int], np.ndarray] = None,
+        roi_names: Union[List[str], str] = None,
         gaussian_smooth: bool = True,
         sigma: float = 1.0,
         closing_iterations: int = 2,
@@ -1466,10 +1466,10 @@ class Parcellation:
 
         Parameters
         ----------
-        struct_codes : list or np.ndarray, optional
+        roi_codes : list or np.ndarray, optional
             Specific region codes to include. Default is None (all regions).
 
-        struct_names : list or str, optional
+        roi_names : list or str, optional
             Specific region names to include. Default is None.
 
         gaussian_smooth : bool, optional
@@ -1492,7 +1492,7 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both struct_codes and struct_names are specified.
+            If both roi_codes and roi_names are specified.
 
         Examples
         --------
@@ -1501,18 +1501,18 @@ class Parcellation:
         >>>
         >>> # Specific regions with file output
         >>> df = parc.compute_centroids(
-        ...     struct_codes=[1, 2, 3],
+        ...     roi_codes=[1, 2, 3],
         ...     centroid_table='centroids.tsv'
         ... )
         >>> # Specific regions by name
         >>> df = parc.compute_centroids(
-        ...     struct_names=['hippocampus', 'amygdala'],
+        ...     roi_names=['hippocampus', 'amygdala'],
         ...     centroid_table='centroids.tsv'
         ... )
         """
 
         # Check if include_by_code and include_by_name are different from None at the same time
-        if struct_codes is not None and struct_names is not None:
+        if roi_codes is not None and roi_names is not None:
             raise ValueError(
                 "You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them."
             )
@@ -1520,11 +1520,11 @@ class Parcellation:
         temp_parc = copy.deepcopy(self)
 
         # Apply inclusion if specified
-        if struct_codes is not None:
-            temp_parc.keep_by_code(codes2keep=struct_codes)
+        if roi_codes is not None:
+            temp_parc.keep_by_code(codes2keep=roi_codes)
 
-        if struct_names is not None:
-            temp_parc.keep_by_name(names2keep=struct_names)
+        if roi_names is not None:
+            temp_parc.keep_by_name(names2keep=roi_names)
 
         # Get unique region values
         unique_regions = np.array(temp_parc.index)
@@ -1633,8 +1633,8 @@ class Parcellation:
         vols_to_delete: Union[List[int], np.ndarray] = None,
         method: str = "nilearn",
         metric: str = "mean",
-        struct_codes: Union[List[int], np.ndarray] = None,
-        struct_names: Union[List[str], str] = None,
+        roi_codes: Union[List[int], np.ndarray] = None,
+        roi_names: Union[List[str], str] = None,
     ) -> pd.DataFrame:
         """
         Compute region-wise time series.
@@ -1644,10 +1644,10 @@ class Parcellation:
         time_series_data : str or np.ndarray
             Path to time series file or numpy array with shape (dimx X dimy X dimZ x Timepoints).
 
-        struct_codes : list or np.ndarray, optional
+        roi_codes : list or np.ndarray, optional
             Specific region codes to include. Default is None (all regions).
 
-        struct_names : list or str, optional
+        roi_names : list or str, optional
             Specific region names to include. Default is None.
 
         ouput_h5file : str, optional
@@ -1661,7 +1661,7 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both struct_codes and struct_names are specified.
+            If both roi_codes and roi_names are specified.
 
         Examples
         --------
@@ -1674,12 +1674,12 @@ class Parcellation:
         # Compute with specific regions using codes
         >>> region_ts = parc.get_regionwise_timeseries(
         ...     time_series_data='timeseries.nii.gz',
-        ...     struct_codes=[1, 2, 3])
+        ...     roi_codes=[1, 2, 3])
 
         """
 
         # Check if include_by_code and include_by_name are different from None at the same time
-        if struct_codes is not None and struct_names is not None:
+        if roi_codes is not None and roi_names is not None:
             raise ValueError(
                 "You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them."
             )
@@ -1687,11 +1687,11 @@ class Parcellation:
         temp_parc = copy.deepcopy(self)
 
         # Apply inclusion if specified
-        if struct_codes is not None:
-            temp_parc.keep_by_code(codes2keep=struct_codes)
+        if roi_codes is not None:
+            temp_parc.keep_by_code(codes2keep=roi_codes)
 
-        if struct_names is not None:
-            temp_parc.keep_by_name(names2keep=struct_names)
+        if roi_names is not None:
+            temp_parc.keep_by_name(names2keep=roi_names)
 
         # Delete volumes if specified
         if vols_to_delete is not None:
@@ -1837,8 +1837,8 @@ class Parcellation:
     ######################################################################################################
     def surface_extraction(
         self,
-        struct_codes: Union[List[int], np.ndarray] = None,
-        struct_names: Union[List[str], str] = None,
+        roi_codes: Union[List[int], np.ndarray] = None,
+        roi_names: Union[List[str], str] = None,
         gaussian_smooth: bool = True,
         smooth_iterations: int = 10,
         fill_holes: bool = True,
@@ -1857,10 +1857,10 @@ class Parcellation:
 
         Parameters
         ----------
-        struct_codes : list or np.ndarray, optional
+        roi_codes : list or np.ndarray, optional
             Region codes to extract surfaces for. Default is None (all regions).
 
-        struct_names : list or str, optional
+        roi_names : list or str, optional
             Region names to extract surfaces for. Default is None.
 
         gaussian_smooth : bool, optional
@@ -1898,7 +1898,7 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both struct_codes and struct_names are specified.
+            If both roi_codes and roi_names are specified.
         FileNotFoundError
             If output directory doesn't exist.
         FileExistsError
@@ -1911,14 +1911,14 @@ class Parcellation:
         >>>
         >>> # Extract specific regions with high quality
         >>> surface = parc.surface_extraction(
-        ...     struct_codes=[1, 2, 3],
+        ...     roi_codes=[1, 2, 3],
         ...     smooth_iterations=20,
         ...     out_filename='regions.surf'
         ... )
         """
 
         # Check if include_by_code and include_by_name are different from None at the same time
-        if struct_codes is not None and struct_names is not None:
+        if roi_codes is not None and roi_names is not None:
             raise ValueError(
                 "You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them."
             )
@@ -1926,11 +1926,11 @@ class Parcellation:
         temp_parc = copy.deepcopy(self)
 
         # Apply inclusion if specified
-        if struct_codes is not None:
-            temp_parc.keep_by_code(codes2keep=struct_codes)
+        if roi_codes is not None:
+            temp_parc.keep_by_code(codes2keep=roi_codes)
 
-        if struct_names is not None:
-            temp_parc.keep_by_name(names2keep=struct_names)
+        if roi_names is not None:
+            temp_parc.keep_by_name(names2keep=roi_names)
 
         # Get unique region values
         unique_regions = np.array(temp_parc.index)
