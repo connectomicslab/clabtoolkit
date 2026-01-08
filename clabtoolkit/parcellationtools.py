@@ -893,6 +893,10 @@ class Parcellation:
         >>> parc.keep_by_code([100, 200, 300], rearrange=True)
         """
 
+        # Validate codes2keep
+        if isinstance(codes2keep, str):
+            codes2keep = [codes2keep]
+
         # Convert codes2keep to numpy array
         if isinstance(codes2keep, list):
             codes2keep = cltmisc.build_indices(codes2keep)
