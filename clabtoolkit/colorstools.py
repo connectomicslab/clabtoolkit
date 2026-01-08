@@ -2956,7 +2956,7 @@ class ColorTableLoader:
                 tsv_dict["index"] = [int(x) for x in tsv_dict["index"]]
 
             if "opacity" in tsv_dict:
-                tsv_dict["opacity"] = [tsv_dict["opacity"][i] for i in filtered_indices]
+                tsv_dict["opacity"] = [float(x) for x in tsv_dict["opacity"]]
             else:
                 tsv_dict["opacity"] = [1] * len(tsv_dict["index"])
 
