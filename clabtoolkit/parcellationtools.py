@@ -900,23 +900,21 @@ class Parcellation:
         >>> parc.remove_by_code([100, 200], rearrange=True)
         """
 
+        # Convert codes2remove to numpy array
         if isinstance(codes2remove, list):
             codes2remove = cltmisc.build_indices(codes2remove)
             codes2remove = np.array(codes2remove)
 
+        # Set voxels with codes to remove to 0
         self.data[np.isin(self.data, codes2remove)] = 0
 
-        st_codes = np.unique(self.data)
-        st_codes = st_codes[st_codes != 0]
+        # Get remaining codes (excluding 0)
+        remaining_codes = np.unique(self.data)
+        remaining_codes = remaining_codes[remaining_codes != 0]
 
-        # If rearrange is True, the parcellation will be rearranged starting from 1
-        if rearrange:
-            self.keep_by_code(codes2keep=st_codes, rearrange=True)
-        else:
-            self.keep_by_code(codes2keep=st_codes, rearrange=False)
-
-        # Detect minimum and maximum labels
-        self.parc_range()
+        # Use keep_by_code to clean up metadata
+        # (parc_range is called by keep_by_code, so no need to call it again)
+        self.keep_by_code(codes2keep=remaining_codes, rearrange=rearrange)
 
     #####################################################################################################
     def remove_by_name(self, names2remove: Union[list, str], rearrange: bool = False):
