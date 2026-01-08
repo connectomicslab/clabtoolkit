@@ -11,8 +11,6 @@ from pathlib import Path
 
 
 from typing import Union, List, Optional, Tuple
-from scipy.ndimage import gaussian_filter
-from skimage import measure
 
 from rich.progress import (
     Progress,
@@ -74,7 +72,7 @@ class Parcellation:
             Color lookup table for parcellation regions. Can be:
             - Path to TSV/LUT file with columns: index, name, R, G, B, A (and optionally opacity)
             - Dictionary with required keys 'index', 'name', 'color' and optional keys
-              'opacity', 'headerlines'
+            'opacity', 'headerlines'
             If None, color table is auto-generated or loaded from sidecar files.
             Default is None.
 
@@ -100,8 +98,7 @@ class Parcellation:
             List of region codes present in parcellation (excluding 0).
         name : list of str
             List of region names corresponding to codes.
-
-        color : list
+        color : list of str
             List of colors (hex format) for each region.
         opacity : list of float
             List of opacity values (0-1) for each region. Default is 1.0 for all.
