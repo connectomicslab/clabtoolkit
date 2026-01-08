@@ -770,13 +770,13 @@ class Parcellation:
         self.adjust_values()
 
     ####################################################################################################
-    def keep_by_name(self, names2look: Union[list, str], rearrange: bool = False):
+    def keep_by_name(self, names2keep: Union[list, str], rearrange: bool = False):
         """
         Filter parcellation to keep only regions with specified names.
 
         Parameters
         ----------
-        names2look : str or list
+        names2keep : str or list
             Name substring(s) to search for in region names.
 
         rearrange : bool, optional
@@ -791,13 +791,16 @@ class Parcellation:
         >>> parc.keep_by_name(['frontal', 'parietal'], rearrange=True)
         """
 
-        if isinstance(names2look, str):
-            names2look = [names2look]
+        if isinstance(names2keep, str):
+            names2keep = [names2keep]
 
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
             # Find the indexes of the names that contain the substring
             indexes = cltmisc.get_indexes_by_substring(
-                input_list=self.name, substr=names2look, invert=False, bool_case=False
+                input_list=self.name,
+                or_filter=names2keep,
+                invert=False,
+                bool_case=False,
             )
 
             if len(indexes) > 0:
