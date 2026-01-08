@@ -1133,90 +1133,190 @@ class Parcellation:
         # Update parcellation range
         self.parc_range()
 
+    ####################################################################################################
     def mask_image(
         self,
-        image_2mask: Union[str, list, np.ndarray],
-        masked_image: Union[str, list, np.ndarray] = None,
-        codes2mask: Union[str, list, np.ndarray] = None,
-        mask_type: str = "upright",
-    ):
+        image_2mask: Union[str, Path, list, np.ndarray],
+        masked_image: Union[str, Path, list, None] = None,
+        roi_codes: Union[str, list, np.ndarray] = None,
+        roi_names: Union[str, list] = None,
+        invert: bool = False,
+    ) -> Union[np.ndarray, list]:
         """
         Mask external images using parcellation as binary mask.
 
         Parameters
         ----------
-        image_2mask : str, list, or np.ndarray
-            Image(s) to mask using parcellation.
+        image_2mask : str, Path, list, or np.ndarray
+            Image(s) to mask using parcellation. Can be file path(s) or array.
 
         masked_image : str or list, optional
             Output path(s) for masked images. Default is None.
 
-        codes2mask : list or np.ndarray, optional
-            Region codes to use for masking. Default is None (all regions).
+        roi_codes : str, list or np.ndarray, optional
+            Region codes to use for masking. Default is None (all non-zero regions).
 
-        mask_type : str, optional
-            'upright' uses specified codes, 'inverted' uses other codes. Default is 'upright'.
+        roi_names : str or list, optional
+            Region names to use for masking. Default is None.
+
+        invert : bool, optional
+            If False, keep only voxels within specified regions.
+            If True, remove voxels within specified regions.
+            Default is False.
+
+        Returns
+        -------
+        np.ndarray or list
+            If image_2mask is numpy array, returns masked array.
+            If image_2mask is path(s), returns list of output paths.
+
+        Raises
+        ------
+        ValueError
+            If both roi_codes and roi_names are specified, if output paths don't
+            match input paths in length, or files don't exist, or shapes don't match.
 
         Examples
         --------
-        >>> # Mask T1 image with parcellation
+        >>> # Mask T1 image with all parcellation regions
         >>> parc.mask_image('T1w.nii.gz', 'T1w_masked.nii.gz')
-        >>>
-        >>> # Mask with specific regions
-        >>> parc.mask_image('fmri.nii.gz', codes2mask=[1, 2, 3])
+        ['T1w_masked.nii.gz']
+
+        >>> # Mask with specific region codes
+        >>> parc.mask_image('fmri.nii.gz', 'fmri_masked.nii.gz', roi_codes=[1, 2, 3])
+        ['fmri_masked.nii.gz']
+
+        >>> # Mask with specific region names
+        >>> parc.mask_image('dwi.nii.gz', 'dwi_masked.nii.gz', roi_names=['cortex', 'hippocampus'])
+        ['dwi_masked.nii.gz']
+
+        >>> # Inverted masking (remove specific regions)
+        >>> parc.mask_image('dwi.nii.gz', 'dwi_masked.nii.gz', roi_codes=[5, 6], invert=True)
+        ['dwi_masked.nii.gz']
+
+        >>> # Mask numpy array
+        >>> masked_data = parc.mask_image(img_array, roi_codes=[10, 20])
         """
 
         if isinstance(image_2mask, str):
             image_2mask = [image_2mask]
 
-        if isinstance(masked_image, str):
-            masked_image = [masked_image]
+        is_file_input = isinstance(image_2mask, list) and isinstance(
+            image_2mask[0], (str, Path)
+        )
+
+        # Handle masked_image paths
+        if is_file_input:
+            if masked_image is None:
+                raise ValueError(
+                    "masked_image output path(s) required when image_2mask is file path(s)"
+                )
+
+            if isinstance(masked_image, (str, Path)):
+                masked_image = [masked_image]
 
         if isinstance(masked_image, list) and isinstance(image_2mask, list):
             if len(masked_image) != len(image_2mask):
                 raise ValueError(
-                    "The number of images to mask must be equal to the number of images to be saved"
+                    f"Number of output paths ({len(masked_image)}) must match "
+                    f"number of input images ({len(image_2mask)})"
                 )
 
-        if codes2mask is None:
-            # Get the indexes of all values different from zero
-            codes2mask = np.unique(self.data)
-            codes2mask = codes2mask[codes2mask != 0]
+        # Check if both inclusion criteria are specified
+        if roi_codes is not None and roi_names is not None:
+            raise ValueError(
+                "Cannot specify both roi_codes and roi_names. Please choose one."
+            )
 
-        if isinstance(codes2mask, list):
-            codes2mask = cltmisc.build_indices(codes2mask)
-            codes2mask = np.array(codes2mask)
+        # Determine which codes to use for masking
+        if roi_codes is not None:
+            # Use specified codes
+            if isinstance(roi_codes, str):
+                roi_codes = [roi_codes]
+            codes_to_use = cltmisc.build_indices(roi_codes)
+            codes_to_use = np.array(codes_to_use)
 
-        if mask_type == "inverted":
-            ind2rem = np.isin(self.data, codes2mask) == True
+        elif roi_names is not None:
+            # Get codes from names
+            if isinstance(roi_names, str):
+                roi_names = [roi_names]
+
+            if not hasattr(self, "name") or not hasattr(self, "index"):
+                raise ValueError(
+                    "Parcellation must have 'name' and 'index' attributes to use roi_names"
+                )
+
+            # Find indexes of matching names
+            indexes = cltmisc.get_indexes_by_substring(
+                input_list=self.name, or_filter=roi_names, invert=False, bool_case=False
+            )
+
+            if len(indexes) == 0:
+                raise ValueError(f"No regions found matching names: {roi_names}")
+
+            codes_to_use = np.array([self.index[i] for i in indexes])
 
         else:
-            ind2rem = np.isin(self.data, codes2mask) == False
+            # Use all non-zero codes
+            codes_to_use = np.unique(self.data)
+            codes_to_use = codes_to_use[codes_to_use != 0]
 
-        if isinstance(image_2mask, list):
-            if isinstance(image_2mask[0], str):
-                for cont, img in enumerate(image_2mask):
-                    if os.path.exists(img):
-                        temp_img = nib.load(img)
-                        img_data = temp_img.get_fdata()
-                        img_data[ind2rem] = 0
+        # Create boolean mask of voxels to zero out
+        if invert:
+            # Remove voxels with specified codes
+            voxels_to_zero = np.isin(self.data, codes_to_use)
+        else:
+            # Keep only voxels with specified codes
+            voxels_to_zero = ~np.isin(self.data, codes_to_use)
 
-                        # Save the masked image
-                        out_img = nib.Nifti1Image(img_data, temp_img.affine)
-                        nib.save(out_img, masked_image[cont])
+        # Process file inputs
+        if is_file_input:
+            output_paths = []
 
-                    else:
-                        raise ValueError("The image file does not exist")
-            else:
+            for img_path, out_path in zip(image_2mask, masked_image):
+                if not os.path.exists(img_path):
+                    raise ValueError(f"Image file does not exist: {img_path}")
+
+                # Load image
+                temp_img = nib.load(img_path)
+                img_data = temp_img.get_fdata()
+
+                # Validate shape
+                if img_data.shape[:3] != self.data.shape:
+                    raise ValueError(
+                        f"Image shape {img_data.shape[:3]} doesn't match "
+                        f"parcellation shape {self.data.shape}"
+                    )
+
+                # Apply mask
+                img_data[voxels_to_zero] = 0
+
+                # Save masked image
+                out_img = nib.Nifti1Image(img_data, temp_img.affine, temp_img.header)
+                nib.save(out_img, out_path)
+                output_paths.append(out_path)
+
+            return output_paths
+
+        # Process numpy array input
+        elif isinstance(image_2mask, np.ndarray):
+            # Validate shape
+            if image_2mask.shape[:3] != self.data.shape:
                 raise ValueError(
-                    "The image_2mask must be a list of strings containing the paths to the images"
+                    f"Image shape {image_2mask.shape[:3]} doesn't match "
+                    f"parcellation shape {self.data.shape}"
                 )
 
-        elif isinstance(image_2mask, np.ndarray):
-            img_data = image_2mask
-            img_data[ind2rem] = 0
+            # Create copy to avoid modifying input
+            img_data = image_2mask.copy()
+            img_data[voxels_to_zero] = 0
 
             return img_data
+
+        else:
+            raise ValueError(
+                "image_2mask must be a file path, Path object, list of paths, or numpy array"
+            )
 
     #####################################################################################################
     def compute_region_adjacency(
