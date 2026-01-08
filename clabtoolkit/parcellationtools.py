@@ -10,7 +10,7 @@ import pyvista as pv
 from pathlib import Path
 
 
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Tuple
 from scipy.ndimage import gaussian_filter
 from skimage import measure
 
@@ -54,8 +54,9 @@ class Parcellation:
     ####################################################################################################
     def __init__(
         self,
-        parc_file: Union[str, np.uint] = None,
-        affine: np.float64 = None,
+        parc_file: Union[str, Path, np.ndarray] = None,
+        color_table: Optional[Union[str, Path, dict]] = None,
+        affine: Optional[np.ndarray] = None,
         parc_id: Optional[str] = None,
         space_id: Optional[str] = "unknown",
     ):
@@ -64,151 +65,379 @@ class Parcellation:
 
         Parameters
         ----------
-        parc_file : str or np.ndarray, optional
-            Path to parcellation file or numpy array. If string, loads from file
-            and attempts to find associated TSV/LUT files. Default is None.
+        parc_file : str, Path, or np.ndarray, optional
+            Path to parcellation file (NIfTI format) or numpy array containing
+            parcellation data. If string/Path, loads from file and attempts to
+            find associated TSV/LUT files. Default is None.
+
+        color_table : str, Path, or dict, optional
+            Color lookup table for parcellation regions. Can be:
+            - Path to TSV/LUT file with columns: index, name, R, G, B, A (and optionally opacity)
+            - Dictionary with required keys 'index', 'name', 'color' and optional keys
+              'opacity', 'headerlines'
+            If None, color table is auto-generated or loaded from sidecar files.
+            Default is None.
 
         affine : np.ndarray, optional
             4x4 affine transformation matrix. If None and parc_file is array,
-            creates identity matrix. Default is None.
+            creates identity matrix centered on data. Default is None.
 
         parc_id : str, optional
-            Unique identifier for the parcellation. If None, generated from file name.
-            Default is None.
+            Unique identifier for the parcellation. If None, generated from
+            file name or set to 'numpy_array' for array input. Default is None.
 
         space_id : str, optional
-            Identifier for the space in which the parcellation is defined. Default is "unknown".
+            Identifier for the space in which the parcellation is defined
+            (e.g., 'MNI152NLin6Asym', 'native'). Default is "unknown".
 
         Attributes
         ----------
         data : np.ndarray
-            3D parcellation data array.
-
+            3D parcellation data array (integer labels).
         affine : np.ndarray
             4x4 affine transformation matrix.
-
-        index : list
-            List of region codes present in parcellation.
-
-        name : list
+        index : list of int
+            List of region codes present in parcellation (excluding 0).
+        name : list of str
             List of region names corresponding to codes.
 
         color : list
             List of colors (hex format) for each region.
+        opacity : list of float
+            List of opacity values (0-1) for each region. Default is 1.0 for all.
+        headerlines : list
+            List of header lines for the color table. Default is [].
+        parc_file : str
+            Path to parcellation file or 'numpy_array'.
+        id : str
+            Unique identifier for the parcellation.
+        space : str
+            Space identifier.
+        dim : tuple
+            Dimensions of the parcellation data.
+        voxel_size : float
+            Volume of a single voxel in mm³.
+        dtype : np.dtype
+            Data type of the parcellation.
+
+        Raises
+        ------
+        ValueError
+            If parcellation file does not exist or parc_file is None.
+        FileNotFoundError
+            If specified color_table file does not exist.
 
         Examples
         --------
-        >>> # Load from file
+        >>> # Load from file with automatic color table detection
         >>> parc = Parcellation('parcellation.nii.gz')
         >>>
-        >>> # Create from array
-        >>> parc = Parcellation(label_array, affine=img.affine)
+        >>> # Load with explicit color table
+        >>> parc = Parcellation('parcellation.nii.gz', color_table='colors.tsv')
+        >>>
+        >>> # Create from array with custom affine
+        >>> parc = Parcellation(label_array, affine=img.affine, parc_id='custom')
+        >>>
+        >>> # Create from array with full color dictionary
+        >>> color_dict = {
+        ...     'index': [1, 2, 3],
+        ...     'name': ['region1', 'region2', 'region3'],
+        ...     'color': ['#FF0000', '#00FF00', '#0000FF'],
+        ...     'opacity': [1.0, 0.8, 0.6],  # optional
+        ...     'headerlines': ['# My custom parcellation']  # optional
+        ... }
+        >>> parc = Parcellation(label_array, color_table=color_dict)
+        >>>
+        >>> # Create with minimal color dictionary (opacity defaults to 1.0)
+        >>> color_dict = {
+        ...     'index': [1, 2, 3],
+        ...     'name': ['region1', 'region2', 'region3'],
+        ...     'color': ['#FF0000', '#00FF00', '#0000FF']
+        ... }
+        >>> parc = Parcellation(label_array, color_table=color_dict)
         """
 
-        if parc_file is not None:
-            if isinstance(parc_file, str):
-                if os.path.exists(parc_file):
-                    self.parc_file = parc_file
-                    self.get_parcellation_id()
-                    self.get_space_id(space_id=space_id)
-                    temp_iparc = nib.load(parc_file)
-                    affine = temp_iparc.affine
-                    self.data = temp_iparc.get_fdata()
-                    self.data.astype(np.int32)
+        if parc_file is None:
+            raise ValueError(
+                "parc_file cannot be None. Provide a file path or numpy array."
+            )
 
-                    self.affine = affine
-                    self.dtype = temp_iparc.get_data_dtype()
+        # Handle file path input
+        if isinstance(parc_file, (str, Path)):
+            parc_file = str(parc_file)
 
-                    if parc_file.endswith(".nii.gz"):
-                        tsv_file = parc_file.replace(".nii.gz", ".tsv")
-                        lut_file = parc_file.replace(".nii.gz", ".lut")
+            if not os.path.exists(parc_file):
+                raise ValueError(f"The parcellation file does not exist: {parc_file}")
 
-                    elif parc_file.endswith(".nii"):
-                        tsv_file = parc_file.replace(".nii", ".tsv")
-                        lut_file = parc_file.replace(".nii", ".lut")
+            self.parc_file = parc_file
 
-                    if os.path.isfile(tsv_file):
-                        lut_2_load = tsv_file
+            # Set parcellation ID
+            if parc_id is not None:
+                self.id = parc_id
+            else:
+                self.get_parcellation_id()
 
-                    elif os.path.isfile(lut_file) and not os.path.isfile(tsv_file):
-                        lut_2_load = lut_file
+            # Set space ID
+            self.get_space_id(space_id=space_id)
 
-                    self.load_colortable(lut_file=lut_2_load)
+            # Load the parcellation data
+            temp_iparc = nib.load(parc_file)
+            self.affine = temp_iparc.affine
+            self.data = temp_iparc.get_fdata().astype(np.int32)
+            self.dtype = temp_iparc.get_data_dtype()
 
-                    # Adding index, name and color attributes
-                    if not hasattr(self, "index"):
-                        self.index = np.unique(self.data)
-                        self.index = self.index[self.index != 0].tolist()
-                        self.index = [int(x) for x in self.index]
+            # Determine color table to load
+            lut_2_load = self._determine_color_table_file(parc_file, color_table)
 
-                    if not hasattr(self, "name"):
-                        # create a list with the names of the regions. I would like a format for the names similar to this supra-side-000001
-                        self.name = cltmisc.create_names_from_indices(self.index)
+            # Load or create color table
+            if lut_2_load is not None:
+                self.load_colortable(lut_file=lut_2_load)
+            elif isinstance(color_table, dict):
+                self._load_colortable_from_dict(color_table)
+            else:
+                # Auto-generate color table
+                self._create_default_colortable()
 
-                    if not hasattr(self, "color"):
-                        self.color = cltcol.create_distinguishable_colors(
-                            len(self.index), output_format="hex"
-                        )
+        # Handle numpy array input
+        elif isinstance(parc_file, np.ndarray):
+            self.parc_file = "numpy_array"
+            self.id = parc_id if parc_id is not None else "numpy_array"
+            self.space = space_id
+            self.data = parc_file.astype(np.int32)
+            self.dtype = self.data.dtype
 
-                else:
-                    raise ValueError("The parcellation file does not exist")
+            # Create affine matrix if not provided
+            if affine is None:
+                affine = np.eye(4)
+                center = np.array(self.data.shape) // 2
+                affine[:3, 3] = -center
 
-            # If the parcellation is a numpy array
-            elif isinstance(parc_file, np.ndarray):
-                self.parc_file = "numpy_array"
+            self.affine = affine
 
-                if parc_id is None:
-                    self.id = "numpy_array"
-
-                self.space = space_id
-                self.data = parc_file
-
-                # Creating a new affine matrix if the affine matrix is None
-                if affine is None:
-                    affine = np.eye(4)
-
-                    center = np.array(self.data.shape) // 2
-                    affine[:3, 3] = -center
-
-                self.affine = affine
-
-                # Create a list with all the values different from 0
-                st_codes = np.unique(self.data)
-                st_codes = st_codes[st_codes != 0]
-
-                self.index = st_codes.tolist()
-                self.index = [int(x) for x in self.index]
-                self.name = cltmisc.create_names_from_indices(self.index)
-
-                if len(self.index) > 0:
-                    # Generate the colors
-                    self.color = cltcol.create_distinguishable_colors(
-                        len(self.index), output_format="hex"
-                    )
-                else:
-                    self.color = []
-
-            # Adjust values to the ones present in the parcellation
-
-            # Force index to be int
-            if hasattr(self, "index"):
-                self.index = [int(x) for x in self.index]
-
-            if (
-                hasattr(self, "index")
-                and hasattr(self, "name")
-                and hasattr(self, "color")
+            # Handle color table
+            if isinstance(color_table, dict):
+                self._load_colortable_from_dict(color_table)
+            elif isinstance(color_table, (str, Path)) and os.path.exists(
+                str(color_table)
             ):
-                self.adjust_values()
+                self.load_colortable(lut_file=str(color_table))
+            else:
+                # Auto-generate color table
+                self._create_default_colortable()
 
-            # Dimensions of the parcellation
-            self.dim = self.data.shape
+        else:
+            raise TypeError(
+                f"parc_file must be str, Path, or np.ndarray, got {type(parc_file)}"
+            )
 
-            # Get voxel size
-            self.voxel_size = cltimg.get_voxel_volume(self.affine)
+        # Ensure required attributes exist and adjust to data
+        self._ensure_attributes()
+        self.adjust_values()
 
-            # Detect minimum and maximum labels
-            self.parc_range()
+        # Set dimensional properties
+        self.dim = self.data.shape
+        self.voxel_size = cltimg.get_voxel_volume(self.affine)
+
+        # Detect label range
+        self.parc_range()
+
+    def _determine_color_table_file(
+        self, parc_file: str, color_table: Optional[Union[str, Path]]
+    ) -> Optional[str]:
+        """
+        Determine which color table file to load.
+
+        Priority: explicit color_table > .tsv sidecar > .lut sidecar
+
+        Parameters
+        ----------
+        parc_file : str
+            Path to parcellation file.
+        color_table : str, Path, or None
+            Explicitly provided color table path.
+
+        Returns
+        -------
+        str or None
+            Path to color table file, or None if none found.
+        """
+        # Check for explicit color_table
+        if color_table is not None and isinstance(color_table, (str, Path)):
+            color_table = str(color_table)
+            if os.path.isfile(color_table):
+                return color_table
+            else:
+                raise FileNotFoundError(
+                    f"Specified color_table does not exist: {color_table}"
+                )
+
+        # Determine base name for sidecar files
+        if parc_file.endswith(".nii.gz"):
+            base = parc_file[:-7]  # Remove .nii.gz
+        elif parc_file.endswith(".nii"):
+            base = parc_file[:-4]  # Remove .nii
+        else:
+            return None
+
+        # Check for sidecar files
+        tsv_file = base + ".tsv"
+        lut_file = base + ".lut"
+
+        if os.path.isfile(tsv_file):
+            return tsv_file
+        elif os.path.isfile(lut_file):
+            return lut_file
+
+        return None
+
+    def _load_colortable_from_dict(self, color_dict: dict) -> None:
+        """
+        Load color table from dictionary.
+
+        Parameters
+        ----------
+        color_dict : dict
+            Dictionary with required keys:
+            - 'index': list of int (region codes)
+            - 'name': list of str (region names)
+            And optional keys:
+            - 'color': list of str (hex colors)
+            - 'opacity': list of float (0-1 range, defaults to 1.0 for all)
+            - 'headerlines': list of str (defaults to [])
+
+        Raises
+        ------
+        ValueError
+            If required keys are missing or lists have mismatched lengths.
+        """
+        required_keys = {"index", "name"}
+        if not required_keys.issubset(color_dict.keys()):
+            raise ValueError(
+                f"color_table dict must contain keys: {required_keys}. "
+                f"Got: {set(color_dict.keys())}"
+            )
+
+        index = color_dict["index"]
+        name = color_dict["name"]
+        color = color_dict["color"]
+
+        if not (len(index) == len(name)):
+            raise ValueError(
+                f"All required lists in color_table dict must have same length. "
+                f"Got: index={len(index)}, name={len(name)}, color={len(color)}"
+            )
+
+        # Convert to appropriate types
+        self.index = [int(x) for x in index]
+        self.name = list(name)
+
+        if "color" in color_dict:
+            color = color_dict["color"]
+            if len(color) != len(index):
+                raise ValueError(
+                    f"If provided, color list must have same length as index. "
+                    f"Got: color={len(color)}, index={len(index)}"
+                )
+
+        else:
+            color = cltcol.create_distinguishable_colors(
+                len(self.index), output_format="hex"
+            )
+
+        # Force the colors to be in hex format
+        color = cltcol.harmonize_colors(color, output_format="hex")
+        self.color = list(color)
+
+        # Handle optional opacity
+        if "opacity" in color_dict:
+            opacity = color_dict["opacity"]
+            if len(opacity) != len(index):
+                raise ValueError(
+                    f"If provided, opacity list must have same length as index. "
+                    f"Got: opacity={len(opacity)}, index={len(index)}"
+                )
+            self.opacity = [float(x) for x in opacity]
+        else:
+            # Default opacity: 1.0 for all regions
+            self.opacity = [1.0] * len(self.index)
+
+        # Handle optional headerlines
+        if "headerlines" in color_dict:
+            self.headerlines = list(color_dict["headerlines"])
+        else:
+            # Default: empty list
+            self.headerlines = []
+
+    def _create_default_colortable(self) -> None:
+        """
+        Create default color table from unique values in data.
+
+        Generates region indices, automatic names, distinguishable colors,
+        default opacity (1.0), and empty headerlines.
+        """
+        # Get unique non-zero values
+        unique_vals = np.unique(self.data)
+        unique_vals = unique_vals[unique_vals != 0]
+
+        self.index = [int(x) for x in unique_vals]
+        self.name = cltmisc.create_names_from_indices(self.index)
+
+        if len(self.index) > 0:
+            self.color = cltcol.create_distinguishable_colors(
+                len(self.index), output_format="hex"
+            )
+            # Default opacity: 1.0 for all regions
+            self.opacity = [1.0] * len(self.index)
+        else:
+            self.color = []
+            self.opacity = []
+
+        # Default: empty headerlines
+        self.headerlines = []
+
+    def _ensure_attributes(self) -> None:
+        """
+        Ensure all required attributes exist with valid values.
+
+        Creates default values for index, name, color, opacity, and headerlines
+        if not present.
+        """
+        # Ensure index exists
+        if not hasattr(self, "index") or self.index is None:
+            unique_vals = np.unique(self.data)
+            unique_vals = unique_vals[unique_vals != 0]
+            self.index = [int(x) for x in unique_vals]
+
+        # Force index to int
+        self.index = [int(x) for x in self.index]
+
+        # Ensure name exists
+        if not hasattr(self, "name") or self.name is None:
+            self.name = cltmisc.create_names_from_indices(self.index)
+
+        # Ensure color exists
+        if not hasattr(self, "color") or self.color is None:
+            if len(self.index) > 0:
+                self.color = cltcol.create_distinguishable_colors(
+                    len(self.index), output_format="hex"
+                )
+            else:
+                self.color = []
+
+        # Ensure opacity exists (default to 1.0 for all regions)
+        if not hasattr(self, "opacity") or self.opacity is None:
+            self.opacity = [1.0] * len(self.index)
+
+        # Ensure opacity has correct length
+        if len(self.opacity) != len(self.index):
+            self.opacity = [1.0] * len(self.index)
+
+        # Ensure headerlines exists (default to empty list)
+        if not hasattr(self, "headerlines") or self.headerlines is None:
+            self.headerlines = []
+
+        # Detect minimum and maximum labels
+        self.parc_range()
 
     #####################################################################################################
     def get_space_id(self, space_id: Optional[str] = "unknown"):
