@@ -1734,7 +1734,7 @@ class Parcellation:
             temp_parc.keep_by_code(codes2keep=struct_codes)
 
         if struct_names is not None:
-            temp_parc.keep_by_name(names2look=struct_names)
+            temp_parc.keep_by_name(names2keep=struct_names)
 
         # Get unique region values
         unique_regions = np.array(temp_parc.index)
