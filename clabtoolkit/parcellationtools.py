@@ -1009,7 +1009,7 @@ class Parcellation:
 
         # Get indexes of regions whose names contain the substrings to remove
         indexes_to_remove = cltmisc.get_indexes_by_substring(
-            input_list=self.name, substr=names2remove, invert=False, bool_case=False
+            input_list=self.name, or_filter=names2remove, invert=False, bool_case=False
         )
 
         if len(indexes_to_remove) == 0:
