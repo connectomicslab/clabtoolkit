@@ -938,28 +938,31 @@ class Parcellation:
         >>> parc.remove_by_name(['csf', 'unknown'], rearrange=True)
         """
 
+        # Convert single string to list
         if isinstance(names2remove, str):
             names2remove = [names2remove]
 
-        if hasattr(self, "name") and hasattr(self, "index") and hasattr(self, "color"):
-
-            indexes = cltmisc.get_indexes_by_substring(
-                input_list=self.name, substr=names2remove, invert=True, bool_case=False
+        # Check required attributes
+        if not (hasattr(self, "name") and hasattr(self, "index")):
+            raise AttributeError(
+                "Parcellation must have 'name' and 'index' attributes to remove by name"
             )
 
-            if len(indexes) > 0:
-                sel_st_codes = [self.index[i] for i in indexes]
-                self.keep_by_code(codes2keep=sel_st_codes, rearrange=rearrange)
+        # Get indexes of regions whose names contain the substrings to remove
+        indexes_to_remove = cltmisc.get_indexes_by_substring(
+            input_list=self.name, substr=names2remove, invert=False, bool_case=False
+        )
 
-            else:
-                print("The names were not found in the parcellation")
-        else:
-            print(
-                "The parcellation does not contain the attributes name, index and color"
-            )
+        if len(indexes_to_remove) == 0:
+            print(f"No regions found matching: {names2remove}")
+            return
 
-        # Detect minimum and maximum labels
-        self.parc_range()
+        # Get the codes corresponding to the regions to remove
+        codes_to_remove = [self.index[i] for i in indexes_to_remove]
+
+        # Remove the regions using remove_by_code
+        # (parc_range is called by remove_by_code, so no need to call it again)
+        self.remove_by_code(codes2remove=codes_to_remove, rearrange=rearrange)
 
     #####################################################################################################
     def apply_mask(
