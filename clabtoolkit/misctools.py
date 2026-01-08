@@ -102,6 +102,9 @@ def build_indices(
 
     """
 
+    if isinstance(range_vector, (int, np.integer, str, tuple, np.ndarray)):
+        range_vector = [range_vector]
+
     indexes = []
 
     def parse_string(expr: str) -> List[int]:
