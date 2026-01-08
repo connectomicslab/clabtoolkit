@@ -1150,8 +1150,9 @@ class Parcellation:
         image_2mask : str, Path, list, or np.ndarray
             Image(s) to mask using parcellation. Can be file path(s) or array.
 
-        masked_image : str or list, optional
-            Output path(s) for masked images. Default is None.
+        masked_image : str, Path, list, optional
+            Output path(s) for masked images. Required when image_2mask is path(s).
+            Ignored when image_2mask is numpy array. Default is None.
 
         roi_codes : str, list or np.ndarray, optional
             Region codes to use for masking. Default is None (all non-zero regions).
@@ -1198,7 +1199,8 @@ class Parcellation:
         >>> masked_data = parc.mask_image(img_array, roi_codes=[10, 20])
         """
 
-        if isinstance(image_2mask, str):
+        # Normalize image_2mask to list
+        if isinstance(image_2mask, (str, Path)):
             image_2mask = [image_2mask]
 
         is_file_input = isinstance(image_2mask, list) and isinstance(
@@ -1215,7 +1217,10 @@ class Parcellation:
             if isinstance(masked_image, (str, Path)):
                 masked_image = [masked_image]
 
-        if isinstance(masked_image, list) and isinstance(image_2mask, list):
+            # Convert all paths to strings
+            image_2mask = [str(p) for p in image_2mask]
+            masked_image = [str(p) for p in masked_image]
+
             if len(masked_image) != len(image_2mask):
                 raise ValueError(
                     f"Number of output paths ({len(masked_image)}) must match "
