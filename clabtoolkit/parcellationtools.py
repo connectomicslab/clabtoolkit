@@ -2442,55 +2442,37 @@ class Parcellation:
 
                 col_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
 
-                if "index" in col_dict.keys() and "name" in col_dict.keys():
-                    st_codes = col_dict["index"]
-                    st_names = col_dict["name"]
-                else:
-                    raise ValueError(
-                        "The dictionary must contain the keys 'index' and 'name'"
-                    )
-
-                if "color" in col_dict.keys():
-                    st_colors = col_dict["color"]
-                else:
-                    st_colors = cltcol.create_distinguishable_colors(
-                        len(self.index), output_format="hex"
-                    )
-
-                self.index = st_codes
-                self.name = st_names
-                self.color = st_colors
-                self.opacity = col_dict["opacity"]
-                self.headerlines = col_dict["headerlines"]
-
             else:
                 raise ValueError("The lut file does not exist")
 
         elif isinstance(lut_file, dict):
             self.lut_file = None
 
-            if "index" not in lut_file.keys() or "name" not in lut_file.keys():
-                raise ValueError(
-                    "The dictionary must contain the keys 'index' and 'name'"
-                )
+            col_dict = copy.deepcopy(lut_file)
 
-            self.index = lut_file["index"]
-            self.name = lut_file["name"]
+        if "index" in col_dict.keys() and "name" in col_dict.keys():
+            self.index = col_dict["index"]
+            self.name = col_dict["name"]
+        else:
+            raise ValueError("The dictionary must contain the keys 'index' and 'name'")
 
-            if "color" not in lut_file.keys():
-                self.color = None
-            else:
-                self.color = lut_file["color"]
+        if "color" in col_dict.keys():
+            self.color = cltcol.harmonize_colors(col_dict["color"], output_format="hex")
 
-            if "opacity" in lut_file.keys():
-                self.opacity = lut_file["opacity"]
-            else:
-                self.opacity = [1.0] * len(self.index)
+        else:
+            self.color = cltcol.create_distinguishable_colors(
+                len(self.index), output_format="hex"
+            )
 
-            if "headerlines" in lut_file.keys():
-                self.headerlines = lut_file["headerlines"]
-            else:
-                self.headerlines = []
+        if "opacity" in col_dict.keys():
+            self.opacity = col_dict["opacity"]
+        else:
+            self.opacity = [1.0] * len(self.index)
+
+        if "headerlines" in col_dict.keys():
+            self.headerlines = col_dict["headerlines"]
+        else:
+            self.headerlines = []
 
         self.adjust_values()
         self.parc_range()
