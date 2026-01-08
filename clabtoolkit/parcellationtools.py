@@ -1127,6 +1127,134 @@ class Parcellation:
 
             return img_data
 
+    #####################################################################################################
+    def compute_region_adjacency(
+        self,
+        struct_codes: Union[List[int], np.ndarray] = None,
+        struct_names: Union[List[str], str] = None,
+        rearrange: bool = False,
+    ) -> Tuple[np.ndarray, dict, dict]:
+        """
+        Computes the region adjacency (neighbor) matrix for the parcellation.
+
+        Parameters
+        ----------
+        struct_codes : list or np.ndarray, optional
+            Specific region codes to include. Default is None (all regions).
+
+        struct_names : list or str, optional
+            Specific region names to include. Default is None.
+
+        rearrange : bool, optional
+            Whether to rearrange the parcellation labels before computing connectivity.
+            Default is False.
+
+        Returns
+        -------
+        neighb_matrix : np.ndarray
+            Binary adjacency matrix (n_regions x n_regions) indicating neighboring regions.
+
+        source : dict
+            Dictionary containing source region indices, codes, and names.
+
+        target : dict
+            Dictionary containing target region indices, codes, and names.
+
+        Raises
+        ------
+        ValueError
+            If both struct_codes and struct_names are specified.
+        """
+
+        from .imagetools import MorphologicalOperations
+
+        # Check if both inclusion criteria are specified
+        if struct_codes is not None and struct_names is not None:
+            raise ValueError(
+                "Cannot specify both struct_codes and struct_names. Please choose one."
+            )
+
+        # Work on a copy to avoid modifying original
+        temp_parc = copy.deepcopy(self)
+
+        # Apply filtering if specified
+        if struct_codes is not None:
+            temp_parc.keep_by_code(codes2keep=struct_codes, rearrange=rearrange)
+
+        if struct_names is not None:
+            temp_parc.keep_by_name(names2keep=struct_names, rearrange=rearrange)
+
+        data = temp_parc.data
+        all_neigh_pairs = np.zeros((0, 2), dtype=int)
+
+        # Find all neighboring pairs
+        for i in range(len(temp_parc.index)):
+            region_code = temp_parc.index[i]
+
+            # Create binary mask for the region of interest
+            region_mask = data == region_code
+
+            # Dilate the region by 1 voxel
+            morph = MorphologicalOperations()
+            dilated_mask = morph.dilate(region_mask.astype(int), iterations=1)
+
+            # Find the boundary (dilated area minus original region)
+            boundary = (dilated_mask == 1) & (region_mask == 0)
+
+            # Get values of neighboring regions (excluding background and self)
+            neighbor_codes = np.unique(data[boundary])
+            neighbor_codes = neighbor_codes[neighbor_codes != 0]  # Remove background
+            neighbor_codes = neighbor_codes[
+                neighbor_codes != region_code
+            ]  # Remove self
+
+            # Create pairs for this region
+            reg_pairs = np.ones((len(neighbor_codes), 2), dtype=int) * region_code
+            reg_pairs[:, 1] = neighbor_codes
+
+            # Concatenate to overall neighbor pairs
+            all_neigh_pairs = np.vstack((all_neigh_pairs, reg_pairs))
+
+        # Sort each row so the smaller value is always first
+        sorted_pairs = np.sort(all_neigh_pairs, axis=1)
+
+        # Find unique pairs
+        unique_pairs = np.unique(sorted_pairs, axis=0)
+
+        # Get ROI information
+        roi_codes = np.array(temp_parc.index)
+        roi_names = temp_parc.name
+        n_rois = len(roi_codes)
+
+        # Initialize the neighborhood matrix
+        neighb_matrix = np.zeros((n_rois, n_rois), dtype=int)
+
+        # Create source and target dictionaries
+        source = {"idxs": [], "codes": [], "names": []}
+        target = {"idxs": [], "codes": [], "names": []}
+
+        for pair in unique_pairs:
+            code1, code2 = pair[0], pair[1]
+
+            # Find the row indices in the ROI list
+            roi_idx1 = np.where(roi_codes == code1)[0][0]
+            roi_idx2 = np.where(roi_codes == code2)[0][0]
+
+            # Update symmetric adjacency matrix
+            neighb_matrix[roi_idx1, roi_idx2] = 1
+            neighb_matrix[roi_idx2, roi_idx1] = 1
+
+            # Store the pair (only once, not symmetric)
+            source["idxs"].append(roi_idx1)
+            source["codes"].append(code1)
+            source["names"].append(roi_names[roi_idx1])
+
+            target["idxs"].append(roi_idx2)
+            target["codes"].append(code2)
+            target["names"].append(roi_names[roi_idx2])
+
+        return neighb_matrix, source, target
+
     ######################################################################################################
     def compute_centroids(
         self,
