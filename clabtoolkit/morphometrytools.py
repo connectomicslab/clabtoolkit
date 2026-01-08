@@ -1,8 +1,6 @@
 import os
 from typing import Union, Tuple, Optional, Dict, List
 import copy
-from pyvista import _vtk, PolyData
-from numpy import split, ndarray
 import json
 import warnings
 import tempfile
@@ -11,6 +9,7 @@ import pandas as pd
 import nibabel as nib
 from nibabel.processing import resample_from_to
 import numpy as np
+from pathlib import Path
 
 # Importing local modules
 from . import misctools as cltmisc
@@ -18,6 +17,7 @@ from . import surfacetools as cltsurf
 from . import parcellationtools as cltparc
 from . import bidstools as cltbids
 from . import freesurfertools as cltfree
+from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -2715,15 +2715,75 @@ def get_stats_dictionary(region_level: str = "global"):
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def network_metrics_to_table(cmat, lut_name, cmat_met):
+def network_metrics_to_table(
+    conn_mat: np.ndarray,
+    lut_file: Union[str, Path, Dict] = None,
+    cmat_met: Union[str, List[str]] = "weight",
+) -> pd.DataFrame:
+    """
+    Compute network metrics from a connectivity matrix and return them in a DataFrame.
+    This function calculates various graph theory metrics from a given connectivity
+    matrix using the Brain Connectivity Toolbox (BCT) and organizes the results into
+    a pandas DataFrame.
 
-    if os.path.isfile(lut_name):
+    Parameters
+    ----------
+    conn_mat : np.ndarray
+        Square connectivity matrix (2D numpy array) representing the connections
+        between brain regions.
 
-        # Reading the colorlut
-        st_codes, st_names, st_colors = cltparc.Parcellation.read_luttable(lut_name)
+    lut_file : str, Path, or dict, optional
+        Path to a lookup table (LUT) file or a dictionary defining region codes and names.
+        If provided, it is used to map region indices to names. If None, regions are
+        named generically as "auto-roi-0001", "auto-roi-0002", etc.
+
+    cmat_met : str or list of str, default="weight"
+        Description of the connectivity matrix type. This string is used to label
+        the metric in the output DataFrame. It can be a single string or a list of
+        strings.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing the computed network metrics for each region and
+        global metrics.
+
+    Examples
+    --------
+    Basic usage with a connectivity matrix:
+    >>> import numpy as np
+    >>> import clabtoolkit.morphometrytools as morpho
+    >>> # Create a sample connectivity matrix
+    >>> conn_mat = np.array([[0, 1, 2],
+    ...                      [1, 0, 3],
+    ...                      [2, 3, 0]])
+    >>> # Compute network metrics
+    >>> df_metrics = morpho.network_metrics_to_table(conn_mat)
+    >>> print(df_metrics)
+    """
+
+    import bctpy as bct
+
+    if lut_file is not None:
+        if isinstance(lut_file, (str, Path)):
+            if os.path.exists(lut_file):
+
+                col_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
+
+            else:
+                raise ValueError("The lut file does not exist")
+
+        elif isinstance(lut_file, dict):
+            col_dict = copy.deepcopy(lut_file)
+        else:
+            raise TypeError("lut_file must be a file path or a dictionary")
+
+        st_codes = col_dict["index"]
+        st_names = col_dict["name"]
+
     else:
-        # Reading the tsv
-        st_codes, st_names, st_colors = cltparc.Parcellation.read_luttable(tsv_name)
+        st_codes = list(range(1, conn_mat.shape[0] + 1))
+        st_names = cltmisc.create_names_from_indices(st_codes)
 
     net_metrics = [
         "degree",
@@ -2735,7 +2795,7 @@ def network_metrics_to_table(cmat, lut_name, cmat_met):
         "transitivity",
         "density_coeff",
     ]
-    cmat_bin = cmat > 0
+    cmat_bin = conn_mat > 0
     deg_coeff = bct.degree.degrees_und(cmat_bin)
     str_coeff = bct.degree.strengths_und(cmat)
     clu_coeff = bct.clustering_coef_bu(cmat_bin)
@@ -2749,7 +2809,7 @@ def network_metrics_to_table(cmat, lut_name, cmat_met):
 
     dict_of_cols = {}
     dict_of_cols["metric"] = ["conn_matrix_" + cmat_met] * len(net_metrics)
-    dict_of_cols["statistics"] = net_metrics
+    dict_of_cols["value"] = net_metrics
     dict_of_cols["units"] = ["au"] * len(net_metrics)
     dict_of_cols["total_brain"] = [""] * (len(net_metrics) - 3) + [
         glob_eff_g,
@@ -2757,25 +2817,23 @@ def network_metrics_to_table(cmat, lut_name, cmat_met):
         den_coeff_g[0],
     ]
 
-    if os.path.isfile(lut_name) or os.path.isfile(tsv_name):
+    # Values for each region in the annot
+    nreg = len(st_codes)
+    # outvals = []
+    # outnames = []
+    for i in range(1, nreg + 1):
+        if i < len(conn_mat):
+            outvals = [
+                deg_coeff[i - 1],
+                str_coeff[i - 1],
+                clu_coeff[i - 1],
+                btw_cent[i - 1],
+                loc_eff[i - 1],
+            ] + [""] * 3
+        else:
+            outvals = [""] * (len(net_metrics))  #
 
-        # Values for each region in the annot
-        nreg = len(st_codes)
-        # outvals = []
-        # outnames = []
-        for i in range(1, nreg + 1):
-            if i < len(cmat):
-                outvals = [
-                    deg_coeff[i - 1],
-                    str_coeff[i - 1],
-                    clu_coeff[i - 1],
-                    btw_cent[i - 1],
-                    loc_eff[i - 1],
-                ] + [""] * 3
-            else:
-                outvals = [""] * (len(net_metrics))  #
-
-            dict_of_cols[st_names[i - 1]] = outvals
+        dict_of_cols[st_names[i - 1]] = outvals
 
     df = pd.DataFrame.from_dict(dict_of_cols)
     return df
