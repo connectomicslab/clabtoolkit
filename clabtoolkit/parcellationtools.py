@@ -782,12 +782,25 @@ class Parcellation:
 
         Converts white matter labels (>=3000) to corresponding gray matter labels
         by subtracting 3000, and removes other structures labels (>=5000).
+        This method is useful for tractography applications where the parcellation was generated
+        using Chimera (https://github.com/connectomicslab/chimera). It can also be applied to other
+        parcellations following the same labeling scheme.
+        - Gray matter regions: 1-2999
+        - White matter regions: 3000-4999 (to be merged with gray matter)
+            - 3000 for white matter label
+            - For FreeSurfer cortical white matter labels, the value is 3000 + corresponding gray matter label
+            - Other structures: 5000-5008 (to be removed)
+            - Corporus Callosum: 5009-5013 (to be merged with white matter)
 
         Examples
         --------
         >>> parc.prepare_for_tracking()
         >>> print(f"Max label after prep: {parc.data.max()}")
         """
+
+        # Get the Corpus Callosum and add them to the white matter label
+        ind = np.argwhere(self.data >= 5009)
+        self.data[ind[:, 0], ind[:, 1], ind[:, 2]] = 3000
 
         # Unique of non-zero values
         sts_vals = np.unique(self.data)
