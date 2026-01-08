@@ -175,7 +175,7 @@ class Parcellation:
                 self.get_parcellation_id()
 
             # Set space ID
-            self.get_space_id(space_id=space_id)
+            self.get_space_id()
 
             # Load the parcellation data
             temp_iparc = nib.load(parc_file)
