@@ -3,6 +3,7 @@ import numpy as np
 from collections import defaultdict
 from typing import Any, Optional, Dict, List
 import sys
+import pandas as pd
 
 # Try to import required modules at module level
 try:
@@ -77,7 +78,11 @@ class ExplorerDict(dict):
             return False
 
     ###########################################################################
-    def to_dataframe(self):
+    def to_dataframe(
+        self,
+        exclude_keys: Optional[List[str]] = None,
+        include_keys: Optional[List[str]] = None,
+    ) -> pd.DataFrame:
         """
         Convert dictionary to pandas DataFrame.
 
@@ -95,6 +100,16 @@ class ExplorerDict(dict):
             import pandas as pd
         except ImportError:
             raise ImportError("pandas is required for to_dataframe method.")
+
+        # Create a copy to avoid modifying the original
+        # and filter based on include/exclude keys
+        if exclude_keys:
+            data_copy = {k: v for k, v in self.items() if k not in exclude_keys}
+            return pd.DataFrame(data_copy)
+
+        if include_keys:
+            data_copy = {k: v for k, v in self.items() if k in include_keys}
+            return pd.DataFrame(data_copy)
 
         return pd.DataFrame(self)
 
