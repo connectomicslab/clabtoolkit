@@ -1502,7 +1502,7 @@ def compute_reg_volume_fromparcellation(
         vparc_data.keep_by_code(codes2keep=include_by_code)
 
     if include_by_name is not None:
-        vparc_data.keep_by_name(names2look=include_by_name)
+        vparc_data.keep_by_name(names2keep=include_by_name)
 
     # Computing the voxel volume (in cubic mm)
     vox_size = np.linalg.norm(affine[:3, :3], axis=1)
