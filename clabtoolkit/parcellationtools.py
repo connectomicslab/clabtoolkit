@@ -2017,7 +2017,7 @@ class Parcellation:
             self.color = new_colors
         else:
             # If new_colors is not provided, the colors will be created
-            self.color = cltmisc.create_distinguishable_colors(n_groups)
+            self.color = cltcol.create_distinguishable_colors(n_groups)
 
         # Detect minimum and maximum labels
         self.parc_range()
