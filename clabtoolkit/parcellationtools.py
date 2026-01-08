@@ -2493,6 +2493,7 @@ class Parcellation:
         self.index = [self.index[i] for i in sort_index]
         self.name = [self.name[i] for i in sort_index]
         self.color = [self.color[i] for i in sort_index]
+        self.opacity = [self.opacity[i] for i in sort_index]
 
     ######################################################################################################
     def export_colortable(
