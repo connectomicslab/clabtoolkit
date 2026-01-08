@@ -1029,9 +1029,9 @@ class Parcellation:
     #####################################################################################################
     def apply_mask(
         self,
-        image_mask,
-        codes2mask: Union[list, np.ndarray] = None,
-        mask_type: str = "upright",
+        image_mask: Union[str, Path, np.ndarray],
+        mask_codes: Union[str, list, np.ndarray] = None,
+        invert: bool = False,
         fill: bool = False,
     ):
         """
@@ -1039,33 +1039,48 @@ class Parcellation:
 
         Parameters
         ----------
-        image_mask : np.ndarray, Parcellation, or str
+        image_mask : str, Path, np.ndarray, or Parcellation
             3D mask array, parcellation object, or path to mask file.
+            Can be binary mask (0/1) or labeled image with region codes.
 
-        codes2mask : list or np.ndarray, optional
-            Specific region codes to mask. If None, masks all regions. Default is None.
+        mask_codes : list or np.ndarray, optional
+            Specific codes in the mask image to use for masking.
+            If None, uses all non-zero values in mask. Default is None.
 
-        mask_type : str, optional
-            'upright' to keep masked regions, 'inverted' to remove them. Default is 'upright'.
+        invert : bool, optional
+            If False, keep only voxels where mask has specified codes.
+            If True, remove voxels where mask has specified codes.
+            Default is False.
 
         fill : bool, optional
-            Whether to grow regions to fill mask using region growing. Default is False.
+            Whether to grow regions to fill mask using region growing.
+            Default is False.
+
+        Raises
+        ------
+        ValueError
+            If mask file doesn't exist or shapes don't match.
 
         Examples
         --------
-        >>> # Apply cortical mask
-        >>> parc.apply_mask(cortex_mask, mask_type='upright')
+        >>> # Apply binary cortical mask
+        >>> parc.apply_mask(cortex_mask)
         >>>
-        >>> # Mask specific regions with filling
-        >>> parc.apply_mask(roi_mask, codes2mask=[1, 2, 3], fill=True)
+        >>> # Mask using specific regions from another parcellation
+        >>> parc.apply_mask(roi_parc, mask_codes=[1, 2, 3])
+        >>>
+        >>> # Inverse masking with region growing
+        >>> parc.apply_mask(exclusion_mask, invert=True, fill=True)
         """
 
-        if isinstance(image_mask, str):
-            if os.path.exists(image_mask):
-                temp_mask = nib.load(image_mask)
-                mask_data = temp_mask.get_fdata()
-            else:
-                raise ValueError("The mask file does not exist")
+        # Load mask data
+        if isinstance(image_mask, (str, Path)):
+            image_mask = str(image_mask)
+            if not os.path.exists(image_mask):
+                raise ValueError(f"Mask file does not exist: {image_mask}")
+
+            temp_mask = nib.load(image_mask)
+            mask_data = temp_mask.get_fdata()
 
         elif isinstance(image_mask, np.ndarray):
             mask_data = image_mask
@@ -1073,35 +1088,49 @@ class Parcellation:
         elif isinstance(image_mask, Parcellation):
             mask_data = image_mask.data
 
-        mask_type.lower()
-        if mask_type not in ["upright", "inverted"]:
-            raise ValueError("The mask_type must be 'upright' or 'inverted'")
-
-        if codes2mask is None:
-            codes2mask = np.unique(self.data)
-            codes2mask = codes2mask[codes2mask != 0]
-
-        if isinstance(codes2mask, list):
-            codes2mask = cltmisc.build_indices(codes2mask)
-            codes2mask = np.array(codes2mask)
-
-        if mask_type == "inverted":
-            self.data[np.isin(mask_data, codes2mask) == True] = 0
-            bool_mask = np.isin(mask_data, codes2mask) == False
-
         else:
-            self.data[np.isin(mask_data, codes2mask) == False] = 0
-            bool_mask = np.isin(mask_data, codes2mask) == True
+            raise ValueError(
+                "image_mask must be a file path, numpy array, or Parcellation object"
+            )
 
+        # Validate shape compatibility
+        if mask_data.shape != self.data.shape:
+            raise ValueError(
+                f"Mask shape {mask_data.shape} doesn't match parcellation shape {self.data.shape}"
+            )
+
+        # Determine which codes in the mask to use
+        if mask_codes is None:
+            # Use all non-zero values in the mask
+            mask_codes = np.unique(mask_data)
+            mask_codes = mask_codes[mask_codes != 0]
+        else:
+            # Convert to standardized format
+            if isinstance(mask_codes, str):
+                mask_codes = [mask_codes]
+            mask_codes = cltmisc.build_indices(mask_codes)
+            mask_codes = np.array(mask_codes)
+
+        # Create boolean mask for regions to keep
+        bool_mask = np.isin(mask_data, mask_codes)
+
+        # Apply masking
+        if invert:
+            # Remove voxels where mask contains specified codes
+            self.data[bool_mask] = 0
+            bool_mask = ~bool_mask  # Invert for region growing
+        else:
+            # Keep only voxels where mask contains specified codes
+            self.data[~bool_mask] = 0
+
+        # Optional region growing to fill the mask
         if fill:
-
-            # Refilling the unlabeled voxels according to a supplied mask
             self.data = cltimg.region_growing(self.data, bool_mask)
 
-        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            self.adjust_values()
+        # Adjust parcellation values
+        self.adjust_values()
 
-        # Detect minimum and maximum labels
+        # Update parcellation range
         self.parc_range()
 
     def mask_image(
