@@ -838,31 +838,36 @@ class Parcellation:
         >>> parc.keep_by_code([100, 200, 300], rearrange=True)
         """
 
-        # Convert the codes2keep to a numpy array
+        # Convert codes2keep to numpy array
         if isinstance(codes2keep, list):
             codes2keep = cltmisc.build_indices(codes2keep)
             codes2keep = np.array(codes2keep)
 
-        # Create a boolean mask where elements are True if they are in the retain list
+        # Create a boolean mask for voxels to keep
         mask = np.isin(self.data, codes2keep)
 
         # Set elements to zero if they are not in the retain list
         self.data[~mask] = 0
 
-        # Remove the elements from retain_list that are not present in the data
-        img_tmp_codes = np.unique(self.data)
+        # Get the actual codes present in the filtered data (excluding 0)
+        remaining_codes = np.unique(self.data)
+        remaining_codes = remaining_codes[remaining_codes != 0]
 
-        # Codes to look is img_tmp_codes without the 0
-        codes2keep = img_tmp_codes[img_tmp_codes != 0]
-
-        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            sts = np.unique(self.data)
-            sts = sts[sts != 0]
+        # Filter metadata arrays to match remaining codes
+        if hasattr(self, "index"):
             temp_index = np.array(self.index)
-            mask = np.isin(temp_index, sts)
-            self.index = temp_index[mask].tolist()
-            self.name = np.array(self.name)[mask].tolist()
-            self.color = np.array(self.color)[mask].tolist()
+            metadata_mask = np.isin(temp_index, remaining_codes)
+            self.index = temp_index[metadata_mask].tolist()
+
+            # Apply the same mask to other metadata arrays
+            if hasattr(self, "name"):
+                self.name = np.array(self.name)[metadata_mask].tolist()
+
+            if hasattr(self, "color"):
+                self.color = np.array(self.color)[metadata_mask].tolist()
+
+            if hasattr(self, "opacity"):
+                self.opacity = np.array(self.opacity)[metadata_mask].tolist()
 
         # If rearrange is True, the parcellation will be rearranged starting from 1
         if rearrange:
