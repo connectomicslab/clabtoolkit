@@ -866,7 +866,7 @@ class Parcellation:
 
     #####################################################################################################
     def keep_by_code(
-        self, codes2keep: Union[list, np.ndarray], rearrange: bool = False
+        self, codes2keep: Union[str, list, np.ndarray], rearrange: bool = False
     ):
         """
         Filter parcellation to keep only specified region codes.
@@ -937,7 +937,7 @@ class Parcellation:
 
     #####################################################################################################
     def remove_by_code(
-        self, codes2remove: Union[list, np.ndarray], rearrange: bool = False
+        self, codes2remove: Union[str, list, np.ndarray], rearrange: bool = False
     ):
         """
         Remove regions with specified codes from parcellation.
@@ -958,6 +958,9 @@ class Parcellation:
         >>> # Remove and rearrange
         >>> parc.remove_by_code([100, 200], rearrange=True)
         """
+        # Validate codes2remove
+        if isinstance(codes2remove, str):
+            codes2remove = [codes2remove]
 
         # Convert codes2remove to numpy array
         if isinstance(codes2remove, list):
