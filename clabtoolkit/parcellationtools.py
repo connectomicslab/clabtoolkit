@@ -2594,27 +2594,28 @@ class Parcellation:
         out_atlas = nib.Nifti1Image(data_to_save, affine)
         nib.save(out_atlas, out_file)
 
-        if lut_file is None:
-            base_name = cltmisc.get_real_basename(os.path.basename(out_file))
-            out_dir = os.path.dirname(out_file)
+        if lut_type is not None
+            if lut_file is None:
+                base_name = cltmisc.get_real_basename(os.path.basename(out_file))
+                out_dir = os.path.dirname(out_file)
 
-            if lut_type.lower() == "lut":
-                lut_file = os.path.join(out_dir, base_name + ".lut")
+                if lut_type.lower() == "lut":
+                    lut_file = os.path.join(out_dir, base_name + ".lut")
 
-            elif lut_type.lower() == "tsv":
-                lut_file = os.path.join(out_dir, base_name + ".tsv")
+                elif lut_type.lower() == "tsv":
+                    lut_file = os.path.join(out_dir, base_name + ".tsv")
 
-            elif lut_type.lower() == "fsl":
-                lut_file = os.path.join(out_dir, base_name + ".fsllut")
+                elif lut_type.lower() == "fsl":
+                    lut_file = os.path.join(out_dir, base_name + ".fsllut")
 
-            elif lut_type.lower() == "nilearn":
-                lut_file = os.path.join(out_dir, base_name + ".nilearnlut")
+                elif lut_type.lower() == "nilearn":
+                    lut_file = os.path.join(out_dir, base_name + ".nilearnlut")
 
-            else:
-                raise ValueError("lut_type must be 'lut', 'tsv', 'fsl' or 'nilearn'")
+                else:
+                    raise ValueError("lut_type must be 'lut', 'tsv', 'fsl' or 'nilearn'")
 
-        # Exporting the colortable if required
-        self.export_colortable(out_file=lut_file, lut_type=lut_type, force=force)
+            # Exporting the colortable if required
+            self.export_colortable(out_file=lut_file, lut_type=lut_type, force=force)
 
     ######################################################################################################
     def load_colortable(self, lut_file: Union[str, Path, dict] = None):
