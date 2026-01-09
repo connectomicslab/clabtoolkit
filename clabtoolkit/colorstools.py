@@ -3326,7 +3326,7 @@ class ColorTableLoader:
 
         out_format : str, optional
             Output format. Options are 'lut', 'tsv', 'fsl' or 'nilearn'.
-            Default is 'fsl'.
+            Default is 'lut'.
 
         overwrite : bool, optional
             Whether to overwrite the output file if it already exists.
