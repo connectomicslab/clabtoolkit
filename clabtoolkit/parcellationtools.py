@@ -2571,6 +2571,8 @@ class Parcellation:
         if headerlines is not None:
             if isinstance(headerlines, str):
                 headerlines = [headerlines]
+        else:
+            headerlines = self.headerlines
 
         self.data.astype(np.int32)
         out_atlas = nib.Nifti1Image(self.data, affine)
