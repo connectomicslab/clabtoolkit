@@ -2533,11 +2533,12 @@ class Parcellation:
     ######################################################################################################
     def save_parcellation(
         self,
-        out_file: str,
+        out_file: Union[str, Path],
         affine: np.float64 = None,
         headerlines: Union[list, str] = [],
-        save_lut: bool = False,
-        save_tsv: bool = False,
+        lut_file: Union[str, Path] = None,
+        lut_type: str = "lut",
+        force: bool = True,
     ):
         """
         Save parcellation to NIfTI file with optional lookup tables.
@@ -2596,30 +2597,22 @@ class Parcellation:
         out_atlas = nib.Nifti1Image(data_to_save, affine)
         nib.save(out_atlas, out_file)
 
-        if save_lut:
-            if (
-                hasattr(self, "index")
-                and hasattr(self, "name")
-                and hasattr(self, "color")
-            ):
-                self.export_colortable(
-                    out_file=out_file.replace(".nii.gz", ".lut"),
-                    headerlines=headerlines,
-                )
-            else:
-                print(
-                    "Warning: The parcellation does not contain a color table. The lut file will not be saved"
-                )
+        if lut_file is None:
+            base_name = cltmisc.get_real_basename(os.path.basename(out_file))
+            out_dir = os.path.dirname(out_file)
 
-        if save_tsv:
-            if (
-                hasattr(self, "index")
-                and hasattr(self, "name")
-                and hasattr(self, "color")
-            ):
-                self.export_colortable(
-                    out_file=out_file.replace(".nii.gz", ".tsv"), lut_type="tsv"
-                )
+            if lut_type.lower() == "lut":
+                lut_file = os.path.join(out_dir, base_name + ".lut")
+
+            elif lut_type.lower() == "tsv":
+                lut_file = os.path.join(out_dir, base_name + ".tsv")
+
+            elif lut_type.lower() == "fsl":
+                lut_file = os.path.join(out_dir, base_name + ".fsllut")
+
+            elif lut_type.lower() == "nilearn":
+                lut_file = os.path.join(out_dir, base_name + ".nilearnlut")
+
             else:
                 raise ValueError("lut_type must be 'lut', 'tsv', 'fsl' or 'nilearn'")
 
