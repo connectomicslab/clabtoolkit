@@ -1910,8 +1910,7 @@ def simulate_image(
 
     if n_volumes == 1 and len(original_shape) > 3:
         # Convert from 4D+ to 3D
-        header_copy["dim"][0] = 3
-        header_copy["dim"][4] = 1
+        header_copy.structarr["dims"][4] = 1
 
     elif n_volumes > 1:
         # Ensure 4D header
