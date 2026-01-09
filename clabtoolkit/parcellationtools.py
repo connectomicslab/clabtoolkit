@@ -2535,7 +2535,7 @@ class Parcellation:
         self,
         out_file: str,
         affine: np.float64 = None,
-        headerlines: Union[list, str] = None,
+        headerlines: Union[list, str] = [],
         save_lut: bool = False,
         save_tsv: bool = False,
     ):
@@ -2568,10 +2568,10 @@ class Parcellation:
         if affine is None:
             affine = self.affine
 
-        if headerlines is not None:
-            if isinstance(headerlines, str):
+        if isinstance(headerlines, str):
                 headerlines = [headerlines]
-        else:
+        
+        if len(headerlines) == 0:
             headerlines = self.headerlines
 
         self.data.astype(np.int32)
