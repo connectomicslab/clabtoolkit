@@ -3037,28 +3037,17 @@ class ColorTableLoader:
         Examples
         --------
         >>> # Create a simple LUT file
+        >>> lut_data = {
+        ...     'index': [0, 1, 2],
+        ...     'name': ['Unknown', 'Left-Cerebral-Exterior', 'Left-Cerebral-White-Matter'],
+        ...     'color': ['#000000', '#4682b4', '#f5f5f5'],
+        ...     'opacity': [1.0, 1.0, 1.0]
+        ... }
         >>> ColorTableLoader.write_luttable(
-        ...     codes=[1, 2, 3],
-        ...     names=['region1', 'region2', 'region3'],
-        ...     colors=['#FF0000', '#00FF00', '#0000FF'],
-        ...     out_file='output.lut'
-        ... )
-
-        >>> # Use RGB colors instead
-        >>> ColorTableLoader.write_luttable(
-        ...     codes=[1, 2],
-        ...     names=['cortex', 'white_matter'],
-        ...     colors=[[255, 0, 0], [255, 255, 255]],
-        ...     out_file='parcellation.lut'
-        ... )
-
-        >>> # Append to existing file
-        >>> ColorTableLoader.write_luttable(
-        ...     codes=[4],
-        ...     names=['new_region'],
-        ...     colors=['#FFFF00'],
-        ...     out_file='output.lut',
-        ...     boolappend=True
+        ...     lut_df=lut_data,
+        ...     out_file='output_lut.txt',
+        ...     boolappend=False,
+        ...     force=True
         ... )
 
         Notes
