@@ -1914,12 +1914,7 @@ def simulate_image(
 
     elif n_volumes > 1:
         # Ensure 4D header
-        header_copy["dim"][0] = 4
-        header_copy["dim"][4] = n_volumes
-
-        # Set appropriate time units if not already set
-        if header_copy.get("xyzt_units", 0) == 0:
-            header_copy["xyzt_units"] = 10  # mm + sec
+        header_copy.structarr["dims"][3] = n_volumes
 
     # Create output image
     try:
