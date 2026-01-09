@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Optional, Union, List, Tuple, Literal
 import warnings
 
+from . import colorstools as cltcol
+
 
 class Connectome:
     """
@@ -38,7 +40,7 @@ class Connectome:
         name: Optional[str] = None,
         matrix: Optional[np.ndarray] = None,
         coordinates: Optional[np.ndarray] = None,
-        colors: Optional[np.ndarray] = None,
+        colors: Union[np.ndarray, List] = None,
         region_names: Optional[List[str]] = None,
         region_index: Optional[np.ndarray] = None,
         connectivity_type: str = "structural",
@@ -86,7 +88,9 @@ class Connectome:
             self.coordinates = None
 
         # Set colors
+
         if colors is not None:
+            colors = cltcol.harmonize_colors(colors, "hex")
             self.set_colors(colors)
         else:
             self.colors = None
@@ -291,12 +295,8 @@ class Connectome:
                 # Load colors (optional)
                 if "gmcolors" in data_group:
                     self.colors = data_group["gmcolors"][:]
-                    if self.colors.shape[0] != self._n_regions:
-                        warnings.warn("Number of colors doesn't match matrix size")
-                    else:
-                        # Normalize colors to [0,1] range if needed
-                        if np.max(self.colors) > 1:
-                            self.colors = self.colors / 255.0
+                    self.colors = cltcol.harmonize_colors(self.colors)
+
                 elif "colors" in data_group:  # Alternative name
                     self.colors = data_group["colors"][:]
                     if self.colors.shape[0] != self._n_regions:
@@ -435,7 +435,7 @@ class Connectome:
             )
         self.coordinates = coordinates.copy()
 
-    def set_colors(self, colors: np.ndarray) -> None:
+    def set_colors(self, colors: Union[List, np.ndarray]) -> None:
         """
         Set colors for brain regions.
 
@@ -444,16 +444,11 @@ class Connectome:
         colors : np.ndarray
             Array of shape (n_regions, 3) with RGB values [0-1] or [0-255]
         """
-        if self.matrix is not None and colors.shape[0] != self.n_regions:
+        if self.matrix is not None and len(colors) != self.n_regions:
             raise ValueError(
-                f"Colors shape {colors.shape} doesn't match expected ({self.n_regions}, 3)"
+                f"Colors shape {len(colors)} doesn't match expected ({self.n_regions}, 3)"
             )
-
-        colors = colors.copy()
-        # Normalize to [0,1] if needed
-        if np.max(colors) > 1:
-            colors = colors / 255.0
-        self.colors = colors
+        self.colors = cltcol.harmonize_colors(colors)
 
     def set_region_names(self, names: List[str]) -> None:
         """
@@ -478,7 +473,8 @@ class Connectome:
         --------
         np.ndarray : RGB colors for each region
         """
-        return plt.cm.Set3(np.linspace(0, 1, self.n_regions))[:, :3]
+        colors = cltcol.create_distinguishable_colors(self.n_regions)
+        return colors
 
     def get_default_region_names(self) -> List[str]:
         """
