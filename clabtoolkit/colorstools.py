@@ -3311,7 +3311,7 @@ class ColorTableLoader:
     def export(
         self,
         out_ctab: Union[str, Path],
-        out_format: str = "fsl",
+        out_format: str = "lut",
         headerlines: Union[list, str] = None,
         append: bool = False,
         overwrite: bool = True,
