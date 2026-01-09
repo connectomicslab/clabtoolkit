@@ -2548,34 +2548,52 @@ class Parcellation:
             Output file path.
 
         affine : np.ndarray, optional
-            Affine matrix. If None, uses object's affine. Default is None.
+            Affine transformation matrix. If None, uses object's affine.
 
-        headerlines : list or str, optional
-            Header lines for LUT file. Default is None.
+        headerlines : list, str, or None, optional
+            Header lines for LUT format. If None, uses object's headerlines.
 
-        save_lut : bool, optional
-            Whether to save FreeSurfer LUT file. Default is False.
+        lut_file : str, Path, or None, optional
+            Path for lookup table file. If None, auto-generated from out_file.
 
-        save_tsv : bool, optional
-            Whether to save TSV lookup table. Default is False.
+        lut_type : str, optional
+            Lookup table format: 'lut', 'tsv', 'fsl', or 'nilearn'.
+
+        force : bool, optional
+            Whether to overwrite existing files.
 
         Examples
         --------
-        >>> # Save with lookup tables
-        >>> parc.save_parcellation('output.nii.gz', save_lut=True, save_tsv=True)
+        >>> # Save with default LUT
+        >>> parc.save_parcellation('output.nii.gz', lut_type='tsv')
+
+        >>> # Save with custom LUT file
+        >>> parc.save_parcellation('output.nii.gz', lut_file='custom.lut')
         """
 
+        # Handle affine
         if affine is None:
             affine = self.affine
 
-        if isinstance(headerlines, str):
-                headerlines = [headerlines]
-        
-        if len(headerlines) == 0:
+        # Handle headerlines
+        if headerlines is None:
             headerlines = self.headerlines
 
-        self.data.astype(np.int32)
-        out_atlas = nib.Nifti1Image(self.data, affine)
+        elif isinstance(headerlines, str):
+            headerlines = [headerlines]
+
+        # Check file existence
+        if isinstance(out_file, Path):
+            out_file = str(out_file)
+
+        if not force and os.path.exists(out_file):
+            raise FileExistsError(
+                f"File {out_file} already exists. Set force=True to overwrite."
+            )
+
+        # Save NIfTI file with proper data type
+        data_to_save = self.data.astype(np.int32)
+        out_atlas = nib.Nifti1Image(data_to_save, affine)
         nib.save(out_atlas, out_file)
 
         if save_lut:
@@ -2603,9 +2621,10 @@ class Parcellation:
                     out_file=out_file.replace(".nii.gz", ".tsv"), lut_type="tsv"
                 )
             else:
-                print(
-                    "Warning: The parcellation does not contain a color table. The tsv file will not be saved"
-                )
+                raise ValueError("lut_type must be 'lut', 'tsv', 'fsl' or 'nilearn'")
+
+        # Exporting the colortable if required
+        self.export_colortable(out_file=lut_file, lut_type=lut_type, force=force)
 
     ######################################################################################################
     def load_colortable(self, lut_file: Union[str, Path, dict] = None):
