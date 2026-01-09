@@ -1459,7 +1459,7 @@ class Parcellation:
         gaussian_smooth: bool = True,
         sigma: float = 1.0,
         closing_iterations: int = 2,
-        centroid_table: str = None,
+        centroid_table: Union[str, Path, None] = None,
     ) -> pd.DataFrame:
         """
         Compute region centroids, voxel counts, and volumes.
@@ -1473,26 +1473,31 @@ class Parcellation:
             Specific region names to include. Default is None.
 
         gaussian_smooth : bool, optional
-            Whether to apply Gaussian smoothing to the volume before centroid calculation. Default is True.
+            Whether to apply Gaussian smoothing before centroid calculation. Default is True.
 
         sigma : float, optional
             Standard deviation for Gaussian smoothing. Default is 1.0.
 
         closing_iterations : int, optional
-            Number of morphological closing iterations before centroid extraction. Default is 2.
+            Number of morphological closing iterations. Default is 2.
 
-        centroid_table : str, optional
+        centroid_table : str or Path, optional
             Path to save results as TSV file. Default is None.
 
         Returns
         -------
         pd.DataFrame
-            DataFrame with columns: index, name, color, X, Y, Z (mm), nvoxels, volume.
+            DataFrame with columns: index, name, color, x_vox, y_vox, z_vox,
+            x_mm, y_mm, z_mm, nvoxels, volume.
 
         Raises
         ------
         ValueError
             If both roi_codes and roi_names are specified.
+
+        Notes
+        -----
+        This method sets the `centroids` attribute (Nx3 array in mm or voxel coordinates).
 
         Examples
         --------
@@ -1511,85 +1516,76 @@ class Parcellation:
         ... )
         """
 
-        # Check if include_by_code and include_by_name are different from None at the same time
+        # Check if both inclusion criteria are specified
         if roi_codes is not None and roi_names is not None:
             raise ValueError(
-                "You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them."
+                "Cannot specify both roi_codes and roi_names. Please choose one."
             )
 
+        # Work on a copy to avoid modifying original
         temp_parc = copy.deepcopy(self)
 
-        # Apply inclusion if specified
+        # Apply filtering if specified
         if roi_codes is not None:
             temp_parc.keep_by_code(codes2keep=roi_codes)
 
         if roi_names is not None:
             temp_parc.keep_by_name(names2keep=roi_names)
 
-        # Get unique region values
-        unique_regions = np.array(temp_parc.index)
+        # Get region information
+        region_codes = np.array(temp_parc.index)
+        n_regions = len(region_codes)
 
-        # Lists to store results
+        # Initialize result lists
         codes = []
         names = []
         colors = []
-        x_coords = []
-        y_coords = []
-        z_coords = []
+        x_coords_vox = []
+        y_coords_vox = []
+        z_coords_vox = []
         num_voxels = []
         volumes = []
 
         # Get voxel size
         voxel_volume = cltimg.get_voxel_volume(temp_parc.affine)
 
-        # Fixed loop - iterate over regions and find their index
-        for region_label in unique_regions:
-            # Find the index of this region in parc.index
-            region_idx = np.where(np.array(temp_parc.index) == region_label)[0]
-            if len(region_idx) == 0:
-                continue
-            region_idx = region_idx[0]  # Get the first (should be only) match
-
-            # Extract centroid and voxel count
-            centroid, voxel_count = cltimg.extract_centroid_from_volume(
-                temp_parc.data == region_label,
+        # Iterate over regions - indices align with temp_parc.index
+        for i, region_code in enumerate(region_codes):
+            # Extract centroid and voxel count for this region
+            centroid_vox, voxel_count = cltimg.extract_centroid_from_volume(
+                temp_parc.data == region_code,
                 gaussian_smooth=gaussian_smooth,
                 sigma=sigma,
                 closing_iterations=closing_iterations,
             )
 
-            centroid_x, centroid_y, centroid_z = centroid[0], centroid[1], centroid[2]
-
             # Calculate total volume
             total_volume = voxel_count * voxel_volume
 
             # Store results
-            codes.append(int(region_label))
-            names.append(temp_parc.name[region_idx])
-            colors.append(temp_parc.color[region_idx])
-            x_coords.append(centroid_x)
-            y_coords.append(centroid_y)
-            z_coords.append(centroid_z)
+            codes.append(int(region_code))
+            names.append(temp_parc.name[i])
+            colors.append(temp_parc.color[i])
+            x_coords_vox.append(centroid_vox[0])
+            y_coords_vox.append(centroid_vox[1])
+            z_coords_vox.append(centroid_vox[2])
             num_voxels.append(voxel_count)
             volumes.append(total_volume)
 
-        # Convert coordinates to mm
+        # Convert voxel coordinates to mm
         coords_vox = np.stack(
-            (np.array(x_coords), np.array(y_coords), np.array(z_coords)), axis=-1
+            (np.array(x_coords_vox), np.array(y_coords_vox), np.array(z_coords_vox)),
+            axis=-1,
         )
         coords_mm = cltimg.vox2mm(coords_vox, self.affine)
 
-        # Add centroid coordinates in mm
+        # Store centroids as attribute (in mm)
         self.centroids = coords_mm.astype(float)
 
-        x_coords_mm = coords_mm[:, 0]
-        y_coords_mm = coords_mm[:, 1]
-        z_coords_mm = coords_mm[:, 2]
-
-        # Convert to list
-        x_coords_mm = x_coords_mm.tolist()
-        y_coords_mm = y_coords_mm.tolist()
-        z_coords_mm = z_coords_mm.tolist()
+        # Extract mm coordinates
+        x_coords_mm = coords_mm[:, 0].tolist()
+        y_coords_mm = coords_mm[:, 1].tolist()
+        z_coords_mm = coords_mm[:, 2].tolist()
 
         # Create DataFrame
         df = pd.DataFrame(
@@ -1597,12 +1593,12 @@ class Parcellation:
                 "index": codes,
                 "name": names,
                 "color": colors,
-                "Xvox": x_coords,
-                "Yvox": y_coords,
-                "Zvox": z_coords,
-                "Xmm": x_coords_mm,
-                "Ymm": y_coords_mm,
-                "Zmm": z_coords_mm,
+                "x_vox": x_coords_vox,
+                "y_vox": y_coords_vox,
+                "z_vox": z_coords_vox,
+                "x_mm": x_coords_mm,
+                "y_mm": y_coords_mm,
+                "z_mm": z_coords_mm,
                 "nvoxels": num_voxels,
                 "volume": volumes,
             }
@@ -1610,19 +1606,21 @@ class Parcellation:
 
         # Save to TSV file if path is provided
         if centroid_table is not None:
+            centroid_table = str(centroid_table)  # Convert Path to str
+
+            # Check if directory exists
+            directory = os.path.dirname(centroid_table)
+            if directory and not os.path.exists(directory):
+                print(f"Directory does not exist: {directory}.")
+                return df
+
             try:
-                # Check if the directory exists
-                directory = os.path.dirname(centroid_table)
-                if directory and not os.path.exists(directory):
-                    print(
-                        f"Warning: Directory '{directory}' does not exist. Cannot save file."
-                    )
-                else:
-                    # Save as TSV file
-                    df.to_csv(centroid_table, sep="\t", index=False)
-                    print(f"Centroid table saved to: {centroid_table}")
+                df.to_csv(centroid_table, sep="\t", index=False)
+                print(f"Centroid table saved to: {centroid_table}")
             except Exception as e:
-                print(f"Error saving centroid table: {e}")
+                import warnings
+
+                warnings.warn(f"Failed to save centroid table: {e}", UserWarning)
 
         return df
 
@@ -1736,16 +1734,15 @@ class Parcellation:
                 tmp_parc_image = cltmisc.create_temporary_filename(
                     prefix="temp_parcellation", extension=".nii.gz", tmp_dir="/tmp"
                 )
-
-                temp_parc.save_parcellation(out_file=tmp_parc_image, save_lut=True)
-                tmp_parc_image_lut = tmp_parc_image.replace(".nii.gz", ".lut")
-                tmp_parc_image_nilearnlut = tmp_parc_image.replace(
-                    ".nii.gz", "_nilearn.lut"
+                tmp_basename = cltmisc.get_real_basename(tmp_parc_image)
+                tmp_parc_image_nilearnlut = os.path.join(
+                    "/tmp", f"{tmp_basename}_nilearnlut.txt"
                 )
-
-                # Converting the parcellation to a nilearn LUT format
-                temp_parc.lut_to_nilearnlut(
-                    tmp_parc_image_lut, tmp_parc_image_nilearnlut, overwrite=True
+                temp_parc.save_parcellation(
+                    out_file=tmp_parc_image,
+                    lut_file=tmp_parc_image_nilearnlut,
+                    lut_type="nilearn",
+                    force=True,
                 )
 
                 # Generating the masker
