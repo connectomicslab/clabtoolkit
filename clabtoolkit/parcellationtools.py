@@ -2441,108 +2441,77 @@ class Parcellation:
         >>> parc1.add_parcellation(parc2, append=True)
         """
 
+        # Harmonize current parcellation
+        self.harmonize()
+
+        # Convert single parcellation to list
         if isinstance(parc2add, Parcellation):
             parc2add = [parc2add]
 
-        if isinstance(parc2add, list):
-            if len(parc2add) > 0:
-                for parc in parc2add:
-                    tmp_parc_obj = copy.deepcopy(parc)
-                    if isinstance(parc, Parcellation):
-                        ind = np.where(tmp_parc_obj.data != 0)
-                        if append:
-                            tmp_parc_obj.data[ind] = (
-                                tmp_parc_obj.data[ind] + self.maxlab
-                            )
+        if not isinstance(parc2add, list):
+            raise TypeError(
+                "parc2add must be a Parcellation object or list of Parcellation objects"
+            )
 
-                        if (
-                            hasattr(parc, "index")
-                            and hasattr(parc, "name")
-                            and hasattr(parc, "color")
-                        ):
-                            if (
-                                hasattr(self, "index")
-                                and hasattr(self, "name")
-                                and hasattr(self, "color")
-                            ):
+        if len(parc2add) == 0:
+            raise ValueError("The parcellation list is empty")
 
-                                if append:
-                                    # Adjust the values of the index
-                                    tmp_parc_obj.index = [
-                                        int(x + self.maxlab) for x in tmp_parc_obj.index
-                                    ]
+        # Process each parcellation to add
+        for parc in parc2add:
+            if not isinstance(parc, Parcellation):
+                raise TypeError("All elements must be Parcellation objects")
 
-                                if isinstance(tmp_parc_obj.index, list) and isinstance(
-                                    self.index, list
-                                ):
-                                    self.index = self.index + tmp_parc_obj.index
+            # Deep copy and harmonize
+            tmp_parc = copy.deepcopy(parc)
+            tmp_parc.harmonize()
 
-                                elif isinstance(
-                                    tmp_parc_obj.index, np.ndarray
-                                ) and isinstance(self.index, np.ndarray):
-                                    self.index = np.concatenate(
-                                        (self.index, tmp_parc_obj.index), axis=0
-                                    ).tolist()
+            # Get non-zero indices
+            ind = np.where(tmp_parc.data != 0)
 
-                                elif isinstance(
-                                    tmp_parc_obj.index, list
-                                ) and isinstance(self.index, np.ndarray):
-                                    self.index = (
-                                        tmp_parc_obj.index + self.index.tolist()
-                                    )
+            # Adjust labels if appending
+            if append:
+                tmp_parc.data[ind] = tmp_parc.data[ind] + self.maxlab
+                if hasattr(tmp_parc, "index"):
+                    tmp_parc.index = [int(x + self.maxlab) for x in tmp_parc.index]
 
-                                elif isinstance(
-                                    tmp_parc_obj.index, np.ndarray
-                                ) and isinstance(self.index, list):
-                                    self.index = (
-                                        self.index + tmp_parc_obj.index.tolist()
-                                    )
+            # Check if both parcellations have lookup tables
+            has_lut = all(
+                hasattr(tmp_parc, attr) for attr in ["index", "name", "color"]
+            )
+            self_has_lut = all(
+                hasattr(self, attr) for attr in ["index", "name", "color"]
+            )
 
-                                self.name = self.name + tmp_parc_obj.name
+            if has_lut and self_has_lut:
+                # After harmonize(), all attributes are lists, so simple concatenation
+                self.index = self.index + tmp_parc.index
+                self.name = self.name + tmp_parc.name
+                self.color = self.color + tmp_parc.color
 
-                                if isinstance(tmp_parc_obj.color, list) and isinstance(
-                                    self.color, list
-                                ):
-                                    self.color = self.color + tmp_parc_obj.color
+                # Handle opacity if present in either parcellation
+                if hasattr(tmp_parc, "opacity"):
+                    if hasattr(self, "opacity"):
+                        self.opacity = self.opacity + tmp_parc.opacity
+                    else:
+                        # Create default opacity for existing labels
+                        self.opacity = [1.0] * len(self.index) + tmp_parc.opacity
+                elif hasattr(self, "opacity"):
+                    # Extend opacity with defaults for new labels
+                    self.opacity = self.opacity + [1.0] * len(tmp_parc.index)
 
-                                elif isinstance(
-                                    tmp_parc_obj.color, np.ndarray
-                                ) and isinstance(self.color, np.ndarray):
-                                    self.color = np.concatenate(
-                                        (self.color, tmp_parc_obj.color), axis=0
-                                    )
+            elif has_lut and np.sum(self.data) == 0:
+                # Self is empty, copy all attributes from tmp_parc
+                self.index = tmp_parc.index
+                self.name = tmp_parc.name
+                self.color = tmp_parc.color
+                if hasattr(tmp_parc, "opacity"):
+                    self.opacity = tmp_parc.opacity
 
-                                elif isinstance(
-                                    tmp_parc_obj.color, list
-                                ) and isinstance(self.color, np.ndarray):
-                                    temp_color = cltcol.readjust_colors(self.color)
-                                    temp_color = cltcol.multi_rgb2hex(temp_color)
+            # Update parcellation data
+            self.data[ind] = tmp_parc.data[ind]
 
-                                    self.color = temp_color + tmp_parc_obj.color
-                                elif isinstance(
-                                    tmp_parc_obj.color, np.ndarray
-                                ) and isinstance(self.color, list):
-                                    temp_color = cltcol.readjust_colors(
-                                        tmp_parc_obj.color
-                                    )
-                                    temp_color = cltcol.multi_rgb2hex(temp_color)
-
-                                    self.color = self.color + temp_color
-
-                            # If the parcellation self.data is all zeros
-                            elif np.sum(self.data) == 0:
-                                self.index = tmp_parc_obj.index
-                                self.name = tmp_parc_obj.name
-                                self.color = tmp_parc_obj.color
-
-                        # Concatenating the parcellation data
-                        self.data[ind] = tmp_parc_obj.data[ind]
-
-            else:
-                raise ValueError("The list is empty")
-
-        if hasattr(self, "color"):
-            self.color = cltcol.harmonize_colors(self.color)
+        # Final harmonization
+        self.harmonize()
 
         # Detect minimum and maximum labels
         self.parc_range()
@@ -2614,7 +2583,7 @@ class Parcellation:
         out_atlas = nib.Nifti1Image(data_to_save, affine)
         nib.save(out_atlas, out_file)
 
-        if lut_type is not None
+        if lut_type is not None:
             if lut_file is None:
                 base_name = cltmisc.get_real_basename(os.path.basename(out_file))
                 out_dir = os.path.dirname(out_file)
