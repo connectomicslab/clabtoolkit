@@ -2081,7 +2081,7 @@ class Parcellation:
 
     ######################################################################################################
     def group_by_codes(
-        self, group_dict: dict, keep_non_grouped: bool = False
+        self, group_dict: dict, keep_ungrouped: bool = False
     ) -> Tuple[np.ndarray, dict]:
         """
         Group array values and create color table for new groups.
@@ -2097,7 +2097,7 @@ class Parcellation:
             Index values can be integers, strings with ranges ("11:12", "50-52"), or mixed.
             Name, color, and opacity are optional.
 
-        keep_non_grouped : bool, optional
+        keep_ungrouped : bool, optional
             Whether to keep structures not included in any group. Default is False.
 
         Returns:
@@ -2128,7 +2128,7 @@ class Parcellation:
         >>> print(color_table['name'])   # ['group_1', 'Thalamus', 'LimbicSystem', 'Cerebellum', ...original names...]
         """
 
-        if keep_non_grouped == False:
+        if keep_ungrouped == False:
             # Create a mask of all old IDs to be grouped
             all_old_ids = []
             for params in group_dict.values():
