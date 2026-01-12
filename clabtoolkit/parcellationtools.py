@@ -2324,7 +2324,7 @@ class Parcellation:
         return array, color_table
 
     ######################################################################################################
-    def rearrange_parc(self, offset: int = 0):
+    def rearrange(self, offset: int = 0):
         """
         Rearrange parcellation labels to consecutive integers.
 
@@ -2336,10 +2336,10 @@ class Parcellation:
         Examples
         --------
         >>> # Rearrange to 1, 2, 3, ...
-        >>> parc.rearrange_parc()
+        >>> parc.rearrange()
         >>>
         >>> # Start from 100
-        >>> parc.rearrange_parc(offset=99)
+        >>> parc.rearrange(offset=99)
         """
 
         # First, adjust values to ensure index, name, color align with data
