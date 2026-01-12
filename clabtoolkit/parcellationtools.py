@@ -2080,145 +2080,111 @@ class Parcellation:
         self.parc_range()
 
     ######################################################################################################
-    def group_by_code(
-        self,
-        codes2group: Union[list, np.ndarray],
-        new_codes: Union[list, np.ndarray] = None,
-        new_names: Union[list, str] = None,
-        new_colors: Union[list, np.ndarray] = None,
-    ):
+    def group_by_codes(self, group_dict: dict) -> Tuple[np.ndarray, dict]:
         """
-        Group regions by combining specified codes into new regions.
+        Group array values and create color table for new groups.
 
-        Parameters
-        ----------
-        codes2group : list or np.ndarray
-            List of codes or list of code lists to group.
+        Structures not included in any group will remain unchanged with their original
+        properties in both the array and color table.
 
-        new_codes : list or np.ndarray, optional
-            New codes for groups. If None, uses sequential numbering. Default is None.
+        Parameters:
+        -----------
 
-        new_names : list or str, optional
-            New names for groups. Default is None.
+        group_dict : dict
+            {new_id: {'index': [old_ids], 'name': str, 'color': str, 'opacity': float}}
+            Index values can be integers, strings with ranges ("11:12", "50-52"), or mixed.
+            Name, color, and opacity are optional.
 
-        new_colors : list or np.ndarray, optional
-            New colors for groups. Default is None.
-
-        Examples
+        Returns:
         --------
-        >>> # Group bilateral regions
-        >>> parc.group_by_code(
-        ...     [[1, 2], [3, 4]],  # Left/right pairs
-        ...     new_names=['region1', 'region2']
-        ... )
+        tuple : (modified_array, color_table)
+            modified_array : numpy.ndarray
+                Array with grouped values replaced by new IDs. Ungrouped structures remain unchanged.
+
+            color_table : dict
+                Color table with 'index', 'name', 'color', 'opacity', 'headerlines' keys.
+                Includes both grouped structures and ungrouped structures with original properties.
+
+        Examples:
+        ---------
+        >>> import numpy as np
+        >>> array = np.random.randint(0, 60, (100, 100, 100))
+        >>>
+        >>> # Define groups with mixed specifications
+        >>> group_dict = {
+        ...     3: {'index': ["11:12", "50-52", 13]},  # Auto-generated name and color
+        ...     4: {'index': [10, 49], 'name': 'Thalamus', 'color': '#33FF57', 'opacity': 0.8},
+        ...     5: {'index': [17, 53, 18, 54], 'name': 'LimbicSystem', 'color': '#3357FF'},
+        ...     6: {'index': [8, 47], 'name': 'Cerebellum', 'color': '#F1C40F', 'opacity': 0.8}
+        ... }
+        >>>
+        >>> grouped_array, color_table = parc.group_by_codes(group_dict)
+        >>> print(color_table['index'])  # [3, 4, 5, 6, ...ungrouped codes...]
+        >>> print(color_table['name'])   # ['group_1', 'Thalamus', 'LimbicSystem', 'Cerebellum', ...original names...]
         """
 
-        # if all the  elements in codes2group are numeric then convert codes2group to a numpy array
-        if all(isinstance(x, (int, np.integer, float)) for x in codes2group):
-            codes2group = np.array(codes2group)
+        array = self.data
+        color_table = {
+            "index": [],
+            "name": [],
+            "color": [],
+            "opacity": [],
+            "headerlines": [],
+        }
 
-        # Detect thecodes2group is a list of list
-        if isinstance(codes2group, list):
-            if isinstance(codes2group[0], list):
-                n_groups = len(codes2group)
+        ngroups = len(group_dict)
+        def_color = cltcol.create_distinguishable_colors(ngroups, output_format="hex")
+        def_names = cltmisc.create_names_from_indices(
+            np.arange(1, ngroups + 1), prefix="group"
+        )
 
-            elif isinstance(codes2group[0], (str, np.integer, int, tuple)):
-                codes2group = [codes2group]
-                n_groups = 1
+        for i, (new_id, params) in enumerate(group_dict.items()):
 
-        elif isinstance(codes2group, np.ndarray):
-            codes2group = [codes2group.tolist()]
-            n_groups = 1
+            old_ids = params["index"]
+            old_ids = cltmisc.build_indices(old_ids)
 
-        for i, v in enumerate(codes2group):
-            if isinstance(v, list):
-                codes2group[i] = cltmisc.build_indices(v)
+            # Replace old IDs with new ID in array
+            mask = np.isin(array, old_ids)
+            array[mask] = new_id
 
-        # Convert the new_codes to a numpy array
-        if new_codes is not None:
-            if isinstance(new_codes, list):
-                new_codes = cltmisc.build_indices(new_codes)
-                new_codes = np.array(new_codes)
-            elif isinstance(new_codes, (str, np.integer, int)):
-                new_codes = np.array([new_codes])
+            # Create new entry
+            color_table["index"].append(new_id)
+            color_table["name"].append(params.get("name", def_names[i]))
+            color_table["color"].append(params.get("color", def_color[i]))
+            color_table["opacity"].append(params.get("opacity", 1.0))
 
-        else:
-            new_codes = np.arange(1, n_groups + 1)
+        # Updating the parcellation data
+        self.data = array
 
-        if len(new_codes) != n_groups:
-            raise ValueError(
-                "The number of new codes must be equal to the number of groups that will be created"
-            )
+        # Looking for codes that were not grouped
+        unique_codes = np.unique(array)
+        unique_codes = unique_codes[unique_codes != 0]
 
-        # Convert the new_names to a list
-        if new_names is not None:
-            if isinstance(new_names, str):
-                new_names = [new_names]
+        # Adding ungrouped codes to the color table
+        for i, code in enumerate(unique_codes):
+            if code not in color_table["index"]:
+                color_table["index"].append(code)
+                try:
+                    pos = self.index.index(code)
+                    color_table["name"].append(self.name[pos])
+                    color_table["color"].append(self.color[pos])
+                    color_table["opacity"].append(self.opacity[pos])
+                except ValueError:
+                    # Code not in original color table, use defaults
+                    color_table["name"].append(f"region_{code}")
+                    color_table["color"].append("#ffffff")
+                    color_table["opacity"].append(1.0)
 
-            if len(new_names) != n_groups:
-                raise ValueError(
-                    "The number of new names must be equal to the number of groups that will be created"
-                )
+        self.index = color_table["index"]
+        self.name = color_table["name"]
+        self.color = cltcol.harmonize_colors(color_table["color"], output_format="hex")
+        self.opacity = color_table["opacity"]
 
-        # Convert the new_colors to a numpy array
-        if new_colors is not None:
-            if isinstance(new_colors, list):
-
-                if isinstance(new_colors[0], str):
-                    new_colors = cltcol.multi_hex2rgb(new_colors)
-
-                elif isinstance(new_colors[0], np.ndarray):
-                    new_colors = np.array(new_colors)
-
-                else:
-                    raise ValueError(
-                        "If new_colors is a list, it must be a list of hexadecimal colors or a list of rgb colors"
-                    )
-
-            elif isinstance(new_colors, np.ndarray):
-                pass
-
-            else:
-                raise ValueError(
-                    "The new_colors must be a list of colors or a numpy array"
-                )
-
-            new_colors = cltcol.readjust_colors(new_colors)
-
-            if new_colors.shape[0] != n_groups:
-                raise ValueError(
-                    "The number of new colors must be equal to the number of groups that will be created"
-                )
-
-        # Creating the grouped parcellation
-        out_atlas = np.zeros_like(self.data, dtype="int16")
-        for i in range(n_groups):
-            code2look = np.array(codes2group[i])
-
-            if new_codes is not None:
-                out_atlas[np.isin(self.data, code2look) == True] = new_codes[i]
-            else:
-                out_atlas[np.isin(self.data, code2look) == True] = i + 1
-
-        self.data = out_atlas
-
-        if new_codes is not None:
-            self.index = new_codes.tolist()
-
-        if new_names is not None:
-            self.name = new_names
-        else:
-            # If new_names is not provided, the names will be created
-            self.name = ["group_{}".format(i) for i in new_codes]
-
-        if new_colors is not None:
-            self.color = new_colors
-        else:
-            # If new_colors is not provided, the colors will be created
-            self.color = cltcol.create_distinguishable_colors(n_groups)
-
+        self.adjust_values()
         # Detect minimum and maximum labels
         self.parc_range()
+
+        return array, color_table
 
     ######################################################################################################
     def group_by_name(
