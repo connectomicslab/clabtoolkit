@@ -2341,32 +2341,25 @@ class Parcellation:
         >>> parc.rearrange_parc(offset=99)
         """
 
+        # First, adjust values to ensure index, name, color align with data
+        self.adjust_values()
+
+        # Get unique structure codes in data (excluding background/0)
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
 
-        # Parcellation with values starting from 1 or starting from the offset
-        new_parc = np.zeros_like(self.data, dtype="int16")
-        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            if len(self.index) > 0:
-                for i, code in enumerate(self.index):
-                    new_parc[self.data == code] = i + 1 + offset
+        new_parc = np.zeros_like(self.data)
 
-            else:
-                for i, code in enumerate(st_codes):
-                    new_parc[self.data == code] = i + 1 + offset
+        for i, code in enumerate(st_codes):
+            new_parc[self.data == code] = i + 1 + offset
 
-            self.data = new_parc
-        else:
+            if hasattr(self, "index"):
+                self.index[i] = i + 1 + offset
 
-            for i, code in enumerate(st_codes):
-                new_parc[self.data == code] = i + 1 + offset
-            self.data = new_parc
+        # Update data with rearranged labels
+        self.data = new_parc
 
-        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            temp_index = np.unique(self.data)
-            temp_index = temp_index[temp_index != 0]
-            self.index = temp_index.tolist()
-
+        # Update parcellation range
         self.parc_range()
 
     ######################################################################################################
