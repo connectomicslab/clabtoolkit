@@ -2667,7 +2667,9 @@ class Parcellation:
                     lut_file = os.path.join(out_dir, base_name + ".nilearnlut")
 
                 else:
-                    raise ValueError("lut_type must be 'lut', 'tsv', 'fsl' or 'nilearn'")
+                    raise ValueError(
+                        "lut_type must be 'lut', 'tsv', 'fsl' or 'nilearn'"
+                    )
 
             # Exporting the colortable if required
             self.export_colortable(out_file=lut_file, lut_type=lut_type, force=force)
