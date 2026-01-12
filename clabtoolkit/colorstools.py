@@ -3460,26 +3460,13 @@ class ColorTableLoader:
                 f"Output file already exists: {out_ctab}. Use overwrite=True to overwrite."
             )
 
-        rgb_colors = harmonize_colors(self.color, output_format="rgb")
-        r = rgb_colors[:, 0]
-        g = rgb_colors[:, 1]
-        b = rgb_colors[:, 2]
-
-        if self.opacity is not None:
-            # Ensure opacity values are in the correct range [0, 255]
-            a = [min(max(int(opacity * 255), 0), 255) for opacity in self.opacity]
-
-        else:
-            a = [255] * len(self.color)
+        colors = harmonize_colors(self.color, output_format="hex")
 
         df = pd.DataFrame(
             {
                 "index": self.index,
                 "name": self.name,
-                "R": r,
-                "G": g,
-                "B": b,
-                "A": a,
+                "color": colors,
             }
         )
 
