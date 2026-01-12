@@ -212,7 +212,7 @@ Filter structures by name or code if only specific regions are of interest:
 names_to_keep = ["thalamus", "cerebellum"]
 
 # Keep only the specified structures
-vol_parc.keep_by_name(names2look=names_to_keep)
+vol_parc.keep_by_name(names2keep=names_to_keep)
 
 # Save the modified parcellation
 out_parc_path = "/tmp/sub-test_desc-tha+cer_dseg.nii.gz"
