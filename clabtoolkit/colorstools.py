@@ -3473,7 +3473,7 @@ class ColorTableLoader:
         df = df.sort_values("index").reset_index(drop=True)
 
         if not os.path.isfile(out_ctab) or overwrite:
-            df.to_csv(out_ctab, sep=" ", index=False)
+            df.to_csv(out_ctab, sep="\t", index=False)
 
     ######################################################################################################
     def export_to_lutctab(
@@ -3665,14 +3665,14 @@ class ColorTableLoader:
                 )
 
         colors = harmonize_colors(self.color, output_format="hex")
-        opaciity = self.opacity if self.opacity is not None else [1] * len(self.color)
+        opacity = self.opacity if self.opacity is not None else [1] * len(self.color)
 
         df = pd.DataFrame(
             {
                 "index": self.index,
                 "name": self.name,
                 "color": colors,
-                "opacity": opaciity,
+                "opacity": opacity,
             }
         )
 
