@@ -2399,6 +2399,62 @@ class Parcellation:
         self.parc_range()
 
     ######################################################################################################
+    def harmonize(self):
+        """
+        Harmonize parcellation attributes with data contents.
+
+        Ensures index, name, color and opacity attributes align in type and length
+        with actual data values, removing unused entries and updating min/max label range.
+
+        Examples
+        --------
+        >>> parc.harmonize()
+        >>> print(f"Regions in data: {len(parc.index)}")
+        """
+
+        # Get unique codes present in data (excluding background/0)
+        st_codes = np.unique(self.data)
+        unique_codes = st_codes[st_codes != 0]
+
+        # Find which indices are actually present in the data
+        if hasattr(self, "index"):
+            mask = np.isin(self.index, unique_codes)
+            indexes = np.where(mask)[0]
+
+            # Filter index to only present labels
+            temp_index = np.array(self.index)
+            index_new = temp_index[mask]
+            self.index = [int(x) for x in index_new.tolist()]
+
+            # Filter name if present
+            if hasattr(self, "name"):
+                self.name = [self.name[i] for i in indexes]
+
+            # Filter color if present
+            if hasattr(self, "color"):
+                self.color = [self.color[i] for i in indexes]
+
+            # Filter opacity if present
+            if hasattr(self, "opacity"):
+                self.opacity = [self.opacity[i] for i in indexes]
+
+        # Harmonize colors to consistent format (after filtering)
+        if hasattr(self, "color"):
+            self.color = cltcol.harmonize_colors(self.color)
+
+        # Harmonize opacity to list of floats (after filtering)
+        if hasattr(self, "opacity"):
+            if isinstance(self.opacity, np.ndarray):
+                self.opacity = [float(x) for x in self.opacity.tolist()]
+            elif not isinstance(self.opacity, list):
+                self.opacity = [float(self.opacity)]
+            else:
+                self.opacity = [float(x) for x in self.opacity]
+
+        # Update parcellation range
+        self.parc_range()
+
+    ######################################################################################################
     def add_parcellation(self, parc2add, append: bool = False):
         """
         Combine another parcellation into current object.
