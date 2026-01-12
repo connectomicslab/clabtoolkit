@@ -1841,6 +1841,7 @@ class Parcellation:
         sigma: float = 1.0,
         closing_iterations: int = 1,
         out_filename: str = None,
+        merge_surfaces: bool = True,
         out_format: str = "freesurfer",
         save_annotation: bool = True,
         overwrite: bool = False,
