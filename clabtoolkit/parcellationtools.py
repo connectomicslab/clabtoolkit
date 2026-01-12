@@ -1760,7 +1760,6 @@ class Parcellation:
 
                 # Delete the temporary files
                 os.remove(tmp_parc_image)
-                os.remove(tmp_parc_image_lut)
                 os.remove(tmp_parc_image_nilearnlut)
 
             elif isinstance(time_series_data_tmp, np.ndarray):
