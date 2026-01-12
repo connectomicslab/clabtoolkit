@@ -2618,16 +2618,14 @@ class Parcellation:
         lut_file : str or dict, optional
             Path to LUT file or dictionary with index/name/color keys. Default is None.
 
-        lut_type : str, optional
-            File format: 'lut' or 'tsv'. Default is 'lut'.
 
         Examples
         --------
         >>> # Load FreeSurfer LUT
-        >>> parc.load_colortable('FreeSurferColorLUT.txt', lut_type='lut')
+        >>> parc.load_colortable('FreeSurferColorLUT.txt')
         >>>
         >>> # Load TSV table
-        >>> parc.load_colortable('regions.tsv', lut_type='tsv')
+        >>> parc.load_colortable('regions.tsv')
         """
 
         if lut_file is None:
