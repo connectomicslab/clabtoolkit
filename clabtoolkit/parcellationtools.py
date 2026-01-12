@@ -1877,6 +1877,9 @@ class Parcellation:
         out_filename : str, optional
             Output file path for merged surface. Default is None.
 
+        merge_surfaces : bool, optional
+            Whether to merge all region surfaces into one. Default is True.
+
         out_format : str, optional
             Output format: 'freesurfer', 'vtk', 'ply', 'stl', 'obj'. Default is 'freesurfer'.
 
@@ -1889,7 +1892,7 @@ class Parcellation:
         Returns
         -------
         Surface
-            Merged surface object containing all extracted regions.
+            Merged surface object containing all extracted regions or list of surfaces.
 
         Raises
         ------
@@ -1988,6 +1991,9 @@ class Parcellation:
                 # surf_temp.load_from_mesh(mesh, hemi="lh")
                 surfaces_list.append(surf_temp)
                 # Update progress to show completion of this region
+
+        if not merge_surfaces:
+            return surfaces_list
 
         # surf_orig.merge_surfaces(surfaces_list)
         merged_surf = cltsurf.merge_surfaces(surfaces_list)
