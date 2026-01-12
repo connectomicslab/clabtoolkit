@@ -2080,7 +2080,9 @@ class Parcellation:
         self.parc_range()
 
     ######################################################################################################
-    def group_by_codes(self, group_dict: dict) -> Tuple[np.ndarray, dict]:
+    def group_by_codes(
+        self, group_dict: dict, keep_non_grouped: bool = False
+    ) -> Tuple[np.ndarray, dict]:
         """
         Group array values and create color table for new groups.
 
@@ -2094,6 +2096,9 @@ class Parcellation:
             {new_id: {'index': [old_ids], 'name': str, 'color': str, 'opacity': float}}
             Index values can be integers, strings with ranges ("11:12", "50-52"), or mixed.
             Name, color, and opacity are optional.
+
+        keep_non_grouped : bool, optional
+            Whether to keep structures not included in any group. Default is False.
 
         Returns:
         --------
@@ -2122,6 +2127,16 @@ class Parcellation:
         >>> print(color_table['index'])  # [3, 4, 5, 6, ...ungrouped codes...]
         >>> print(color_table['name'])   # ['group_1', 'Thalamus', 'LimbicSystem', 'Cerebellum', ...original names...]
         """
+
+        if keep_non_grouped == False:
+            # Create a mask of all old IDs to be grouped
+            all_old_ids = []
+            for params in group_dict.values():
+                old_ids = params["index"]
+                old_ids = cltmisc.build_indices(old_ids)
+                all_old_ids.extend(old_ids)
+            all_old_ids = set(all_old_ids)
+            self.keep_by_code(codes2keep=list(all_old_ids))
 
         array = self.data
         color_table = {
