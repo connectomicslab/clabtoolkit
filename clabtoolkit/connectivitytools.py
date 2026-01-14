@@ -151,7 +151,7 @@ class Connectome:
             name = filename.stem
 
         connectome = cls(name=name)
-        connectome.load_h5_data(filename)
+        connectome.load_h5(filename)
         return connectome
 
     def _calculate_node_sizes(
@@ -244,7 +244,7 @@ class Connectome:
                 f"Available options: 'uniform', 'strength', 'degree', 'betweenness', 'eigenvector'"
             )
 
-    def load_h5_data(self, filename: Union[str, Path]) -> None:
+    def load_h5(self, filename: Union[str, Path]) -> None:
         """
         Load connectivity data from HDF5 file.
 
@@ -294,10 +294,19 @@ class Connectome:
 
                 # Load colors (optional)
                 if "gmcolors" in data_group:
-                    self.colors = data_group["gmcolors"][:]
-                    self.colors = cltcol.harmonize_colors(self.colors)
+                    colors_data = data_group["gmcolors"][:]
+                    # Decode bytes to strings if necessary
+                    if colors_data.dtype.kind in ["S", "O"]:
+                        colors_list = [
+                            c.decode("utf-8") if isinstance(c, bytes) else str(c)
+                            for c in colors_data
+                        ]
+                    else:
+                        colors_list = colors_data.tolist()
+                    # Use harmonize_colors to convert to RGB array
+                    self.colors = cltcol.harmonize_colors(colors_list)
 
-                elif "colors" in data_group:  # Alternative name
+                elif "colors" in data_group:  # Alternative name (legacy format)
                     self.colors = data_group["colors"][:]
                     if self.colors.shape[0] != self._n_regions:
                         warnings.warn("Number of colors doesn't match matrix size")
@@ -308,35 +317,29 @@ class Connectome:
 
                 # Load region names (optional)
                 if "gmregions" in data_group:
-                    regions_data = data_group["gmregions"][:]
-                    # Handle string datasets
-                    if hasattr(regions_data, "dtype") and regions_data.dtype.kind in [
-                        "S",
-                        "U",
-                    ]:
+                    names_data = data_group["gmregions"][:]
+                    # Decode bytes to strings if necessary
+                    if names_data.dtype.kind in ["S", "O"]:
                         self.region_names = [
-                            r.decode("utf-8") if isinstance(r, bytes) else str(r)
-                            for r in regions_data
+                            n.decode("utf-8") if isinstance(n, bytes) else str(n)
+                            for n in names_data
                         ]
                     else:
-                        self.region_names = [str(r) for r in regions_data]
+                        self.region_names = names_data.tolist()
 
                     if len(self.region_names) != self._n_regions:
                         warnings.warn(
                             "Number of region names doesn't match matrix size"
                         )
                 elif "name" in data_group:  # Alternative name
-                    regions_data = data_group["name"][:]
-                    if hasattr(regions_data, "dtype") and regions_data.dtype.kind in [
-                        "S",
-                        "U",
-                    ]:
+                    names_data = data_group["name"][:]
+                    if names_data.dtype.kind in ["S", "O"]:
                         self.region_names = [
-                            r.decode("utf-8") if isinstance(r, bytes) else str(r)
-                            for r in regions_data
+                            n.decode("utf-8") if isinstance(n, bytes) else str(n)
+                            for n in names_data
                         ]
                     else:
-                        self.region_names = [str(r) for r in regions_data]
+                        self.region_names = names_data.tolist()
 
                     if len(self.region_names) != self._n_regions:
                         warnings.warn(
@@ -398,13 +401,19 @@ class Connectome:
 
             # Save colors (if available)
             if self.colors is not None:
-                grp.create_dataset("gmcolors", data=self.colors)
+                # Convert to hex strings
+                colors_hex = cltcol.harmonize_colors(self.colors, "hex")
+                # Ensure it's a list of strings
+                if isinstance(colors_hex, np.ndarray):
+                    colors_hex = colors_hex.tolist()
+                # Save as UTF-8 encoded strings
+                dt = h5py.string_dtype(encoding="utf-8")
+                grp.create_dataset("gmcolors", data=colors_hex, dtype=dt)
 
             # Save region names (if available)
             if self.region_names is not None:
-                # Convert to bytes for HDF5 storage
-                regions_bytes = np.array(self.region_names, dtype="S")
-                grp.create_dataset("gmregions", data=regions_bytes)
+                dt = h5py.string_dtype(encoding="utf-8")
+                grp.create_dataset("gmregions", data=self.region_names, dtype=dt)
 
             # Save region index
             if self.region_index is not None:
