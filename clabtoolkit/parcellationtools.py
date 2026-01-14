@@ -2935,6 +2935,15 @@ class Parcellation:
 
         Sets minlab and maxlab attributes based on non-zero values in data.
 
+        Returns
+        -------
+        tuple : (minlab, maxlab)
+            minlab : int
+                Minimum label value (excluding zero).
+
+            maxlab : int
+                Maximum label value.
+
         Examples
         --------
         >>> parc.parc_range()
@@ -2951,6 +2960,8 @@ class Parcellation:
         else:
             self.minlab = 0
             self.maxlab = 0
+
+        return self.minlab, self.maxlab
 
     #######################################################################################################
     def compute_morphometry_table(
