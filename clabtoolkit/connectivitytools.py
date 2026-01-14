@@ -7,6 +7,7 @@ from typing import Optional, Union, List, Tuple, Literal
 import warnings
 
 from . import colorstools as cltcol
+from . import misctools as cltmisc
 
 
 class Connectome:
@@ -37,8 +38,8 @@ class Connectome:
 
     def __init__(
         self,
+        data: Optional[Union[np.ndarray, str, Path]] = None,
         name: Optional[str] = None,
-        matrix: Optional[np.ndarray] = None,
         coordinates: Optional[np.ndarray] = None,
         colors: Union[np.ndarray, List] = None,
         region_names: Optional[List[str]] = None,
@@ -51,14 +52,17 @@ class Connectome:
 
         Parameters:
         -----------
+        data : np.ndarray, str, Path, or None
+            Can be:
+            - np.ndarray: Connectivity matrix (n_regions x n_regions)
+            - str or Path: Path to HDF5 file to load
+            - None: Create empty Connectome
         name : str, optional
-            Name for the connectome. If None, will be set when loading data.
-        matrix : np.ndarray, optional
-            Connectivity matrix (n_regions x n_regions)
+            Name for the connectome. If loading from file and None, uses filename stem.
         coordinates : np.ndarray, optional
             3D coordinates for each region (n_regions x 3)
-        colors : np.ndarray, optional
-            RGB color values for each region (n_regions x 3)
+        colors : np.ndarray or List, optional
+            RGB color values or hex strings for each region
         region_names : List[str], optional
             Names/labels for each brain region
         region_index : np.ndarray, optional
@@ -67,9 +71,44 @@ class Connectome:
             Type of connectivity (default: 'structural')
         affine : np.ndarray, optional
             4x4 affine transformation matrix
+
+        Examples:
+        ---------
+        >>> # From matrix
+        >>> matrix = np.random.rand(10, 10)
+        >>> conn = Connectome(matrix)
+
+        >>> # From file
+        >>> conn = Connectome('/path/to/connectome.h5')
+
+        >>> # Empty connectome
+        >>> conn = Connectome(name='my_network')
         """
-        self.name = name
         self.connectivity_type = connectivity_type
+
+        # Handle different input types for data
+        matrix = None
+        load_from_file = False
+
+        if data is not None:
+            if isinstance(data, (str, Path)):
+                # Load from file
+                load_from_file = True
+                filepath = Path(data)
+
+                # Set default name from filename if not provided
+                if name is None:
+                    name = filepath.stem
+
+            elif isinstance(data, np.ndarray):
+                # Use as connectivity matrix
+                matrix = data
+            else:
+                raise TypeError(
+                    f"data must be np.ndarray, str, Path, or None. Got {type(data)}"
+                )
+
+        self.name = name
 
         # Initialize matrix and derived attributes
         if matrix is not None:
@@ -88,16 +127,23 @@ class Connectome:
             self.coordinates = None
 
         # Set colors
-
         if colors is not None:
             colors = cltcol.harmonize_colors(colors, "hex")
             self.set_colors(colors)
+        elif self._n_regions > 0:
+            # Only generate default colors if we have regions
+            self.colors = cltcol.create_distinguishable_colors(self._n_regions)
         else:
             self.colors = None
 
         # Set region names
         if region_names is not None:
             self.set_region_names(region_names)
+        elif self._n_regions > 0:
+            # Only generate default names if we have regions
+            self.region_names = cltmisc.create_names_from_indices(
+                np.arange(self._n_regions) + 1
+            )
         else:
             self.region_names = None
 
@@ -120,6 +166,10 @@ class Connectome:
             self.affine = affine.astype(np.float64)
         else:
             self.affine = np.eye(4)
+
+        # Load from file if specified
+        if load_from_file:
+            self.load_h5(filepath)
 
     @property
     def n_regions(self) -> int:
@@ -275,7 +325,13 @@ class Connectome:
                 self._n_regions = self.matrix.shape[0]
 
                 # Load coordinates (required for visualization)
-                if "gmcoords" in data_group:
+                if "coords" in data_group:
+                    self.coordinates = data_group["coords"][:]
+                    if self.coordinates.shape[0] != self._n_regions:
+                        raise ValueError(
+                            "Number of coordinates doesn't match matrix size"
+                        )
+                elif "gmcoords" in data_group:  # Alternative name
                     self.coordinates = data_group["gmcoords"][:]
                     if self.coordinates.shape[0] != self._n_regions:
                         raise ValueError(
@@ -397,7 +453,7 @@ class Connectome:
 
             # Save coordinates (if available)
             if self.coordinates is not None:
-                grp.create_dataset("gmcoords", data=self.coordinates)
+                grp.create_dataset("coords", data=self.coordinates)
 
             # Save colors (if available)
             if self.colors is not None:
@@ -440,24 +496,25 @@ class Connectome:
         if self.region_names is not None:
             return self.region_names
         else:
-            return self.get_default_region_names()
+            return self.get_default_roi_names()
 
-    def get_roi_colors(self) -> List:
+    def get_roi_colors(self) -> np.ndarray:
         """
         Get region of interest (ROI) colors. If not available, generate default colors.
 
         Returns:
         --------
-        List : List of ROI colors
+        np.ndarray : Array of ROI colors
         """
         if self.colors is not None:
             return self.colors
         else:
-            return self.get_default_colors()
+            return self.get_default_roi_colors()
 
     def get_roi_coordinates(self) -> Optional[np.ndarray]:
         """
         Get region of interest (ROI) coordinates.
+
         Returns:
         --------
         Optional[np.ndarray] : Array of ROI coordinates or None
@@ -485,12 +542,12 @@ class Connectome:
 
         Parameters:
         -----------
-        colors : np.ndarray
-            Array of shape (n_regions, 3) with RGB values [0-1] or [0-255]
+        colors : np.ndarray or List
+            Array of shape (n_regions, 3) with RGB values [0-1] or [0-255], or list of hex colors
         """
         if self.matrix is not None and len(colors) != self.n_regions:
             raise ValueError(
-                f"Colors shape {len(colors)} doesn't match expected ({self.n_regions}, 3)"
+                f"Colors length {len(colors)} doesn't match expected ({self.n_regions})"
             )
         self.colors = cltcol.harmonize_colors(colors)
 
@@ -509,7 +566,7 @@ class Connectome:
             )
         self.region_names = names.copy()
 
-    def get_default_colors(self) -> np.ndarray:
+    def get_default_roi_colors(self) -> np.ndarray:
         """
         Generate default colors for regions if not available.
 
@@ -520,7 +577,7 @@ class Connectome:
         colors = cltcol.create_distinguishable_colors(self.n_regions)
         return colors
 
-    def get_default_region_names(self) -> List[str]:
+    def get_default_roi_names(self) -> List[str]:
         """
         Generate default region names if not available.
 
@@ -528,7 +585,8 @@ class Connectome:
         --------
         List[str] : Default region names
         """
-        return [f"Region_{i:03d}" for i in range(self.n_regions)]
+        names = cltmisc.create_names_from_indices(np.arange(self.n_regions) + 1)
+        return names
 
     def get_density(self) -> float:
         """
@@ -674,8 +732,8 @@ class Connectome:
         if copy:
             # Create new Connectome object
             return Connectome(
+                data=matrix_thresh,
                 name=self.name,
-                matrix=matrix_thresh,
                 coordinates=(
                     self.coordinates.copy() if self.coordinates is not None else None
                 ),
@@ -730,8 +788,8 @@ class Connectome:
 
         if copy:
             return Connectome(
+                data=sub_matrix,
                 name=f"{self.name}_subnetwork" if self.name else "subnetwork",
-                matrix=sub_matrix,
                 coordinates=sub_coords,
                 colors=sub_colors,
                 region_names=sub_names,
@@ -759,8 +817,8 @@ class Connectome:
             Deep copy of the Connectome
         """
         return Connectome(
+            data=self.matrix.copy() if self.matrix is not None else None,
             name=self.name,
-            matrix=self.matrix.copy() if self.matrix is not None else None,
             coordinates=(
                 self.coordinates.copy() if self.coordinates is not None else None
             ),
@@ -970,9 +1028,7 @@ class Connectome:
             raise ValueError(f"Unknown node size property: {node_size_property}")
 
         # Get node colors
-        node_colors = (
-            self.colors if self.colors is not None else self.get_default_colors()
-        )
+        node_colors = self.get_roi_colors()
 
         # Get edge weights and colors
         edges = G.edges()
@@ -1015,11 +1071,7 @@ class Connectome:
         # Add labels if requested
         if show_labels:
             # Get region names
-            region_names = (
-                self.region_names
-                if self.region_names is not None
-                else self.get_default_region_names()
-            )
+            region_names = self.get_roi_names()
 
             # Create labels dictionary
             labels = {i: region_names[i] for i in range(self.n_regions)}
@@ -1136,14 +1188,10 @@ class Connectome:
         )
 
         # Get colors (use provided or generate defaults)
-        colors = self.colors if self.colors is not None else self.get_default_colors()
+        colors = self.get_roi_colors()
 
         # Get region names (use provided or generate defaults)
-        region_names = (
-            self.region_names
-            if self.region_names is not None
-            else self.get_default_region_names()
-        )
+        region_names = self.get_roi_names()
 
         # Add nodes (brain regions)
         for i in range(self.n_regions):
