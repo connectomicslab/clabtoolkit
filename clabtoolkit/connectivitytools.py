@@ -429,6 +429,41 @@ class Connectome:
 
         print(f"Connectome saved to: {filename}")
 
+    def get_roi_names(self) -> List[str]:
+        """
+        Get region of interest (ROI) names. If not available, generate default names.
+
+        Returns:
+        --------
+        List[str] : List of ROI names
+        """
+        if self.region_names is not None:
+            return self.region_names
+        else:
+            return self.get_default_region_names()
+
+    def get_roi_colors(self) -> List:
+        """
+        Get region of interest (ROI) colors. If not available, generate default colors.
+
+        Returns:
+        --------
+        List : List of ROI colors
+        """
+        if self.colors is not None:
+            return self.colors
+        else:
+            return self.get_default_colors()
+
+    def get_roi_coordinates(self) -> Optional[np.ndarray]:
+        """
+        Get region of interest (ROI) coordinates.
+        Returns:
+        --------
+        Optional[np.ndarray] : Array of ROI coordinates or None
+        """
+        return self.coordinates
+
     def set_coordinates(self, coordinates: np.ndarray) -> None:
         """
         Set 3D coordinates for brain regions.
