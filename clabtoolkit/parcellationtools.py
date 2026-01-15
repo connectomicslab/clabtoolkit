@@ -10,7 +10,7 @@ import pyvista as pv
 from pathlib import Path
 
 
-from typing import Union, List, Optional, Tuple
+from typing import Union, List, Optional, Tuple, Dict
 
 from rich.progress import (
     Progress,
@@ -2828,42 +2828,25 @@ class Parcellation:
     ######################################################################################################
     def replace_values(
         self,
-        codes2rep: Union[List[Union[int, List[int]]], np.ndarray],
-        new_codes: Union[int, List[int], np.ndarray],
+        codes2rep: Union[List[Union[int, List[int]]], np.ndarray, Dict],
+        new_codes: Union[int, List[int], np.ndarray] = None,
     ) -> None:
         """
         Replace region codes with new values, supporting group replacements.
-
-        Parameters
-        ----------
-        codes2rep : list or np.ndarray
-            Codes to replace. Can be flat list for individual replacement
-            or list of lists for group replacement.
-
-        new_codes : int, list, or np.ndarray
-            New codes to replace with. Must match number of groups.
-
-        Raises
-        ------
-        ValueError
-            If number of new codes doesn't match number of groups.
-
-        Examples
-        --------
-        >>> # Replace individual codes
-        >>> parc.replace_values([1, 2, 3], [10, 20, 30])
-        >>>
-        >>> # Group replacement
-        >>> parc.replace_values([[1, 2], [3, 4]], [100, 200])
         """
 
         # Input validation
         if not hasattr(self, "data"):
             raise AttributeError("Object must have 'data' attribute")
 
-        # Handle single integer new_codes
-        if isinstance(new_codes, (int, np.integer)):
-            new_codes = [np.int32(new_codes)]
+        # Handle Dictionary input
+        if isinstance(codes2rep, Dict):
+            old_codes_list = list(codes2rep.keys())
+            old_codes_list = cltmisc.build_indices(old_codes_list)
+            new_codes_list = list(codes2rep.values())
+            new_codes_list = cltmisc.build_indices(new_codes_list)
+            codes2rep = copy.deepcopy(old_codes_list)
+            new_codes = copy.deepcopy(new_codes_list)  # Don't process again later
 
         # Process codes2rep to determine structure and number of groups
         if isinstance(codes2rep, list):
@@ -2872,7 +2855,6 @@ class Parcellation:
 
             # Detect whether it's a flat list of ints or a list of lists
             if all(isinstance(x, (int, np.integer)) for x in codes2rep):
-                # Interpret as individual values -> multiple groups
                 codes2rep = [[x] for x in codes2rep]
             elif all(isinstance(x, list) for x in codes2rep):
                 pass  # Already in group form
@@ -2893,17 +2875,16 @@ class Parcellation:
                 f"codes2rep must be list or numpy array, got {type(codes2rep)}"
             )
 
-        # Optionally convert codes using cltmisc.build_indices if available
+        # Apply build_indices to each group in codes2rep
         for i, group in enumerate(codes2rep):
             codes2rep[i] = cltmisc.build_indices(group, nonzeros=False)
 
-        # Process new_codes
-        if isinstance(new_codes, list):
+        # Process new_codes (handle single int, list, or array)
+        if isinstance(new_codes, (int, np.integer)):
+            new_codes = np.array([new_codes], dtype=np.int32)
+        elif isinstance(new_codes, list):
             new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
             new_codes = np.array(new_codes, dtype=np.int32)
-
-        elif isinstance(new_codes, (int, np.integer)):
-            new_codes = np.array([new_codes], dtype=np.int32)
         else:
             new_codes = np.array(new_codes, dtype=np.int32)
 
@@ -2919,6 +2900,15 @@ class Parcellation:
             codes_to_replace = np.array(codes2rep[group_idx])
             mask = np.isin(self.data, codes_to_replace)
             self.data[mask] = new_codes[group_idx]
+
+            # Update color table if present
+            if hasattr(self, "index"):
+                for code in codes_to_replace:
+                    if code in self.index:
+                        pos = self.index.index(code)
+                        self.index[pos] = new_codes[group_idx]
+
+                        # Optionally, update name/color here if desired
 
         # Optional post-processing
         if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
@@ -2966,11 +2956,16 @@ class Parcellation:
     #######################################################################################################
     def compute_morphometry_table(
         self,
-        output_table: str = None,
+        output_table: Union[str, Path] = None,
         add_bids_entities: bool = False,
-        map_files: Union[str, list] = None,
+        map_files: Union[str, Path, list] = None,
         map_ids: Union[str, list] = None,
         units: Union[str, list] = "unknown",
+        exclude_by_code: Union[list, np.ndarray] = None,
+        exclude_by_name: Union[list, str] = None,
+        include_by_code: Union[list, np.ndarray] = None,
+        include_by_name: Union[list, str] = None,
+        include_global: bool = True,
     ):
         """
         Compute morphometry table for all regions in parcellation.
@@ -2978,13 +2973,13 @@ class Parcellation:
 
         Parameters
         ----------
-        output_table : str, optional
+        output_table : str or Path, optional
             Path to save the output table. If None, does not save. Default is None.
 
         add_bids_entities : bool, optional
             Whether to add BIDS entities to the output. Default is False.
 
-        map_files : str or list, optional
+        map_files : str, Path, or list of str/Path, optional
             Paths to additional map files for morphometry. If None, only base morphometry is computed.
             Default is None. This method will compute morphometry for each map file provided.
 
@@ -2994,17 +2989,35 @@ class Parcellation:
         units : str or list, optional
             Units for the additional maps. If None, uses "unknown". Default is "unknown".
 
+        include_by_code : list or np.ndarray, optional
+            List of region codes to include. If None, includes all. Default is None.
+
+        include_by_name : list or str, optional
+            List of region names to include. If None, includes all. Default is None.
+
+        exclude_by_code : list or np.ndarray, optional
+            List of region codes to exclude. If None, excludes none. Default is None.
+
+        exclude_by_name : list or str, optional
+            List of region names to exclude. If None, excludes none. Default is None.
+
+        include_global : bool, optional
+            Whether to include global morphometry metrics. Default is True.
+
         Raises
         ------
         TypeError
-            If output_table is not a string path.
+            If output_table is not a string or Path, or if map_files/map_ids/units have incorrect types.
 
         FileNotFoundError
             If the output directory does not exist.
 
+        ValueError
+            If lengths of map_files, map_ids, and units don't match after normalization.
 
         Examples
         --------
+        >>> from pathlib import Path
         >>> # Compute morphometry table and save to CSV
         >>> parc.compute_morphometry_table(
         ...     output_table='morphometry.csv',
@@ -3013,22 +3026,119 @@ class Parcellation:
         ...     map_ids=['map1', 'map2'],
         ...     units=['mm^3', 'unknown']
         ... )
+        >>> # Using Path objects
+        >>> parc.compute_morphometry_table(
+        ...     output_table=Path('morphometry.csv'),
+        ...     add_bids_entities=True,
+        ...     map_files=[Path('map1.nii.gz'), Path('map2.nii.gz')],
+        ...     map_ids=['map1', 'map2'],
+        ...     units=['mm^3', 'unknown']
+        ... )
         >>> # Compute morphometry without additional maps
         >>> parc.compute_morphometry_table(
         ...     output_table='morphometry_base.csv',
         ...     add_bids_entities=False
         ... )
-        >>> # Compute morphometry with a single map file
+        >>> # Compute morphometry with a single map file as Path
         >>> parc.compute_morphometry_table(
-        ...     output_table='morphometry_single.csv',
+        ...     output_table=Path('morphometry_single.csv'),
         ...     add_bids_entities=True,
-        ...     map_files='single_map.nii.gz',
+        ...     map_files=Path('single_map.nii.gz'),
         ...     map_ids='single_map',
         ...     units='mm^3'
         ... )
         """
 
         from . import morphometrytools as cltmorpho
+
+        # Normalize map_files to list of strings
+        if map_files is not None:
+            if isinstance(map_files, (str, Path)):
+                map_files = [str(map_files)]
+            elif isinstance(map_files, list):
+                # Validate all items in list are strings or Path objects
+                if not all(isinstance(f, (str, Path)) for f in map_files):
+                    raise TypeError(
+                        "All items in map_files must be strings or Path objects"
+                    )
+                # Convert all to strings for consistent processing
+                map_files = [str(f) for f in map_files]
+            else:
+                raise TypeError(
+                    f"map_files must be str, Path, or list, got {type(map_files)}"
+                )
+
+            n_maps = len(map_files)
+
+            # Normalize map_ids to list
+            if map_ids is None:
+                map_ids = [cltmisc.get_real_basename(f) for f in map_files]
+            elif isinstance(map_ids, str):
+                if n_maps == 1:
+                    map_ids = [map_ids]
+                else:
+                    # Single string provided for multiple maps - auto-generate instead
+                    print(
+                        f"Warning: Single map_id provided for {n_maps} maps. Auto-generating IDs."
+                    )
+                    map_ids = [cltmisc.get_real_basename(f) for f in map_files]
+            elif isinstance(map_ids, list):
+                # Validate all items are strings
+                if not all(isinstance(mid, str) for mid in map_ids):
+                    raise TypeError("All items in map_ids must be strings")
+
+                if len(map_ids) != n_maps:
+                    print(
+                        f"Warning: Number of map_ids ({len(map_ids)}) doesn't match number of map_files ({n_maps}). Auto-generating IDs."
+                    )
+                    map_ids = [cltmisc.get_real_basename(f) for f in map_files]
+            else:
+                raise TypeError(f"map_ids must be str or list, got {type(map_ids)}")
+
+            # Normalize units to list
+            if units is None:
+                units = ["unknown"] * n_maps
+            elif isinstance(units, str):
+                if n_maps == 1:
+                    units = [units]
+                else:
+                    # Single unit for multiple maps - replicate it
+                    units = [units] * n_maps
+            elif isinstance(units, list):
+                # Validate all items are strings
+                if not all(isinstance(u, str) for u in units):
+                    raise TypeError("All items in units must be strings")
+
+                if len(units) != n_maps:
+                    print(
+                        f"Warning: Number of units ({len(units)}) doesn't match number of map_files ({n_maps}). Using 'unknown' for all."
+                    )
+                    units = ["unknown"] * n_maps
+            else:
+                raise TypeError(f"units must be str or list, got {type(units)}")
+
+            # Filter out non-existent files
+            fin_maps = []
+            fin_map_ids = []
+            fin_units = []
+
+            for map_file, map_id, unit in zip(map_files, map_ids, units):
+                if os.path.exists(map_file):
+                    fin_maps.append(map_file)
+                    fin_map_ids.append(map_id)
+                    fin_units.append(unit)
+                else:
+                    print(f"Warning: Map file not found: {map_file}")
+
+            n_valid_maps = len(fin_maps)
+
+            if n_valid_maps == 0:
+                print(
+                    "Warning: No valid map files found. Computing only base morphometry."
+                )
+                map_files = None  # Reset to process only base morphometry
+        else:
+            n_valid_maps = 0
 
         # Add Rich progress bar around the main loop
         with Progress(
@@ -3041,113 +3151,94 @@ class Parcellation:
             expand=True,
         ) as progress:
 
-            cont_maps = 0
+            # Total steps: 1 base + N maps
+            total_steps = 1 + n_valid_maps
 
-            if map_files is not None:
-                if isinstance(map_files, str):
-                    map_files = [map_files]
-
-                # Handle map_ids: only replace if None or wrong length
-                if map_ids is None:
-                    map_ids = []
-                    for f in map_files:
-                        map_ids.append(cltmisc.get_real_basename(f))
-                elif isinstance(map_ids, str):
-                    map_ids = [map_ids]
-                elif len(map_ids) != len(map_files):
-                    # If lengths don't match, generate new ones
-                    map_ids = []
-                    for f in map_files:
-                        map_ids.append(cltmisc.get_real_basename(f))
-
-                # Handle units: same logic as map_ids
-                if units is None:
-                    units = ["unknown"] * len(map_files)
-                elif isinstance(units, str):
-                    units = [units]
-                elif len(units) != len(map_files):
-                    units = ["unknown"] * len(map_files)
-
-                fin_maps = []
-                fin_map_ids = []
-                fin_units = []
-
-                # Check if each map file exists
-                for map_file, map_id, unit in zip(map_files, map_ids, units):
-                    if os.path.exists(map_file):
-                        cont_maps += 1
-                        fin_maps.append(map_file)
-                        fin_map_ids.append(map_id)
-                        fin_units.append(unit)
-                    else:
-                        print(f"Warning: Map file not found: {map_file}")
-
-            # Fix: Calculate correct total (base morphometry + number of additional maps)
-            total_tasks = 1 + cont_maps
-
-            # Adding a task to the progress bar with correct total
-            task = progress.add_task("Computing base morphometry", total=total_tasks)
-
-            progress.update(
-                task,
-                description=f"Computing: [bold green]volume[/bold green] ([yellow]cm3[/yellow])",
-                completed=1,
+            task = progress.add_task(
+                "[bold green]Computing base morphometry: [bold green]volume[/bold green] ([yellow]cm³[/yellow])",
+                total=total_steps,
             )
 
             # Computing the volume table
             morphometry_table, *_ = cltmorpho.compute_reg_volume_fromparcellation(
-                self, add_bids_entities=add_bids_entities
+                self,
+                add_bids_entities=add_bids_entities,
+                include_by_code=include_by_code,
+                include_by_name=include_by_name,
+                exclude_by_code=exclude_by_code,
+                exclude_by_name=exclude_by_name,
+                include_global=include_global,
             )
 
-            # If there are additional maps, compute morphometry for each map file
-            if cont_maps > 0:
-                # Compute morphometry for each map file
-                for i, (map_file, map_id, unit) in enumerate(
-                    zip(fin_maps, fin_map_ids, fin_units)
-                ):
-                    # Update progress description to show current map info
-                    progress.update(
-                        task,
-                        description=f"Processing map: [bold green]{map_id}[/bold green] ([yellow]{unit}[/yellow])",
-                        completed=i
-                        + 2,  # +2 because we already completed the base (1) + current index
-                    )
+            # Update after completing base morphometry
+            progress.update(task, completed=1)
 
-                    # Compute morphometry for the current map file
+            # If there are additional maps, compute morphometry for each map file
+
+            # --- Step 2: Additional maps ---
+            for i, (map_file, map_id, unit) in enumerate(
+                zip(fin_maps, fin_map_ids, fin_units), start=1
+            ):
+
+                progress.update(
+                    task,
+                    description=f"[bold green]Processing map {i}/{n_valid_maps}[/bold green] • {map_id} ({unit})",
+                    advance=1,
+                )
+
+                try:
                     df, _, _ = cltmorpho.compute_reg_val_fromparcellation(
                         map_file,
                         self,
                         add_bids_entities=add_bids_entities,
                         metric=map_id,
                         units=unit,
+                        include_by_code=include_by_code,
+                        include_by_name=include_by_name,
+                        exclude_by_code=exclude_by_code,
+                        exclude_by_name=exclude_by_name,
+                        include_global=include_global,
                     )
+
                     morphometry_table = pd.concat([morphometry_table, df], axis=0)
 
-            # Final update
-            progress.update(
-                task,
-                description=f"[bold blue]Completed[/bold blue] morphometry for {cont_maps} maps",
-                completed=total_tasks,
+                except Exception as e:
+                    print(f"[WARNING] Map {map_id} failed with: {e}", flush=True)
+
+                # progress.update(task, advance=1)
+
+            # Final update with clear summary
+            final_msg = (
+                f"[bold green]✓[/bold green] Completed: 1 base + {n_valid_maps} map(s)"
+                if n_valid_maps > 0
+                else "[bold green]✓[/bold.green] Completed base morphometry"
             )
 
-            self.morphometry = morphometry_table
+            progress.update(task, description=final_msg, completed=total_steps)
 
-            # Saving the morphometry table if output_table is provided
-            if output_table is not None:
-                if isinstance(output_table, str):
-                    output_table = Path(output_table)
-                else:
-                    raise TypeError("output_table must be a string path")
+        self.morphometry = morphometry_table
 
-                # If the directory does not exist, create raise an error
-                if not output_table.parent.exists():
-                    raise FileNotFoundError(
-                        f"Output directory does not exist: {output_table.parent}"
-                    )
+        # Saving the morphometry table if output_table is provided
+        if output_table is not None:
+            if not isinstance(output_table, (str, Path)):
+                raise TypeError(
+                    f"output_table must be a string or Path, got {type(output_table)}"
+                )
 
-                # Save the DataFrame to CSV
-                morphometry_table.to_csv(output_table, index=False)
-                print(f"Saved morphometry table to {output_table}")
+            # Convert to Path for consistent handling
+            output_table = Path(output_table)
+
+            # If the directory does not exist, raise an error
+            if not output_table.parent.exists():
+                raise FileNotFoundError(
+                    f"Output directory does not exist: {output_table.parent}"
+                )
+
+            # Save the DataFrame to CSV
+            morphometry_table.to_csv(output_table, index=False)
+            print(f"Saved morphometry table to {output_table}")
+
+        return morphometry_table
 
     ######################################################################################################
     def compute_volume_table(
