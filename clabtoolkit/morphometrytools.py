@@ -913,6 +913,9 @@ def compute_reg_val_fromparcellation(
     table_type: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
+    include_by_code: Union[list, np.ndarray] = None,
+    include_by_name: Union[list, str] = None,
+    include_global: bool = True,
     add_bids_entities: bool = True,
     region_prefix: str = "supra-side",
     interp_method: str = "linear",
@@ -965,6 +968,17 @@ def compute_reg_val_fromparcellation(
     exclude_by_name : list or str, optional
         Region names to exclude from the analysis. If None, no regions are excluded by name.
         Example: ["Ventricles", "White-Matter"] to focus only on gray matter regions.
+
+    include_by_code : list or np.ndarray, optional
+        Region codes to include in the analysis. If None, all regions are included by code.
+        This parameter takes precedence over exclude_by_code.
+
+    include_by_name : list or str, optional
+        Region names to include in the analysis. If None, all regions are included by name.
+        This parameter takes precedence over exclude_by_name.
+
+    include_global : bool, default=True
+        Whether to include global statistics in the output DataFrame.
 
     add_bids_entities : bool, default=True
         Whether to include BIDS entities as columns in the resulting DataFrame.
@@ -1203,6 +1217,13 @@ def compute_reg_val_fromparcellation(
 
     if exclude_by_name is not None:
         vparc_data.remove_by_name(names2remove=exclude_by_name)
+
+    # Apply inclusion if specified
+    if include_by_code is not None:
+        vparc_data.keep_by_code(codes2keep=include_by_code)
+
+    if include_by_name is not None:
+        vparc_data.keep_by_name(names2keep=include_by_name)
 
     # Prepare data structures for results
     dict_of_cols = {}
