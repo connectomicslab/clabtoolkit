@@ -1228,14 +1228,15 @@ def compute_reg_val_fromparcellation(
     # Prepare data structures for results
     dict_of_cols = {}
 
-    # Compute global brain statistics (non-zero parcellation values)
-    brain_mask = vparc_data.data != 0
-    if np.any(brain_mask):  # Check if there are any non-zero values
-        global_stats = stats_from_vector(metric_vol[brain_mask], stats_list)
-        dict_of_cols["brain-brain-wholebrain"] = global_stats
-    else:
-        # Handle empty/invalid parcellation
-        dict_of_cols["brain-brain-wholebrain"] = [0] * len(stats_list)
+    if include_global:
+        # Compute global brain statistics (non-zero parcellation values)
+        brain_mask = vparc_data.data != 0
+        if np.any(brain_mask):  # Check if there are any non-zero values
+            global_stats = stats_from_vector(metric_vol[brain_mask], stats_list)
+            dict_of_cols["brain-brain-wholebrain"] = global_stats
+        else:
+            # Handle empty/invalid parcellation
+            dict_of_cols["brain-brain-wholebrain"] = [0] * len(stats_list)
 
     # Compute statistics for each region
     # Use unique region indices from the data itself
