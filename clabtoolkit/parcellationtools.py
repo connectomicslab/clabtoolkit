@@ -3150,11 +3150,47 @@ class Parcellation:
                 print(f"Saved morphometry table to {output_table}")
 
     ######################################################################################################
-    def compute_volume_table(self):
+    def compute_volume_table(
+        self,
+        exclude_by_code: Union[list, np.ndarray] = None,
+        exclude_by_name: Union[list, str] = None,
+        include_by_code: Union[list, np.ndarray] = None,
+        include_by_name: Union[list, str] = None,
+        include_global: bool = True,
+        output_table: Union[str, Path] = None,
+    ):
         """
         Compute volume table for all regions in parcellation.
 
         Sets volumetable attribute containing region volumes and statistics.
+
+        exclude_by_code : list or np.ndarray, optional
+            Region codes to exclude from the analysis. If None, no regions are excluded by code.
+            Useful for excluding regions like ventricles or non-brain tissue.
+
+        exclude_by_name : list or str, optional
+            Region names to exclude from the analysis. If None, no regions are excluded by name.
+            Example: ["Ventricles", "White-Matter"] to focus only on gray matter regions.
+
+        include_by_code : list or np.ndarray, optional
+            Region codes to include in the analysis. If None, all regions are included.
+            Useful for focusing on specific regions of interest.
+        include_by_name : list or str, optional
+
+            Region names to include in the analysis. If None, all regions are included.
+            Example: ["Cortex", "Hippocampus"] to focus on specific structures.
+
+        add_bids_entities : bool, default=True
+            Whether to include BIDS entities as columns in the resulting DataFrame.
+            This extracts subject, session, and other metadata from the filename.
+
+        region_prefix : str, default="supra-side"
+            Prefix to use for region names when they cannot be determined from the parcellation object.
+            The prefix will be combined with the region index number.
+
+        include_global : bool, default=True
+            Whether to include a the total volume in the output table.
+            If True, adds a row for the total volume calculated from the parcellation.
 
         Examples
         --------
@@ -3165,8 +3201,15 @@ class Parcellation:
 
         from . import morphometrytools as cltmorpho
 
-        volume_table = cltmorpho.compute_reg_volume_fromparcellation(self)
-        self.volumetable = volume_table
+        volume_table = cltmorpho.compute_reg_volume_fromparcellation(
+            self,
+            exclude_by_code=exclude_by_code,
+            exclude_by_name=exclude_by_name,
+            include_by_code=include_by_code,
+            include_by_name=include_by_name,
+            include_global=include_global,
+            output_table=output_table,
+        )
 
         return volume_table
 
