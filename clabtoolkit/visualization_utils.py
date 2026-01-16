@@ -2278,7 +2278,12 @@ def create_default_object_config(obj2plot):
         if isinstance(sing_obj, clttract.Tractogram):
             map_list_dict = sing_obj.list_maps()
             st_maps = map_list_dict.get("maps_per_streamline", [])
+            if st_maps is None:
+                st_maps = []
+
             pt_maps = map_list_dict.get("maps_per_point", [])
+            if pt_maps is None:
+                pt_maps = []
             all_maps = st_maps + pt_maps
 
             def get_tract_data(map_name):
