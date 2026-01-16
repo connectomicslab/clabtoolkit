@@ -90,7 +90,7 @@ class Tractogram:
         color = cltcol.harmonize_colors(color, output_format="rgb") / 255
 
         tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
-        tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
+        tmp_ctable[:, :3] = tmp_ctable[:, :3]  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
         self.colortables["default"] = {
