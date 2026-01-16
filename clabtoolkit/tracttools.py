@@ -298,7 +298,7 @@ class Tractogram:
     ###############################################################################################
     def load_colortable(
         self,
-        lut_file: Union[str, Path],
+        lut_file: Union[str, Path, dict],
         map_name: str = "default",
         opacity: np.ndarray = 1.0,
     ) -> None:
@@ -307,8 +307,8 @@ class Tractogram:
 
         Parameters:
         -----------
-            colortable_path (str or Path):
-                Path to the colortable file.
+            lut_file : str or dict, optional
+                Path to LUT file or dictionary with index/name/color keys.
 
             map_name (str):
                 Name of the map to associate with the loaded colortable.
@@ -318,16 +318,15 @@ class Tractogram:
             None
 
         """
-        if isinstance(lut_file, Path):
-            lut_file = str(lut_file)
+        if isinstance(lut_file, (str, Path)):
+            if os.path.exists(lut_file):
+                lut_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
 
-        if not os.path.isfile(lut_file):
-            raise FileNotFoundError(
-                f"The specified colortable file does not exist: {lut_file}"
-            )
+            else:
+                raise ValueError("The lut file does not exist")
 
-        # Load the colortable using the utility function
-        lut_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
+        elif isinstance(lut_file, dict):
+            lut_dict = copy.deepcopy(lut_file)
 
         colors = lut_dict["color"]
         if map_name in self.data_per_streamline or map_name not in self.data_per_point:
