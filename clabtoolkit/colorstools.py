@@ -1988,6 +1988,10 @@ def values2colors(
     if isinstance(range_color, list):
         range_color = range_color[0]
 
+    if isinstance(range_color, np.ndarray):
+        # Convert to a numpy array of Nx3
+        range_color = range_color.squeeze()
+
     output_format = output_format.lower()
     if output_format not in ["hex", "rgb", "rgbnorm"]:
         raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
