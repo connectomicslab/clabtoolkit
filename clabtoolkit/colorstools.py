@@ -1985,6 +1985,9 @@ def values2colors(
     except Exception:
         raise ValueError("range_color must be a value convertible to RGB format")
 
+    if isinstance(range_color, list):
+        range_color = range_color[0]
+
     output_format = output_format.lower()
     if output_format not in ["hex", "rgb", "rgbnorm"]:
         raise ValueError("output_format must be 'hex', 'rgb', or 'rgbnorm'")
