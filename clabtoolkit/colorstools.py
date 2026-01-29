@@ -81,7 +81,7 @@ from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
 import textwrap
 
 
-import clabtoolkit.misctools as cltmisc
+from . import misctools as cltmisc
 
 
 ####################################################################################################
