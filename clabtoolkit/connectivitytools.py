@@ -869,6 +869,7 @@ class Connectome:
     def plot_matrix(
         self,
         figsize: Tuple[int, int] = (12, 10),
+        log_scale: bool = False,
         show_labels: bool = True,
         cmap: str = "RdBu_r",
         threshold: Optional[float] = None,
@@ -903,6 +904,10 @@ class Connectome:
             else:  # raw mode
                 mask = matrix_to_plot < threshold
             matrix_to_plot[mask] = 0
+        # Apply log scale if specified
+        if log_scale:
+            # Use symmetric log scale to handle negative values
+            matrix_to_plot = np.sign(matrix_to_plot) * np.log1p(np.abs(matrix_to_plot))
 
         # Create heatmap
         im = plt.imshow(matrix_to_plot, cmap=cmap, aspect="equal")
