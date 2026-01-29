@@ -930,7 +930,7 @@ class Parcellation:
 
         # If rearrange is True, the parcellation will be rearranged starting from 1
         if rearrange:
-            self.rearrange_parc()
+            self.rearrange()
 
         # Detect minimum and maximum labels
         self.parc_range()
