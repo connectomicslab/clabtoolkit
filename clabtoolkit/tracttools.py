@@ -1841,7 +1841,7 @@ class Tractogram:
             if self.data_per_point:
                 maps_per_point = maps_per_point + list(self.data_per_point.keys())
             else:
-                maps_per_point = None
+                maps_per_point = []
 
         if hasattr(self, "data_per_streamline"):
             # if self.data_per_streamline is not an empty dict
@@ -1850,7 +1850,7 @@ class Tractogram:
                     self.data_per_streamline.keys()
                 )
             else:
-                maps_per_streamline = None
+                maps_per_streamline = []
 
         map_list = {
             "maps_per_point": maps_per_point,
