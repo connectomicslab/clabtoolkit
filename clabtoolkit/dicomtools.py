@@ -939,3 +939,150 @@ def compress_dicom_session(
         f"\nProcessed {n_subj} subjects, {compressed_sessions}/{total_sessions} sessions compressed successfully."
     )
     return failed_sessions
+
+
+#####################################################################################################
+def get_dicom_info(
+    dicom_file: str,
+    tags: Optional[Union[str, List[str]]] = None,
+    missing_tag_behavior: str = "warn",
+) -> dict:
+    """
+    Extracts metadata from a DICOM file and returns it as a dictionary.
+
+    Can extract all metadata or only specific tags based on the parameters provided.
+
+    Parameters
+    ----------
+    dicom_file : str
+        Path to the DICOM file.
+
+    tags : str, list of str, or None, optional
+        DICOM tags (keywords) to extract. If None, all tags are extracted.
+        Can be a single tag as a string or multiple tags as a list.
+        Default is None (extract all tags).
+
+    missing_tag_behavior : {'warn', 'ignore', 'raise'}, optional
+        How to handle missing tags:
+        - 'warn': Print a warning and skip the tag (default)
+        - 'ignore': Silently skip the tag
+        - 'raise': Raise an AttributeError
+        Default is 'warn'.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the extracted metadata from the DICOM file.
+        Keys are tag keywords, values are the corresponding tag values.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified DICOM file does not exist.
+
+    pydicom.errors.InvalidDicomError
+        If the specified file is not a valid DICOM file.
+
+    AttributeError
+        If a requested tag does not exist and missing_tag_behavior='raise'.
+
+    ValueError
+        If missing_tag_behavior is not one of {'warn', 'ignore', 'raise'}.
+
+    Examples
+    --------
+    Extract all metadata:
+    >>> metadata = get_dicom_info('/path/to/dicom/file.dcm')
+    >>> print(metadata.keys())
+    dict_keys(['PatientID', 'StudyDate', 'Modality', ...])
+
+    Extract specific tags (as list):
+    >>> tags_to_extract = ['PatientID', 'StudyDate', 'Modality']
+    >>> metadata = get_dicom_info('/path/to/dicom/file.dcm', tags=tags_to_extract)
+    >>> print(metadata)
+    {'PatientID': '12345', 'StudyDate': '20210101', 'Modality': 'MR'}
+
+    Extract a single tag (as string):
+    >>> metadata = get_dicom_info('/path/to/dicom/file.dcm', tags='PatientID')
+    >>> print(metadata)
+    {'PatientID': '12345'}
+
+    Handle missing tags:
+    >>> metadata = get_dicom_info(
+    ...     '/path/to/dicom/file.dcm',
+    ...     tags=['PatientID', 'NonExistentTag'],
+    ...     missing_tag_behavior='ignore'
+    ... )
+    >>> print(metadata)
+    {'PatientID': '12345'}
+    """
+    # Validate missing_tag_behavior parameter
+    valid_behaviors = {"warn", "ignore", "raise"}
+    if missing_tag_behavior not in valid_behaviors:
+        raise ValueError(
+            f"missing_tag_behavior must be one of {valid_behaviors}, "
+            f"got '{missing_tag_behavior}'"
+        )
+
+    # Validate file existence
+    dicom_path = Path(dicom_file)
+    if not dicom_path.exists():
+        raise FileNotFoundError(f"DICOM file not found: {dicom_file}")
+
+    # Read DICOM file
+    try:
+        dataset = pydicom.dcmread(dicom_file)
+    except pydicom.errors.InvalidDicomError:
+        raise pydicom.errors.InvalidDicomError(
+            f"File is not a valid DICOM file: {dicom_file}"
+        )
+    except Exception as e:
+        raise Exception(f"Error reading DICOM file {dicom_file}: {e}")
+
+    # If no tags specified, return all metadata
+    if tags is None:
+        metadata = {
+            elem.keyword: elem.value for elem in dataset.iterall() if elem.keyword
+        }
+        return metadata
+
+    # Convert single tag string to list for uniform processing
+    if isinstance(tags, str):
+        tags = [tags]
+
+    # Validate that tags is now a list
+    if not isinstance(tags, list):
+        raise TypeError(
+            f"tags must be a string, list of strings, or None. Got {type(tags)}"
+        )
+
+    # Extract specified tags
+    metadata = {}
+    for tag in tags:
+        if not isinstance(tag, str):
+            raise TypeError(
+                f"Each tag must be a string. Got {type(tag)} for tag: {tag}"
+            )
+
+        try:
+            # Check if tag exists in dataset
+            if hasattr(dataset, tag):
+                metadata[tag] = getattr(dataset, tag)
+            else:
+                # Tag doesn't exist - handle based on behavior parameter
+                if missing_tag_behavior == "raise":
+                    raise AttributeError(
+                        f"Tag '{tag}' not found in DICOM file: {dicom_file}"
+                    )
+                elif missing_tag_behavior == "warn":
+                    print(f"Warning: Tag '{tag}' not found in {dicom_file}, skipping.")
+                # 'ignore' behavior: do nothing, just skip the tag
+
+        except Exception as e:
+            if missing_tag_behavior == "raise":
+                raise
+            elif missing_tag_behavior == "warn":
+                print(f"Warning: Error extracting tag '{tag}': {e}")
+            # 'ignore' behavior: continue silently
+
+    return metadata
