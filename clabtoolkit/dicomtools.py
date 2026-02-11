@@ -17,7 +17,6 @@ import time
 
 from typing import List, Optional, Union
 
-
 # Importing local modules
 from . import misctools as cltmisc
 

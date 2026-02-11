@@ -2132,7 +2132,7 @@ class Tractogram:
         range_color: Tuple = (128, 128, 128, 255),
         views: Union[str, List[str]] = ["lateral"],
         hemi: str = "lh",
-        use_opacity: bool = True,
+        use_opacity: bool = False,
         plot_style: str = "tube",
         vis_percentage: float = 100,
         force_reduction: bool = True,

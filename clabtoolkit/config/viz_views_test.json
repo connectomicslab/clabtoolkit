@@ -1,0 +1,29 @@
+{
+    "figure_conf": {
+        "background_color": "black",
+        "title_font_type": "times",
+        "title_font_size": 20,
+        "title_font_color": "white",
+        "title_shadow": false,
+        "subplot_border": false,
+        "colorbar_size": 0.2,
+        "colorbar_font_type": "times",
+        "colorbar_font_size": 10,
+        "colorbar_title_font_size": 12,
+        "colorbar_font_color": "black",
+        "colorbar_outline": false,
+        "colorbar_n_labels": 11,
+        "mesh_ambient": 0.2,
+        "mesh_diffuse": 0.6,
+        "mesh_specular": 0.4,
+        "mesh_specular_power": 50,
+        "mesh_smooth_shading": true
+    },
+    "objs_conf": {
+            "surface":{"smooth": false,
+                        "smooth_iterations": 10
+            }
+    
+    }
+}
+    
