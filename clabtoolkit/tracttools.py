@@ -87,7 +87,9 @@ class Tractogram:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(
+            color, output_format="rgb"
+        )  # Convert to RGB format if needed
 
         tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
         tmp_ctable[:, :3] = tmp_ctable[:, :3]  # Ensure colors are between 0 and 1
@@ -372,9 +374,7 @@ class Tractogram:
         else:
             opacity_array = np.array(opacity)
 
-        color_table[:, :3] = (
-            color_table[:, :3] / 255
-        )  # Ensure colors are between 0 and 1
+        color_table[:, :3] = color_table[:, :3]  # Ensure colors are between 0 and 1
 
         color_table[:, 3] = opacity_array  # Set uniform opacity
 
@@ -1188,7 +1188,7 @@ class Tractogram:
         colortable = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=range(len(self.centroids))
         )
-        colortable[:, :3] = colortable[:, :3] / 255  # Ensure colors are between 0 and 1
+        colortable[:, :3] = colortable[:, :3]
         self.colortables["cluster_id"] = {
             "names": [f"cluster_{i}" for i in range(len(self.centroids))],
             "color_table": colortable,
@@ -2515,9 +2515,7 @@ def merge_tractograms(
         color_table = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=range(n_tracts)
         )
-        color_table[:, :3] = (
-            color_table[:, :3] / 255
-        )  # Ensure colors are between 0 and 1
+        color_table[:, :3] = color_table[:, :3]  # Ensure colors are between 0 and 1
         color_table[:, 4] = np.arange(n_tracts) + 1  # Set the value column
         bundle_names = [f"tract_{i}" for i in range(n_tracts)]
         color_table_dict = {
