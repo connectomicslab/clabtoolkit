@@ -2538,8 +2538,8 @@ class Parcellation:
         out_file: Union[str, Path],
         affine: np.float64 = None,
         headerlines: Union[list, str] = [],
-        lut_file: Union[str, Path] = None,
-        lut_type: str = "lut",
+        lut_file: Union[str, Path, List[str], List[Path]] = None,
+        lut_type: Union[str, List[str]] = "lut",
         force: bool = True,
     ):
         """
@@ -2556,23 +2556,48 @@ class Parcellation:
         headerlines : list, str, or None, optional
             Header lines for LUT format. If None, uses object's headerlines.
 
-        lut_file : str, Path, or None, optional
-            Path for lookup table file. If None, auto-generated from out_file.
+        lut_file : str, Path, list of str/Path, or None, optional
+            Path(s) for lookup table file(s). If None, paths are auto-generated
+            from out_file using the appropriate extension for each lut_type.
+            If a list, must match the length of lut_type.
 
-        lut_type : str, optional
-            Lookup table format: 'lut', 'tsv', 'fsl', or 'nilearn'.
+        lut_type : str or list of str, optional
+            Lookup table format(s): 'lut', 'tsv', 'fsl', or 'nilearn'.
+            Can be a list to export multiple formats simultaneously,
+            e.g. ['lut', 'tsv']. Default is 'lut'.
 
         force : bool, optional
-            Whether to overwrite existing files.
+            Whether to overwrite existing files. Default is True.
+
+        Raises
+        ------
+        ValueError
+            If lut_file is a list whose length does not match lut_type,
+            or if an unrecognised lut_type is given.
 
         Examples
         --------
-        >>> # Save with default LUT
+        >>> # Save with a single LUT format
         >>> parc.save_parcellation('output.nii.gz', lut_type='tsv')
 
-        >>> # Save with custom LUT file
-        >>> parc.save_parcellation('output.nii.gz', lut_file='custom.lut')
+        >>> # Save with multiple LUT formats (auto-generated paths)
+        >>> parc.save_parcellation('output.nii.gz', lut_type=['lut', 'tsv'])
+
+        >>> # Save with multiple LUT formats and explicit paths
+        >>> parc.save_parcellation(
+        ...     'output.nii.gz',
+        ...     lut_type=['lut', 'tsv'],
+        ...     lut_file=['custom.lut', 'custom.tsv']
+        ... )
         """
+
+        # Mapping from lut_type to file extension
+        _EXT_MAP = {
+            "lut": ".lut",
+            "tsv": ".tsv",
+            "fsl": ".fsllut",
+            "nilearn": ".nilearnlut",
+        }
 
         # Handle affine
         if affine is None:
@@ -2581,11 +2606,10 @@ class Parcellation:
         # Handle headerlines
         if headerlines is None:
             headerlines = self.headerlines
-
         elif isinstance(headerlines, str):
             headerlines = [headerlines]
 
-        # Check file existence
+        # Normalise out_file to str
         if isinstance(out_file, Path):
             out_file = str(out_file)
 
@@ -2599,30 +2623,55 @@ class Parcellation:
         out_atlas = nib.Nifti1Image(data_to_save, affine)
         nib.save(out_atlas, out_file)
 
-        if lut_type is not None:
-            if lut_file is None:
-                base_name = cltmisc.get_real_basename(os.path.basename(out_file))
-                out_dir = os.path.dirname(out_file)
+        if lut_type is None:
+            return
 
-                if lut_type.lower() == "lut":
-                    lut_file = os.path.join(out_dir, base_name + ".lut")
+        # --- Normalise lut_type to a list ---
+        if isinstance(lut_type, str):
+            lut_type = [lut_type]
 
-                elif lut_type.lower() == "tsv":
-                    lut_file = os.path.join(out_dir, base_name + ".tsv")
+        # Validate all requested formats
+        for lt in lut_type:
+            if lt.lower() not in _EXT_MAP:
+                raise ValueError(
+                    f"Unrecognised lut_type '{lt}'. Must be one of: {list(_EXT_MAP.keys())}"
+                )
 
-                elif lut_type.lower() == "fsl":
-                    lut_file = os.path.join(out_dir, base_name + ".fsllut")
+        # --- Normalise lut_file to a list of matching length ---
+        if lut_file is None:
+            # Auto-generate one path per format
+            base_name = cltmisc.get_real_basename(os.path.basename(out_file))
+            out_dir = os.path.dirname(out_file)
+            lut_file = [
+                os.path.join(out_dir, base_name + _EXT_MAP[lt.lower()])
+                for lt in lut_type
+            ]
 
-                elif lut_type.lower() == "nilearn":
-                    lut_file = os.path.join(out_dir, base_name + ".nilearnlut")
+        elif isinstance(lut_file, (str, Path)):
+            # Single explicit path — only valid when a single format is requested
+            if len(lut_type) > 1:
+                raise ValueError(
+                    f"A single lut_file was provided but lut_type contains "
+                    f"{len(lut_type)} formats. Provide a list of paths or set "
+                    f"lut_file=None to auto-generate them."
+                )
+            lut_file = [str(lut_file)]
 
-                else:
-                    raise ValueError(
-                        "lut_type must be 'lut', 'tsv', 'fsl' or 'nilearn'"
-                    )
+        elif isinstance(lut_file, list):
+            lut_file = [str(f) for f in lut_file]
+            if len(lut_file) != len(lut_type):
+                raise ValueError(
+                    f"lut_file list length ({len(lut_file)}) must match "
+                    f"lut_type list length ({len(lut_type)})."
+                )
+        else:
+            raise TypeError(
+                f"lut_file must be a str, Path, list, or None; got {type(lut_file)}."
+            )
 
-            # Exporting the colortable if required
-            self.export_colortable(out_file=lut_file, lut_type=lut_type, force=force)
+        # --- Export one colortable per (lut_file, lut_type) pair ---
+        for lf, lt in zip(lut_file, lut_type):
+            self.export_colortable(out_file=lf, lut_type=lt.lower(), force=force)
 
     ######################################################################################################
     def load_colortable(self, lut_file: Union[str, Path, dict] = None):
