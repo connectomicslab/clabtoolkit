@@ -425,9 +425,16 @@ class Parcellation:
         if not hasattr(self, "opacity") or self.opacity is None:
             self.opacity = [1.0] * len(self.index)
 
-        # Ensure opacity has correct length
-        if len(self.opacity) != len(self.index):
+        # Ensure opacity is iterable (guard against scalar float)
+        if not hasattr(self.opacity, "__len__"):
+            self.opacity = [float(self.opacity)] * len(self.index)
+
+        # Ensure opacity is a flat 1-D list of floats with the correct length
+        opacity_arr = np.array(self.opacity)
+        if opacity_arr.ndim != 1 or len(opacity_arr) != len(self.index):
             self.opacity = [1.0] * len(self.index)
+        else:
+            self.opacity = [float(x) for x in opacity_arr.tolist()]
 
         # Ensure headerlines exists (default to empty list)
         if not hasattr(self, "headerlines") or self.headerlines is None:
@@ -926,7 +933,13 @@ class Parcellation:
                 self.color = np.array(self.color)[metadata_mask].tolist()
 
             if hasattr(self, "opacity"):
-                self.opacity = np.array(self.opacity)[metadata_mask].tolist()
+                opacity_arr = np.array(self.opacity)
+                # Guard: opacity must be a 1-D array with length matching the index
+                if opacity_arr.ndim == 1 and len(opacity_arr) == len(metadata_mask):
+                    self.opacity = opacity_arr[metadata_mask].tolist()
+                else:
+                    # Fallback: default opacity for the remaining regions
+                    self.opacity = [1.0] * int(metadata_mask.sum())
 
         # If rearrange is True, the parcellation will be rearranged starting from 1
         if rearrange:
@@ -2411,8 +2424,11 @@ class Parcellation:
         if hasattr(self, "opacity"):
             if isinstance(self.opacity, np.ndarray):
                 self.opacity = [float(x) for x in self.opacity.tolist()]
+            elif not hasattr(self.opacity, "__len__"):
+                # scalar: broadcast to all regions
+                self.opacity = [float(self.opacity)] * len(self.index)
             elif not isinstance(self.opacity, list):
-                self.opacity = [float(self.opacity)]
+                self.opacity = [float(x) for x in self.opacity]
             else:
                 self.opacity = [float(x) for x in self.opacity]
 
