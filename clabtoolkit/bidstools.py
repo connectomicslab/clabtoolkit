@@ -1027,7 +1027,8 @@ def entities_to_table(
         )
 
     file_directory = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
+    filename = cltmisc.get_real_basename(filepath)
+    filename = filename.split(".")[0]
 
     result_df = pd.DataFrame()
 
@@ -1764,6 +1765,7 @@ def is_bids_filename(filename: str) -> bool:
         bool: True if valid BIDS filename, False otherwise.
     """
     # Remove extension if present
+    filename = cltmisc.get_real_basename(filename)
     base_filename = filename.split(".")[0]
 
     parts = base_filename.split("_")
