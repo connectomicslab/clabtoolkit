@@ -3882,7 +3882,7 @@ class FreeSurferSubject:
                 fslut_file = os.path.join(
                     os.environ.get("FREESURFER_HOME"), "FreeSurferColorLUT.txt"
                 )
-                lut_dict = cltparc.Parcellation.read_luttable(in_file=fslut_file)
+                lut_dict = cltcol.ColorTableLoader.load_colortable(fslut_file)
 
             fs_codes = lut_dict["index"]
             fs_names = lut_dict["name"]
@@ -4089,9 +4089,17 @@ class FreeSurferSubject:
                     }
                 )
 
+                col_dict = {
+                    "index": list(tsv_df["index"]),
+                    "name": list(tsv_df["name"]),
+                    "color": list(tsv_df["color"]),
+                }
+                col_obj = cltcol.ColorTableLoader(col_dict)
                 if "tsv" in color_table:
                     out_file = out_vol.replace(".nii.gz", ".tsv")
-                    cltparc.Parcellation.write_tsvtable(tsv_df, out_file, force=force)
+
+                    col_obj.export(out_file, out_format="tsv", overwrite=force)
+
                 if "lut" in color_table:
                     out_file = out_vol.replace(".nii.gz", ".lut")
 
@@ -4104,13 +4112,11 @@ class FreeSurferSubject:
                         ),
                     ]
 
-                    cltparc.Parcellation.write_luttable(
-                        tsv_df["index"].tolist(),
-                        tsv_df["name"].tolist(),
-                        tsv_df["color"].tolist(),
+                    col_obj.export(
                         out_file,
+                        out_format="lut",
                         headerlines=headerlines,
-                        force=force,
+                        overwrite=force,
                     )
 
         elif os.path.isfile(out_vol) and not force:
