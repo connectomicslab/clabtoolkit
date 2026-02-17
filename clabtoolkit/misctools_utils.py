@@ -5,6 +5,10 @@ from typing import Any, Optional, Dict, List
 import sys
 import pandas as pd
 
+from pathlib import Path
+from typing import Union
+import os
+
 # Try to import required modules at module level
 try:
     from clabtoolkit import cltcolors
@@ -889,3 +893,57 @@ class ExplorerDict(dict):
                 return None
 
         return obj
+
+
+##############################################################################
+@staticmethod
+def exist_file(path: Union[str, Path]) -> str:
+    """
+    Check if a file exists at the given path and return the path as a string if it does.
+
+    Parameters
+    ----------
+    path : str or Path
+        The file path to check.
+
+    Returns
+    -------
+    str
+        The file path as a string if the file exists, otherwise an empty string.
+
+    Examples
+    --------
+    >>> exist_file('existing_file.txt')
+    'existing_file.txt'
+    >>> exist_file('nonexistent_file.txt')
+    ''
+
+    """
+    return str(path) if os.path.isfile(path) else ""
+
+
+##############################################################################
+@staticmethod
+def exist_dir(path: Union[str, Path]) -> str:
+    """
+    Check if a directory exists at the given path and return the path as a string if it does.
+
+    Parameters
+    ----------
+    path : str or Path
+        The directory path to check.
+
+    Returns
+    -------
+    str
+        The directory path as a string if the directory exists, otherwise an empty string.
+
+    Examples
+    --------
+    >>> exist_dir('existing_folder')
+    'existing_folder'
+    >>> exist_dir('nonexistent_folder')
+    ''
+
+    """
+    return str(path) if os.path.isdir(path) else ""
