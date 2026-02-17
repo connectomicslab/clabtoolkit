@@ -32,6 +32,7 @@ from . import misctools as cltmisc
 from . import bidstools as cltbids
 from . import pipelinetools as cltpipe
 from . import colorstools as cltcol
+from . import misctools_utils as cltmisc_utils
 
 
 ####################################################################################################
@@ -2192,38 +2193,101 @@ class FreeSurferSubject:
         # Generate a dictionary of the FreeSurfer files
         self.fs_files = {}
         mri_dict = {}
-        mri_dict["orig"] = os.path.join(subj_dir, "mri", "orig.mgz")
-        mri_dict["brainmask"] = os.path.join(subj_dir, "mri", "brainmask.mgz")
-        mri_dict["T1"] = os.path.join(subj_dir, "mri", "T1.mgz")
-        mri_dict["talairach"] = os.path.join(
-            subj_dir, "mri", "transforms", "talairach.lta"
+        count_mri = 0
+        mri_dict["orig"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "orig.mgz")
         )
-        vol_parc_dict = {}
-        vol_parc_dict["aseg"] = os.path.join(subj_dir, "mri", "aseg.mgz")
-        vol_parc_dict["desikan+aseg"] = os.path.join(subj_dir, "mri", "aparc+aseg.mgz")
-        vol_parc_dict["destrieux+aseg"] = os.path.join(
-            subj_dir, "mri", "aparc.a2009s+aseg.mgz"
-        )
-        vol_parc_dict["dkt+aseg"] = os.path.join(
-            subj_dir, "mri", "aparc.DKTatlas+aseg.mgz"
-        )
+        if mri_dict["orig"] != "":
+            count_mri += 1
 
-        vol_parc_dict["ribbon"] = os.path.join(subj_dir, "mri", "ribbon.mgz")
-        vol_parc_dict["wm"] = os.path.join(subj_dir, "mri", "wm.mgz")
-        vol_parc_dict["wmparc"] = os.path.join(subj_dir, "mri", "wmparc.mgz")
+        mri_dict["brainmask"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "brainmask.mgz")
+        )
+        if mri_dict["brainmask"] != "":
+            count_mri += 1
+
+        mri_dict["T1"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "T1.mgz")
+        )
+        if mri_dict["T1"] != "":
+            count_mri += 1
+
+        mri_dict["talairach"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "transforms", "talairach.lta")
+        )
+        if mri_dict["talairach"] != "":
+            count_mri += 1
+
+        vol_parc_dict = {}
+        count_vparc = 0
+        vol_parc_dict["aseg"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "aseg.mgz")
+        )
+        if vol_parc_dict["aseg"] != "":
+            count_vparc += 1
+
+        vol_parc_dict["desikan+aseg"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "aparc+aseg.mgz")
+        )
+        if vol_parc_dict["desikan+aseg"] != "":
+            count_vparc += 1
+
+        vol_parc_dict["destrieux+aseg"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "aparc.a2009s+aseg.mgz")
+        )
+        if vol_parc_dict["destrieux+aseg"] != "":
+            count_vparc += 1
+
+        vol_parc_dict["dkt+aseg"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "aparc.DKTatlas+aseg.mgz")
+        )
+        if vol_parc_dict["dkt+aseg"] != "":
+            count_vparc += 1
+
+        vol_parc_dict["ribbon"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "ribbon.mgz")
+        )
+        if vol_parc_dict["ribbon"] != "":
+            count_vparc += 1
+
+        vol_parc_dict["wm"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "wm.mgz")
+        )
+        if vol_parc_dict["wm"] != "":
+            count_vparc += 1
+
+        vol_parc_dict["wmparc"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "mri", "wmparc.mgz")
+        )
+        if vol_parc_dict["wmparc"] != "":
+            count_vparc += 1
 
         self.fs_files["mri"] = mri_dict
         self.fs_files["mri"]["parc"] = vol_parc_dict
 
         # Creating the Surf dictionary
         surf_dict = {}
+        (
+            lh_s_dict,
+            lh_m_dict,
+            lh_p_dict,
+            lh_t_dict,
+            lh_s_count,
+            lh_m_count,
+            lh_p_count,
+            lh_t_count,
+        ) = self.get_hemi_dicts(subj_dir=subj_dir, hemi="lh")
 
-        lh_s_dict, lh_m_dict, lh_p_dict, lh_t_dict = self.get_hemi_dicts(
-            subj_dir=subj_dir, hemi="lh"
-        )
-        rh_s_dict, rh_m_dict, rh_p_dict, rh_t_dict = self.get_hemi_dicts(
-            subj_dir=subj_dir, hemi="rh"
-        )
+        (
+            rh_s_dict,
+            rh_m_dict,
+            rh_p_dict,
+            rh_t_dict,
+            rh_s_count,
+            rh_m_count,
+            rh_p_count,
+            rh_t_count,
+        ) = self.get_hemi_dicts(subj_dir=subj_dir, hemi="rh")
 
         surf_dict["lh"] = {}
         surf_dict["lh"]["mesh"] = lh_s_dict
@@ -2240,14 +2304,38 @@ class FreeSurferSubject:
         # Creating the Stats dictionary
         stats_dict = {}
         global_dict = {}
-        global_dict["aseg"] = os.path.join(subj_dir, "stats", "aseg.stats")
-        global_dict["wmparc"] = os.path.join(subj_dir, "stats", "wmparc.stats")
-        global_dict["brainvol"] = os.path.join(subj_dir, "stats", "brainvol.stats")
+        count_stats = 0
+        global_dict["aseg"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "stats", "aseg.stats")
+        )
+        if global_dict["aseg"] != "":
+            count_stats += 1
+
+        global_dict["wmparc"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "stats", "wmparc.stats")
+        )
+        if global_dict["wmparc"] != "":
+            count_stats += 1
+
+        global_dict["brainvol"] = cltmisc_utils.exist_file(
+            os.path.join(subj_dir, "stats", "brainvol.stats")
+        )
+        if global_dict["brainvol"] != "":
+            count_stats += 1
+
         stats_dict["global"] = global_dict
         stats_dict["lh"] = lh_t_dict
         stats_dict["rh"] = rh_t_dict
 
         self.fs_files["stats"] = stats_dict
+        self.fs_files_count = {
+            "mri": count_mri,
+            "vparc": count_vparc,
+            "surf": lh_s_count + rh_s_count,
+            "map": lh_m_count + rh_m_count,
+            "sparc": lh_p_count + rh_p_count,
+            "stats": count_stats + lh_t_count + rh_t_count,
+        }
 
     ####################################################################################################
     def get_hemi_dicts(self, subj_dir: str, hemi: str):
@@ -2268,16 +2356,16 @@ class FreeSurferSubject:
         Returns
         -------
         s_dict : dict
-            Surface mesh file paths (pial, white, inflated, sphere).
+            Surface mesh file paths (pial, white, inflated, sphere). Empty string if not found.
 
         m_dict : dict
-            Morphometric map file paths (curv, sulc, thickness, area, volume, lgi).
+            Morphometric map file paths (curv, sulc, thickness, area, volume, lgi). Empty string if not found.
 
         p_dict : dict
-            Parcellation annotation file paths (desikan, destrieux, dkt).
+            Parcellation annotation file paths (desikan, destrieux, dkt). Empty string if not found.
 
         t_dict : dict
-            Statistics file paths for each parcellation and curvature.
+            Statistics file paths for each parcellation and curvature. Empty string if not found.
 
         Examples
         --------
@@ -2285,36 +2373,74 @@ class FreeSurferSubject:
         >>> print(surf['pial'])
         """
 
+        surf_dir = os.path.join(subj_dir, "surf")
+        label_dir = os.path.join(subj_dir, "label")
+        stats_dir = os.path.join(subj_dir, "stats")
+        s_count = 0
+        m_count = 0
+        p_count = 0
+        t_count = 0
+
         # Surface dictionary
-        s_dict = {}
-        s_dict["pial"] = os.path.join(subj_dir, "surf", hemi + ".pial")
-        s_dict["white"] = os.path.join(subj_dir, "surf", hemi + ".white")
-        s_dict["inflated"] = os.path.join(subj_dir, "surf", hemi + ".inflated")
-        s_dict["sphere"] = os.path.join(subj_dir, "surf", hemi + ".sphere")
-        m_dict = {}
-        m_dict["curv"] = os.path.join(subj_dir, "surf", hemi + ".curv")
-        m_dict["sulc"] = os.path.join(subj_dir, "surf", hemi + ".sulc")
-        m_dict["thickness"] = os.path.join(subj_dir, "surf", hemi + ".thickness")
-        m_dict["area"] = os.path.join(subj_dir, "surf", hemi + ".area")
-        m_dict["volume"] = os.path.join(subj_dir, "surf", hemi + ".volume")
-        m_dict["lgi"] = os.path.join(subj_dir, "surf", hemi + ".pial_lgi")
-        p_dict = {}
-        p_dict["desikan"] = os.path.join(subj_dir, "label", hemi + ".aparc.annot")
-        p_dict["destrieux"] = os.path.join(
-            subj_dir, "label", hemi + ".aparc.a2009s.annot"
-        )
-        p_dict["dkt"] = os.path.join(subj_dir, "label", hemi + ".aparc.DKTatlas.annot")
+        s_dict = {
+            "pial": cltmisc_utils.exist_file(os.path.join(surf_dir, f"{hemi}.pial")),
+            "white": cltmisc_utils.exist_file(os.path.join(surf_dir, f"{hemi}.white")),
+            "inflated": cltmisc_utils.exist_file(
+                os.path.join(surf_dir, f"{hemi}.inflated")
+            ),
+            "sphere": cltmisc_utils.exist_file(
+                os.path.join(surf_dir, f"{hemi}.sphere")
+            ),
+        }
+        s_count += sum([1 for key in s_dict.keys() if s_dict[key] != ""])
+
+        # Morphometric map dictionary
+        m_dict = {
+            "curv": cltmisc_utils.exist_file(os.path.join(surf_dir, f"{hemi}.curv")),
+            "sulc": cltmisc_utils.exist_file(os.path.join(surf_dir, f"{hemi}.sulc")),
+            "thickness": cltmisc_utils.exist_file(
+                os.path.join(surf_dir, f"{hemi}.thickness")
+            ),
+            "area": cltmisc_utils.exist_file(os.path.join(surf_dir, f"{hemi}.area")),
+            "volume": cltmisc_utils.exist_file(
+                os.path.join(surf_dir, f"{hemi}.volume")
+            ),
+            "lgi": cltmisc_utils.exist_file(os.path.join(surf_dir, f"{hemi}.pial_lgi")),
+        }
+        m_count += sum([1 for key in m_dict.keys() if m_dict[key] != ""])
+
+        # Parcellation dictionary
+        p_dict = {
+            "desikan": cltmisc_utils.exist_file(
+                os.path.join(label_dir, f"{hemi}.aparc.annot")
+            ),
+            "destrieux": cltmisc_utils.exist_file(
+                os.path.join(label_dir, f"{hemi}.aparc.a2009s.annot")
+            ),
+            "dkt": cltmisc_utils.exist_file(
+                os.path.join(label_dir, f"{hemi}.aparc.DKTatlas.annot")
+            ),
+        }
+        p_count += sum([1 for key in p_dict.keys() if p_dict[key] != ""])
 
         # Statistics dictionary
-        t_dict = {}
-        t_dict["desikan"] = os.path.join(subj_dir, "stats", hemi + ".aparc.stats")
-        t_dict["destrieux"] = os.path.join(
-            subj_dir, "stats", hemi + ".aparc.a2009s.stats"
-        )
-        t_dict["dkt"] = os.path.join(subj_dir, "stats", hemi + ".aparc.DKTatlas.stats")
-        t_dict["curv"] = os.path.join(subj_dir, "stats", hemi + ".curv.stats")
+        t_dict = {
+            "desikan": cltmisc_utils.exist_file(
+                os.path.join(stats_dir, f"{hemi}.aparc.stats")
+            ),
+            "destrieux": cltmisc_utils.exist_file(
+                os.path.join(stats_dir, f"{hemi}.aparc.a2009s.stats")
+            ),
+            "dkt": cltmisc_utils.exist_file(
+                os.path.join(stats_dir, f"{hemi}.aparc.DKTatlas.stats")
+            ),
+            "curv": cltmisc_utils.exist_file(
+                os.path.join(stats_dir, f"{hemi}.curv.stats")
+            ),
+        }
+        t_count += sum([1 for key in t_dict.keys() if t_dict[key] != ""])
 
-        return s_dict, m_dict, p_dict, t_dict
+        return s_dict, m_dict, p_dict, t_dict, s_count, m_count, p_count, t_count
 
     ####################################################################################################
     def get_proc_status(self):
