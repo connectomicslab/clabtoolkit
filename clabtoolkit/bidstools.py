@@ -23,6 +23,8 @@ from rich.progress import (
 )
 from rich.console import Console
 from rich.panel import Panel
+import concurrent.futures
+
 
 # Importing the clabtoolkit modules
 from . import misctools as cltmisc
@@ -777,29 +779,29 @@ def get_all_entities(root_dir: str) -> Tuple[Dict[str, Set[str]], List[str]]:
     # Leave only the files that are BIDs files
     bids_files = cltmisc.filter_by_substring(bids_files, bids_folders)
 
-    # Initialize a set to store all unique entities
-    all_entities = []
-    all_suffixes = []
-    for file in bids_files:
-
+    def process_file(file):
         filename = os.path.basename(file)
         ent_dict = str2entity(filename)
 
-        # Remove suffix and extension from the entity dictionary
+        suffix = None
         if "suffix" in ent_dict:
-            suffix = ent_dict["suffix"]
+            suffix = ent_dict.pop("suffix")
+
+        ent_dict.pop("extension", None)
+        ent_dict.pop("run", None)
+
+        return list(ent_dict.keys()), suffix
+
+    all_entities = []
+    all_suffixes = []
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = executor.map(process_file, bids_files)
+
+    for entity_keys, suffix in results:
+        all_entities.extend(entity_keys)
+        if suffix is not None:
             all_suffixes.append(suffix)
-            del ent_dict["suffix"]
-
-        if "extension" in ent_dict:
-            del ent_dict["extension"]
-
-        if "run" in ent_dict:
-            del ent_dict["run"]
-
-        file_ent_keys = list(ent_dict.keys())
-
-        all_entities.extend(file_ent_keys)
 
     # Unique entities
     all_entities = sorted(set(all_entities))
