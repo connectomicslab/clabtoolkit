@@ -1,38 +1,32 @@
-import os
-import shutil
-import pandas as pd
-import time
-import queue
-import threading
-import numpy as np
-
-from typing import Union, Dict, List, Optional
-
-import re
 import json
+import os
+import queue
+import re
+import shutil
+import threading
+import time
+import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import glob
+from pathlib import Path
+from typing import Dict, List, Optional, Union
 
-from rich.progress import (
-    Progress,
-    BarColumn,
-    TimeRemainingColumn,
-    TextColumn,
-    MofNCompleteColumn,
-    SpinnerColumn,
-)
+import numpy as np
+import pandas as pd
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
-# Importing the clabtoolkit modules
-from . import misctools as cltmisc
 from . import bidstools as cltbids
 from . import freesurfertools as cltfree
-
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-import warnings
+from . import misctools as cltmisc
 
 warnings.filterwarnings(
     "ignore",
