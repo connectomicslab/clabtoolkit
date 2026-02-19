@@ -2684,7 +2684,9 @@ class Parcellation:
 
         # --- Export one colortable per (lut_file, lut_type) pair ---
         for lf, lt in zip(lut_file, lut_type):
-            self.export_colortable(out_file=lf, lut_type=lt.lower(), force=force)
+            self.export_colortable(
+                out_file=lf, lut_type=lt.lower(), force=force, headerlines=headerlines
+            )
 
     ######################################################################################################
     def load_colortable(self, lut_file: Union[str, Path, dict] = None):
