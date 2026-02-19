@@ -2362,16 +2362,29 @@ class Parcellation:
         st_codes = np.unique(self.data)
         st_codes = st_codes[st_codes != 0]
 
+        # Leave the index if it is present in stcodes
         new_parc = np.zeros_like(self.data)
+        new_index = []
+        new_name = []
+        new_color = []
+        new_opacity = []
+        for i, index in enumerate(self.index):
+            if index in st_codes:
+                new_index.append(i + 1 + offset)
+                new_name.append(self.name[i])
+                new_color.append(self.color[i])
+                if hasattr(self, "opacity"):
+                    new_opacity.append(self.opacity[i])
 
-        for i, code in enumerate(st_codes):
-            new_parc[self.data == code] = i + 1 + offset
-
-            if hasattr(self, "index"):
-                self.index[i] = i + 1 + offset
+                new_parc[self.data == index] = i + 1 + offset
 
         # Update data with rearranged labels
         self.data = new_parc
+        self.index = new_index
+        self.name = new_name
+        self.color = new_color
+        if hasattr(self, "opacity"):
+            self.opacity = new_opacity
 
         # Update parcellation range
         self.parc_range()
