@@ -1,3 +1,4 @@
+# Standard library imports
 import json
 import os
 import queue
@@ -11,6 +12,7 @@ from glob import glob
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# Third-party imports
 import numpy as np
 import pandas as pd
 from rich.console import Console
@@ -24,10 +26,13 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+# Local imports
+# - Importing the submodules of clabtoolkit that are used in this file. This is done to avoid circular imports and to keep the code organized.
 from . import bidstools as cltbids
 from . import freesurfertools as cltfree
 from . import misctools as cltmisc
 
+# Suppress specific deprecation warnings from ipykernel and ipywidgets that can occur in certain environments
 warnings.filterwarnings(
     "ignore",
     message="Kernel._parent_header is deprecated",
