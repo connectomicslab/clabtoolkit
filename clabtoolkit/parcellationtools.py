@@ -2067,6 +2067,23 @@ class Parcellation:
         >>> print(f"Regions in data: {len(parc.index)}")
         """
 
+        # I want to check if the len of index, name, color and opacity are the same, if not I want to raise an error
+        if (
+            hasattr(self, "index")
+            and hasattr(self, "name")
+            and hasattr(self, "color")
+            and hasattr(self, "opacity")
+        ):
+            if not (
+                len(self.index)
+                == len(self.name)
+                == len(self.color)
+                == len(self.opacity)
+            ):
+                raise ValueError(
+                    "The length of index, name, color and opacity attributes must be the same."
+                )
+
         st_codes = np.unique(self.data)
         unique_codes = st_codes[st_codes != 0]
 
