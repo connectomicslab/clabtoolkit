@@ -11,24 +11,26 @@ Functions:
 - (Additional functions can be added here as needed)
 """
 
-import os
+# Standard library imports
 import copy
-import numpy as np
-from typing import Union, List, Optional, Tuple, Dict, Any
+import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# Third-party imports
+import numpy as np
 import pyvista as pv
 
+# Use TYPE_CHECKING to avoid circular imports
 # Importing local modules
+# Note: The following imports are placed here to avoid circular import issues. If you need to use these modules
+from . import build_visualization_layout as vislayout
 from . import misctools as cltmisc
 from . import plottools as cltplot
-
-# Use TYPE_CHECKING to avoid circular imports
+from . import pointstools as cltpts
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
-from . import pointstools as cltpts
-
 from . import visualization_utils as visutils
-from . import build_visualization_layout as vislayout
 
 
 ####################################################################################################
