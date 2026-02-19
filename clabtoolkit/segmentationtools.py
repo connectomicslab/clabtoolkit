@@ -289,8 +289,7 @@ def abased_parcellation(
             tmp_parc.save_parcellation(
                 out_file=out_parc,
                 affine=tmp_parc.affine,
-                save_lut=False,
-                save_tsv=False,
+                lut_type=["lut", "tsv"],
             )
 
         # Removing the Warped images
