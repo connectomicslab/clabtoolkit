@@ -22,10 +22,25 @@ from rich.progress import (
 )
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress
 
 # Importing the clabtoolkit modules
 from . import misctools as cltmisc
 from . import bidstools as cltbids
+from . import freesurfertools as cltfree
+
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="Kernel._parent_header is deprecated",
+    category=DeprecationWarning,
+)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="ipywidgets")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="ipykernel")
 
 
 ####################################################################################################
@@ -393,6 +408,435 @@ def create_processing_status_table(
         proc_status_df.to_csv(output_table, sep="\t", index=False)
 
     return proc_status_df, output_table
+
+
+######################################################################################################
+def process_file(filepath: str):
+    """
+    Parse BIDS entities from a single file path.
+
+    Parameters
+    ----------
+    filepath : str
+        Full path to the file to be processed.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        DataFrame with extracted entities if parsing is successful, otherwise None.
+
+    """
+    try:
+        table = cltbids.entities_to_table(filepath, include_suffix=True)
+        if table is None or table.empty:
+            return None, filepath
+        return table, None
+    except Exception:
+        return None, filepath
+
+
+######################################################################################################
+def process_freesurfer_subject(args):
+    """
+    Process a single FreeSurfer subject.
+
+    Parameters
+    ----------
+    args : tuple
+        Tuple containing (fs_id, pipe_dir) where:
+        - fs_id: FreeSurfer subject ID (e.g., 'sub-001')
+        - pipe_dir: Path to the pipeline derivatives directory to scan for this subject (e.g., '/path/to/derivatives/fsl-firstparc')
+
+    Returns
+    -------
+    pd.DataFrame or None
+        DataFrame with file type counts for the subject if successful, otherwise None.
+
+
+
+    """
+    fs_id, pipe_dir = args
+    try:
+        fs_subj = cltfree.FreeSurferSubject(fs_id, pipe_dir)
+        f_types = fs_subj.fs_files_count.keys()
+        f_counts = [fs_subj.fs_files_count[ft] for ft in f_types]
+        table = cltbids.entities_to_table(fs_id)
+        tmp_df = pd.DataFrame({"Type": f_types, "Count": f_counts})
+        tmp_df = cltmisc.expand_and_concatenate(table, tmp_df)
+        return tmp_df, None
+    except Exception:
+        return None, fs_id
+
+
+########################################################################################################
+def scan_derivatives(
+    pipe_dir: str,
+    subj_ids: Union[str, list] = None,
+    extensions: list = [
+        ".nii.gz",
+        ".nii",
+        ".mgz",
+        ".stats",
+        ".annot",
+        ".gii",
+        ".gii.gz",
+    ],
+) -> list:
+    """
+    Recursively collect all matching files under the derivatives folder.
+
+    Parameters
+    ----------
+    deriv_dir : str
+        Path to the derivatives directory to scan.
+
+    extensions : list, optional
+        Tuple of file extensions to include in the scan. Default is [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"].
+
+    Returns
+    list
+        Sorted list of file paths that match the specified extensions and start with "sub-".
+
+    Notes
+    -----
+    - Only files that start with "sub-" and end with one of the specified extensions are included.
+
+
+    """
+    # Detect all the directories in case no subject IDs are provided, just to check if there are any subject folders in the derivatives
+    if subj_ids is None:
+        subj_ids = get_ids2process(None, in_dir=pipe_dir)
+
+    # Clean list with the the subject IDs to look for in the file paths
+    if isinstance(subj_ids, str):
+        subj_ids = [subj_ids]
+
+    files = []
+    for subj_id in subj_ids:
+        ent_dict = cltbids.str2entity(
+            subj_id
+        )  # Just to check if the IDs are valid BIDS entities
+
+        # Check if there is any folder in the derivatives that starts with sub-ent_dict["sub"]
+        matching_folders = glob(os.path.join(pipe_dir, f"sub-{ent_dict['sub']}*"))
+        if matching_folders:
+            for folder in matching_folders:
+                sub_files = cltmisc.get_all_files(
+                    folder, or_filter=[subj_id], recursive=True
+                )
+                files.extend(sub_files)
+
+    files = [f for f in files if any(f.endswith(ext) for ext in extensions)]
+
+    return sorted(files)
+
+
+###############################################################################################
+def _run_parallel(
+    items: list,
+    submit_fn,
+    progress: Progress,
+    task_id,
+    n_workers: int,
+) -> tuple[list, list]:
+    """
+    Submit items to a ThreadPoolExecutor and advance the progress bar in the
+    main thread via as_completed, which is guaranteed to yield every future
+    exactly once — eliminating the callback timing issues that caused the bar
+    to stall before 100%.
+
+    Parameters
+    ----------
+    items     : list       Items to process.
+    submit_fn : callable   Worker function; must return (result, fail_info).
+    progress  : Progress   Active Rich Progress instance.
+    task_id   :            Task ID returned by progress.add_task().
+    n_workers : int        Thread-pool size.
+
+    Returns
+    -------
+    results : list  Non-None return values from submit_fn.
+    failed  : list  Items whose submit_fn returned None or raised.
+    """
+    results, failed = [], []
+
+    with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        futures = {executor.submit(submit_fn, item): item for item in items}
+
+        for f in as_completed(futures):
+            progress.advance(
+                task_id
+            )  # main thread; always fires exactly once per future
+            try:
+                result, fail_info = f.result()
+                if result is not None:
+                    results.append(result)
+                else:
+                    failed.append(fail_info)
+            except Exception as e:
+                print(f"[ERROR] {futures[f]}: {e}")
+                failed.append(futures[f])
+
+    return results, failed
+
+
+###################################################################################################
+def build_inventory(
+    deriv_dir: str,
+    pipe_id: str,
+    pipe_index: int,
+    pipe_total: int,
+    progress: Progress,
+    subj_ids: Union[str, list] = None,
+    extensions: list = [
+        ".nii.gz",
+        ".nii",
+        ".mgz",
+        ".stats",
+        ".annot",
+        ".gii",
+        ".gii.gz",
+    ],
+    output_csv: Union[str, Path] = None,
+    n_workers: int = 8,
+) -> pd.DataFrame:
+    """
+    Build a file inventory for a single pipeline derivative folder.
+
+    Parameters
+    ----------
+    deriv_dir  : str
+        Root derivatives directory.
+
+    pipe_id    : str
+        Name of the pipeline sub-folder inside deriv_dir.
+
+    pipe_index : int
+        1-based index of this pipeline (used in the progress bar label).
+
+    pipe_total : int
+        Total number of pipelines being processed (used in the progress bar label).
+
+    progress   : Progress
+        Active Rich Progress instance to attach progress bars to.
+
+    extensions : list, optional
+        File extensions to include in the scan. Defaults to [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"].
+
+    output_csv : str or Path, optional
+        If provided, save the inventory DataFrame to this CSV path.
+
+    n_workers  : int, optional
+        Number of parallel worker threads.
+
+    Returns
+    -------
+    pd.DataFrame
+        Inventory table for this pipeline.
+    """
+    pipe_dir = os.path.join(deriv_dir, pipe_id)
+    bar_label = f"Pipeline: {pipe_id} [{pipe_index}/{pipe_total}]"
+
+    if not os.path.isdir(pipe_dir):
+        progress.print(f"[bold red]Error:[/bold red] '{pipe_dir}' does not exist.")
+        return pd.DataFrame()
+
+    # ── Decide upfront which processing path to take ──────────────────────
+    # Ensures exactly one progress task is created per pipeline.
+    if subj_ids is None:
+        subj_ids = get_ids2process(
+            None, in_dir=pipe_dir
+        )  # Just to check if subject folders exist
+
+    files = scan_derivatives(pipe_dir, subj_ids, extensions)
+
+    if files:
+        # ── BIDS path ─────────────────────────────────────────────────────
+        task_id = progress.add_task(bar_label, total=len(files))
+        results, _ = _run_parallel(
+            items=files,
+            submit_fn=process_file,
+            progress=progress,
+            task_id=task_id,
+            n_workers=n_workers,
+        )
+
+        if results:
+            df = pd.concat(results, ignore_index=True)
+            df.drop_duplicates(inplace=True)
+            df["Count"] = 1
+
+            priority_cols = [
+                "count",
+                "sub",
+                "ses",
+                "run",
+                "acq",
+                "space",
+                "model",
+                "desc",
+                "res",
+                "suffix",
+                "extension",
+                "full_path",
+            ]
+            ordered = [c for c in priority_cols if c in df.columns]
+            remaining = [c for c in df.columns if c not in ordered]
+            df = df[ordered + remaining]
+            df.sort_values(
+                by=[c for c in ["sub", "ses", "run"] if c in df.columns], inplace=True
+            )
+        else:
+            progress.print(
+                f"  [yellow]No parseable BIDS files found in '{pipe_id}'.[/yellow]"
+            )
+            df = pd.DataFrame()
+
+    else:
+        # ── FreeSurfer fallback ───────────────────────────────────────────
+        progress.print(
+            f"  [yellow]No matching files found — falling back to FreeSurfer subject scan for '{pipe_id}'…[/yellow]"
+        )
+        fs_ids = get_ids2process(None, in_dir=pipe_dir)
+        task_id = progress.add_task(bar_label, total=len(fs_ids))
+
+        fs_results, _ = _run_parallel(
+            items=[(fs_id, pipe_dir) for fs_id in fs_ids],
+            submit_fn=process_freesurfer_subject,
+            progress=progress,
+            task_id=task_id,
+            n_workers=n_workers,
+        )
+
+        df = pd.concat(fs_results, ignore_index=True)
+        df.drop_duplicates(inplace=True)
+        df.sort_values(
+            by=[c for c in ["sub", "ses", "Type"] if c in df.columns], inplace=True
+        )
+
+        # Remove the columns that are completely empty except the column name
+        df = df.apply(
+            lambda col: col.map(
+                lambda x: pd.NA if isinstance(x, str) and x.strip() == "" else x
+            )
+        )
+        df = df.dropna(axis=1, how="all")
+
+    # ── Save ──────────────────────────────────────────────────────────────
+    if output_csv is not None:
+        output_dir = os.path.dirname(output_csv)
+        if output_dir and not os.path.exists(output_dir):
+            progress.print(
+                f"  [yellow]Warning: output directory '{output_dir}' does not exist — skipping save.[/yellow]"
+            )
+        else:
+            save_path = (
+                str(output_csv)
+                if str(output_csv).endswith(".csv")
+                else f"{output_csv}.csv"
+            )
+            df.to_csv(save_path, index=False)
+            progress.print(
+                f"  Saved [bold]{len(df)}[/bold] rows → [green]{save_path}[/green]"
+            )
+    else:
+        progress.print(f"  Returning [bold]{len(df)}[/bold] rows (no save).")
+
+    return df
+
+
+####################################################################################################
+def build_derivatives_inventory(
+    deriv_dir: str,
+    pipe_dirs: Union[list, None] = None,
+    subj_ids: Union[str, list] = None,
+    extensions: list = [
+        ".nii.gz",
+        ".nii",
+        ".mgz",
+        ".stats",
+        ".annot",
+        ".gii",
+        ".gii.gz",
+    ],
+    output_csv: Union[str, Path] = None,
+    n_workers: int = 8,
+) -> pd.DataFrame:
+    """
+    Build a combined file inventory across all pipeline derivative folders.
+
+    Parameters
+    ----------
+    deriv_dir  : str
+        Root derivatives directory containing one sub-folder per pipeline.
+
+    pipe_dirs  : list of str, optional
+        Pipeline sub-folder names to process. If None, all sub-folders
+        discovered by cltbids.get_derivatives_folders() are used.
+
+    extensions : list, optional
+        File extensions to include in the scan.
+
+        Defaults to (".nii.gz", ".nii").
+    output_csv : str or Path, optional
+        If provided, save the combined inventory DataFrame to this CSV path.
+
+    n_workers  : int, optional
+        Number of parallel worker threads per pipeline. Defaults to 8.
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined inventory table with an extra leading "Pipeline" column.
+
+    Raises
+    ------
+    ValueError
+        If no pipeline folders are found or provided.
+    """
+    if pipe_dirs is None:
+        pipe_dirs = cltbids.get_derivatives_folders(deriv_dir)
+    if not pipe_dirs:
+        raise ValueError(
+            "No derivatives folders were found in the specified directory."
+        )
+
+    n_pipes = len(pipe_dirs)
+    combined_summary = pd.DataFrame()
+
+    with Progress() as progress:
+        for idx, tmp_pipe_deriv in enumerate(pipe_dirs, start=1):
+            tmp_summary = build_inventory(
+                deriv_dir=deriv_dir,
+                pipe_id=tmp_pipe_deriv,
+                subj_ids=subj_ids,
+                pipe_index=idx,
+                pipe_total=n_pipes,
+                progress=progress,
+                extensions=extensions,
+                n_workers=n_workers,
+            )
+            tmp_summary.insert(0, "Pipeline", tmp_pipe_deriv)
+
+            combined_summary = (
+                tmp_summary
+                if idx == 1
+                else pd.concat([combined_summary, tmp_summary], ignore_index=True)
+            )
+
+    # ── Save combined result ──────────────────────────────────────────────
+    if output_csv is not None:
+        save_path = (
+            str(output_csv) if str(output_csv).endswith(".csv") else f"{output_csv}.csv"
+        )
+        combined_summary.to_csv(save_path, index=False)
+        print(f"\n✓ Combined inventory ({len(combined_summary)} rows) → {save_path}")
+    else:
+        print(
+            f"\n✓ Combined inventory ({len(combined_summary)} rows) returned (no save)."
+        )
+
+    return combined_summary
 
 
 ####################################################################################################
