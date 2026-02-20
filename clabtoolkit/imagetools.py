@@ -1530,8 +1530,8 @@ def create_spams(
                                 in_file=str(lut_table)
                             )
                         else:
-                            lut_dict = cltparc.Parcellation.read_luttable(
-                                in_file=str(lut_table)
+                            lut_dict = cltcol.ColorTableLoader.read_luttable(
+                                str(lut_table)
                             )
 
     sts_ids = lut_dict["index"]

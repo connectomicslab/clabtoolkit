@@ -10,8 +10,7 @@ import copy
 
 # Importing local modules
 from . import misctools as cltmisc
-from . import parcellationtools as cltparc
-from . import colorstools as cltcolors
+from . import colorstools as cltcol
 
 
 # Utility function for interpolating streamline values
@@ -95,9 +94,9 @@ class PointCloud:
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
         # Handle color input
-        color = cltcolors.harmonize_colors(color, output_format="rgb") / 255
+        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
 
-        tmp_ctable = cltcolors.colors_to_table(colors=color, alpha_values=alpha)
+        tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
         tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
@@ -618,7 +617,7 @@ class PointCloud:
             names = ctable["names"]
 
             # Converting RGB to hex
-            colors = cltcolors.harmonize_colors(color_table[:, :3], output_format="hex")
+            colors = cltcol.harmonize_colors(color_table[:, :3], output_format="hex")
 
             # Get point indices/values
             point_indices = self.point_data[colortable_name]
@@ -845,7 +844,7 @@ class PointCloud:
 
         # Load the colortable using the utility function
         if lut_type == "lut":
-            lut_dict = cltparc.Parcellation.read_luttable(lut_file)
+            lut_dict = cltcol.ColorTableLoader.read_luttable(lut_dict)
         else:
             raise ValueError(
                 f"Unsupported lut_type: '{lut_type}'. Currently only 'lut' is supported."
@@ -859,9 +858,9 @@ class PointCloud:
                 raise ValueError(
                     f"Colortable in {lut_file} does not cover all IDs in point_data for map '{map_name}'."
                 )
-            color_table = cltcolors.colors_to_table(colors=colors, values=values)
+            color_table = cltcol.colors_to_table(colors=colors, values=values)
         else:
-            color_table = cltcolors.colors_to_table(colors=colors)
+            color_table = cltcol.colors_to_table(colors=colors)
 
         if isinstance(opacity, (int, float)):
             # opacity is a scalar, apply to all entries
@@ -1563,8 +1562,8 @@ def merge_pointclouds(
 
     # Creating a colortable in case it is not provided
     if color_table is None:
-        colors = cltcolors.create_distinguishable_colors(n_tracts)
-        color_table = cltcolors.colors_to_table(
+        colors = cltcol.create_distinguishable_colors(n_tracts)
+        color_table = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=range(n_tracts)
         )
         color_table[:, :3] = (

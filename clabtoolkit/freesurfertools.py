@@ -3998,7 +3998,7 @@ class FreeSurferSubject:
                 )
                 fslut_file = os.path.join("/tmp", tmp_name)
 
-                lut_dict = cltparc.Parcellation.read_luttable(in_file=fslut_file)
+                lut_dict = cltcol.ColorTableLoader.read_luttable(fslut_file)
 
                 # Remove the temporary file
                 os.remove(fslut_file)
