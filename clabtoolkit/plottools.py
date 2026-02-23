@@ -224,6 +224,29 @@ def calculate_optimal_subplots_grid(num_views: int) -> List[int]:
         position = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3)]
         return grid_size, position
 
+    elif num_views == 16:
+        # For 9 or 10 views, arrange in a 3x4 grid
+        grid_size = [4, 4]
+        position = [
+            (0, 0),
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+            (2, 0),
+            (2, 1),
+            (2, 2),
+            (2, 3),
+            (3, 0),
+            (3, 1),
+            (3, 2),
+            (3, 3),
+        ]
+        return grid_size, position
+
     else:
         # For more than 8 views, try to keep a proportion with the screen shape
         screen_size = get_screen_size()
