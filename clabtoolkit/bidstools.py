@@ -1040,7 +1040,12 @@ def entities_to_table(
             entities_dict.pop("extension")
 
         # Extract suffix before removing it
-        suffix = entities_dict.pop("suffix", "")
+        if "suffix" in entities_dict:
+            if include_suffix:
+                # Add an entity at the end called "Type"
+                tmp_suffix = entities_dict["suffix"]
+
+            entities_dict.pop("suffix")
 
         if entities_to_extract is not None:
             if isinstance(entities_to_extract, str):
@@ -1079,8 +1084,8 @@ def entities_to_table(
                 result_df.insert(0, entity.capitalize(), value)
 
         # Append Type column at the end if requested
-        if include_suffix:
-            result_df["Type"] = suffix
+        if "tmp_suffix" in locals() and include_suffix:
+            result_df.insert(0, "Type", tmp_suffix)
 
     else:
         if result_df.empty:
