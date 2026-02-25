@@ -188,6 +188,7 @@ class AnnotParcellation:
 
         # Correcting region names
         reg_names = [name.decode("utf-8") for name in reg_names]
+        reg_names = cltmisc.correct_names(reg_names)
 
         # Detect the codes in the table that are not in the vertex wise data
         # Find the indexes where the codes are not in the vertex wise data
