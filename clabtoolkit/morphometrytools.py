@@ -857,11 +857,7 @@ def compute_euler_fromsurf(
 
     # Extract mesh components
     coords = surf.mesh.points
-    cells = surf.mesh.GetPolys()
-    c = _vtk.vtk_to_numpy(cells.GetConnectivityArray())
-    o = _vtk.vtk_to_numpy(cells.GetOffsetsArray())
-    faces = split(c, o[1:-1])
-    faces = np.squeeze(faces)
+    faces = surf.get_faces()
 
     # Compute Euler characteristic
     euler = euler_from_mesh(coords, faces)
