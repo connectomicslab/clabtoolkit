@@ -397,18 +397,14 @@ def compute_reg_area_fromsurf(
 
     # Extract mesh data
     coords = surf.mesh.points
-    cells = surf.mesh.GetPolys()
-    c = _vtk.vtk_to_numpy(cells.GetConnectivityArray())
-    o = _vtk.vtk_to_numpy(cells.GetOffsetsArray())
-    faces = split(c, o[1:-1])
-    faces = np.squeeze(faces)
+    faces = surf.get_faces()
 
     # Filter unknown regions if needed
     if not include_unknown:
         tmp_names = sparc_data.regnames
         unk_indexes = cltmisc.get_indexes_by_substring(
             tmp_names, ["medialwall", "unknown", "corpuscallosum"]
-        ).astype(int)
+        )
 
         if len(unk_indexes) > 0:
             unk_codes = sparc_data.regtable[unk_indexes, 4]
