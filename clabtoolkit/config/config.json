@@ -1,6 +1,7 @@
 {
     "metrics_units": {
         "thickness": "mm",
+        "nvertices": "au",
         "area": "cm2",
         "volume": "cm3",
         "curv": "mm-1",
