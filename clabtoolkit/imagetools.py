@@ -184,6 +184,69 @@ class MorphologicalOperations:
 
         return binary_dilation(binary_array, structure=structure, iterations=iterations)
 
+    ############################################################################################
+    def dilate_mm(
+        self,
+        array: np.ndarray,
+        affine: np.ndarray,
+        shape: str = "cube",
+        dilation_mm: float = 1,
+    ) -> np.ndarray:
+        """
+        Binarize a 3D array and dilate by a given distance in millimeters.
+
+        Parameters
+        ----------
+        array       : 3D numpy array with values and zeros
+        affine      : 4x4 affine matrix (voxel → mm)
+        shape       : 'cube' for a box or 'ball' for an ellipsoid structuring element
+        dilation_mm : dilation radius in millimeters
+
+        Returns
+        -------
+        dilated : binary 3D numpy array (bool)
+        """
+
+        binary_array = self._ensure_binary(array)
+        voxel_sizes = get_voxel_size(affine)
+
+        # Per-axis radii in voxels
+        radii_vox = np.array([dilation_mm / vs for vs in voxel_sizes])
+        r = np.ceil(radii_vox).astype(int)
+
+        if shape is None:
+            shape = "cube"
+
+        # If voxels are isotropic, reuse create_structuring_element directly
+        if np.allclose(r, r[0]):
+            size = 2 * r[0] + 1
+            structure = self.create_structuring_element(
+                shape=shape, size=size, dimensions=binary_array.ndim
+            )
+
+        # Anisotropic voxels: build the structure manually per axis
+        else:
+            if shape in ["cube", "square"]:
+                # Non-square box sized independently per axis
+                structure = np.ones([2 * ri + 1 for ri in r], dtype=bool)
+
+            elif shape in ["ball", "disk"]:
+                # True ellipsoid in mm space
+                xi = np.arange(-r[0], r[0] + 1)
+                yi = np.arange(-r[1], r[1] + 1)
+                zi = np.arange(-r[2], r[2] + 1)
+                xx, yy, zz = np.meshgrid(xi, yi, zi, indexing="ij")
+                structure = (
+                    (xx / radii_vox[0]) ** 2
+                    + (yy / radii_vox[1]) ** 2
+                    + (zz / radii_vox[2]) ** 2
+                ) <= 1.0
+
+            else:
+                raise ValueError("Shape must be 'cube', 'ball', 'square', or 'disk'")
+
+        return binary_dilation(binary_array, structure=structure)
+
     ########################################################################################################
     def opening(self, binary_array, structure=None, iterations=1):
         """
