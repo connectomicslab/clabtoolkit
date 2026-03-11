@@ -566,7 +566,7 @@ def create_session_series_names(dataset):
         ser_id = ser_id.replace(cad, "")
 
     # Removing the dupplicated _ characters and replacing the remaining by -
-    ser_id = cltmisc.rem_duplicate_char(ser_id, "_")
+    ser_id = cltmisc.remove_consecutive_duplicates(ser_id, "_")
     ser_id = ser_id.replace("_", "-")
 
     if any("SeriesNumber" in s for s in attributes):
