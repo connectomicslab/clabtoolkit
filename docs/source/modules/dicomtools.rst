@@ -38,10 +38,10 @@ Basic DICOM organization::
     
     # Organize DICOM files into structured format
     org_conv_dicoms(
-        dicom_dir="/path/to/raw/dicoms",
-        output_dir="/path/to/organized/dicoms",
-        n_threads=4,
-        include_demographics=True
+        in_dic_dir="/path/to/raw/dicoms",
+        out_dic_dir="/path/to/organized/dicoms",
+        nthreads=4,
+        nosub=True
     )
 
 Multi-threaded DICOM processing::
