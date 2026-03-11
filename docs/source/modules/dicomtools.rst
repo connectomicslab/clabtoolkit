@@ -32,7 +32,7 @@ DICOM Organization
 Common Usage Examples
 ---------------------
 
-Basic DICOM organization::
+Basic DICOM organization with multi-threaded DICOM processing::
 
     from clabtoolkit.dicomtools import org_conv_dicoms
     
@@ -44,44 +44,18 @@ Basic DICOM organization::
         nosub=True
     )
 
-Multi-threaded DICOM processing::
+Compressing the DICOM sessions::
 
-    # Organize DICOMs with demographics integration
+    # Organize DICOMs and compress the sessions
     org_conv_dicoms(
-        dicom_dir="/path/to/raw/dicoms",
-        output_dir="/path/to/organized",
-        n_threads=4,
-        uncompress_files=True
+        in_dic_dir="/path/to/raw/dicoms",
+        out_dic_dir="/path/to/organized/dicoms",
+        nthreads=4,
+        boolcomp=True
     )
-
-Batch processing with demographics::
-
-    # Process multiple DICOM archives with demographics integration
-    archives = [
-        "/path/to/archive1.zip",
-        "/path/to/archive2.tar.gz", 
-        "/path/to/archive3/"
-    ]
-    
-    for archive in archives:
-        org_conv_dicoms(
-            dicom_dir=archive,
-            output_dir="/path/to/organized",
-            demographics_file="/path/to/demographics.csv",
-            validate_series=True,
-            n_threads=6
-        )
 
 Session management::
-
-    # Create session and series names
-    session_names = create_session_series_names(
-        dicom_dir="/path/to/dicoms",
-        naming_convention="date_time"
-    )
-    
     # Compress processed DICOM session
     compress_dicom_session(
-        session_dir="/path/to/session",
-        output_archive="compressed_session.tar.gz"
+        dic_dir="/path/to/bids_dataset",
     )
