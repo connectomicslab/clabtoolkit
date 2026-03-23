@@ -3358,3 +3358,50 @@ def delete_volumes_from_4D_array(
     out_array = in_array[:, :, :, vols_to_keep]
 
     return out_array, list(vols_to_remove.tolist())
+
+
+######################################################################################################
+def dilate_mm(
+    array: np.ndarray, affine: np.ndarray, shape: str = "cube", dilation_mm: float = 1
+) -> np.ndarray:
+    """
+    Binarize a 3D array and dilate by a given distance in millimeters.
+
+    Parameters
+    ----------
+    array       : 3D numpy array with values and zeros
+    affine      : 4x4 affine matrix (voxel → mm)
+    shape       : 'cube' for a box or 'sphere' for an ellipsoid structuring element
+    dilation_mm : dilation radius in millimeters
+
+    Returns
+    -------
+    dilated : binary 3D numpy array (bool)
+    """
+
+    binary_array = array != 0
+    voxel_sizes = get_voxel_size(affine)
+
+    # Per-axis radii in voxels
+    radii_vox = np.array([dilation_mm / vs for vs in voxel_sizes])
+    r = np.ceil(radii_vox).astype(int)
+
+    if shape is None or shape == "cube":
+        # Box: include every voxel within ±r[i] along each axis
+        structure = np.ones([2 * ri + 1 for ri in r], dtype=bool)
+
+    else:
+        # Ellipsoid: anisotropic sphere in mm space
+        xi = np.arange(-r[0], r[0] + 1)
+        yi = np.arange(-r[1], r[1] + 1)
+        zi = np.arange(-r[2], r[2] + 1)
+        xx, yy, zz = np.meshgrid(xi, yi, zi, indexing="ij")
+        structure = (
+            (xx / radii_vox[0]) ** 2
+            + (yy / radii_vox[1]) ** 2
+            + (zz / radii_vox[2]) ** 2
+        ) <= 1.0
+
+    dilated = binary_dilation(binary_array, structure=structure)
+
+    return dilated
