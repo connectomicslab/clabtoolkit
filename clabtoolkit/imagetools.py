@@ -7,8 +7,9 @@ import nibabel as nib
 import numpy as np
 import subprocess
 from pathlib import Path
-from typing import Union, Optional, List, Tuple
+from typing import Union, Optional, List, Tuple, Dict
 import pyvista as pv
+import json
 
 from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, convolve
 from scipy.ndimage import binary_fill_holes, label, binary_closing, gaussian_filter
@@ -22,6 +23,8 @@ from . import misctools as cltmisc
 from . import bidstools as cltbids
 from . import parcellationtools as cltparc
 from . import colorstools as cltcol
+from . import dwitools_utils as dwiutils
+from . import imagetools_utils as imgutils
 
 
 ####################################################################################################
@@ -1315,168 +1318,298 @@ def merge_to_4d(
     file_paths: Union[str, Path, List[Union[str, Path]]],
     output_path: Optional[Union[str, Path]] = None,
     check_affine: bool = True,
-) -> nib.Nifti1Image:
+) -> Tuple[nib.Nifti1Image, Optional[Dict]]:
     """
-    Merge multiple 3D NIfTI files into a single 4D NIfTI file.
+    Merge multiple 3D or 4D NIfTI files into a single 4D NIfTI file.
 
-    Takes a list of NIfTI file paths and combines them along the 4th dimension
-    to create a 4D volume. This is commonly used for creating time series
-    datasets or multi-contrast imaging data.
+    Accepts any mix of 3D (x, y, z) and 4D (x, y, z, n) volumes and
+    concatenates them along the 4th dimension. Sidecar files are handled
+    as follows:
+
+    - **.json**: merged whenever *all* inputs have an associated JSON file,
+    regardless of modality. Fields identical across files are kept as
+    scalars; differing fields use the value from the first file.
+    - **.bvec / .bval**: concatenated when *all* inputs have both files
+    (DWI detection). The number of directions is cross-checked against
+    the volume count of each NIfTI.
 
     Parameters
     ----------
-    file_paths : list of str or Path
-        List of paths to 3D NIfTI files to be merged. Files should have
-        identical spatial dimensions and preferably the same affine matrix.
+    file_paths : str, Path, or list of str/Path
+        Path(s) to 3D or 4D NIfTI files to be merged. All files must share
+        the same spatial dimensions (x, y, z).
 
     output_path : str or Path, optional
-        Path where the merged 4D NIfTI file should be saved. If None,
-        the file is not saved to disk.
+        Path where the merged 4D NIfTI file should be saved. Sidecar files
+        (.bvec, .bval, .json) are written to the same directory using the
+        same stem when applicable. If None, nothing is written to disk.
 
     check_affine : bool, default True
-        Whether to check that all input files have the same affine matrix.
-        If True, raises ValueError for mismatched affines.
+        Whether to verify that all inputs share the same affine matrix.
+        Raises ValueError on mismatch when True.
 
     Returns
     -------
-    nibabel.Nifti1Image
-        A 4D NIfTI image where the 4th dimension corresponds to the
-        input files in the order provided.
+    merged_img : nibabel.Nifti1Image
+        A 4D NIfTI image where the 4th dimension is the concatenation of all
+        input volumes in the order provided.
+
+    metadata : dict or None
+        Populated whenever any sidecar is detected; None otherwise. May
+        contain:
+
+        - ``"bvecs"`` : np.ndarray, shape (3, N) — concatenated gradient
+            directions (DWI only).
+        - ``"bvals"`` : np.ndarray, shape (N,) — concatenated b-values
+            (DWI only).
+        - ``"json"``  : dict — merged JSON sidecar (all modalities with
+            JSON sidecars).
 
     Raises
     ------
     ValueError
-        If input files have different spatial dimensions or affine matrices
-        (when check_affine=True).
+        If spatial dimensions or affines are inconsistent, if only some inputs
+        have sidecar files, or if bvec/bval direction counts do not match the
+        volume count of the corresponding NIfTI.
 
     FileNotFoundError
-        If any of the input files cannot be found.
+        If any input NIfTI file cannot be found.
 
     IOError
-        If there are issues reading the NIfTI files.
+        If any input file cannot be read.
 
     Examples
     --------
-    >>> file_list = ['vol001.nii.gz', 'vol002.nii.gz', 'vol003.nii.gz']
-    >>> merged_img = merge_nifti_to_4d(file_list, 'merged_4d.nii.gz')
-    >>> print(merged_img.shape)  # (64, 64, 30, 3) for example
+    Mix of 3D and 4D volumes (no sidecars):
 
-    >>> # Merge without saving to disk
-    >>> merged_img = merge_nifti_to_4d(file_list)
-    >>> data_4d = merged_img.get_fdata()
+    >>> merged_img, meta = merge_to_4d(['run1.nii.gz', 'run2.nii.gz'])
+    >>> meta is None
+    True
 
-    Notes
-    -----
-    All input files must have the same spatial dimensions (x, y, z).
-    The resulting 4D array will have shape (x, y, z, n) where n is the
-    number of input files.
+    fMRI runs — JSON sidecars merged, no bvec/bval:
 
-    Memory usage scales with the total size of all input volumes, so
-    consider available RAM when processing large datasets.
+    >>> merged_img, meta = merge_to_4d(
+    ...     ['sub-01_run-1_bold.nii.gz', 'sub-01_run-2_bold.nii.gz'],
+    ...     output_path='sub-01_bold.nii.gz',
+    ... )
+    >>> 'bvecs' in meta
+    False
+    >>> 'json' in meta
+    True
+
+    DWI runs — bvec, bval, and JSON all concatenated:
+
+    >>> merged_img, meta = merge_to_4d(
+    ...     ['sub-01_run-1_dwi.nii.gz', 'sub-01_run-2_dwi.nii.gz'],
+    ...     output_path='sub-01_dwi.nii.gz',
+    ... )
+    >>> meta['bvecs'].shape   # (3, total_directions)
+    >>> meta['bvals'].shape   # (total_directions,)
     """
 
+    # ------------------------------------------------------------------ #
+    #  Input normalisation                                                 #
+    # ------------------------------------------------------------------ #
     if not file_paths:
         raise ValueError("file_paths cannot be empty")
 
     if isinstance(file_paths, (str, Path)):
         file_paths = [file_paths]
 
-    # Detect if the output directory exists, if not give an error
-    if output_path is not None:
-        if isinstance(output_path, str):
-            output_path = Path(output_path)
-
-        out_dir = output_path.parent
-        if not out_dir.exists():
-            raise ValueError(f"Output directory does not exist: {out_dir}")
-
-    # Convert to Path objects for easier handling
     file_paths = [Path(fp) for fp in file_paths]
 
-    # Check that all files exist
+    if output_path is not None:
+        output_path = Path(output_path)
+        if not output_path.parent.exists():
+            raise ValueError(f"Output directory does not exist: {output_path.parent}")
+
+    # ------------------------------------------------------------------ #
+    #  Existence checks                                                    #
+    # ------------------------------------------------------------------ #
     for fp in file_paths:
         if not fp.exists():
             raise FileNotFoundError(f"File not found: {fp}")
 
+    # ------------------------------------------------------------------ #
+    #  Sidecar detection                                                   #
+    # ------------------------------------------------------------------ #
+    sidecars = [imgutils.get_sidecars_files(fp) for fp in file_paths]
+    has_bvec = [s["bvec"] is not None for s in sidecars]
+    has_bval = [s["bval"] is not None for s in sidecars]
+    has_json = [s["json"] is not None for s in sidecars]
+
+    is_dwi = all(has_bvec) and all(has_bval)
+    has_all_json = all(has_json)
+
+    partial = (
+        (any(has_bvec) and not all(has_bvec))
+        or (any(has_bval) and not all(has_bval))
+        or (any(has_json) and not all(has_json))
+    )
+    if partial:
+        missing = [
+            fp
+            for fp, bvec, bval, js in zip(file_paths, has_bvec, has_bval, has_json)
+            if not (bvec and bval and js)
+        ]
+        raise ValueError(
+            "Sidecar files (.bvec/.bval/.json) were found for some—but not "
+            "all—input volumes. Either all inputs must have sidecars or none "
+            "should. Volumes missing complete sidecars:\n"
+            + "\n".join(f"  {fp}" for fp in missing)
+        )
+
+    if is_dwi:
+        print(
+            f"DWI sidecars detected for all {len(file_paths)} volumes. "
+            "Will concatenate .bvec and .bval files."
+        )
+    if has_all_json:
+        print(f"JSON sidecars detected for all {len(file_paths)} volumes. Will merge.")
+
+    # ------------------------------------------------------------------ #
+    #  Load NIfTI volumes — accept 3D or 4D                               #
+    # ------------------------------------------------------------------ #
     print(f"Loading {len(file_paths)} NIfTI files...")
 
-    # Load the first file to get reference dimensions and affine
     try:
         first_img = nib.load(file_paths[0])
-        reference_shape = first_img.shape
+        first_data = first_img.get_fdata()
+
+        if first_data.ndim not in (3, 4):
+            raise ValueError(
+                f"Expected 3D or 4D data, got {first_data.ndim}D in {file_paths[0]}"
+            )
+
+        reference_spatial = first_data.shape[:3]
         reference_affine = first_img.affine
         reference_header = first_img.header.copy()
 
-        # Initialize list to store all data arrays
-        data_arrays = []
+        if first_data.ndim == 3:
+            first_data = first_data[..., np.newaxis]
 
-        # Load first file data
-        first_data = first_img.get_fdata()
-        if first_data.ndim != 3:
-            raise ValueError(
-                f"Expected 3D data, got {first_data.ndim}D in {file_paths[0]}"
-            )
-        data_arrays.append(first_data)
+        data_arrays = [first_data]
 
     except Exception as e:
         raise IOError(f"Error loading first file {file_paths[0]}: {e}")
 
-    # Load remaining files and validate compatibility
-    for i, fp in enumerate(file_paths[1:], 1):
+    for fp in file_paths[1:]:
         try:
             img = nib.load(fp)
             data = img.get_fdata()
 
-            # Check dimensions
-            if data.shape != reference_shape:
+            if data.ndim not in (3, 4):
+                raise ValueError(f"Expected 3D or 4D data, got {data.ndim}D in {fp}")
+
+            if data.shape[:3] != reference_spatial:
                 raise ValueError(
-                    f"Shape mismatch: {fp} has shape {data.shape}, "
-                    f"expected {reference_shape}"
+                    f"Spatial shape mismatch: {fp} has shape {data.shape[:3]}, "
+                    f"expected {reference_spatial}"
                 )
 
-            # Check affine matrix if requested
             if check_affine and not np.allclose(
                 img.affine, reference_affine, atol=1e-6
             ):
                 raise ValueError(
                     f"Affine matrix mismatch in {fp}. "
-                    f"Set check_affine=False to ignore this check."
+                    "Set check_affine=False to ignore this check."
                 )
 
-            if data.ndim != 3:
-                raise ValueError(f"Expected 3D data, got {data.ndim}D in {fp}")
+            if data.ndim == 3:
+                data = data[..., np.newaxis]
 
             data_arrays.append(data)
 
         except Exception as e:
             raise IOError(f"Error loading file {fp}: {e}")
 
-    # Stack arrays along 4th dimension
+    # ------------------------------------------------------------------ #
+    #  Concatenate along 4th dimension                                     #
+    # ------------------------------------------------------------------ #
     print("Merging volumes...")
-    merged_data = np.stack(data_arrays, axis=3)
+    merged_data = np.concatenate(data_arrays, axis=3)
 
-    # Update header for 4D data
     new_header = reference_header.copy()
     new_header.set_data_shape(merged_data.shape)
-
-    # Create new 4D NIfTI image
     merged_img = nib.Nifti1Image(merged_data, reference_affine, new_header)
 
     print(
-        f"Successfully merged {len(file_paths)} volumes into 4D image with shape {merged_data.shape}"
+        f"Successfully merged {len(file_paths)} files into 4D image "
+        f"with shape {merged_data.shape}"
     )
 
-    # Save if output path is provided
-    if output_path is not None:
-        if isinstance(output_path, str):
-            output_path = Path(output_path)
+    # ------------------------------------------------------------------ #
+    #  Load and concatenate sidecars                                       #
+    # ------------------------------------------------------------------ #
+    metadata = None
 
+    if is_dwi or has_all_json:
+        metadata = {}
+
+    if is_dwi:
+        print("Loading and concatenating DWI sidecars...")
+
+        all_bvecs = [dwiutils.load_bvecs(s["bvec"]) for s in sidecars]
+        all_bvals = [dwiutils.load_bvals(s["bval"]) for s in sidecars]
+
+        for fp, arr, bvecs, bvals in zip(file_paths, data_arrays, all_bvecs, all_bvals):
+            n_vols = arr.shape[3]
+            if bvecs.shape[1] != n_vols:
+                raise ValueError(
+                    f"bvec columns ({bvecs.shape[1]}) do not match volume "
+                    f"count ({n_vols}) in {fp}"
+                )
+            if bvals.shape[0] != n_vols:
+                raise ValueError(
+                    f"bval entries ({bvals.shape[0]}) do not match volume "
+                    f"count ({n_vols}) in {fp}"
+                )
+
+        metadata["bvecs"] = np.concatenate(all_bvecs, axis=1)  # (3, total_N)
+        metadata["bvals"] = np.concatenate(all_bvals, axis=0)  # (total_N,)
+
+        print(
+            f"DWI concatenation complete — "
+            f"{metadata['bvecs'].shape[1]} total directions, "
+            f"b-value range: [{metadata['bvals'].min():.0f}, {metadata['bvals'].max():.0f}]"
+        )
+
+    if has_all_json:
+        print("Merging JSON sidecars...")
+        metadata["json"] = imgutils.merge_json_files([s["json"] for s in sidecars])
+
+    # ------------------------------------------------------------------ #
+    #  Save outputs                                                        #
+    # ------------------------------------------------------------------ #
+    if output_path is not None:
         print(f"Saving merged 4D volume to: {output_path}")
         nib.save(merged_img, output_path)
 
-        return output_path
+        if metadata:
+            stem = output_path.name
+            for suffix in (".nii.gz", ".nii"):
+                if stem.endswith(suffix):
+                    stem = stem[: -len(suffix)]
+                    break
+            out_dir = output_path.parent
+
+            if is_dwi:
+                bvec_out = out_dir / f"{stem}.bvec"
+                bval_out = out_dir / f"{stem}.bval"
+                dwiutils.save_bvecs(metadata["bvecs"], bvec_out)
+                dwiutils.save_bvals(metadata["bvals"], bval_out)
+                print(f"Saved DWI sidecars:\n  {bvec_out}\n  {bval_out}")
+
+            if has_all_json:
+                json_out = out_dir / f"{stem}.json"
+                with open(json_out, "w") as f:
+                    json.dump(metadata["json"], f, indent=2)
+                print(f"Saved merged JSON sidecar:\n  {json_out}")
+
+        return output_path, metadata
+
     else:
-        return merged_img
+        return merged_img.data, metadata
 
 
 #####################################################################################################
