@@ -572,6 +572,7 @@ def recursively_replace_entity_key(root_dir: str, replacements: dict):
         cltmisc.rename_folders(all_dirs, replacements)
 
 
+####################################################################################################
 def recursively_delete_entity(root_dir: str, key2rem: Union[List[str], str, dict]):
     """
     This method deletes entities in all the files and folders of a BIDs dataset.
@@ -638,6 +639,7 @@ def recursively_delete_entity(root_dir: str, key2rem: Union[List[str], str, dict
         cltmisc.rename_folders(all_dirs, key2rem_dict)
 
 
+####################################################################################################
 def recursively_insert_entity(
     root_dir: str, entity2add: Dict[str, str], prev_entity: str = None
 ) -> None:
@@ -799,7 +801,6 @@ def get_all_entities(root_dir: str) -> Tuple[Dict[str, Set[str]], List[str]]:
             suffix = ent_dict.pop("suffix")
 
         ent_dict.pop("extension", None)
-        ent_dict.pop("run", None)
 
         return list(ent_dict.keys()), suffix
 
