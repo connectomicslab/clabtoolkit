@@ -1771,35 +1771,105 @@ def get_derivatives_folders(
 
 
 ####################################################################################################
-def is_bids_filename(filename: str) -> bool:
+def is_bids_filename(filename: str, extensive: bool = False) -> bool:
     """
     Validates a BIDS filename structure, handling extensions and entity order.
 
-    Args:
-        filename (str): The filename to validate.
+    Parameters:
+    -----------
+    filename : str
+        The filename to validate, which may include extensions (e.g., .nii.gz).
 
-    Returns
-        bool: True if valid BIDS filename, False otherwise.
+    extensive : bool, default=False
+        If True, performs additional checks against a BIDS configuration file to ensure that all
+        entities in the filename are defined in the config. If False, only checks the basic structure
+        of the filename.
+
+    Returns:
+    --------
+    bool
+        True if the filename follows BIDS conventions, False otherwise.
+
+    Examples:
+    ---------
+    >>> is_bids_filename("sub-01_ses-pre_task-rest_bold.nii.gz")
+    True
+    >>> is_bids_filename("sub-01_ses-pre_task-rest_bold")
+    True
+    >>> is_bids_filename("sub-01_ses-pre_task-rest.nii.gz")
+    True
+    >>> is_bids_filename("sub-01_ses-pre_task-rest")
+    True
+    >>> is_bids_filename("sub-01_ses-pre_task-rest_bold_extra.nii.gz")
+    False
+    >>> is_bids_filename("sub-01_ses-pre_task-rest_bold_extra")
+
     """
     # Remove extension if present
     filename = cltmisc.get_real_basename(filename)
     base_filename = filename.split(".")[0]
 
     parts = base_filename.split("_")
-    if not parts:
+    if len(parts) < 2:
+        # Need at least one entity-label pair + a suffix
         return False
 
     entity_pattern = re.compile(r"^[a-zA-Z0-9]+-[a-zA-Z0-9]+$")
+    suffix_pattern = re.compile(r"^[a-zA-Z0-9]+$")
 
-    # Check that at least one entity-label pair is present
-    has_entity_label = False
-    for part in parts:
-        if "-" in part:
-            has_entity_label = True
-            if not entity_pattern.match(part):
-                return False
-    if not has_entity_label:
+    # All parts except the last must be valid entity-label pairs (e.g. sub-01, ses-M00)
+    for part in parts[:-1]:
+        if not entity_pattern.match(part):
+            return False
+
+    # The last part is the suffix (e.g. T1w, bold) — no dash allowed
+    if not suffix_pattern.match(parts[-1]):
         return False
+
+    # Check also that all the entities are on the json config file
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    default_config_path = os.path.join(cwd, "config", "bids.json")
+
+    if extensive:
+        try:
+            with open(default_config_path, "r") as f:
+                config_data = json.load(f)
+
+            if (
+                "bids_entities" in config_data
+                and "raw_entities" in config_data["bids_entities"]
+                and "derivatives_entities" in config_data["bids_entities"]
+            ):
+                valid_entities = set(
+                    list(config_data["bids_entities"]["raw_entities"].keys())
+                    + list(config_data["bids_entities"]["derivatives_entities"].keys())
+                )
+                valid_suffixes = set(
+                    config_data["bids_entities"].get("raw_suffix", [])
+                    + config_data["bids_entities"].get("derivatives_suffix", [])
+                )
+            else:
+                raise ValueError(
+                    "Default config JSON does not have the expected structure."
+                )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Default configuration file not found at: {default_config_path}"
+            )
+        except json.JSONDecodeError:
+            raise ValueError(
+                f"Error parsing the default configuration file: {default_config_path}"
+            )
+
+        # Validate each entity key against the known BIDS entities
+        for part in parts[:-1]:
+            entity_key = part.split("-")[0]
+            if entity_key not in valid_entities:
+                return False
+
+        # Validate the suffix against the known BIDS suffixes
+        if parts[-1] not in valid_suffixes:
+            return False
 
     return True
 
