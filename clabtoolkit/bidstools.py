@@ -389,7 +389,18 @@ def insert_entity(
     # If `entity2add` is empty after filtering, return the original entity
     if not entity2add:
         if is_string:
+            # Restore `suffix` and `extension` if they were removed
+            if suffix:
+                entity["suffix"] = suffix
+            if extension:
+                entity["extension"] = extension
             return entity2str(entity)
+
+        # Restore `suffix` and `extension` if they were removed
+        if suffix:
+            entity["suffix"] = suffix
+        if extension:
+            entity["extension"] = extension
         return entity
 
     else:
