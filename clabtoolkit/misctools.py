@@ -2748,7 +2748,7 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
 def generate_container_command(
     bash_args,
     technology: str = "local",
-    image_path: str = None,
+    image_path: Union[str, Path] = None,
     license_path: str = None,
 ) -> list:
     """
@@ -2762,7 +2762,7 @@ def generate_container_command(
     technology : str
         Container technology ("docker" or "singularity"). Default is "local"
 
-    image_path : str
+    image_path : str or Path
         Path to the container image. Default is None
 
     Returns
@@ -2787,6 +2787,9 @@ def generate_container_command(
 
         # Adding the container image path and the bash command arguments
         if image_path is not None:
+            if isinstance(image_path, Path):
+                image_path = str(image_path)
+
             if not os.path.exists(image_path):
                 raise ValueError(f"The container image {image_path} does not exist.")
         else:

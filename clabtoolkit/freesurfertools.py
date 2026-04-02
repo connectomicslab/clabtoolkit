@@ -59,30 +59,30 @@ class AnnotParcellation:
     ####################################################################################################
     def __init__(
         self,
-        parc_file: str = None,
+        parc_file: Union[str, Path] = None,
         annot_id: str = None,
-        ref_surf: str = None,
+        ref_surf: Union[str, Path] = None,
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
     ):
         """
         Initialize the AnnotParcellation object
 
         Parameters
         ----------
-        parc_file : str, optional
+        parc_file : str or Path, optional
             Path to the parcellation file (annot, gii, or gcs format). If None, the object is initialized without loading any file.
 
         annot_id : str, optional
             Annotation ID to use for the parcellation. If None, uses the file name without extension.
 
-        ref_surf : str, optional
+        ref_surf : str or Path, optional
             Reference surface for conversion. If None, uses the default FreeSurfer white surface.
 
         cont_tech : str, optional
             Container technology to use (e.g., 'local', 'docker'). Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image to use. If None, uses the default for the specified container technology.
 
 
@@ -90,6 +90,9 @@ class AnnotParcellation:
 
         # If parc_file is provided, load it
         if parc_file is not None:
+            if isinstance(parc_file, Path):
+                parc_file = str(parc_file)
+
             if annot_id is None:
                 annot_id = os.path.splitext(os.path.basename(parc_file))[0]
 
@@ -109,33 +112,58 @@ class AnnotParcellation:
     ####################################################################################################
     def load_from_file(
         self,
-        parc_file: str,
+        parc_file: Union[str, Path],
         annot_id: str = None,
-        ref_surf: str = None,
+        ref_surf: Union[str, Path] = None,
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
     ):
         """
         Load parcellation data from file
 
         Parameters
         ----------
-        parc_file : str
+        parc_file : str or Path
             Path to the parcellation file (annot, gii, or gcs format)
 
         annot_id : str, optional
             Annotation ID to use for the parcellation. If None, uses the file name.
 
-        ref_surf : str, optional
+        ref_surf : str or Path, optional
             Reference surface for conversion. If None, uses the default FreeSurfer white surface.
 
         cont_tech : str, optional
             Container technology to use (e.g., 'local', 'docker'). Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image to use. If None, uses the default for the specified container technology.
 
+        Notes
+        -----
+        This method checks for consistency between the region codes, color table
+        and region names.
+        If there are codes in the table that are not in the vertex-wise data,
+        those entries will be removed from the table and the region names list.
+
+        Raises
+        ------
+        ValueError
+            If the parcellation file does not exist.
+
+        Examples
+        --------
+        >>> annot = AnnotParcellation('/opt/freesurfer/subjects/bert/label/lh.aparc.annot')
+        >>> annot.get_info()
+
         """
+
+        if isinstance(parc_file, Path):
+            parc_file = str(parc_file)
+
+        if ref_surf is not None:
+            if isinstance(ref_surf, Path):
+                ref_surf = str(ref_surf)
+
         booldel = False
         self.filename = parc_file
 
@@ -409,7 +437,11 @@ class AnnotParcellation:
         self, codes, regtable, regnames, annot_id, hemi="lh", filename=None
     ):
         """
-        Create parcellation from existing data arrays
+        Create parcellation from existing data arrays.
+        This method is useful for creating an AnnotParcellation object from data that may have been
+        generated or modified in memory, rather than loaded from a file. It ensures that the internal
+        state of the object is consistent and that the region codes, colors, and names are aligned with
+        the vertex-wise data.
 
         Parameters
         ----------
@@ -430,6 +462,14 @@ class AnnotParcellation:
 
         filename : str, optional
             Associated filename
+
+        Notes
+        -----
+        This method checks for consistency between the region codes, color table
+        and region names.
+        If there are codes in the table that are not in the vertex-wise data,
+        those entries will be removed from the table and the region names list.
+
         """
         self.id = annot_id
         self.codes = codes
@@ -1141,11 +1181,11 @@ class AnnotParcellation:
     ####################################################################################################
     @staticmethod
     def gii2annot(
-        gii_file: str,
-        ref_surf: str = None,
-        annot_file: str = None,
+        gii_file: Union[str, Path],
+        ref_surf: Union[str, Path] = None,
+        annot_file: Union[str, Path] = None,
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
     ):
         """
         Convert FreeSurfer GIFTI parcellation files to annotation files using mris_convert.
@@ -1157,18 +1197,18 @@ class AnnotParcellation:
 
         Parameters
         ----------
-        gii_file : str
+        gii_file : str or Path
             Path to the input GIFTI label file (.gii). The file should contain
             parcellation labels corresponding to surface vertices. The hemisphere
             is automatically detected from the filename.
 
-        ref_surf : str, optional
+        ref_surf : str or Path, optional
             Path to the reference surface file used for the conversion. This surface
             should match the geometric space of the GIFTI file. If None, defaults
             to the white surface of the fsaverage subject from FREESURFER_HOME.
             Default is None.
 
-        annot_file : str, optional
+        annot_file : str or Path, optional
             Path for the output annotation file. If None, the output file is created
             in the same directory as the input file with the extension changed from
             .gii to .annot. Default is None.
@@ -1178,7 +1218,7 @@ class AnnotParcellation:
             'local' (run directly), 'singularity', 'docker', or other supported
             containerization methods. Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerized execution.
             Required when cont_tech is not 'local'. Should specify the FreeSurfer
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
@@ -1255,6 +1295,17 @@ class AnnotParcellation:
         mris_convert : FreeSurfer command-line tool for surface file conversion
         """
 
+        if isinstance(gii_file, Path):
+            gii_file = str(gii_file)
+
+        if ref_surf is not None:
+            if isinstance(ref_surf, Path):
+                ref_surf = str(ref_surf)
+
+        if annot_file is not None:
+            if isinstance(annot_file, Path):
+                annot_file = str(annot_file)
+
         if not os.path.exists(gii_file):
             raise ValueError("The gii file does not exist")
 
@@ -1299,11 +1350,11 @@ class AnnotParcellation:
     ####################################################################################################
     @staticmethod
     def annot2gii(
-        annot_file: str,
-        ref_surf: str = None,
-        gii_file: str = None,
+        annot_file: Union[str, Path],
+        ref_surf: Union[str, Path] = None,
+        gii_file: Union[str, Path] = None,
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
     ):
         """
         Convert FreeSurfer annotation files to GIFTI format using mris_convert.
@@ -1315,18 +1366,18 @@ class AnnotParcellation:
 
         Parameters
         ----------
-        annot_file : str
+        annot_file : str or Path
             Path to the input FreeSurfer annotation file (.annot). This file
             contains the parcellation labels and associated color/name information
             in FreeSurfer's binary format.
 
-        ref_surf : str, optional
+        ref_surf : str or Path, optional
             Path to the reference surface file that corresponds to the annotation.
             This surface defines the vertex coordinates and topology. If None,
             defaults to the white surface of the fsaverage subject from
             FREESURFER_HOME. Default is None.
 
-        gii_file : str, optional
+        gii_file : str or Path, optional
             Path for the output GIFTI file. If None, the output file is created
             in the same directory as the input file with the extension changed
             from .annot to .gii. Default is None.
@@ -1336,7 +1387,7 @@ class AnnotParcellation:
             'local' (run directly), 'singularity', 'docker', or other supported
             containerization methods. Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerized execution.
             Required when cont_tech is not 'local'. Should specify the FreeSurfer
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
@@ -1422,6 +1473,17 @@ class AnnotParcellation:
         mris_convert : FreeSurfer command-line tool for surface file conversion
         """
 
+        if isinstance(annot_file, Path):
+            annot_file = str(annot_file)
+
+        if ref_surf is not None:
+            if isinstance(ref_surf, Path):
+                ref_surf = str(ref_surf)
+
+        if gii_file is not None:
+            if isinstance(gii_file, Path):
+                gii_file = str(gii_file)
+
         # Check if the annot file exists
         if not os.path.exists(annot_file):
             raise ValueError("The annot file does not exist")
@@ -1471,12 +1533,12 @@ class AnnotParcellation:
     ####################################################################################################
     @staticmethod
     def gcs2annot(
-        gcs_file: str,
-        annot_file: str = None,
-        freesurfer_dir: str = None,
+        gcs_file: Union[str, Path],
+        annot_file: Union[str, Path] = None,
+        freesurfer_dir: Union[str, Path] = None,
         ref_id: str = "fsaverage",
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
     ):
         """
         Convert FreeSurfer GCS (Gaussian Classifier Surface) files to annotation files.
@@ -1488,18 +1550,18 @@ class AnnotParcellation:
         
         Parameters
         ----------
-        gcs_file : str
+        gcs_file : str or Path
             Path to the input GCS classifier file. These files contain trained 
             Gaussian classifiers for automatic parcellation (e.g., aparc.gcs, 
             aparc.a2009s.gcs). The hemisphere is automatically detected from 
             the filename.
             
-        annot_file : str, optional
+        annot_file : str or Path, optional
             Path for the output annotation file. If None, the output file is 
             created in the same directory as the GCS file with the extension 
             changed from .gcs to .annot. Default is None.
             
-        freesurfer_dir : str, optional
+        freesurfer_dir : str or Path, optional
             Path to the FreeSurfer subjects directory containing the reference 
             subject data. If None, uses the SUBJECTS_DIR environment variable. 
             The directory will be created if it doesn't exist. Default is None.
@@ -1514,7 +1576,7 @@ class AnnotParcellation:
             'local' (run directly), 'singularity', 'docker', or other supported 
             containerization methods. Default is 'local'.
             
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerized execution. 
             Required when cont_tech is not 'local'. Should specify the FreeSurfer 
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
@@ -1628,11 +1690,17 @@ class AnnotParcellation:
         annot2gii : Convert annotations to GIFTI format
         """
 
+        if isinstance(gcs_file, Path):
+            gcs_file = str(gcs_file)
+
         if not os.path.exists(gcs_file):
             raise ValueError("The gcs file does not exist")
 
         # Set the FreeSurfer directory
         if freesurfer_dir is not None:
+            if isinstance(freesurfer_dir, Path):
+                freesurfer_dir = str(freesurfer_dir)
+
             if not os.path.isdir(freesurfer_dir):
 
                 # Create the directory if it does not exist
@@ -1677,6 +1745,9 @@ class AnnotParcellation:
                 os.path.dirname(gcs_file),
                 os.path.basename(gcs_file).replace(".gcs", ".annot"),
             )
+        else:
+            if isinstance(annot_file, Path):
+                annot_file = str(annot_file)
 
         ctx_label = os.path.join(
             freesurfer_dir, ref_id, "label", hemi_cad + ".cortex.label"
@@ -1808,12 +1879,12 @@ class AnnotParcellation:
     ####################################################################################################
     def annot2gcs(
         self,
-        gcs_file: str = None,
-        freesurfer_dir: str = None,
+        gcs_file: Union[str, Path] = None,
+        freesurfer_dir: Union[str, Path] = None,
         fssubj_id: str = None,
         hemi: str = None,
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
     ):
         """
         Convert FreeSurfer annotation files to GCS (Gaussian Classifier Surface) files.
@@ -1825,12 +1896,12 @@ class AnnotParcellation:
         
         Parameters
         ----------
-        gcs_file : str, optional
+        gcs_file : str or Path, optional
             Path for the output GCS classifier file. If None, the file is saved 
             in the same directory as the annotation file with the extension 
             changed from .annot to .gcs. Default is None.
             
-        freesurfer_dir : str, optional
+        freesurfer_dir : str or Path, optional
             Path to the FreeSurfer subjects directory containing the training 
             subject data. If None, uses the SUBJECTS_DIR environment variable. 
             The directory will be created if it doesn't exist. Default is None.
@@ -1850,7 +1921,7 @@ class AnnotParcellation:
             'local' (run directly), 'singularity', 'docker', or other supported 
             containerization methods. Default is 'local'.
             
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerized execution. 
             Required when cont_tech is not 'local'. Should specify the FreeSurfer 
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
@@ -1998,6 +2069,9 @@ class AnnotParcellation:
             gcs_file = os.path.join(gcs_folder, gcs_name)
 
         else:
+            if isinstance(gcs_file, Path):
+                gcs_file = str(gcs_file)
+
             gcs_name = os.path.basename(gcs_file)
             gcs_folder = os.path.dirname(gcs_file)
 
@@ -2024,6 +2098,9 @@ class AnnotParcellation:
 
         # Set the FreeSurfer directory
         if freesurfer_dir is not None:
+            if isinstance(freesurfer_dir, Path):
+                freesurfer_dir = str(freesurfer_dir)
+
             if not os.path.isdir(freesurfer_dir):
 
                 # Create the directory if it does not exist
@@ -2108,8 +2185,8 @@ class AnnotParcellation:
     def group_into_lobes(
         self,
         grouping: str = "desikan",
-        lobes_json: str = None,
-        out_annot: str = None,
+        lobes_json: Union[str, Path] = None,
+        out_annot: Union[str, Path] = None,
         ctxprefix: str = None,
         force: bool = False,
     ):
@@ -2129,7 +2206,7 @@ class AnnotParcellation:
             groupings can be specified when providing a lobes_json file.
             Default is 'desikan'.
 
-        lobes_json : str, optional
+        lobes_json : str or Path, optional
             Path to a JSON file containing custom lobe definitions and region
             mappings. If None, uses the default grouping scheme called lobes.json.
             This file is located in the clabtoolkit package directory
@@ -2137,7 +2214,7 @@ class AnnotParcellation:
 
             Default is None.
 
-        out_annot : str, optional
+        out_annot : str or Path, optional
             Path where the new lobar annotation file should be saved. If None,
             the parcellation is only returned as an object without saving to disk.
             The output directory will be created if it doesn't exist. Default is None.
@@ -2304,6 +2381,9 @@ class AnnotParcellation:
 
         # Saving the annot file
         if out_annot is not None:
+            if isinstance(out_annot, Path):
+                out_annot = str(out_annot)
+
             self.name = os.path.basename(out_annot)
             self.path = os.path.dirname(out_annot)
 
@@ -2343,7 +2423,7 @@ class FreeSurferSubject:
     """
 
     ####################################################################################################
-    def __init__(self, subj_id: str, subjs_dir: str = None):
+    def __init__(self, subj_id: str, subjs_dir: Union[str, Path] = None):
         """
         Initialize the FreeSurferSubject object with subject ID and subjects directory.
 
@@ -2356,7 +2436,7 @@ class FreeSurferSubject:
             FreeSurfer subject identifier matching the directory name in the
             FreeSurfer subjects directory.
 
-        subjs_dir : str, optional
+        subjs_dir : str or Path, optional
             Path to the FreeSurfer subjects directory. If None, uses the
             SUBJECTS_DIR environment variable. Directory will be created
             if it doesn't exist. Default is None.
@@ -2383,6 +2463,8 @@ class FreeSurferSubject:
         if subjs_dir is None:
             self.subjs_dir = os.environ.get("SUBJECTS_DIR")
         else:
+            if isinstance(subjs_dir, Path):
+                subjs_dir = str(subjs_dir)
 
             if not os.path.exists(subjs_dir):
                 # Create the folder
@@ -2824,12 +2906,12 @@ class FreeSurferSubject:
     ####################################################################################################
     def launch_freesurfer(
         self,
-        t1w_img: str = None,
+        t1w_img: Union[str, Path] = None,
         proc_stage: Union[str, list] = "all",
         extra_proc: Union[str, list] = None,
         cont_tech: str = "local",
-        cont_image: str = None,
-        fs_license: str = None,
+        cont_image: Union[str, Path] = None,
+        fs_license: Union[str, Path] = None,
         force=False,
     ):
         """
@@ -2840,7 +2922,7 @@ class FreeSurferSubject:
 
         Parameters
         ----------
-        t1w_img : str, optional
+        t1w_img : str or Path, optional
             Path to input T1-weighted MRI image. Required for unprocessed subjects.
 
         proc_stage : str or list, optional
@@ -2854,10 +2936,10 @@ class FreeSurferSubject:
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerization.
 
-        fs_license : str, optional
+        fs_license : str or Path, optional
             Path to FreeSurfer license file for containers.
 
         force : bool, optional
@@ -2945,6 +3027,9 @@ class FreeSurferSubject:
             )
             cont_license = os.path.join(out_cmd.stdout.split("\n")[0], "license.txt")
             if fs_license is not None:
+                if isinstance(fs_license, Path):
+                    fs_license = str(fs_license)
+
                 if cont_tech == "singularity":
                     mount_dirs.append("--bind")
                 elif cont_tech == "docker":
@@ -3017,6 +3102,9 @@ class FreeSurferSubject:
                             universal_newlines=True,
                         )  # Running container command
             else:
+                if isinstance(t1w_img, Path):
+                    t1w_img = str(t1w_img)
+
                 if os.path.isfile(t1w_img):
                     for st in proc_stage:
                         cmd_bashargs = [
@@ -3046,6 +3134,9 @@ class FreeSurferSubject:
                     ) and os.path.isfile(self.fs_files["mri"]["orig"]):
                         cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-all"]
                 else:
+                    if isinstance(t1w_img, Path):
+                        t1w_img = str(t1w_img)
+
                     if os.path.isfile(t1w_img):
                         cmd_bashargs = [
                             "recon-all",
@@ -3268,7 +3359,7 @@ class FreeSurferSubject:
         self,
         lobes_grouping: str = "desikan",
         add_bids_entities: bool = False,
-        output_file: str = None,
+        output_file: Union[str, Path] = None,
     ) -> pd.DataFrame:
         """
         Generate comprehensive FreeSurfer statistics table combining morphometric measurements.
@@ -3285,7 +3376,7 @@ class FreeSurferSubject:
         add_bids_entities : bool, optional
             Whether to extract BIDS entities from subject ID. Default is False.
 
-        output_file : str, optional
+        output_file : str or Path, optional
             Path to save the DataFrame as CSV. If None, not saved. Default is None.
 
         Returns
@@ -3354,6 +3445,9 @@ class FreeSurferSubject:
 
         # Save the DataFrame to a file if an output path is specified
         if output_file:
+            if isinstance(output_file, Path):
+                output_file = str(output_file)
+
             stats_table.to_csv(output_file, index=False)
             print(f"Statistics table saved to: {output_file}")
 
@@ -3653,7 +3747,7 @@ class FreeSurferSubject:
 
     ####################################################################################################
     @staticmethod
-    def set_freesurfer_directory(fs_dir: str = None):
+    def set_freesurfer_directory(fs_dir: Union[str, Path] = None):
         """
         Set up the FreeSurfer subjects directory and configure environment variables.
 
@@ -3662,7 +3756,7 @@ class FreeSurferSubject:
 
         Parameters
         ----------
-        fs_dir : str, optional
+        fs_dir : str or Path, optional
             Path to FreeSurfer subjects directory. If None, extracts from SUBJECTS_DIR
             environment variable. Directory will be created if it doesn't exist.
             Default is None.
@@ -3689,7 +3783,6 @@ class FreeSurferSubject:
 
         # Set the FreeSurfer directory
         if fs_dir is None:
-
             if "SUBJECTS_DIR" not in os.environ:
                 raise ValueError(
                     "The FreeSurfer directory must be set in the environment variables or passed as an argument"
@@ -3707,10 +3800,10 @@ class FreeSurferSubject:
         self,
         ref_id: str,
         hemi: str,
-        fs_annot: str,
-        ind_annot: str,
+        fs_annot: Union[str, Path],
+        ind_annot: Union[str, Path],
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
         force=False,
         verbose=False,
     ):
@@ -3730,17 +3823,17 @@ class FreeSurferSubject:
         hemi : str
             Hemisphere identifier: 'lh' or 'rh'.
 
-        fs_annot : str
+        fs_annot : str or Path
             Path to source annotation file or basename. Can be full path or just
             the annotation name (e.g., 'aparc'). Also accepts GIFTI files (.gii).
 
-        ind_annot : str
+        ind_annot : str or Path
             Path for output annotation file in individual subject space.
 
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
         force : bool, optional
@@ -3787,6 +3880,12 @@ class FreeSurferSubject:
         ...     cont_image='freesurfer/freesurfer:7.2.0'
         ... )
         """
+
+        if isinstance(fs_annot, Path):
+            fs_annot = str(fs_annot)
+
+        if isinstance(ind_annot, Path):
+            ind_annot = str(ind_annot)
 
         if not os.path.isfile(fs_annot) and not os.path.isfile(
             os.path.join(
@@ -3889,11 +3988,11 @@ class FreeSurferSubject:
     ####################################################################################################
     def gcs2ind(
         self,
-        fs_gcs: str,
-        ind_annot: str,
+        fs_gcs: Union[str, Path],
+        ind_annot: Union[str, Path],
         hemi: str,
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
         force=False,
         verbose=False,
     ):
@@ -3906,11 +4005,11 @@ class FreeSurferSubject:
 
         Parameters
         ----------
-        fs_gcs : str
+        fs_gcs : str or Path
             Path to the FreeSurfer GCS (Gaussian Classifier Surface) file containing
             the trained classifier model.
 
-        ind_annot : str
+        ind_annot : str or Path
             Path for output annotation file in individual subject space.
 
         hemi : str
@@ -3919,7 +4018,7 @@ class FreeSurferSubject:
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
         force : bool, optional
@@ -3964,6 +4063,11 @@ class FreeSurferSubject:
         ...     verbose=True
         ... )
         """
+
+        if isinstance(fs_gcs, Path):
+            fs_gcs = str(fs_gcs)
+        if isinstance(ind_annot, Path):
+            ind_annot = str(ind_annot)
 
         if not os.path.isfile(ind_annot) or force:
 
@@ -4047,14 +4151,14 @@ class FreeSurferSubject:
     ####################################################################################################
     def surf2vol(
         self,
-        atlas: str,
-        out_vol: str,
+        atlas: Union[str, Path],
+        out_vol: Union[str, Path],
         gm_grow: Union[int, str] = "0",
         color_table: Union[list, str] = None,
         bool_native: bool = False,
         bool_mixwm: bool = False,
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
         force: bool = False,
         verbose: bool = False,
     ):
@@ -4067,11 +4171,11 @@ class FreeSurferSubject:
 
         Parameters
         ----------
-        atlas : str
+        atlas : str or Path
             Atlas identifier or name for the surface parcellation to convert.
             Should correspond to available annotation files for both hemispheres.
 
-        out_vol : str
+        out_vol : str or Path
             Path for output volumetric parcellation file.
 
         gm_grow : int or str, optional
@@ -4093,7 +4197,7 @@ class FreeSurferSubject:
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
         force : bool, optional
@@ -4145,6 +4249,11 @@ class FreeSurferSubject:
         ... )
         """
         from . import parcellationtools as cltparc
+
+        if isinstance(atlas, Path):
+            atlas = str(atlas)
+        if isinstance(out_vol, Path):
+            out_vol = str(out_vol)
 
         FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
 
@@ -4462,11 +4571,11 @@ class FreeSurferSubject:
     ####################################################################################################
     def conform2native(
         self,
-        mgz_conform: str,
-        nii_native: str,
+        mgz_conform: Union[str, Path],
+        nii_native: Union[str, Path],
         interp_method: str = "nearest",
         cont_tech: str = "local",
-        cont_image: str = None,
+        cont_image: Union[str, Path] = None,
         force: bool = False,
     ):
         """
@@ -4478,10 +4587,10 @@ class FreeSurferSubject:
 
         Parameters
         ----------
-        mgz_conform : str
+        mgz_conform : str or Path
             Path to input image in FreeSurfer conform space (typically .mgz format).
 
-        nii_native : str
+        nii_native : str or Path
             Path for output image in native acquisition space.
 
         interp_method : str, optional
@@ -4491,7 +4600,7 @@ class FreeSurferSubject:
         cont_tech : str, optional
             Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
 
-        cont_image : str, optional
+        cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
         force : bool, optional
@@ -4530,6 +4639,14 @@ class FreeSurferSubject:
         ...     interp_method='trilinear'
         ... )
         """
+        if isinstance(mgz_conform, Path):
+            mgz_conform = str(mgz_conform)
+
+        if isinstance(nii_native, Path):
+            nii_native = str(nii_native)
+
+        if not os.path.isfile(mgz_conform):
+            raise FileNotFoundError(f"File {mgz_conform} does not exist")
 
         raw_vol = os.path.join(self.subjs_dir, self.subj_id, "mri", "rawavg.mgz")
         tmp_raw = os.path.join(self.subjs_dir, self.subj_id, "tmp", "rawavg.nii.gz")
@@ -4771,40 +4888,56 @@ class FreeSurferSubject:
 ####################################################################################################
 def create_individual_freesurfer_table(
     subj_id: str,
-    subjs_dir: str = None,
-    out_tab_file: str = None,
+    subjs_dir: Union[str, Path] = None,
+    out_tab_file: Union[str, Path] = None,
     add_bids_entities: bool = False,
 ) -> pd.DataFrame:
     """
     Create a dataset table from the subjects in the given directory.
     Parameters
     ----------
-    subjs_dir : str, optional
-        The directory containing the FreeSurfer subjects. If None, uses the
-        FREESURFER_HOME environment variable to locate the subjects directory.
-
     subj_id : str
         The subject ID for which to create the dataset table.
 
+    subjs_dir : str or Path, optional
+        The directory containing the FreeSurfer subjects. If None, uses the
+        FREESURFER_HOME environment variable to locate the subjects directory.
+
     out_tab_file : str, optional
         If provided, the path to save the dataset table as a TSV file.
+        If None, the table is not saved to disk.
+
+    add_bids_entities : bool, optional
+        If True, adds BIDS entities to the dataset table. Default is False.
 
     Returns
     -------
     pd.DataFrame
         A DataFrame containing the morphometry table for the subject.
+
+    Raises
+    ------
+    ValueError
+        If the provided subjs_dir is not a valid directory.
+
     """
     # Check if subjs_dir is provided, otherwise use the default
     if subjs_dir is None:
         subjs_dir = os.environ.get("SUBJECTS_DIR")
 
     else:
+        if isinstance(subjs_dir, Path):
+            subjs_dir = str(subjs_dir)
+
         if not os.path.isdir(subjs_dir):
             raise ValueError(
                 f"The provided subjs_dir '{subjs_dir}' is not a valid directory."
             )
 
     if out_tab_file is not None:
+        if isinstance(out_tab_file, Path):
+            out_tab_file = str(out_tab_file)
+
         if isinstance(out_tab_file, str):
             out_dir = os.path.dirname(out_tab_file)
             if out_dir and not os.path.exists(out_dir):
@@ -4841,7 +4974,9 @@ def create_individual_freesurfer_table(
 
 
 #####################################################################################################
-def process_subject(fs_fullid: str, fs_subject_dir: str, out_folder: str) -> tuple:
+def process_subject(
+    fs_fullid: str, fs_subject_dir: Union[str, Path], out_folder: Union[str, Path]
+) -> tuple:
     """
     Process a single subject and return the result.
 
@@ -4850,10 +4985,10 @@ def process_subject(fs_fullid: str, fs_subject_dir: str, out_folder: str) -> tup
     fs_fullid : str
         The full subject ID
 
-    fs_subject_dir : str
+    fs_subject_dir : str or Path
         The FreeSurfer subjects directory
 
-    out_folder : str
+    out_folder : str or Path
         The output folder for stats tables
 
     Returns
@@ -4861,6 +4996,12 @@ def process_subject(fs_fullid: str, fs_subject_dir: str, out_folder: str) -> tup
     tuple
         (subject_id, success_status, error_message_if_any)
     """
+    if isinstance(fs_subject_dir, Path):
+        fs_subject_dir = str(fs_subject_dir)
+
+    if isinstance(out_folder, Path):
+        out_folder = str(out_folder)
+
     try:
         sub_entity = cltbids.str2entity(fs_fullid)
         file_name = fs_fullid + "_desc-statstable_morphometry.csv"
@@ -4890,9 +5031,9 @@ def process_subject(fs_fullid: str, fs_subject_dir: str, out_folder: str) -> tup
 
 #####################################################################################################
 def create_freesurfer_table(
-    out_folder: str,
+    out_folder: Union[str, Path],
     ids_file: Union[str, List[str]] = None,
-    fs_subject_dir: str = None,
+    fs_subject_dir: Union[str, Path] = None,
     max_workers: int = 1,
 ):
     """
@@ -4900,14 +5041,14 @@ def create_freesurfer_table(
 
     Parameters
     ----------
-    out_folder : str
+    out_folder : str or Path
         The output folder for stats tables.
 
     ids_file : str or List[str], optional
         A text file containing subject IDs (one per line) or a list of subject IDs.
         If None, an error is raised.
 
-    fs_subject_dir : str, optional
+    fs_subject_dir : str or Path, optional
         The FreeSurfer subjects directory. If None, uses the SUBJECTS_DIR environment variable.
 
     max_workers : int, optional
@@ -4927,6 +5068,20 @@ def create_freesurfer_table(
     >>> create_freesurfer_table("/path/to/output", "/path/to/ids.txt", "/path/to/freesurfer/subjects", max_workers=4)
 
     """
+    if isinstance(out_folder, Path):
+        out_folder = str(out_folder)
+
+    if fs_subject_dir is None:
+        fs_subject_dir = os.environ.get("SUBJECTS_DIR")
+
+    elif isinstance(fs_subject_dir, Path):
+        fs_subject_dir = str(fs_subject_dir)
+
+    # Check that the folder exists
+    if not os.path.isdir(fs_subject_dir):
+        raise ValueError(
+            f"The FreeSurfer subjects directory '{fs_subject_dir}' does not exist."
+        )
 
     if ids_file is None:
         subject_ids = []
@@ -5039,7 +5194,9 @@ def create_freesurfer_table(
 
 #####################################################################################################
 def create_fsaverage_links(
-    fssubj_dir: str, fsavg_dir: str = None, refsubj_name: str = None
+    fssubj_dir: Union[str, Path],
+    fsavg_dir: Union[str, Path] = None,
+    refsubj_name: str = None,
 ):
     """
     Create symbolic links to the fsaverage reference subject folder.
@@ -5049,10 +5206,10 @@ def create_fsaverage_links(
 
     Parameters
     ----------
-    fssubj_dir : str
+    fssubj_dir : str or Path
         Target FreeSurfer subjects directory where the link will be created.
 
-    fsavg_dir : str, optional
+    fsavg_dir : str or Path, optional
         Source fsaverage directory path. If None, uses FREESURFER_HOME/subjects/fsaverage.
         Default is None.
 
@@ -5080,6 +5237,13 @@ def create_fsaverage_links(
     ...     refsubj_name='fsaverage6'
     ... )
     """
+
+    if isinstance(fssubj_dir, Path):
+        fssubj_dir = str(fssubj_dir)
+
+    if fsavg_dir is not None:
+        if isinstance(fsavg_dir, Path):
+            fsavg_dir = str(fsavg_dir)
 
     # Verify if the FreeSurfer directory exists
     if not os.path.isdir(fssubj_dir):
@@ -5153,7 +5317,7 @@ def create_fsaverage_links(
 
 
 ####################################################################################################
-def remove_fsaverage_links(linkavg_folder: str):
+def remove_fsaverage_links(linkavg_folder: Union[str, Path]):
     """
     Remove symbolic links to the fsaverage folder.
 
@@ -5162,7 +5326,7 @@ def remove_fsaverage_links(linkavg_folder: str):
 
     Parameters
     ----------
-    linkavg_folder : str
+    linkavg_folder : str or Path
         Path to the fsaverage link folder to potentially remove.
 
     Notes
@@ -5175,6 +5339,8 @@ def remove_fsaverage_links(linkavg_folder: str):
     >>> # Remove custom fsaverage link
     >>> remove_fsaverage_links('/data/freesurfer_subjects/fsaverage')
     """
+    if isinstance(linkavg_folder, Path):
+        linkavg_folder = str(linkavg_folder)
 
     # FreeSurfer subjects directory
     fssubj_dir_orig = os.path.join(
@@ -5606,7 +5772,7 @@ def verify_packed_rgb_values(color_table):
 
 
 ########################################################################################################
-def detect_hemi(file_name: str):
+def detect_hemi(file_name: Union[str, Path]) -> Union[str, None]:
     """
     Detect hemisphere from filename using common naming conventions.
 
@@ -5615,7 +5781,7 @@ def detect_hemi(file_name: str):
 
     Parameters
     ----------
-    file_name : str
+    file_name : str or Path
         Filename to analyze for hemisphere information.
 
     Returns
@@ -5638,6 +5804,9 @@ def detect_hemi(file_name: str):
     >>> hemi = detect_hemi('sub-01_hemi-L_pial.surf.gii')
     >>> print(hemi)  # 'lh'
     """
+
+    if isinstance(file_name, Path):
+        file_name = str(file_name)
 
     # Detecting the hemisphere
     surf_name = os.path.basename(file_name)
@@ -5673,13 +5842,13 @@ def detect_hemi(file_name: str):
 
 
 ###########################################################################################################
-def parse_freesurfer_lta(filepath: str) -> Dict:
+def parse_freesurfer_lta(filepath: Union[str, Path]) -> Dict:
     """
     Parse a FreeSurfer .lta (Linear Transform Array) file.
 
     Parameters:
     -----------
-    filepath : str
+    filepath : str or Path
         Path to the .lta file
 
     Returns:
@@ -5710,6 +5879,8 @@ def parse_freesurfer_lta(filepath: str) -> Dict:
         "src_volume_info": {},
         "dst_volume_info": {},
     }
+    if isinstance(filepath, Path):
+        filepath = str(filepath)
 
     with open(filepath, "r") as file:
         lines = file.readlines()
@@ -5765,14 +5936,14 @@ def parse_freesurfer_lta(filepath: str) -> Dict:
 
 #########################################################################################################
 def get_cras_coordinates(
-    filepath: str, source: bool = True
+    filepath: Union[str, Path], source: bool = True
 ) -> Tuple[float, float, float]:
     """
     Simple function to extract just the cras coordinates.
 
     Parameters:
     -----------
-    filepath : str
+    filepath : str or Path
         Path to the .lta file
     source : bool
         If True, return source cras; if False, return destination cras
@@ -5791,7 +5962,7 @@ def get_cras_coordinates(
 
 
 ############################################################################################################
-def load_lobes_json(lobes_json: str = None):
+def load_lobes_json(lobes_json: Union[str, Path] = None):
     """
     Load JSON file containing anatomical lobe definitions.
 
@@ -5800,7 +5971,7 @@ def load_lobes_json(lobes_json: str = None):
 
     Parameters
     ----------
-    lobes_json : str, optional
+    lobes_json : str, Path, optional
         Path to custom JSON file. If None, uses default configuration
         file included with the package. Default is None.
 
@@ -5829,6 +6000,9 @@ def load_lobes_json(lobes_json: str = None):
         cwd = os.path.dirname(os.path.abspath(__file__))
         lobes_json = os.path.join(cwd, "config", "lobes.json")
     else:
+        if isinstance(lobes_json, Path):
+            lobes_json = str(lobes_json)
+
         if not os.path.isfile(lobes_json):
             raise ValueError(
                 "Please, provide a valid JSON file containing the lobes definition dictionary."
@@ -5841,7 +6015,7 @@ def load_lobes_json(lobes_json: str = None):
 
 
 ############################################################################################################
-def get_version(cont_tech: str = "local", cont_image: str = None):
+def get_version(cont_tech: str = "local", cont_image: Union[str, Path] = None):
     """
     Get FreeSurfer version number from installation or container.
 
@@ -5853,7 +6027,7 @@ def get_version(cont_tech: str = "local", cont_image: str = None):
     cont_tech : str, optional
         Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
 
-    cont_image : str, optional
+    cont_image : str or Path, optional
         Container image specification when using containerization. Default is None.
 
     Returns
