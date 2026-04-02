@@ -205,6 +205,201 @@ class AnnotParcellation:
         self.regnames = reg_names
 
     ####################################################################################################
+    def get_info(self, verbose: bool = True):
+        """
+        Display and return comprehensive information about the AnnotParcellation object.
+
+        Provides a formatted overview of the parcellation including identification,
+        vertex statistics, region table properties, and label consistency checks.
+        Useful for quick inspection and validation of annotation data.
+
+        The method displays:
+            - Basic annotation identification (name, ID, hemisphere, file path)
+            - Vertex statistics (total vertices, unique labels found)
+            - Region table properties (number of defined regions)
+            - Label consistency (labels present in vertices but absent from table,
+            and regions defined in table but absent from vertices)
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, prints the information in a formatted table. If False, only returns the info dictionary without printing. Default is True.
+
+        Returns
+        -------
+        info : dict
+            Dictionary containing the following keys:
+
+            - 'name' : str
+                Annotation filename or None if not loaded from file.
+
+            - 'id' : str
+                Annotation identifier string.
+
+            - 'hemi' : str or None
+                Hemisphere ('lh', 'rh', or None if not detected).
+
+            - 'filename' : str or None
+                Full path to the annotation file, or None.
+
+            - 'n_vertices' : int
+                Total number of vertices in the vertex-wise label array.
+
+            - 'n_regions_table' : int
+                Number of regions defined in the color/region table (regtable).
+
+            - 'n_unique_labels' : int
+                Number of distinct label values found across all vertices.
+
+            - 'labels_not_in_table' : list
+                List of label values present in the vertex array (codes) that
+                have no corresponding entry in the region table. Ideally empty.
+
+            - 'regions_not_in_vertices' : list
+                List of region names whose table codes do not appear in any
+                vertex. These are defined but unused regions.
+
+        Notes
+        -----
+        Label consistency checks are only performed when parcellation data has
+        been loaded (i.e., self.codes and self.regtable are not None).
+
+        Examples
+        --------
+        >>> annot = AnnotParcellation('/opt/freesurfer/subjects/bert/label/lh.aparc.annot')
+        >>> info = annot.get_info()
+        ╔════════════════════════════════════════════════════════════════╗
+        ║               ANNOTATION PARCELLATION INFO                     ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ Name   : lh.aparc.annot                                        ║
+        ║ ID     : lh.aparc                                              ║
+        ║ Hemi   : lh                                                    ║
+        ║ File   : /opt/freesurfer/subjects/bert/label/lh.aparc.annot    ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ VERTEX STATISTICS                                              ║
+        ║   Total vertices   :    163,842                                ║
+        ║   Unique labels    :         36                                ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ REGION TABLE                                                   ║
+        ║   Regions defined  :         36                                ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ LABEL CONSISTENCY                                              ║
+        ║   Labels not in table     :  0                                 ║
+        ║   Regions not in vertices :  0                                 ║
+        ╚════════════════════════════════════════════════════════════════╝
+        """
+        width = 64  # content width (excluding border characters)
+
+        def print_line(content, w=width):
+            print(f"║{content.ljust(w)}║")
+
+        # ── gather info ──────────────────────────────────────────────────────────
+        info = {
+            "name": self.name,
+            "id": self.id,
+            "hemi": self.hemi,
+            "filename": self.filename,
+            "n_vertices": None,
+            "n_regions_table": None,
+            "n_unique_labels": None,
+            "labels_not_in_table": [],
+            "regions_not_in_vertices": [],
+        }
+
+        if self.codes is not None:
+            unique_labels = np.unique(self.codes)
+            info["n_vertices"] = len(self.codes)
+            info["n_unique_labels"] = len(unique_labels)
+
+        if self.regtable is not None:
+            info["n_regions_table"] = np.shape(self.regtable)[0]
+
+        if self.codes is not None and self.regtable is not None:
+            table_codes = set(self.regtable[:, 4].astype(int))
+            vertex_codes = set(int(c) for c in np.unique(self.codes))
+
+            # Labels found on vertices but missing from the table
+            info["labels_not_in_table"] = sorted(vertex_codes - table_codes)
+
+            # Regions defined in the table but absent from all vertices
+            missing_idx = [
+                i
+                for i, code in enumerate(self.regtable[:, 4].astype(int))
+                if code not in vertex_codes
+            ]
+            info["regions_not_in_vertices"] = (
+                [self.regnames[i] for i in missing_idx]
+                if self.regnames is not None
+                else missing_idx
+            )
+
+        # ── print ─────────────────────────────────────────────────────────────────
+        if verbose:
+            print("╔" + "═" * width + "╗")
+            print_line("  ANNOTATION PARCELLATION INFO".center(width))
+            print("╠" + "═" * width + "╣")
+
+            # Identification block
+            name_val = self.name if self.name else "N/A"
+            id_val = self.id if self.id else "N/A"
+            hemi_val = self.hemi if self.hemi else "N/A"
+            file_val = self.filename if self.filename else "N/A"
+
+            # Truncate long paths to fit the box
+            max_val_width = width - 12
+            if len(file_val) > max_val_width:
+                file_val = "..." + file_val[-(max_val_width - 3) :]
+
+            print_line(f"  Name   : {name_val}")
+            print_line(f"  ID     : {id_val}")
+            print_line(f"  Hemi   : {hemi_val}")
+            print_line(f"  File   : {file_val}")
+
+            # Vertex statistics block
+            print("╠" + "═" * width + "╣")
+            print_line("  VERTEX STATISTICS")
+            if info["n_vertices"] is not None:
+                print_line(f"    Total vertices   : {info['n_vertices']:>10,}")
+                print_line(f"    Unique labels    : {info['n_unique_labels']:>10,}")
+            else:
+                print_line("    No vertex data loaded")
+
+            # Region table block
+            print("╠" + "═" * width + "╣")
+            print_line("  REGION TABLE")
+            if info["n_regions_table"] is not None:
+                print_line(f"    Regions defined  : {info['n_regions_table']:>10,}")
+            else:
+                print_line("    No region table loaded")
+
+            # Label consistency block
+            print("╠" + "═" * width + "╣")
+            print_line("  LABEL CONSISTENCY")
+            n_missing_table = len(info["labels_not_in_table"])
+            n_missing_verts = len(info["regions_not_in_vertices"])
+            print_line(f"    Labels not in table     : {n_missing_table:>4}")
+
+            if n_missing_table > 0:
+                labels_str = ", ".join(str(v) for v in info["labels_not_in_table"])
+                # Wrap if too long
+                max_w = width - 6
+                if len(labels_str) > max_w:
+                    labels_str = labels_str[: max_w - 3] + "..."
+                print_line(f"      ↳ codes : {labels_str}")
+
+            print_line(f"    Regions not in vertices : {n_missing_verts:>4}")
+            if n_missing_verts > 0:
+                names_str = ", ".join(str(v) for v in info["regions_not_in_vertices"])
+                max_w = width - 6
+                if len(names_str) > max_w:
+                    names_str = names_str[: max_w - 3] + "..."
+                print_line(f"      ↳ names : {names_str}")
+
+            print("╚" + "═" * width + "╝")
+
+        return info
+
+    ####################################################################################################
     def is_loaded(self):
         """Check if parcellation data has been loaded"""
         return self.codes is not None
