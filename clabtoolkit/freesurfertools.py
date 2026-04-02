@@ -438,6 +438,17 @@ class AnnotParcellation:
         if np.max(regtable[:, 0:3]) <= 1.0:
             regtable[:, 0:3] = (regtable[:, 0:3] * 255).astype(int)
 
+        # Detect the codes in the table that are not in the vertex wise data
+        # Find the indexes where the codes are not in the vertex wise data
+        tmp_ind = np.where(np.isin(regtable[:, 4], np.unique(codes)) == False)[0]
+
+        # If there are codes that are not in the vertex wise data, then remove them from the table
+        if tmp_ind.size > 0:
+            regtable = np.delete(regtable, tmp_ind, axis=0)
+            regnames = np.delete(regnames, tmp_ind).tolist()
+
+        # Storing the codes, colors and names in the object
+
         self.regtable = regtable
         self.regnames = regnames
         self.hemi = hemi
