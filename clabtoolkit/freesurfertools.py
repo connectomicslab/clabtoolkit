@@ -653,7 +653,7 @@ class AnnotParcellation:
     def get_regions_info(
         self,
         region_list=None,
-        out_format: str = "dict",
+        return_df: bool = False,
     ) -> list[dict] | pd.DataFrame | None:
         """
         Retrieve information about multiple parcellation regions.
@@ -677,13 +677,8 @@ class AnnotParcellation:
 
             If None, all regions available in the annotation are returned.
 
-        out_format : {'dict', 'dataframe'}, optional
-            Output format for the results:
-
-            * ``'dict'``      – returns a list of dicts (default), one per region,
-            each with the form ``{name: {'id': int, 'color': np.ndarray, 'n_vertices': int}}``.
-            * ``'dataframe'`` – returns a :class:`pandas.DataFrame` with columns
-            ``['name', 'id', 'color', 'n_vertices']``.
+        return_df : bool, optional
+            If True, returns the results as a pandas DataFrame. If False (default), returns a list of dictionaries.
 
         Returns
         -------
@@ -708,21 +703,20 @@ class AnnotParcellation:
 
         Return a DataFrame:
 
-        >>> annot.get_regions_info(['bankssts', 'precentral'], out_format='dataframe')
-        >>> annot.get_regions_info(np.array([2647065, 14423100]),  out_format='dataframe')
-        >>> annot.get_regions_info('bankssts',                     out_format='dataframe')
-        >>> annot.get_regions_info(2647065,                        out_format='dataframe')
+        >>> annot.get_regions_info(['bankssts', 'precentral'], return_df=True)
+        >>> annot.get_regions_info(np.array([2647065, 14423100]),  return_df=True)
+        >>> annot.get_regions_info('bankssts',                     return_df=True)
+        >>> annot.get_regions_info(2647065,                        return_df=True)
 
         Return all regions as a DataFrame:
 
-        >>> annot.get_regions_info(out_format='dataframe')
+        >>> annot.get_regions_info(return_df=True)
         """
 
         # --- Validate out_format ---------------------------------------------------
-        valid_formats = {"dict", "dataframe"}
-        if out_format not in valid_formats:
-            raise ValueError(
-                f"Invalid out_format {out_format!r}. Expected one of {valid_formats}."
+        if not isinstance(return_df, bool):
+            raise TypeError(
+                f"return_df must be a bool, got {type(return_df).__name__!r}."
             )
 
         # --- Default: use all regions in the annotation ---------------------------
@@ -766,7 +760,7 @@ class AnnotParcellation:
                 results.append(info)
 
         # --- Format output --------------------------------------------------------
-        if out_format == "dataframe":
+        if return_df:
             rows = [
                 {
                     "id": values["id"],
@@ -779,7 +773,7 @@ class AnnotParcellation:
             ]
             return pd.DataFrame(rows, columns=["name", "id", "color", "n_vertices"])
 
-        return results  # out_format == "dict"
+        return results  # list of dicts, one per region
 
     ####################################################################################################
     def fill_parcellation(
