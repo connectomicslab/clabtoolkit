@@ -538,6 +538,250 @@ class AnnotParcellation:
         nib.freesurfer.io.write_annot(out_file, new_codes, self.regtable, self.regnames)
 
     ####################################################################################################
+    def get_info_from_name(self, region_name: str) -> dict | None:
+        """
+        Retrieve information about a parcellation region by its name.
+
+        Parameters
+        ----------
+        region_name : str
+            The name of the region to look up.
+
+        Returns
+        -------
+        dict or None
+            A dictionary of the form::
+
+                {region_name: {'id': int, 'color': np.ndarray, 'n_vertices': int}}
+
+            where 'color' is an RGB array (shape (3,)) and 'n_vertices' is the
+            number of surface vertices assigned to the region.
+            Returns None if the name is not found or the input type is invalid.
+
+        Raises
+        ------
+        TypeError
+            If region_name is not a string.
+
+        Examples
+        --------
+        >>> annot = AnnotParcellation('/opt/freesurfer/subjects/bert/label/lh.aparc.annot')
+        >>> info = annot.get_info_from_name('bankssts')
+        >>> print(info)
+        {'bankssts': {'id': 2647065, 'color': array([25, 100, 40]), 'n_vertices': 2137}}
+        """
+        if not isinstance(region_name, str):
+            raise TypeError(
+                f"region_name must be a str, got {type(region_name).__name__!r}."
+            )
+
+        if region_name not in self.regnames:
+            print(f"Region '{region_name}' not found in the annotation.")
+            return None
+
+        idx = self.regnames.index(region_name)
+        reg_id = self.regtable[idx, 4]
+        reg_color = self.regtable[idx, :3]
+        n_vertices = int((self.codes == reg_id).sum())
+
+        return {
+            region_name: {
+                "id": int(reg_id),
+                "color": reg_color,
+                "n_vertices": n_vertices,
+            }
+        }
+
+    #####################################################################################################
+    def get_info_from_id(self, region_id: int) -> dict | None:
+        """
+        Retrieve information about a parcellation region by its integer ID.
+
+        Parameters
+        ----------
+        region_id : int
+            The integer ID of the region to look up (typically stored in column 4
+            of the regtable).
+
+        Returns
+        -------
+        dict or None
+            A dictionary of the form::
+
+                {region_name: {'id': int, 'color': np.ndarray, 'n_vertices': int}}
+
+            where 'color' is an RGB array (shape (3,)) and 'n_vertices' is the
+            number of surface vertices assigned to the region.
+            Returns None if the ID is not found or the input type is invalid.
+
+        Raises
+        ------
+        TypeError
+            If region_id is not an integer (or numpy integer).
+
+        Examples
+        --------
+        >>> annot = AnnotParcellation('/opt/freesurfer/subjects/bert/label/lh.aparc.annot')
+        >>> info = annot.get_info_from_id(2647065)
+        >>> print(info)
+        {'bankssts': {'id': 2647065, 'color': array([25, 100, 40]), 'n_vertices': 2137}}
+        """
+        if not isinstance(region_id, (int, np.integer)):
+            raise TypeError(
+                f"region_id must be an int, got {type(region_id).__name__!r}."
+            )
+
+        idx_arr = np.where(self.regtable[:, 4] == region_id)[0]
+        if idx_arr.size == 0:
+            print(f"Region with ID '{region_id}' not found in the annotation.")
+            return None
+
+        idx = idx_arr[0]
+        region_name = self.regnames[idx]
+        reg_color = self.regtable[idx, :3]
+        n_vertices = int((self.codes == region_id).sum())
+
+        return {
+            region_name: {
+                "id": int(region_id),
+                "color": reg_color,
+                "n_vertices": n_vertices,
+            }
+        }
+
+    #####################################################################################################
+    def get_regions_info(
+        self,
+        region_list=None,
+        out_format: str = "dict",
+    ) -> list[dict] | pd.DataFrame | None:
+        """
+        Retrieve information about multiple parcellation regions.
+
+        Accepts flexible input types for region_list and dispatches each element
+        to get_info_from_name (for string items) or get_info_from_id (for integer
+        items). Regions that cannot be resolved are skipped with a warning.
+
+        Parameters
+        ----------
+        region_list : str | int | np.integer | list[str] | list[int] | np.ndarray, optional
+            One or more region identifiers. Accepted forms:
+
+            * A single region name (str).
+            * A single region ID (int or np.integer).
+            * A list of names (list[str]).
+            * A list of IDs (list[int]).
+            * A NumPy array of names (dtype str/object) or IDs (dtype int).
+            * A mixed list of names and IDs is *not* supported; provide a
+            homogeneous collection.
+
+            If None, all regions available in the annotation are returned.
+
+        out_format : {'dict', 'dataframe'}, optional
+            Output format for the results:
+
+            * ``'dict'``      – returns a list of dicts (default), one per region,
+            each with the form ``{name: {'id': int, 'color': np.ndarray, 'n_vertices': int}}``.
+            * ``'dataframe'`` – returns a :class:`pandas.DataFrame` with columns
+            ``['name', 'id', 'color', 'n_vertices']``.
+
+        Returns
+        -------
+        list[dict] or pandas.DataFrame or None
+            Results in the requested format, or None if no regions are available
+            or region_list cannot be interpreted.
+
+        Raises
+        ------
+        TypeError
+            If region_list is not one of the accepted input types.
+        ValueError
+            If out_format is not ``'dict'`` or ``'dataframe'``.
+
+        Examples
+        --------
+        >>> annot = AnnotParcellation('/opt/freesurfer/subjects/bert/label/lh.aparc.annot')
+
+        Return a list of dicts (default):
+
+        >>> annot.get_regions_info(['bankssts', 'precentral'])
+
+        Return a DataFrame:
+
+        >>> annot.get_regions_info(['bankssts', 'precentral'], out_format='dataframe')
+        >>> annot.get_regions_info(np.array([2647065, 14423100]),  out_format='dataframe')
+        >>> annot.get_regions_info('bankssts',                     out_format='dataframe')
+        >>> annot.get_regions_info(2647065,                        out_format='dataframe')
+
+        Return all regions as a DataFrame:
+
+        >>> annot.get_regions_info(out_format='dataframe')
+        """
+
+        # --- Validate out_format ---------------------------------------------------
+        valid_formats = {"dict", "dataframe"}
+        if out_format not in valid_formats:
+            raise ValueError(
+                f"Invalid out_format {out_format!r}. Expected one of {valid_formats}."
+            )
+
+        # --- Default: use all regions in the annotation ---------------------------
+        if region_list is None:
+            region_list = (
+                self.regnames
+                if self.regnames is not None
+                else self.regtable[:, 4].tolist() if self.regtable is not None else None
+            )
+
+        if region_list is None:
+            print("No regions available in the annotation to retrieve information.")
+            return None
+
+        # --- Normalise input to a flat Python list --------------------------------
+        if isinstance(region_list, np.ndarray):
+            region_list = region_list.tolist()  # preserves dtype (str or int)
+        elif isinstance(region_list, (str, int, np.integer)):
+            region_list = [region_list]  # wrap scalar into a list
+        elif not isinstance(region_list, list):
+            raise TypeError(
+                f"Unsupported type for region_list: {type(region_list).__name__!r}. "
+                "Expected str, int, list, or np.ndarray."
+            )
+
+        # --- Resolve each item ----------------------------------------------------
+        results = []
+        for item in region_list:
+            if isinstance(item, str):
+                info = self.get_info_from_name(item)
+            elif isinstance(item, (int, np.integer)):
+                info = self.get_info_from_id(item)
+            else:
+                print(
+                    f"Skipping item {item!r}: unsupported type {type(item).__name__!r}. "
+                    "Each element must be a str (name) or int (ID)."
+                )
+                continue
+
+            if info is not None:
+                results.append(info)
+
+        # --- Format output --------------------------------------------------------
+        if out_format == "dataframe":
+            rows = [
+                {
+                    "id": values["id"],
+                    "name": name,
+                    "color": cltcol.harmonize_colors(values["color"])[0],
+                    "n_vertices": values["n_vertices"],
+                }
+                for entry in results
+                for name, values in entry.items()
+            ]
+            return pd.DataFrame(rows, columns=["name", "id", "color", "n_vertices"])
+
+        return results  # out_format == "dict"
+
+    ####################################################################################################
     def fill_parcellation(
         self, label_file: str, surf_file: str, corr_annot: str = None
     ):
@@ -786,7 +1030,10 @@ class AnnotParcellation:
 
     ####################################################################################################
     def export_to_tsv(
-        self, prefix2add: str = None, reg_offset: int = 1000, tsv_file: str = None
+        self,
+        prefix2add: str = None,
+        reg_offset: int = 1000,
+        tsv_file: Union[str, Path] = None,
     ):
         """
         Export the parcellation table to a TSV file containing region information.
@@ -810,7 +1057,7 @@ class AnnotParcellation:
             ranges are required. The offset is added to sequential indices starting
             from 0. Default is 1000.
 
-        tsv_file : str, optional
+        tsv_file : str or Path, optional
             Path where the TSV file should be saved. If provided, the DataFrame
             will be written to this file with tab separation. The parent directory
             will be created if it doesn't exist. If None, no file is saved and
@@ -937,6 +1184,9 @@ class AnnotParcellation:
 
         # Save the tsv table
         if tsv_file is not None:
+            if isinstance(tsv_file, Path):
+                tsv_file = str(tsv_file)
+
             tsv_path = os.path.dirname(tsv_file)
 
             # Create the directory if it does not exist using the library Path
