@@ -899,27 +899,38 @@ def harmonize_colors(
 
     >>> harmonize_colors(colors, output_format='rgb')
     array([[255,  87,  51],
-           [255,  87,  51],
-           [ 51,  87, 255]], dtype=uint8)
+            [255,  87,  51],
+            [ 51,  87, 255]], dtype=uint8)
 
     >>> harmonize_colors(colors, output_format='rgbnorm')
     array([[1.        , 0.34117647, 0.2       ],
-           [1.        , 0.34117647, 0.2       ],
-           [0.2       , 0.34117647, 1.        ]])
+            [1.        , 0.34117647, 0.2       ],
+            [0.2       , 0.34117647, 1.        ]])
 
     >>> # Single color input
     >>> harmonize_colors((255, 87, 51))
     ['#ff5733']
     """
 
-    # Handle single color inputs
+    # Normalize input into iterable of colors
     if isinstance(colors, str):
         colors = [colors]
+
     elif isinstance(colors, tuple):
         colors = [colors]
 
-    # Validate input type
-    if not isinstance(colors, (list, np.ndarray)):
+    elif isinstance(colors, np.ndarray):
+        if colors.ndim == 1:
+            # Single color (e.g., [R,G,B] or [R,G,B,A])
+            colors = [colors]
+        elif colors.ndim == 2:
+            # Multiple colors (Nx3 or Nx4)
+            colors = [row for row in colors]
+        else:
+            raise ValueError("NumPy array must be 1D or 2D for colors")
+
+    # Final validation
+    if not isinstance(colors, list):
         raise TypeError("Input must be a string, tuple, list, or numpy array")
 
     # Validate output format
