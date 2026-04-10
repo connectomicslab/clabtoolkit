@@ -775,6 +775,124 @@ class AnnotParcellation:
 
         return results  # list of dicts, one per region
 
+    #####################################################################################################
+    def correct_vertexwise_parcellation(
+        self,
+        surf: Union[str, Path],
+        cortex_file: Union[str, Path] = None,
+        min_cluster_size: int = None,
+    ):
+        """
+        Correct a vertex-wise parcellation by relabelling small disconnected clusters.
+
+        For each labelled region:
+        - If multiple components exist, zero any non-largest component below the size threshold.
+            - If only one component exists, zero the whole region if it's below the size threshold.
+            - Isolated single vertices with no neighbours in the same region are always zeroed out regardless of the threshold.
+            - After corrections, the parcellation is filled using the cortex label to ensure all vertices are assigned to a region.
+
+        Parameters
+        ----------
+        annot : AnnotParcellation
+            The input annotation parcellation to be corrected.
+
+        surf : Surface
+            The surface object corresponding to the annotation, used to extract edges for connectivity analysis.
+
+        cortex_file : str or Path, optional
+            Path to the cortex label file used to fill the parcellation after corrections. If None, filling is skipped.
+
+        min_cluster_size : int, optional
+            Minimum size (in vertices) for a cluster to be retained. Clusters smaller than this will be zeroed out. If None,
+            all non-largest components will be zeroed regardless of size of the largest component. Default is None.
+
+        Returns
+        -------
+        AnnotParcellation
+            A new AnnotParcellation object with the corrected parcellation.
+
+        Notes
+        -----
+        - If min_cluster_size is None, all non-largest components will be zeroed regardless of size of the largest component.
+        - Isolated single vertices with no neighbours in the same region are always zeroed out regardless of the threshold.
+
+        Examples
+        --------
+        >>> annot_corrected = correct_vertexwise_parcellation(annot_obj, surf_file, cortex_file=cortex_file, min_cluster_size=100)
+
+
+        """
+
+        from . import networktools as cltnet
+        from . import surfacetools as cltsurf
+
+        # Create a copy of the annotation object to modify
+        annot_obj = copy.deepcopy(self)  # Avoid modifying the original object
+
+        # ── 1. Load surface and extract edges ─────────────────────────────────────
+        if isinstance(surf, (str, Path)):
+            surface = cltsurf.Surface(surf)
+
+        edges = surface.get_edges()  # shape (n_edges, 2)
+
+        # ── 2. Iterate over every non-zero label ──────────────────────────────────
+        unique_labels = np.unique(annot_obj.codes)
+        unique_labels = unique_labels[unique_labels != 0]
+
+        # For each label, find the edges where both vertices belong to that label, then find connected components of those edges.
+        # If there are multiple components, zero out any component that is smaller than the size threshold (or all non-largest
+        # components if no threshold is set).
+        for label in unique_labels:
+            global_indices = np.flatnonzero(annot_obj.codes == label)
+
+            # Keep only edges where BOTH endpoints belong to this region
+            in_region = np.isin(edges, global_indices)  # shape (n_edges, 2)
+            both_in = np.all(in_region, axis=1)  # Bug fix: was >= 1
+            edges_in_region = edges[both_in]  # shape (n_region_edges, 2)
+
+            # Finding isolated vertices. The vertices that are in global_indices but are not in edges_in_region are
+            # isolated vertices with no neighbours in the same region. These should be zeroed out.
+            vertices_in_edges = np.unique(edges_in_region.flatten())
+            isolated_vertices = np.setdiff1d(global_indices, vertices_in_edges)
+            if len(isolated_vertices) > 0:
+                annot_obj.codes[isolated_vertices] = 0
+
+            if len(edges_in_region) == 0:
+                # Isolated single vertex with no neighbours — always zero it
+                annot_obj.codes[global_indices] = 0
+                continue
+
+            n_components, comp_labels, sizes = cltnet.edges_to_components(
+                edges_in_region, verbose=False
+            )
+
+            if n_components == 1:
+                # Single component: zero the whole region if too small
+                if min_cluster_size is not None:
+                    if sizes[0] < min_cluster_size:
+                        annot_obj.codes[global_indices] = 0
+
+            else:
+                # Multiple components: zero any non-largest component below threshold
+                # Component 0 is always the largest (guaranteed by edges_to_components)
+                if min_cluster_size is not None:
+                    for comp_id, size in sizes.items():
+                        if size < min_cluster_size:
+                            verts_to_zero = comp_labels[comp_labels[:, 1] == comp_id, 0]
+                            annot_obj.codes[verts_to_zero] = 0
+                else:
+                    # Delete all non-largest components regardless of size
+                    ind_2_delete = comp_labels[:, 1] != 0
+                    verts_to_zero = comp_labels[ind_2_delete, 0]
+                    annot_obj.codes[verts_to_zero] = 0
+
+        # ── 3. Fill parcellation after corrections ────────────────────────────────
+        if cortex_file is not None:
+            annot_obj.fill_parcellation(label_file=cortex_file, surf_file=surf)
+
+        self.codes = annot_obj.codes
+        return annot_obj.codes
+
     ####################################################################################################
     def fill_parcellation(
         self, label_file: str, surf_file: str, corr_annot: str = None
