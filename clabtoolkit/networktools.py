@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, csgraph
 from typing import Tuple, Union, Optional, List
 import warnings
 from collections import deque
@@ -356,9 +356,50 @@ def edges_to_csr(
 
 
 #####################################################################################################
+def edges_to_components(edges: np.ndarray, verbose: bool = True):
+    """
+    Compute connected components from an edge array of arbitrary vertex indices.
+    Components are labelled in decreasing order of size (0 = largest).
+
+    Parameters
+    ----------
+    edges : np.ndarray, shape (n_edges, 2)
+        Array of vertex index pairs. Indices can be global/non-contiguous.
+
+    verbose : bool
+            If True, print component sizes to the console.
+            If False, suppress output.
+
+    Returns
+    -------
+    n_components : int
+        Number of connected components.
+    labels : np.ndarray, shape (n_vert, 2)
+        Column 0: original vertex index. Column 1: component label (0 = largest).
+    sizes : dict
+        {component_label: size} sorted by decreasing size.
+    """
+    unique_verts = np.unique(edges)
+    n_vert = len(unique_verts)
+
+    global_to_local = np.full(unique_verts.max() + 1, fill_value=-1, dtype=np.int64)
+    global_to_local[unique_verts] = np.arange(n_vert)
+
+    local_edges = global_to_local[edges]
+
+    conn_matrix = edges_to_csr(local_edges)
+    # n_components, local_labels = csgraph.connected_components(
+    #     conn_matrix, directed=False
+    # )
+    n_components, labels, sizes = connected_components(conn_matrix, verbose=verbose)
+
+    return n_components, labels, sizes
+
+
+#####################################################################################################
 def connected_components(
-    csr_graph: csr_matrix, method: str = "union_find", return_labels: bool = False
-) -> Union[List[List[int]], Tuple[List[List[int]], np.ndarray]]:
+    csr_graph: csr_matrix, verbose: bool = True
+) -> Tuple[int, np.ndarray, dict]:
     """
     Find connected components in a CSR graph representation.
 
