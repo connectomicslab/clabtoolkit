@@ -1534,20 +1534,18 @@ class Surface:
             print(f"Number of edges in the surface: {len(edges)}")
 
             csr_graph = cltnet.edges_to_csr(edges, n_vertices=self.mesh.n_points)
-            components, labels = cltnet.connected_components(
-                csr_graph, return_labels=True
-            )
-            self.mesh.point_data["components"] = labels
+            n_components, labels, sizes = cltnet.connected_components(csr_graph)
+            self.mesh.point_data["components"] = labels[:, 1]
 
-            n_components = len(np.unique(labels))
+            # n_components = len(np.unique(labels))
             colors = cltcol.create_distinguishable_colors(n_components)
 
             ctab = cltcol.colors_to_table(colors, alpha_values=255)
-            new_labels = np.zeros_like(labels, dtype=np.int32)
+            new_labels = np.zeros_like(labels[:, 1], dtype=np.int32)
 
             # Reassign labels to match color indices
             for i in range(n_components):
-                new_labels[labels == i] = ctab[i, 4]  # Start labels from 1
+                new_labels[labels[:, 1] == i] = ctab[i, 4]  # Start labels from 1
             self.mesh.point_data["components"] = new_labels
 
             struct_names = [f"component_{i}" for i in range(n_components)]

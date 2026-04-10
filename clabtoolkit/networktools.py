@@ -373,29 +373,22 @@ def connected_components(
         Should be square with shape (n_vertices, n_vertices). For undirected graphs,
         the matrix should be symmetric. Non-zero entries represent connections.
 
-    method : str, default="union_find"
-        Algorithm to use for finding connected components:
-        - "union_find": Disjoint Set Union with path compression and union by rank.
-          Most efficient for sparse graphs. Time: O(E * α(V)), Space: O(V).
-        - "bfs": Breadth-First Search traversal.
-          Good memory characteristics. Time: O(V + E), Space: O(V).
-        - "dfs": Depth-First Search traversal.
-          Simple and intuitive. Time: O(V + E), Space: O(V).
+    verbose : bool
+        If True, print the number of components and their sizes to the console.
+        If False, suppress output.
 
-    return_labels : bool, default=False
-        If True, also return a label array where labels[i] indicates which
-        component vertex i belongs to. If False, only return the component lists.
 
     Returns
     -------
-    components : List[List[int]]
-        A list of connected components, where each component is a list of vertex
-        indices belonging to that component. Components are sorted by the
-        smallest vertex index in each component.
+    n_components : int
+        The total number of connected components found in the graph.
 
-    labels : np.ndarray, optional
-        Only returned if return_labels=True. A 1D array of length n_vertices
-        where labels[i] is the component ID (0-indexed) that vertex i belongs to.
+    labels : np.ndarray, shape (n_vertices, 2)
+        A 2D array where the first column contains the original vertex indices (0 to n_vertices-1)
+        and the second column contains the corresponding component label (0 for largest component).
+
+    sizes : dict
+        A dictionary mapping component labels to their sizes (number of vertices), sorted by decreasing size.
 
     Raises
     ------
@@ -462,9 +455,9 @@ def connected_components(
     if csr_graph.shape[0] != csr_graph.shape[1]:
         raise ValueError("CSR graph must be square")
 
-    n_vertices = csr_graph.shape[0]
+    n_nodes = csr_graph.shape[0]
 
-    if n_vertices == 0:
+    if n_nodes == 0:
         raise ValueError("Graph cannot be empty")
 
     # Check if graph is symmetric (undirected)
@@ -481,199 +474,26 @@ def connected_components(
     symmetric_graph = csr_graph + csr_graph.T
     symmetric_graph.data = (symmetric_graph.data > 0).astype(int)
 
-    # Choose algorithm
-    if method == "union_find":
-        components = _connected_components_union_find(symmetric_graph)
-    elif method == "bfs":
-        components = _connected_components_bfs(symmetric_graph)
-    elif method == "dfs":
-        components = _connected_components_dfs(symmetric_graph)
-    else:
-        raise ValueError(
-            f"Unknown method '{method}'. Choose from: 'union_find', 'bfs', 'dfs'"
-        )
+    n_components, local_labels = csgraph.connected_components(
+        symmetric_graph, directed=False
+    )
 
-    # Sort components by their smallest vertex index
-    components.sort(key=lambda comp: min(comp))
+    raw_sizes = np.bincount(local_labels)
+    rank_map = np.argsort(raw_sizes)[::-1]  # old label → rank position
+    inv_map = np.empty_like(rank_map)
+    inv_map[rank_map] = np.arange(n_components)  # old label → new label
+    sorted_labels = inv_map[local_labels]
 
-    if return_labels:
-        labels = np.empty(n_vertices, dtype=int)
-        for comp_id, component in enumerate(components):
-            for vertex in component:
-                labels[vertex] = comp_id
-        return components, labels
-    else:
-        return components
+    labels = np.column_stack([np.arange(n_nodes), sorted_labels])
 
-
-######################################################################################################
-def _connected_components_union_find(csr_graph: csr_matrix) -> List[List[int]]:
-    """Union-Find implementation for connected components."""
-    n_vertices = csr_graph.shape[0]
-    parent = np.arange(n_vertices)
-    rank = np.zeros(n_vertices, dtype=int)
-
-    def find(x: int) -> int:
-        if parent[x] != x:
-            parent[x] = find(parent[x])  # Path compression
-        return parent[x]
-
-    def union(x: int, y: int):
-        px, py = find(x), find(y)
-        if px == py:
-            return
-
-        # Union by rank
-        if rank[px] < rank[py]:
-            parent[px] = py
-        elif rank[px] > rank[py]:
-            parent[py] = px
-        else:
-            parent[py] = px
-            rank[px] += 1
-
-    # Process all edges
-    csr_graph.eliminate_zeros()  # Remove explicit zeros
-    for i in range(n_vertices):
-        start_idx = csr_graph.indptr[i]
-        end_idx = csr_graph.indptr[i + 1]
-        for j_idx in range(start_idx, end_idx):
-            j = csr_graph.indices[j_idx]
-            if i != j:  # Ignore self-loops
-                union(i, j)
-
-    # Group vertices by root
-    components_dict = {}
-    for vertex in range(n_vertices):
-        root = find(vertex)
-        if root not in components_dict:
-            components_dict[root] = []
-        components_dict[root].append(vertex)
-
-    return list(components_dict.values())
-
-
-#####################################################################################################
-def _connected_components_bfs(csr_graph: csr_matrix) -> List[List[int]]:
-    """BFS implementation for connected components."""
-    n_vertices = csr_graph.shape[0]
-    visited = np.zeros(n_vertices, dtype=bool)
-    components = []
-
-    def get_neighbors(vertex: int) -> List[int]:
-        start_idx = csr_graph.indptr[vertex]
-        end_idx = csr_graph.indptr[vertex + 1]
-        neighbors = []
-        for j_idx in range(start_idx, end_idx):
-            neighbor = csr_graph.indices[j_idx]
-            if vertex != neighbor:  # Ignore self-loops
-                neighbors.append(neighbor)
-        return neighbors
-
-    for start_vertex in range(n_vertices):
-        if not visited[start_vertex]:
-            component = []
-            queue = deque([start_vertex])
-            visited[start_vertex] = True
-
-            while queue:
-                vertex = queue.popleft()
-                component.append(vertex)
-
-                for neighbor in get_neighbors(vertex):
-                    if not visited[neighbor]:
-                        visited[neighbor] = True
-                        queue.append(neighbor)
-
-            components.append(component)
-
-    return components
-
-
-#####################################################################################################
-def _connected_components_dfs(csr_graph: csr_matrix) -> List[List[int]]:
-    """DFS implementation for connected components."""
-    n_vertices = csr_graph.shape[0]
-    visited = np.zeros(n_vertices, dtype=bool)
-    components = []
-
-    def get_neighbors(vertex: int) -> List[int]:
-        start_idx = csr_graph.indptr[vertex]
-        end_idx = csr_graph.indptr[vertex + 1]
-        neighbors = []
-        for j_idx in range(start_idx, end_idx):
-            neighbor = csr_graph.indices[j_idx]
-            if vertex != neighbor:  # Ignore self-loops
-                neighbors.append(neighbor)
-        return neighbors
-
-    def dfs(vertex: int, component: List[int]):
-        visited[vertex] = True
-        component.append(vertex)
-
-        for neighbor in get_neighbors(vertex):
-            if not visited[neighbor]:
-                dfs(neighbor, component)
-
-    for vertex in range(n_vertices):
-        if not visited[vertex]:
-            component = []
-            dfs(vertex, component)
-            components.append(component)
-
-    return components
-
-
-#####################################################################################################
-def component_statistics(components: List[List[int]]) -> dict:
-    """
-    Compute statistics about connected components.
-
-    Parameters
-    ----------
-    components : List[List[int]]
-        List of connected components from connected_components().
-
-    Returns
-    -------
-    dict
-        Dictionary containing component statistics:
-        - 'num_components': Number of connected components
-        - 'largest_component_size': Size of the largest component
-        - 'smallest_component_size': Size of the smallest component
-        - 'average_component_size': Average component size
-        - 'component_sizes': List of all component sizes
-        - 'giant_component_ratio': Ratio of largest to total vertices
-
-    Examples
-    --------
-    >>> components = [[0, 1, 2, 3], [4], [5, 6]]
-    >>> stats = component_statistics(components)
-    >>> print(f"Number of components: {stats['num_components']}")
-    >>> print(f"Giant component ratio: {stats['giant_component_ratio']:.2f}")
-    Number of components: 3
-    Giant component ratio: 0.57
-    """
-    if not components:
-        return {
-            "num_components": 0,
-            "largest_component_size": 0,
-            "smallest_component_size": 0,
-            "average_component_size": 0,
-            "component_sizes": [],
-            "giant_component_ratio": 0.0,
-        }
-
-    sizes = [len(comp) for comp in components]
-    total_vertices = sum(sizes)
-
-    return {
-        "num_components": len(components),
-        "largest_component_size": max(sizes),
-        "smallest_component_size": min(sizes),
-        "average_component_size": total_vertices / len(components),
-        "component_sizes": sizes,
-        "giant_component_ratio": (
-            max(sizes) / total_vertices if total_vertices > 0 else 0.0
-        ),
+    sizes = {
+        new_label: int(raw_sizes[old_label])
+        for new_label, old_label in enumerate(rank_map)
     }
+
+    if verbose:
+        print(f"Components : {n_components}")
+        for label, size in sizes.items():
+            print(f"  └─ Component {label:>3d} : {size} vertices")
+
+    return n_components, labels, sizes
