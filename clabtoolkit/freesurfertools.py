@@ -14,6 +14,7 @@ import numpy as np
 import nibabel as nib
 import pandas as pd
 from collections import defaultdict
+import copy
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich.progress import (
