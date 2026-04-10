@@ -393,6 +393,9 @@ def edges_to_components(edges: np.ndarray, verbose: bool = True):
     # )
     n_components, labels, sizes = connected_components(conn_matrix, verbose=verbose)
 
+    # Map local labels back to global vertex indices in case of non-contiguous indices
+    labels[:, 0] = unique_verts[labels[:, 0]]
+
     return n_components, labels, sizes
 
 
