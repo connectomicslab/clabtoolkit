@@ -174,7 +174,7 @@ def compute_reg_val_fromannot(
         tmp_names = sparc_data.regnames
         unk_indexes = cltmisc.get_indexes_by_substring(
             tmp_names, ["medialwall", "unknown", "corpuscallosum"]
-        ).astype(int)
+        )
 
         if len(unk_indexes) > 0:
             unk_codes = sparc_data.regtable[unk_indexes, 4]
