@@ -1544,354 +1544,276 @@ class AnnotParcellation:
     ####################################################################################################
     @staticmethod
     def gii2annot(
-        gii_file: Union[str, Path],
-        ref_surf: Union[str, Path] = None,
-        annot_file: Union[str, Path] = None,
-        cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
-    ):
+        gii_file: str,
+        annot_file: str = None,
+    ) -> str:
         """
-        Convert FreeSurfer GIFTI parcellation files to annotation files using mris_convert.
-
-        This method converts GIFTI label files (commonly used in neuroimaging pipelines
-        like HCP, fMRIPrep) to FreeSurfer's native annotation format. The conversion
-        enables use of external parcellations within FreeSurfer's ecosystem and
-        visualization tools.
+        Convert a GIFTI label file (.label.gii) to a FreeSurfer annotation file
+        (.annot) using nibabel, without requiring a FreeSurfer installation.
 
         Parameters
         ----------
-        gii_file : str or Path
-            Path to the input GIFTI label file (.gii). The file should contain
-            parcellation labels corresponding to surface vertices. The hemisphere
-            is automatically detected from the filename.
+        gii_file : str
+            Path to the input GIFTI label file. The file must contain at least one
+            integer data array (the per-vertex label keys) and a populated
+            ``LabelTable`` with RGBA colors and region names.
 
-        ref_surf : str or Path, optional
-            Path to the reference surface file used for the conversion. This surface
-            should match the geometric space of the GIFTI file. If None, defaults
-            to the white surface of the fsaverage subject from FREESURFER_HOME.
-            Default is None.
-
-        annot_file : str or Path, optional
-            Path for the output annotation file. If None, the output file is created
-            in the same directory as the input file with the extension changed from
-            .gii to .annot. Default is None.
-
-        cont_tech : str, optional
-            Container technology for running FreeSurfer commands. Options include
-            'local' (run directly), 'singularity', 'docker', or other supported
-            containerization methods. Default is 'local'.
-
-        cont_image : str or Path, optional
-            Container image specification when using containerized execution.
-            Required when cont_tech is not 'local'. Should specify the FreeSurfer
-            container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
+        annot_file : str, optional
+            Path for the output FreeSurfer annotation file. If None, the output is
+            placed in the same directory as the input with the ``.gii`` extension
+            replaced by ``.annot``. Default is None.
 
         Returns
         -------
         annot_file : str
-            Path to the created annotation file.
+            Absolute path to the created ``.annot`` file.
 
         Raises
         ------
         ValueError
-            If the input GIFTI file does not exist.
-
+            If ``gii_file`` does not exist.
         ValueError
-            If FREESURFER_HOME environment variable is not set and no reference
-            surface is provided.
-
+            If the GIFTI file contains no data arrays.
         ValueError
-            If the provided reference surface file does not exist.
+            If the GIFTI LabelTable is empty.
 
         Notes
         -----
-        This method uses FreeSurfer's `mris_convert` command with the `--annot` flag
-        to perform the conversion. The command structure is:
+        FreeSurfer annotation format
+            Each vertex is assigned a packed integer code computed as
+            ``R + G*256 + B*65536`` (alpha is ignored in the code but stored in
+            the ctab). The ctab is an ``(n_regions, 5)`` int32 array whose columns
+            are ``[R, G, B, A, code]``.
 
-        .. code-block:: bash
+        GIFTI colour range
+            nibabel exposes ``GiftiLabel`` RGBA attributes as floats in ``[0, 1]``.
+            This method multiplies by 255 and rounds to obtain uint8 values.
 
-            mris_convert --annot input.gii reference_surface.surf output.annot
-
-        The reference surface is crucial for proper conversion as it defines the
-        vertex correspondence between the GIFTI labels and the annotation format.
-        The method automatically detects the hemisphere from the GIFTI filename
-        and selects the appropriate reference surface.
-
-        Container execution allows running FreeSurfer tools without a local
-        installation, which is useful in cloud environments or when FreeSurfer
-        is not available locally.
+        Missing colours / names
+            Labels whose RGBA values are ``None`` default to ``(0, 0, 0, 255)``.
+            Labels whose ``label`` attribute is ``None`` receive the name
+            ``"region_<key>"``.
 
         Examples
         --------
-        Basic conversion with automatic reference surface:
-
-        >>> # Convert HCP-style parcellation to FreeSurfer format
-        >>> gii_file = '/path/to/lh.Schaefer2018_400Parcels.label.gii'
-        >>> annot_file = AnnotParcellation.gii2annot(gii_file)
-        >>> print(f"Created annotation: {annot_file}")
-
-        Specify custom reference surface:
-
-        >>> # Use subject-specific surface for conversion
-        >>> gii_file = '/path/to/rh.custom_parcellation.gii'
-        >>> ref_surf = '/path/to/subject/surf/rh.pial'
-        >>> output_file = '/path/to/output/rh.custom.annot'
-        >>>
-        >>> result = AnnotParcellation.gii2annot(
-        ...     gii_file=gii_file,
-        ...     ref_surf=ref_surf,
-        ...     annot_file=output_file
+        >>> annot = AnnotParcellation.gii2annot(
+        ...     gii_file='lh.Schaefer2018_400Parcels.label.gii'
         ... )
+        >>> print(annot)          # lh.Schaefer2018_400Parcels.label.annot
 
-        Using Docker container:
-
-        >>> # Run conversion in FreeSurfer Docker container
-        >>> annot_file = AnnotParcellation.gii2annot(
-        ...     gii_file='parcellation.gii',
-        ...     cont_tech='docker',
-        ...     cont_image='freesurfer/freesurfer:7.2.0'
+        >>> annot = AnnotParcellation.gii2annot(
+        ...     gii_file='/path/to/rh.custom.label.gii',
+        ...     annot_file='/output/rh.custom.annot',
         ... )
 
         See Also
         --------
-        annot2gii : Convert annotation files to GIFTI format
-        mris_convert : FreeSurfer command-line tool for surface file conversion
+        annot2gii : Reverse conversion from ``.annot`` to GIFTI format.
         """
 
-        if isinstance(gii_file, Path):
-            gii_file = str(gii_file)
-
-        if ref_surf is not None:
-            if isinstance(ref_surf, Path):
-                ref_surf = str(ref_surf)
-
-        if annot_file is not None:
-            if isinstance(annot_file, Path):
-                annot_file = str(annot_file)
-
+        # ------------------------------------------------------------------ #
+        #  Input validation                                                    #
+        # ------------------------------------------------------------------ #
         if not os.path.exists(gii_file):
-            raise ValueError("The gii file does not exist")
+            raise ValueError(f"The GIFTI file does not exist: {gii_file}")
 
-        if ref_surf is None:
+        img = nib.load(gii_file)
 
-            # Get freesurfer directory
-            if "FREESURFER_HOME" in os.environ:
-                freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], "subjects")
-                subj_id = "fsaverage"
+        if not img.darrays:
+            raise ValueError("The GIFTI file contains no data arrays.")
 
-                hemi = detect_hemi(gii_file)
-                ref_surf = os.path.join(
-                    freesurfer_dir, subj_id, "surf", hemi + ".white"
-                )
-            else:
-                raise ValueError(
-                    "Impossible to set the reference surface file. Please provide it as an argument"
-                )
-
-        else:
-            if not os.path.exists(ref_surf):
-                raise ValueError("The reference surface file does not exist")
-
-        if annot_file is None:
-            annot_file = os.path.join(
-                os.path.dirname(gii_file),
-                os.path.basename(gii_file).replace(".gii", ".annot"),
+        label_table = img.labeltable.labels
+        if not label_table:
+            raise ValueError(
+                "The GIFTI LabelTable is empty. Cannot build a colour table."
             )
 
-        # Generating the bash command
-        cmd_bashargs = ["mris_convert", "--annot", gii_file, ref_surf, annot_file]
+        # ------------------------------------------------------------------ #
+        #  Build ctab (n_regions × 5) and names list from the LabelTable      #
+        # ------------------------------------------------------------------ #
+        def _to_uint8(value, default: int = 0) -> int:
+            return int(round(value * 255)) if value is not None else default
 
-        cmd_cont = cltmisc.generate_container_command(
-            cmd_bashargs, cont_tech, cont_image
-        )  # Generating container command
-        subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-        )  # Running container command
+        ctab_rows: list[list[int]] = []
+        names: list[bytes] = []
+        key_to_row: dict[int, int] = {}  # GIFTI key  →  ctab row index
+
+        for row_idx, lbl in enumerate(label_table):
+            r = _to_uint8(lbl.red, default=0)
+            g = _to_uint8(lbl.green, default=0)
+            b = _to_uint8(lbl.blue, default=0)
+            a = _to_uint8(lbl.alpha, default=255)
+            code = r + g * 256 + b * 65536
+
+            key_to_row[int(lbl.key)] = row_idx  # <-- row index, not code
+
+            ctab_rows.append([r, g, b, a, code])
+            region_name = lbl.label if lbl.label is not None else f"region_{lbl.key}"
+            names.append(
+                region_name.encode() if isinstance(region_name, str) else region_name
+            )
+
+        ctab = np.array(ctab_rows, dtype=np.int32)
+
+        # ------------------------------------------------------------------ #
+        #  Map per-vertex GIFTI keys → ctab row indices  (not packed codes)   #
+        # ------------------------------------------------------------------ #
+        vertex_keys = img.darrays[0].data.astype(np.int32)
+        vertex_labels = np.vectorize(
+            lambda k: key_to_row.get(int(k), 0), otypes=[np.int32]
+        )(vertex_keys)
+
+        # ------------------------------------------------------------------ #
+        #  Resolve output path and write                                       #
+        # ------------------------------------------------------------------ #
+        if annot_file is None:
+            basename = os.path.basename(gii_file)
+            # Handle both .label.gii and plain .gii suffixes
+            for suffix in (".label.gii", ".gii"):
+                if basename.endswith(suffix):
+                    basename = basename[: -len(suffix)] + ".annot"
+                    break
+            annot_file = os.path.join(os.path.dirname(gii_file), basename)
+
+        nib.freesurfer.io.write_annot(annot_file, vertex_labels, ctab, names)
 
         return annot_file
 
     ####################################################################################################
     @staticmethod
     def annot2gii(
-        annot_file: Union[str, Path],
-        ref_surf: Union[str, Path] = None,
-        gii_file: Union[str, Path] = None,
-        cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
-    ):
+        annot_file: str,
+        gii_file: str = None,
+    ) -> str:
         """
-        Convert FreeSurfer annotation files to GIFTI format using mris_convert.
-
-        This method converts FreeSurfer's native annotation format to GIFTI label
-        files, enabling use of FreeSurfer parcellations in other neuroimaging
-        software and analysis pipelines that support GIFTI format (e.g., Connectome
-        Workbench, CIFTI-based analyses).
+        Convert a FreeSurfer annotation file (.annot) to a GIFTI label file
+        (.label.gii) using nibabel, without requiring a FreeSurfer installation.
 
         Parameters
         ----------
-        annot_file : str or Path
-            Path to the input FreeSurfer annotation file (.annot). This file
-            contains the parcellation labels and associated color/name information
-            in FreeSurfer's binary format.
+        annot_file : str
+            Path to the input FreeSurfer annotation file. The file must contain
+            a valid per-vertex label array and a colour table.
 
-        ref_surf : str or Path, optional
-            Path to the reference surface file that corresponds to the annotation.
-            This surface defines the vertex coordinates and topology. If None,
-            defaults to the white surface of the fsaverage subject from
-            FREESURFER_HOME. Default is None.
-
-        gii_file : str or Path, optional
-            Path for the output GIFTI file. If None, the output file is created
-            in the same directory as the input file with the extension changed
-            from .annot to .gii. Default is None.
-
-        cont_tech : str, optional
-            Container technology for running FreeSurfer commands. Options include
-            'local' (run directly), 'singularity', 'docker', or other supported
-            containerization methods. Default is 'local'.
-
-        cont_image : str or Path, optional
-            Container image specification when using containerized execution.
-            Required when cont_tech is not 'local'. Should specify the FreeSurfer
-            container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
+        gii_file : str, optional
+            Path for the output GIFTI label file. If None, the output is placed
+            in the same directory as the input with the ``.annot`` extension
+            replaced by ``.label.gii``. Default is None.
 
         Returns
         -------
         gii_file : str
-            Path to the created GIFTI file.
+            Absolute path to the created ``.label.gii`` file.
 
         Raises
         ------
         ValueError
-            If the input annotation file does not exist.
-
-        ValueError
-            If FREESURFER_HOME environment variable is not set and no reference
-            surface is provided.
-
-        ValueError
-            If the provided reference surface file does not exist.
+            If ``annot_file`` does not exist.
 
         Notes
         -----
-        This method uses FreeSurfer's `mris_convert` command with the `--annot` flag
-        to perform the conversion. The command structure is:
+        FreeSurfer annotation format
+            Each vertex stores a packed integer code ``R + G*256 + B*65536``.
+            The ctab is an ``(n_regions, 5)`` int32 array with columns
+            ``[R, G, B, A, code]``.
 
-        .. code-block:: bash
+        GIFTI colour range
+            ``GiftiLabel`` RGBA attributes are floats in ``[0, 1]``. This method
+            divides the uint8 ctab values by 255.
 
-            mris_convert --annot input.annot reference_surface.surf output.gii
-
-        The GIFTI format is more widely supported across neuroimaging software
-        packages and is part of the CIFTI specification used in large-scale
-        neuroimaging projects. The conversion preserves the parcellation labels
-        but may not retain all FreeSurfer-specific metadata.
-
-        The hemisphere is automatically detected from the annotation filename
-        to select the appropriate reference surface when using the default
-        fsaverage surfaces.
+        Region names
+            nibabel may return names as bytes or strings depending on the file.
+            Both are handled and decoded to plain strings in the LabelTable.
 
         Examples
         --------
-        Basic conversion with automatic reference surface:
-
-        >>> # Convert FreeSurfer parcellation to GIFTI format
-        >>> annot_file = '/path/to/lh.aparc.annot'
-        >>> gii_file = AnnotParcellation.annot2gii(annot_file)
-        >>> print(f"Created GIFTI: {gii_file}")
-
-        Specify custom output location:
-
-        >>> # Convert with custom output path
-        >>> annot_file = '/path/to/rh.Destrieux.annot'
-        >>> output_file = '/output/rh.Destrieux.label.gii'
-        >>>
-        >>> result = AnnotParcellation.annot2gii(
-        ...     annot_file=annot_file,
-        ...     gii_file=output_file
+        >>> gii = AnnotParcellation.annot2gii(
+        ...     annot_file='lh.aparc.annot'
         ... )
+        >>> print(gii)            # lh.aparc.label.gii
 
-        Using subject-specific surface:
-
-        >>> # Use individual subject's surface
-        >>> annot_file = '/subjects/sub001/label/lh.aparc.a2009s.annot'
-        >>> ref_surf = '/subjects/sub001/surf/lh.white'
-        >>>
-        >>> gii_file = AnnotParcellation.annot2gii(
-        ...     annot_file=annot_file,
-        ...     ref_surf=ref_surf
-        ... )
-
-        Using Singularity container:
-
-        >>> # Run conversion in Singularity container
-        >>> gii_file = AnnotParcellation.annot2gii(
-        ...     annot_file='parcellation.annot',
-        ...     cont_tech='singularity',
-        ...     cont_image='/path/to/freesurfer.sif'
+        >>> gii = AnnotParcellation.annot2gii(
+        ...     annot_file='/path/to/rh.Destrieux.annot',
+        ...     gii_file='/output/rh.Destrieux.label.gii',
         ... )
 
         See Also
         --------
-        gii2annot : Convert GIFTI files to annotation format
-        mris_convert : FreeSurfer command-line tool for surface file conversion
+        gii2annot : Reverse conversion from GIFTI to ``.annot`` format.
         """
 
-        if isinstance(annot_file, Path):
-            annot_file = str(annot_file)
-
-        if ref_surf is not None:
-            if isinstance(ref_surf, Path):
-                ref_surf = str(ref_surf)
-
-        if gii_file is not None:
-            if isinstance(gii_file, Path):
-                gii_file = str(gii_file)
-
-        # Check if the annot file exists
+        # ------------------------------------------------------------------ #
+        #  Input validation                                                    #
+        # ------------------------------------------------------------------ #
         if not os.path.exists(annot_file):
-            raise ValueError("The annot file does not exist")
+            raise ValueError(f"The annotation file does not exist: {annot_file}")
 
-        if ref_surf is None:
+        # ------------------------------------------------------------------ #
+        #  Read annotation                                                     #
+        # ------------------------------------------------------------------ #
+        # vertex_codes : (n_vertices,) packed color codes
+        # ctab         : (n_regions, 5)  [R, G, B, A, code]
+        # names        : list of bytes or str, one per region
+        vertex_codes, ctab, names = nib.freesurfer.io.read_annot(annot_file)
 
-            # Get freesurfer directory
-            if "FREESURFER_HOME" in os.environ:
-                freesurfer_dir = os.path.join(os.environ["FREESURFER_HOME"], "subjects")
-                subj_id = "fsaverage"
+        # ------------------------------------------------------------------ #
+        #  Build code → row-index lookup and GiftiLabelTable                  #
+        # ------------------------------------------------------------------ #
+        label_table = nib.gifti.GiftiLabelTable()
+        code_to_row: dict[int, int] = {}
 
-                hemi = detect_hemi(gii_file)
-                ref_surf = os.path.join(
-                    freesurfer_dir, subj_id, "surf", hemi + ".white"
-                )
-            else:
-                raise ValueError(
-                    "Impossible to set the reference surface file. Please provide it as an argument"
-                )
-
-        else:
-            if not os.path.exists(ref_surf):
-                raise ValueError("The reference surface file does not exist")
-
-        if gii_file is None:
-            gii_file = os.path.join(
-                os.path.dirname(annot_file),
-                os.path.basename(annot_file).replace(".annot", ".gii"),
+        for row_idx, (row, name) in enumerate(zip(ctab, names)):
+            r, g, b, a, code = (
+                int(row[0]),
+                int(row[1]),
+                int(row[2]),
+                int(row[3]),
+                int(row[4]),
             )
 
-        if not os.path.exists(annot_file):
-            raise ValueError("The annot file does not exist")
+            code_to_row[code] = row_idx
 
-        if not os.path.exists(ref_surf):
-            raise ValueError("The reference surface file does not exist")
+            region_name = name.decode() if isinstance(name, bytes) else name
 
-        # Generating the bash command
-        cmd_bashargs = ["mris_convert", "--annot", annot_file, ref_surf, gii_file]
+            lbl = nib.gifti.GiftiLabel(
+                key=row_idx,
+                red=r / 255.0,
+                green=g / 255.0,
+                blue=b / 255.0,
+                alpha=a / 255.0,
+            )
+            lbl.label = region_name
+            label_table.labels.append(lbl)
 
-        cmd_cont = cltmisc.generate_container_command(
-            cmd_bashargs, cont_tech, cont_image
-        )  # Generating container command
-        subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-        )  # Running container command
+        # ------------------------------------------------------------------ #
+        #  Map per-vertex packed codes → row indices                          #
+        # ------------------------------------------------------------------ #
+        vertex_keys = np.vectorize(
+            lambda c: code_to_row.get(int(c), 0), otypes=[np.int32]
+        )(vertex_codes)
+
+        # ------------------------------------------------------------------ #
+        #  Build GIFTI image and write                                        #
+        # ------------------------------------------------------------------ #
+        darray = nib.gifti.GiftiDataArray(
+            data=vertex_keys,
+            intent=nib.nifti1.intent_codes["NIFTI_INTENT_LABEL"],
+            datatype="NIFTI_TYPE_INT32",
+        )
+
+        img = nib.gifti.GiftiImage(darrays=[darray])
+        img.labeltable = label_table
+
+        # ------------------------------------------------------------------ #
+        #  Resolve output path and save                                       #
+        # ------------------------------------------------------------------ #
+        if gii_file is None:
+            basename = os.path.basename(annot_file).replace(".annot", ".label.gii")
+            gii_file = os.path.join(os.path.dirname(annot_file), basename)
+
+        nib.save(img, gii_file)
+
+        return gii_file
 
     ####################################################################################################
     @staticmethod
