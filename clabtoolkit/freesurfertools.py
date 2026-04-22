@@ -4776,7 +4776,7 @@ class FreeSurferSubject:
                     lh_wm_code = [x + 2000 for x in lh_ctx_code]
 
                     rh_wm_name = cltmisc.correct_names(
-                        rh_ctx_name, replacements={"ctx-lh-": "wm-lh-"}
+                        rh_ctx_name, replacements={"ctx-rh-": "wm-rh-"}
                     )
                     # Add 2000 to each element of the list lh_ctx_code to create the WM code
                     rh_wm_code = [x + 2000 for x in rh_ctx_code]
