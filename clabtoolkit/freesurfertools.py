@@ -1172,6 +1172,10 @@ class AnnotParcellation:
             ranges are required. The offset is added to sequential indices starting
             from 0. Default is 1000.
 
+        hemi : str, optional
+            Hemisphere identifier to include in the region names (e.g., 'L' or 'R').
+            This is purely for naming purposes and does not affect the data. Default is 'L'.
+
         tsv_file : str or Path, optional
             Path where the TSV file should be saved. If provided, the DataFrame
             will be written to this file with tab separation. The parent directory
@@ -1180,9 +1184,9 @@ class AnnotParcellation:
 
         output_format : str, optional
             If set to "templateflow", the output DataFrame will follow the TemplateFlow
-            parcellation table format, which includes only 'index', 'name', and 'color' columns. 
+            parcellation table format, which includes only 'index', 'hemi', 'name', and 'color' columns.
             In this format, 'index' corresponds to the original annotation IDs, and 'name'
-            includes the optional prefix. If None (default), the full format with 'index', 'annotid', 
+            includes the optional prefix. If None (default), the full format with 'index', 'annotid',
             'parcid', 'name', and 'color' is used.
 
         Returns
@@ -1302,6 +1306,7 @@ class AnnotParcellation:
             tsv_df = pd.DataFrame(
                 {
                     "index": np.asarray(annot_id),
+                    "hemi": [hemi] * len(parc_names),
                     "name": parc_names,
                     "color": parc_hexcolor,
                 }
@@ -1310,6 +1315,7 @@ class AnnotParcellation:
             tsv_df = pd.DataFrame(
                 {
                     "index": np.asarray(parc_index),
+                    "hemi": [hemi] * len(parc_names),
                     "annotid": np.asarray(annot_id),
                     "parcid": np.asarray(parc_id),
                     "name": parc_names,
@@ -2085,103 +2091,6 @@ class AnnotParcellation:
         )  # Running container command
 
         return annot_file
-
-    ####################################################################################################
-    def annot2tsv(self, tsv_file: str = None):
-        """
-        Save the annotation colort able a tab-separated values (TSV) file.
-
-        This method exports the region-wise parcellation labels to a simple text
-        format that can be easily read by other software packages or analysis
-        scripts. Each line contains the label ID for the corresponding region.
-
-        Parameters
-        ----------
-        tsv_file : str, optional
-            Path for the output TSV file. If None, the file is saved in the same
-            directory as the annotation file with the extension changed from
-            .annot to .tsv. The directory will be created if it doesn't exist.
-            Default is None.
-
-        Returns
-        -------
-        tsv_file : str
-            Path to the created TSV file.
-
-        Notes
-        -----
-        The output TSV file contains one integer per line, where each line
-        corresponds to a region index and the value represents the parcellation
-        label assigned to that vertices of that region.
-
-        This simple format is useful for:
-
-        - Importing labels into custom analysis scripts
-        - Interfacing with non-FreeSurfer neuroimaging software
-        - Creating lightweight label files for data sharing
-        - Debugging and manual inspection of parcellation assignments
-
-        The method uses tab separation and integer formatting to ensure
-        compatibility across different systems and software packages.
-
-        Examples
-        --------
-        Save to default location:
-
-        >>> # Annotation file: /data/lh.aparc.annot
-        >>> # Output will be: /data/lh.aparc.tsv
-        >>> tsv_path = AnnotParcellation.annot2tsv()
-        >>> print(f"Labels saved to: {tsv_path}")
-
-        Specify custom output path:
-
-        >>> # Save to specific location
-        >>> output_file = '/analysis/vertex_labels.tsv'
-        >>> tsv_path = AnnotParcellation.annot2tsv(tsv_file=output_file)
-        >>>
-        >>> # Verify the output
-        >>> import numpy as np
-        >>> labels = np.loadtxt(tsv_path, dtype=int)
-        >>> print(f"Loaded {len(labels)} vertex labels")
-        >>> print(f"Unique labels: {np.unique(labels)}")
-
-        Use in analysis pipeline:
-
-        >>> # Convert annotation to TSV for external analysis
-        >>> tsv_file = AnnotParcellation.annot2tsv()
-        >>>
-        >>> # Read in external software (e.g., R, MATLAB)
-        >>> # R: labels <- read.table(tsv_file, header=FALSE)
-        >>> # MATLAB: labels = readtable(tsv_file);
-
-        Batch processing multiple annotations:
-
-        >>> import glob
-        >>> annot_files = glob.glob('/subjects/*/label/*.annot')
-        >>>
-        >>> for annot_file in annot_files:
-        ...     annot = AnnotParcellation(annot_file)
-        ...     tsv_path = AnnotParcellation.annot2tsv()
-        ...     print(f"Converted: {annot_file} -> {tsv_path}")
-
-        See Also
-        --------
-        numpy.savetxt : Function used internally for saving arrays
-        export_to_tsv : Export comprehensive parcellation table with metadata
-        """
-
-        if tsv_file is None:
-            tsv_file = os.path.join(self.path, self.name.replace(".annot", ".tsv"))
-
-        # If the directory does not exist then create it
-        temp_dir = os.path.dirname(tsv_file)
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-
-        # Save the annotation file
-        np.savetxt(tsv_file, self.codes, fmt="%d", delimiter="\t")
-
-        return tsv_file
 
     ####################################################################################################
     def annot2gcs(
