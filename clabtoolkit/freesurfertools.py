@@ -1146,7 +1146,9 @@ class AnnotParcellation:
         self,
         prefix2add: str = None,
         reg_offset: int = 1000,
+        hemi: str = "L",
         tsv_file: Union[str, Path] = None,
+        output_format: str = None,
     ):
         """
         Export the parcellation table to a TSV file containing region information.
@@ -1175,6 +1177,13 @@ class AnnotParcellation:
             will be written to this file with tab separation. The parent directory
             will be created if it doesn't exist. If None, no file is saved and
             only the DataFrame is returned. Default is None.
+
+        output_format : str, optional
+            If set to "templateflow", the output DataFrame will follow the TemplateFlow
+            parcellation table format, which includes only 'index', 'name', and 'color' columns. 
+            In this format, 'index' corresponds to the original annotation IDs, and 'name'
+            includes the optional prefix. If None (default), the full format with 'index', 'annotid', 
+            'parcid', 'name', and 'color' is used.
 
         Returns
         -------
@@ -1269,6 +1278,10 @@ class AnnotParcellation:
         cltcol.correct_names : For applying prefixes to region names
         """
 
+        # Check that hemi has a valid value (L or R)
+        if hemi not in ["L", "R"]:
+            raise ValueError(f"Invalid value for hemi: {hemi!r}. Expected 'L' or 'R'.")
+
         # Creating the hexadecimal colors for the regions
         parc_hexcolor = cltcol.multi_rgb2hex(self.regtable[:, 0:3])
 
@@ -1285,15 +1298,24 @@ class AnnotParcellation:
         parc_id = reg_offset + parc_index
 
         # Creating the dictionary for the tsv files
-        tsv_df = pd.DataFrame(
-            {
-                "index": np.asarray(parc_index),
-                "annotid": np.asarray(annot_id),
-                "parcid": np.asarray(parc_id),
-                "name": parc_names,
-                "color": parc_hexcolor,
-            }
-        )
+        if output_format == "templateflow":
+            tsv_df = pd.DataFrame(
+                {
+                    "index": np.asarray(annot_id),
+                    "name": parc_names,
+                    "color": parc_hexcolor,
+                }
+            )
+        else:
+            tsv_df = pd.DataFrame(
+                {
+                    "index": np.asarray(parc_index),
+                    "annotid": np.asarray(annot_id),
+                    "parcid": np.asarray(parc_id),
+                    "name": parc_names,
+                    "color": parc_hexcolor,
+                }
+            )
 
         # Save the tsv table
         if tsv_file is not None:
