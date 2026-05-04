@@ -1,26 +1,11 @@
 import os
 import numpy as np
-import warnings
 from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
-from scipy.interpolate import RegularGridInterpolator
+from typing import List, Union
 
 import nibabel as nib
-from nibabel.streamlines import Field, ArraySequence
-from nibabel.streamlines.trk import TrkFile
-from nibabel.orientations import aff2axcodes
 
 from skimage import measure
-from typing import Union, Dict, List
-from dipy.segment.clustering import QuickBundlesX, QuickBundles
-from dipy.tracking.streamline import set_number_of_points
-from dipy.io.streamline import save_trk
-from dipy.io.stateful_tractogram import StatefulTractogram, Space
-
-
-# add progress bar using rich progress bar
-from rich.progress import Progress, TextColumn, BarColumn, SpinnerColumn
-
 
 # Importing the internal modules
 from . import misctools as cltmisc
@@ -458,12 +443,7 @@ def get_b0s(
     return b0s_img, b0_vols
 
 
-###
-import nibabel as nib
-import numpy as np
-import os
-
-
+############################################################################################################
 def compute_scalar_maps_from_tensor(
     eigvals: Union[str, Path, list, tuple],
     out_basename: Union[str, Path],
