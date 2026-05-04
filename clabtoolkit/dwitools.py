@@ -444,7 +444,7 @@ def get_b0s(
 
 
 ############################################################################################################
-def compute_scalar_maps_from_tensor(
+def maps_from_tensor_eigenvalues(
     eigvals: Union[str, Path, list, tuple],
     out_basename: Union[str, Path],
     dtmaps: list = ["all"],
