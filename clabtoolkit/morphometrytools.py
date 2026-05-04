@@ -216,7 +216,9 @@ def compute_reg_val_fromannot(
 
         if len(index):
             region_mask = sparc_data.codes == sparc_data.regtable[index, 4]
-            region_stats = stats_from_vector(metric_vect[region_mask], stats_list)
+            region_stats = stats_from_vector(
+                metric_vect[region_mask], stats_list, nonzeros_only=nonzeros_only
+            )
             dict_of_cols[regname] = region_stats
         else:
             dict_of_cols[regname] = [0] * len(stats_list)
