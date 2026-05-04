@@ -458,6 +458,307 @@ def get_b0s(
     return b0s_img, b0_vols
 
 
+###
+import nibabel as nib
+import numpy as np
+import os
+
+
+def compute_scalar_maps_from_tensor(
+    eigvals: Union[str, Path, list, tuple],
+    out_basename: Union[str, Path],
+    dtmaps: list = ["all"],
+    overwrite: bool = False,
+) -> dict:
+    """
+    Compute scalar maps derived from diffusion tensor eigenvalues.
+
+    Eigenvalues can be supplied either as a single 4D NIfTI image (volumes
+    ordered as λ1, λ2, λ3 along the 4th axis) or as a list/tuple of three
+    separate 3D NIfTI files ``[l1_path, l2_path, l3_path]``.
+
+    Division-by-zero voxels are handled safely: whenever the denominator is
+    zero the result at that voxel is set to 0.
+
+    Parameters
+    ----------
+    eigvals : str or list/tuple of str
+        Path to a 4D eigenvalue NIfTI image **or** a list/tuple of three paths
+        to the individual eigenvalue volumes ``[λ1, λ2, λ3]``.
+
+    out_basename : str
+        Full path prefix for the output files. The map tag and ``.nii.gz``
+        extension are appended automatically (e.g. ``/path/sub-01_desc-DTI``
+        → ``/path/sub-01_desc-DTI_FA.nii.gz``).
+
+    dtmaps : list of str, optional
+        Scalar maps to compute. Use ``['all']`` (default) to compute every
+        supported map. Supported tags (case-insensitive):
+
+        ========  ==============================================
+        Tag       Description
+        ========  ==============================================
+        ``AD``    Axial Diffusivity (λ1)
+        ``RD``    Radial Diffusivity ((λ2 + λ3) / 2)
+        ``MD``    Mean Diffusivity ((λ1 + λ2 + λ3) / 3)
+        ``FA``    Fractional Anisotropy
+        ``CL``    Linear Anisotropy Coefficient
+        ``CP``    Planar Anisotropy Coefficient
+        ``CS``    Spherical Anisotropy Coefficient
+        ``VF``    Volume Fraction
+        ``GA``    Geodesic Anisotropy
+        ``RA``    Relative Anisotropy
+        ========  ==============================================
+
+    overwrite : bool, optional
+        If ``True``, recompute and overwrite existing output files.
+        Default is ``False``.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping each requested tag to the path of the saved
+        NIfTI file, or to an empty string if the file could not be created.
+
+    Raises
+    ------
+    ValueError
+        If ``eigvals`` is not a str, list, or tuple; or if a list/tuple does
+        not contain exactly three elements.
+    FileNotFoundError
+        If any of the supplied eigenvalue paths do not exist.
+
+    Examples
+    --------
+    >>> # 4D eigenvalue image
+    >>> maps = compute_scalar_maps_from_tensor(
+    ...     "sub-01_eigvals.nii.gz",
+    ...     "out/sub-01",
+    ...     dtmaps=["FA", "MD"],
+    ... )
+
+    >>> # Three separate eigenvalue files
+    >>> maps = compute_scalar_maps_from_tensor(
+    ...     ["sub-01_l1.nii.gz", "sub-01_l2.nii.gz", "sub-01_l3.nii.gz"],
+    ...     "out/sub-01",
+    ...     dtmaps=["all"],
+    ... )
+    """
+
+    # ------------------------------------------------------------------ #
+    # Input validation and eigenvalue loading
+    # ------------------------------------------------------------------ #
+    # Normalize Path objects to strings
+    if isinstance(out_basename, Path):
+        out_basename = str(out_basename)
+
+    if isinstance(eigvals, Path):
+        eigvals = str(eigvals)
+    elif isinstance(eigvals, (list, tuple)):
+        eigvals = [str(p) if isinstance(p, Path) else p for p in eigvals]
+
+    if isinstance(eigvals, str):
+        if not os.path.isfile(eigvals):
+            raise FileNotFoundError(f"Eigenvalue file not found: {eigvals}")
+        ref_img = nib.load(eigvals)
+        data4d = ref_img.get_fdata()
+        if data4d.ndim != 4 or data4d.shape[3] < 3:
+            raise ValueError(
+                "4D eigenvalue image must have at least 3 volumes along the 4th axis."
+            )
+        affine = ref_img.affine
+        l1_data = data4d[..., 0]
+        l2_data = data4d[..., 1]
+        l3_data = data4d[..., 2]
+
+    elif isinstance(eigvals, (list, tuple)):
+        if len(eigvals) != 3:
+            raise ValueError(
+                "When supplying separate eigenvalue files, exactly 3 paths are required "
+                f"(got {len(eigvals)})."
+            )
+        missing = [p for p in eigvals if not os.path.isfile(p)]
+        if missing:
+            raise FileNotFoundError(f"Eigenvalue file(s) not found: {missing}")
+
+        ref_img = nib.load(eigvals[0])
+        affine = ref_img.affine
+        l1_data = ref_img.get_fdata()
+        l2_data = nib.load(eigvals[1]).get_fdata()
+        l3_data = nib.load(eigvals[2]).get_fdata()
+
+    else:
+        raise ValueError(
+            "'eigvals' must be a path string or a list/tuple of three path strings."
+        )
+
+    # ------------------------------------------------------------------ #
+    # Output directory
+    # ------------------------------------------------------------------ #
+    out_path = os.path.dirname(out_basename)
+    if out_path and not os.path.isdir(out_path):
+        # If the output directory does not exist, raise an error
+        raise FileNotFoundError(f"Output directory does not exist: {out_path}")
+
+    # ------------------------------------------------------------------ #
+    # Helpers
+    # ------------------------------------------------------------------ #
+    dtmaps = [x.lower() for x in dtmaps]
+    compute_all = dtmaps[0] == "all"
+
+    def _safe_div(num: np.ndarray, den: np.ndarray) -> np.ndarray:
+        """Element-wise division; returns 0 where denominator is zero."""
+        return np.divide(
+            num, den, out=np.zeros_like(num, dtype=np.float64), where=den != 0
+        )
+
+    def _safe_log(arr: np.ndarray) -> np.ndarray:
+        """Element-wise natural log; returns 0 where arr <= 0."""
+        return np.where(arr > 0, np.log(np.maximum(arr, np.finfo(float).tiny)), 0.0)
+
+    def _save_map(data: np.ndarray, tag: str) -> str:
+        """NaN-fill → save → return path (or '' on failure)."""
+        fpath = f"{out_basename}_{tag}.nii.gz"
+        data = np.where(np.isnan(data), 0.0, data)
+        nib.save(nib.Nifti1Image(data, affine), fpath)
+        return fpath if os.path.isfile(fpath) else ""
+
+    # Pre-compute quantities shared across multiple maps
+    suma = l1_data + l2_data + l3_data  # used by CL, CP, CS, GA
+    RD_data = (l2_data + l3_data) / 2  # used by RD, VF, RA
+    MD_data = suma / 3  # used by MD, FA
+
+    scalar_maps: dict = {}
+
+    # ------------------------------------------------------------------ #
+    # AD — Axial Diffusivity
+    # ------------------------------------------------------------------ #
+    if "ad" in dtmaps or compute_all:
+        fpath = f"{out_basename}_AD.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            scalar_maps["AD"] = _save_map(l1_data.copy(), "AD")
+        else:
+            scalar_maps["AD"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # RD — Radial Diffusivity
+    # ------------------------------------------------------------------ #
+    if "rd" in dtmaps or compute_all:
+        fpath = f"{out_basename}_RD.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            scalar_maps["RD"] = _save_map(RD_data, "RD")
+        else:
+            scalar_maps["RD"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # MD — Mean Diffusivity
+    # ------------------------------------------------------------------ #
+    if "md" in dtmaps or compute_all:
+        fpath = f"{out_basename}_MD.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            scalar_maps["MD"] = _save_map(MD_data, "MD")
+        else:
+            scalar_maps["MD"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # FA — Fractional Anisotropy
+    # ------------------------------------------------------------------ #
+    if "fa" in dtmaps or compute_all:
+        fpath = f"{out_basename}_FA.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            num = (
+                (l1_data - MD_data) ** 2
+                + (l2_data - MD_data) ** 2
+                + (l3_data - MD_data) ** 2
+            )
+            den = l1_data**2 + l2_data**2 + l3_data**2
+            FA = np.sqrt(0.5 * _safe_div(num, den))
+            scalar_maps["FA"] = _save_map(FA, "FA")
+        else:
+            scalar_maps["FA"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # CL — Linear Anisotropy Coefficient
+    # ------------------------------------------------------------------ #
+    if "cl" in dtmaps or compute_all:
+        fpath = f"{out_basename}_CL.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            CL = _safe_div(l1_data - l2_data, suma)
+            scalar_maps["CL"] = _save_map(CL, "CL")
+        else:
+            scalar_maps["CL"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # CP — Planar Anisotropy Coefficient
+    # ------------------------------------------------------------------ #
+    if "cp" in dtmaps or compute_all:
+        fpath = f"{out_basename}_CP.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            CP = _safe_div(2 * (l2_data - l3_data), suma)
+            scalar_maps["CP"] = _save_map(CP, "CP")
+        else:
+            scalar_maps["CP"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # CS — Spherical Anisotropy Coefficient
+    # ------------------------------------------------------------------ #
+    if "cs" in dtmaps or compute_all:
+        fpath = f"{out_basename}_CS.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            CS = _safe_div(3 * l3_data, suma)
+            scalar_maps["CS"] = _save_map(CS, "CS")
+        else:
+            scalar_maps["CS"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # VF — Volume Fraction
+    # ------------------------------------------------------------------ #
+    if "vf" in dtmaps or compute_all:
+        fpath = f"{out_basename}_VF.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            product = l1_data * l2_data * l3_data
+            den = RD_data**3
+            VF = 1 - _safe_div(product, den)
+            scalar_maps["VF"] = _save_map(VF, "VF")
+        else:
+            scalar_maps["VF"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # GA — Geodesic Anisotropy
+    # ------------------------------------------------------------------ #
+    if "ga" in dtmaps or compute_all:
+        fpath = f"{out_basename}_GA.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            D = (l1_data * l2_data * l3_data) ** (1 / 3)
+            log_sum_sq = (
+                _safe_log(l1_data) ** 2
+                + _safe_log(l2_data) ** 2
+                + _safe_log(l3_data) ** 2
+            )
+            GA = np.sqrt(_safe_div(log_sum_sq, D))
+            scalar_maps["GA"] = _save_map(GA, "GA")
+        else:
+            scalar_maps["GA"] = fpath
+
+    # ------------------------------------------------------------------ #
+    # RA — Relative Anisotropy
+    # ------------------------------------------------------------------ #
+    if "ra" in dtmaps or compute_all:
+        fpath = f"{out_basename}_RA.nii.gz"
+        if not os.path.isfile(fpath) or overwrite:
+            num = (
+                (l1_data - RD_data) ** 2
+                + (l2_data - RD_data) ** 2
+                + (l3_data - RD_data) ** 2
+            )
+            RA = np.sqrt(_safe_div(num / 3, suma))
+            scalar_maps["RA"] = _save_map(RA, "RA")
+        else:
+            scalar_maps["RA"] = fpath
+
+    return scalar_maps
+
+
 ####################################################################################################
 ####################################################################################################
 ############                                                                            ############
