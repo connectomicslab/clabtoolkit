@@ -34,6 +34,7 @@ def compute_reg_val_fromannot(
     parc_file: Union[str, cltfree.AnnotParcellation],
     hemi: str,
     output_table: str = None,
+    nonzeros_only: bool = False,
     metric: str = "unknown",
     units: str = None,
     stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
@@ -61,6 +62,9 @@ def compute_reg_val_fromannot(
 
     output_table : str, optional
         Path to save the resulting table. If None, the table is not saved.
+
+    nonzeros_only : bool, default=False
+        Whether to compute statistics using only non-zero values within each region. If False, all values are used.
 
     metric : str, default="unknown"
         Name of the metric being analyzed. Used for naming columns in the output DataFrame.
@@ -199,7 +203,9 @@ def compute_reg_val_fromannot(
     # Compute global hemisphere statistics if requested
     if include_global:
         valid_vertices = np.isin(sparc_data.codes, sparc_data.regtable[:, 4])
-        global_stats = stats_from_vector(metric_vect[valid_vertices], stats_list)
+        global_stats = stats_from_vector(
+            metric_vect[valid_vertices], stats_list, nonzeros_only=nonzeros_only
+        )
         dict_of_cols[f"ctx-{hemi}-hemisphere"] = global_stats
 
     # Compute statistics for each region
@@ -1132,6 +1138,7 @@ def compute_reg_val_fromparcellation(
     metric: str = "unknown",
     units: str = None,
     stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
+    nonzeros_only: bool = False,
     table_type: str = "metric",
     exclude_by_code: Union[list, np.ndarray] = None,
     exclude_by_name: Union[list, str] = None,
@@ -1454,7 +1461,9 @@ def compute_reg_val_fromparcellation(
         # Compute global brain statistics (non-zero parcellation values)
         brain_mask = vparc_data.data != 0
         if np.any(brain_mask):  # Check if there are any non-zero values
-            global_stats = stats_from_vector(metric_vol[brain_mask], stats_list)
+            global_stats = stats_from_vector(
+                metric_vol[brain_mask], stats_list, nonzeros_only=nonzeros_only
+            )
             dict_of_cols["brain-brain-wholebrain"] = global_stats
         else:
             # Handle empty/invalid parcellation
@@ -1481,7 +1490,9 @@ def compute_reg_val_fromparcellation(
         if np.any(region_mask):
             region_values = metric_vol[region_mask]
             if len(region_values) > 0:  # Check if there are any values
-                region_stats = stats_from_vector(region_values, stats_list)
+                region_stats = stats_from_vector(
+                    region_values, stats_list, nonzeros_only=nonzeros_only
+                )
                 dict_of_cols[regname] = region_stats
             else:
                 dict_of_cols[regname] = [0] * len(stats_list)
@@ -3092,33 +3103,43 @@ def network_metrics_to_table(
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def stats_from_vector(metric_vect, stats_list):
+def stats_from_vector(
+    metric_vect,
+    stats_list: Union[list, tuple] = ["value", "median", "std", "min", "max"],
+    nonzeros_only: bool = True,
+) -> list:
     """
     Computes specified statistics from a numeric vector.
 
-    This function calculates various statistical measures from a numpy array
-    based on the requested statistics in stats_list.
-
     Parameters
     ----------
-    metric_vect : np.ndarray
-        Vector with the values of the metric.
-    stats_list : list
-        List of statistics to compute. Supported values are:
-        'mean', 'value' (same as 'mean'), 'median', 'std', 'min', 'max'.
+    metric_vect : array-like
+        Vector with the values of the metric. Will be coerced to a
+        float64 numpy array before processing.
+
+    stats_list : list or tuple
+        List of statistics to compute. Supported values (case-insensitive):
+        'mean', 'value' (alias for 'mean'), 'median', 'std', 'min', 'max'.
+
+    nonzeros_only : bool, optional
+        If True (default), statistics are computed only on non-zero elements.
+        - If the input is empty, returns NaN for all statistics regardless of
+        this flag.
+        - If all elements are zero and nonzeros_only is True, returns 0.0 for all
+        statistics (since the result is unambiguously zero).
 
     Returns
     -------
     list
-        List with the computed statistics in the same order as requested.
-        Values are returned as Python floats, not numpy.float64.
+        List of computed statistics as Python floats, in the same order as
+        requested.
 
     Raises
     ------
-    ValueError
-        If an unsupported statistic is requested.
     TypeError
-        If inputs are not of expected types.
+        If ``stats_list`` is not a list or tuple.
+    ValueError
+        If an unsupported statistic name is requested.
 
     Examples
     --------
@@ -3142,7 +3163,11 @@ def stats_from_vector(metric_vect, stats_list):
     >>> stats_from_vector(np.array([]), ['mean', 'median'])
     [nan, nan]
 
-    >>> # Error on unsupported statistic
+    >>> # All-zero vector with nonzeros_only=True returns 0.0 for all statistics
+    >>> stats_from_vector(np.array([0, 0, 0]), ['mean', 'std', 'min'])
+    [0.0, 0.0, 0.0]
+
+    >>> # Unsupported statistic raises ValueError
     >>> stats_from_vector(data, ['mean', 'mode'])
     Traceback (most recent call last):
         ...
@@ -3151,10 +3176,19 @@ def stats_from_vector(metric_vect, stats_list):
     if not isinstance(stats_list, (list, tuple)):
         raise TypeError("stats_list must be a list or tuple")
 
+    # Coerce to a float64 numpy array to handle lists, int arrays, etc.
+    metric_vect = np.asarray(metric_vect, dtype=np.float64).ravel()
+
+    # Truly empty input → NaN regardless of nonzeros_only flag
     if len(metric_vect) == 0:
         return [float("nan")] * len(stats_list)
 
-    # Map of statistic names to their computation functions
+    if nonzeros_only:
+        metric_vect = metric_vect[metric_vect != 0]
+        # All values were zero: result is unambiguously 0 for every statistic
+        if metric_vect.size == 0:
+            return [0.0] * len(stats_list)
+
     stats_map = {
         "mean": np.mean,
         "value": np.mean,
@@ -3164,15 +3198,12 @@ def stats_from_vector(metric_vect, stats_list):
         "max": np.max,
     }
 
-    # Convert all stats to lowercase for case-insensitive matching
     lowercase_stats = [s.lower() for s in stats_list]
 
-    # Check for unsupported statistics
     unsupported = [s for s in lowercase_stats if s not in stats_map]
     if unsupported:
         raise ValueError(f"Unsupported statistics: {', '.join(unsupported)}")
 
-    # Compute all requested statistics and convert to native Python float
     return [float(stats_map[stat](metric_vect)) for stat in lowercase_stats]
 
 
