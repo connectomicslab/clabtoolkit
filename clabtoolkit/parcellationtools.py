@@ -233,7 +233,10 @@ class Parcellation:
 
         # Set dimensional properties
         self.dim = self.data.shape
-        self.voxel_size = cltimg.get_voxel_volume(self.affine)
+        self.voxel_size = cltimg.get_voxel_size(self.affine)
+
+        # Set Voxel volume
+        self.voxel_volume = cltimg.get_voxel_volume(self.affine)
 
         # Detect label range
         self.parc_range()
@@ -636,6 +639,247 @@ class Parcellation:
         self.id = parc_fullid
 
         return parc_fullid
+
+    ######################################################################################################
+    def get_info(self, verbose: bool = True) -> dict:
+        """
+        Display and return comprehensive information about the Parcellation object.
+
+        Provides a formatted overview of the parcellation including identification,
+        image properties, color-table statistics, and label consistency checks.
+        Useful for quick inspection and validation of volumetric parcellation data.
+
+        The method displays:
+            - Basic identification (ID, space, file path)
+            - Image properties (dimensions, voxel size, data type, affine matrix)
+            - Color-table properties (number of regions, label range, opacity range)
+            - Label consistency (codes in data missing from table, and table entries
+              absent from data)
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, prints the information in a formatted table to stdout.
+            If False, only returns the info dictionary without printing.
+            Default is True.
+
+        Returns
+        -------
+        info : dict
+            Dictionary containing the following keys:
+
+            - 'id' : str
+                Parcellation identifier string.
+
+            - 'space' : str
+                Space identifier (e.g. 'MNI152NLin6Asym', 'native').
+
+            - 'parc_file' : str
+                Full path to the parcellation file, or 'numpy_array'.
+
+            - 'dim' : tuple
+                Spatial dimensions of the parcellation volume (x, y, z).
+
+            - 'voxel_size' : float
+                Volume of a single voxel in mm³.
+
+            - 'dtype' : str
+                NumPy data type of the parcellation array.
+
+            - 'affine' : np.ndarray or None
+                4x4 affine transformation matrix, or None if not set.
+
+            - 'n_regions' : int
+                Number of regions defined in the color table (len of index).
+
+            - 'min_label' : int or None
+                Minimum non-zero label value present in the data.
+
+            - 'max_label' : int or None
+                Maximum label value present in the data.
+
+            - 'opacity_range' : tuple or None
+                (min_opacity, max_opacity) across all defined regions,
+                or None if opacity is not set.
+
+            - 'labels_not_in_table' : list of int
+                Label values present in the data but absent from ``self.index``.
+                Ideally empty.
+
+            - 'regions_not_in_data' : list of str
+                Region names whose index codes do not appear in the data.
+                These are defined but unused regions.
+
+        Examples
+        --------
+        >>> parc = Parcellation('sub-01_space-MNI_atlas-Schaefer_desc-400Parcels.nii.gz')
+        >>> info = parc.get_info()
+        ╔════════════════════════════════════════════════════════════════╗
+        ║                    PARCELLATION INFO                           ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║  ID     : atlas-Schaefer_desc-400Parcels                       ║
+        ║  Space  : MNI                                                  ║
+        ║  File   : sub-01_space-MNI_atlas-Schaefer_desc-400Parcels...   ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║  IMAGE PROPERTIES                                              ║
+        ║    Dimensions  :   182 x 218 x 182                            ║
+        ║    Voxel size  :         1.000 mm³                            ║
+        ║    Data type   :              int32                            ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║  COLOR TABLE                                                   ║
+        ║    Regions     :               400                             ║
+        ║    Label range :         1  →  400                            ║
+        ║    Opacity     :      1.00  →  1.00                           ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║  LABEL CONSISTENCY                                             ║
+        ║    Labels not in table   :    0                                ║
+        ║    Regions not in data   :    0                                ║
+        ╚════════════════════════════════════════════════════════════════╝
+        """
+
+        WIDTH = 64  # inner content width (between the ║ borders)
+
+        def _row(content: str) -> None:
+            """Print a single bordered row, left-justified."""
+            print(f"║{content.ljust(WIDTH)}║")
+
+        # ── Gather information ────────────────────────────────────────────────────
+
+        info: dict = {
+            "id": getattr(self, "id", None),
+            "space": getattr(self, "space", None),
+            "parc_file": getattr(self, "parc_file", None),
+            "dim": getattr(self, "dim", None),
+            "voxel_size": getattr(self, "voxel_size", None),
+            "voxel_volume": getattr(self, "voxel_volume", None),
+            "dtype": str(getattr(self, "dtype", None)),
+            "affine": getattr(self, "affine", None),
+            "n_regions": None,
+            "min_label": getattr(self, "minlab", None),
+            "max_label": getattr(self, "maxlab", None),
+            "opacity_range": None,
+            "labels_not_in_table": [],
+            "regions_not_in_data": [],
+        }
+
+        # Color-table stats
+        if hasattr(self, "index") and self.index is not None:
+            info["n_regions"] = len(self.index)
+
+        if hasattr(self, "opacity") and self.opacity is not None:
+            try:
+                op_arr = np.array(self.opacity, dtype=float)
+                info["opacity_range"] = (float(op_arr.min()), float(op_arr.max()))
+            except Exception:
+                pass
+
+        # Label consistency checks (only when both data and index exist)
+        if (
+            hasattr(self, "data")
+            and self.data is not None
+            and hasattr(self, "index")
+            and self.index is not None
+        ):
+            data_codes = set(int(v) for v in np.unique(self.data) if v != 0)
+            table_codes = set(int(v) for v in self.index)
+
+            info["labels_not_in_table"] = sorted(data_codes - table_codes)
+
+            missing_in_data = sorted(table_codes - data_codes)
+            if hasattr(self, "name") and self.name is not None:
+                idx_to_name = {int(c): n for c, n in zip(self.index, self.name)}
+                info["regions_not_in_data"] = [
+                    idx_to_name.get(c, str(c)) for c in missing_in_data
+                ]
+            else:
+                info["regions_not_in_data"] = missing_in_data
+
+        # ── Print ─────────────────────────────────────────────────────────────────
+        if verbose:
+
+            # Helper: truncate a string to fit within a column width
+            def _trunc(s: str, max_w: int) -> str:
+                return s if len(s) <= max_w else "..." + s[-(max_w - 3) :]
+
+            print("╔" + "═" * WIDTH + "╗")
+            _row("  PARCELLATION INFO".center(WIDTH))
+            print("╠" + "═" * WIDTH + "╣")
+
+            # — Identification ————————————————————————————————————————————————
+            id_val = info["id"] or "N/A"
+            space_val = info["space"] or "N/A"
+            file_val = _trunc(info["parc_file"] or "N/A", WIDTH - 12)
+
+            _row(f"  ID     : {id_val}")
+            _row(f"  Space  : {space_val}")
+            _row(f"  File   : {file_val}")
+
+            # — Image properties ——————————————————————————————————————————————
+            print("╠" + "═" * WIDTH + "╣")
+            _row("  IMAGE PROPERTIES")
+
+            if info["dim"] is not None:
+                dim_str = " x ".join(str(d) for d in info["dim"])
+                _row(f"    Dimensions  : {dim_str:>20}")
+            else:
+                _row("    Dimensions  :          N/A")
+
+            if info["voxel_size"] is not None:
+                dim_str = " x ".join(str(d) for d in info["voxel_size"])
+                _row(f"    Voxel size  : {dim_str:>20} mm")
+            else:
+                _row("    Voxel size  :          N/A")
+
+            if info["voxel_volume"] is not None:
+                _row(f"    Voxel volume: {info['voxel_volume']:>16.3f} mm³")
+            else:
+                _row("    Voxel volume  :          N/A")
+
+            _row(f"    Data type   : {info['dtype']:>20}")
+
+            # — Color table ———————————————————————————————————————————————————
+            print("╠" + "═" * WIDTH + "╣")
+            _row("  COLOR TABLE")
+
+            if info["n_regions"] is not None:
+                _row(f"    Regions     : {info['n_regions']:>20,}")
+            else:
+                _row("    Regions     :          N/A")
+
+            if info["min_label"] is not None and info["max_label"] is not None:
+                range_str = f"{info['min_label']}  →  {info['max_label']}"
+                _row(f"    Label range : {range_str:>20}")
+            else:
+                _row("    Label range :          N/A")
+
+            if info["opacity_range"] is not None:
+                op_str = (
+                    f"{info['opacity_range'][0]:.2f}  →  {info['opacity_range'][1]:.2f}"
+                )
+                _row(f"    Opacity     : {op_str:>20}")
+            else:
+                _row("    Opacity     :          N/A")
+
+            # — Label consistency ——————————————————————————————————————————————
+            print("╠" + "═" * WIDTH + "╣")
+            _row("  LABEL CONSISTENCY")
+
+            n_missing_table = len(info["labels_not_in_table"])
+            n_missing_data = len(info["regions_not_in_data"])
+
+            _row(f"    Labels not in table   : {n_missing_table:>4}")
+            if n_missing_table > 0:
+                codes_str = ", ".join(str(v) for v in info["labels_not_in_table"])
+                _row(f"      ↳ codes : {_trunc(codes_str, WIDTH - 14)}")
+
+            _row(f"    Regions not in data   : {n_missing_data:>4}")
+            if n_missing_data > 0:
+                names_str = ", ".join(str(v) for v in info["regions_not_in_data"])
+                _row(f"      ↳ names : {_trunc(names_str, WIDTH - 14)}")
+
+            print("╚" + "═" * WIDTH + "╝")
+
+        return info
 
     ####################################################################################################
     def export_summary_to_hdf5(self, out_file: str, overwrite: bool = False):
