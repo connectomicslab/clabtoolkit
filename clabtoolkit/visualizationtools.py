@@ -11,6 +11,8 @@ Functions:
 - (Additional functions can be added here as needed)
 """
 
+from __future__ import annotations
+
 # Standard library imports
 import copy
 import os
@@ -20,6 +22,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 # Third-party imports
 import numpy as np
 import pyvista as pv
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.patches as mpatches
+from matplotlib.colors import TwoSlopeNorm, Normalize
+from matplotlib.transforms import blended_transform_factory
 
 # Use TYPE_CHECKING to avoid circular imports
 # Importing local modules
@@ -31,6 +38,7 @@ from . import pointstools as cltpts
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
 from . import visualization_utils as visutils
+from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -1935,3 +1943,517 @@ class BrainPlotter:
         """
 
         visutils.preview_theme(self, theme_name)
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                             Useful functions                               ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def create_carpet_plot(
+    data: np.ndarray,
+    structure_names: list[str],
+    *,
+    time_points: Optional[np.ndarray] = None,
+    tr: Optional[float] = None,
+    groups: Optional[dict[str, list[int]]] = None,
+    group_colors: Optional[list[str]] = None,
+    groups_title: str = None,
+    fd_trace: Optional[np.ndarray] = None,
+    global_signal: Optional[np.ndarray] = None,
+    normalize_rows: bool = True,
+    figsize: tuple[float, float] = (15, 10),
+    cmap: str = "RdBu_r",
+    unknown_color: Union[str, np.ndarray, tuple] = "#888888",
+    center_colormap: bool = True,
+    vmax: Optional[float] = None,
+    fd_threshold: float = 0.5,
+    show_structure_names: bool = True,
+    x_label: str = "Volume index",
+    y_label: str = "Brain structures",
+    title: str = "Carpet Plot",
+    save_path: Optional[Union[str, Path]] = None,
+    dpi: int = 150,
+) -> dict:
+    """Create a carpet plot for brain structure time series data.
+
+    Parameters
+    ----------
+    data : np.ndarray, shape (n_structures, n_timepoints)
+        Time series data for each brain structure.
+
+    structure_names : list of str
+        Names of the brain structures. Must have length ``data.shape[0]``.
+
+    time_points : np.ndarray, optional
+        Explicit time-point values for the x-axis. When *None*, volume
+        indices are used (scaled by *tr* if provided).
+
+    tr : float, optional
+        Repetition time in seconds. When provided and *time_points* is
+        *None*, the x-axis is expressed in seconds.
+
+    groups : dict[str, list[int | str]], optional
+        Mapping from group name to a list of row indices (int) **or**
+        substrings matched against *structure_names* (str), or a mix of
+        both. Rows not covered by any group are collected into an
+        "Unknown" group coloured by *unknown_color*. Example::
+
+            groups = {
+                "Cortex":     list(range(60)),
+                "Subcortex":  list(range(60, 75)),
+                "Cerebellum": ["Cereb", "Vermis"],
+            }
+
+    group_colors : list of str, optional
+        Hex colour strings for each group in the order they appear in
+        *groups*. Falls back to a built-in ten-colour palette.
+
+    groups_title : str, optional
+        Title for the groups colorbar. If *None*, defaults to "Groups".
+
+    unknown_color : str, default ``"#888888"``
+        Colour used for the automatic "Unknown" group that collects any
+        rows not assigned to an explicit group.
+
+    fd_trace : np.ndarray, optional
+        Framewise displacement trace (length n_timepoints). When provided
+        a motion panel is drawn above the carpet.
+
+    global_signal : np.ndarray, optional
+        Global signal trace (length n_timepoints). Overlaid on the top
+        panel as a blue line (on a twin y-axis when *fd_trace* is also
+        supplied).
+
+    normalize_rows : bool, default True
+        If *True*, each row is z-scored independently before plotting.
+
+    figsize : tuple of float, default (15, 10)
+        Figure size (width, height) in inches.
+
+    cmap : str, default ``"RdBu_r"``
+        Matplotlib colormap name.
+
+    center_colormap : bool, default True
+        If *True*, ``TwoSlopeNorm`` is used so zero maps to the midpoint.
+
+    vmax : float, optional
+        Colour scale maximum (absolute value). Derived from data when not
+        provided.
+
+    fd_threshold : float, default 0.5
+        FD threshold in mm shown as a dashed reference line.
+
+    show_structure_names : bool, default True
+        Whether to display y-axis structure labels.
+
+    x_label : str, default ``"Volume index"``
+        Label for the x-axis. If *time_points* is provided, this should be set to something like ``"Time (s)"``.
+
+    y_label : str, default ``"Brain structures"``
+
+    title : str, default ``"Carpet Plot"``
+        Plot title.
+
+    save_path : str or Path, optional
+        Destination path for the figure.
+
+    dpi : int, default 150
+        Resolution used when *save_path* is given.
+
+    Returns
+    -------
+    dict
+        ``"fig"``       – ``matplotlib.figure.Figure``
+        ``"ax_carpet"`` – main carpet ``Axes``
+        ``"ax_top"``    – top panel ``Axes`` (*None* if not requested)
+        ``"ax_strip"``  – *None* (kept for API stability)
+        ``"im"``        – ``AxesImage`` returned by ``imshow``
+        ``"cbar"``      – ``Colorbar`` object
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from clabtoolkit.visualizationtools import create_carpet_plot
+        >>> >>> # Generate synthetic data
+        >>> n_structures = 100
+        >>> n_timepoints = 200
+        >>> data = np.random.randn(n_structures, n_timepoints)
+        >>> structure_names = [f"Struct_{i}" for i in range(n_structures)]
+        >>> >>> # Define groups
+        >>> groups = {
+        ...     "Group A": list(range(0, 50)),
+        ...     "Group B": list(range(50, 80)),
+        ...     "Group C": list(range(80, 100)),
+        ... }
+        >>> group_colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
+        >>> >>> # Create carpet plot
+        >>> result = create_carpet_plot(
+        ...     data=data,
+        ...     structure_names=structure_names,
+        ...     groups=groups,
+        ...     group_colors=group_colors,
+        ...     normalize_rows=True,
+        ...     figsize=(12, 8),
+        ...     cmap="RdBu_r")
+
+    """
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
+    data = np.asarray(data, dtype=float)
+    if data.ndim != 2:
+        raise ValueError(
+            f"data must be 2-D (n_structures × n_timepoints), got shape {data.shape}."
+        )
+    n_structures, n_timepoints = data.shape
+    structure_names = list(structure_names)
+
+    if len(structure_names) != n_structures:
+        raise ValueError(
+            f"len(structure_names) ({len(structure_names)}) must equal "
+            f"data.shape[0] ({n_structures})."
+        )
+
+    for param_name, arr in [("fd_trace", fd_trace), ("global_signal", global_signal)]:
+        if arr is not None and len(arr) != n_timepoints:
+            raise ValueError(
+                f"{param_name} length ({len(arr)}) must equal n_timepoints ({n_timepoints})."
+            )
+
+    # ------------------------------------------------------------------
+    # Time axis
+    # ------------------------------------------------------------------
+    if time_points is None:
+        time_points = np.arange(n_timepoints) * (tr if tr is not None else 1.0)
+    time_points = np.asarray(time_points, dtype=float)
+    if x_label is None:
+        x_label = "Time (s)" if tr is not None else "Volume index"
+
+    # ------------------------------------------------------------------
+    # Groups: resolve indices, reorder rows, build sequential positions
+    # ------------------------------------------------------------------
+    # `_resolved` is an *ordered* list of dicts:
+    #   { "name": str, "color": str, "rows": list[int] }
+    # where "rows" gives the NEW (post-reorder) consecutive row positions.
+    _resolved: list[dict] = []
+
+    if groups is not None:
+        _gcolors_base = group_colors or cltcol.create_distinguishable_colors(
+            len(groups), output_format="hex", exclude_colors=unknown_color
+        )
+        # ---- Step 1: resolve each group's original indices ----
+        covered: list[int] = []
+        raw_groups: list[dict] = []  # name, color, original_ids
+
+        # Track which original row indices have already been claimed so that
+        # overlapping assignments are resolved in favour of the first group.
+        already_claimed: set[int] = set()
+
+        for gi, (gname, id_list) in enumerate(groups.items()):
+
+            # ---- Normalise the value to a plain Python list ----
+            if isinstance(id_list, str):
+                # A bare string is treated as a single substring matcher
+                id_list = [id_list]
+            elif isinstance(id_list, np.ndarray):
+                id_list = id_list.tolist()
+            else:
+                id_list = list(id_list)
+
+            numbers = [
+                int(x) for x in id_list if isinstance(x, (int, float, np.integer))
+            ]
+            strings = [x for x in id_list if isinstance(x, str)]
+
+            # Match substrings against structure_names
+            str_ids: list[int] = []
+            for substr in strings:
+                str_ids += [
+                    i
+                    for i, s in enumerate(structure_names)
+                    if substr.lower() in s.lower()
+                ]
+
+            # Deduplicate within this group, then remove any rows already
+            # claimed by an earlier group (first-seen wins).
+            candidate_ids = sorted(set(numbers + str_ids))
+            orig_ids = [i for i in candidate_ids if i not in already_claimed]
+            already_claimed.update(orig_ids)
+            covered.extend(orig_ids)
+
+            color = _gcolors_base[gi % len(_gcolors_base)]
+            raw_groups.append({"name": gname, "color": color, "orig_ids": orig_ids})
+
+        # ---- Step 2: collect ungrouped rows ----
+        ungrouped = sorted(set(range(n_structures)) - set(covered))
+        if ungrouped:
+            raw_groups.append(
+                {"name": "Unknown", "color": unknown_color, "orig_ids": ungrouped}
+            )
+
+        # ---- Step 3: build the final row order & remap to new positions ----
+        final_order: list[int] = []
+        for grp in raw_groups:
+            final_order.extend(grp["orig_ids"])
+
+        # Reorder data and names NOW — before z-scoring and imshow
+        data = data[final_order, :]
+        structure_names = [structure_names[i] for i in final_order]
+        n_structures = len(structure_names)
+
+        # Map each group's original ids → new consecutive row positions.
+        # Groups whose ids were entirely claimed by earlier groups are skipped
+        # so they never appear in rectangles or the legend.
+        orig_to_new = {orig: new for new, orig in enumerate(final_order)}
+        for grp in raw_groups:
+            if not grp["orig_ids"]:  # fully emptied by overlap deduplication
+                continue
+            new_rows = sorted(orig_to_new[i] for i in grp["orig_ids"])
+            _resolved.append(
+                {"name": grp["name"], "color": grp["color"], "rows": new_rows}
+            )
+
+    # ------------------------------------------------------------------
+    # Per-row z-score normalisation  (after reordering!)
+    # ------------------------------------------------------------------
+    if normalize_rows:
+        row_mean = data.mean(axis=1, keepdims=True)
+        row_std = data.std(axis=1, keepdims=True)
+        row_std[row_std == 0] = 1.0
+        plot_data = (data - row_mean) / row_std
+        cbar_label = "Z-score"
+    else:
+        plot_data = data.copy()
+        cbar_label = "Signal intensity"
+
+    # ------------------------------------------------------------------
+    # Colour normalisation
+    # ------------------------------------------------------------------
+    if center_colormap:
+        _vmax = float(vmax) if vmax is not None else float(np.abs(plot_data).max())
+        norm: Normalize = TwoSlopeNorm(vmin=-_vmax, vcenter=0.0, vmax=_vmax)
+    else:
+        norm = Normalize(
+            vmin=float(plot_data.min()),
+            vmax=float(vmax) if vmax is not None else float(plot_data.max()),
+        )
+
+    # ------------------------------------------------------------------
+    # Figure layout
+    # ------------------------------------------------------------------
+    has_top = fd_trace is not None or global_signal is not None
+    carpet_row = 1 if has_top else 0
+
+    fig = plt.figure(figsize=figsize)
+    gs = gridspec.GridSpec(
+        2 if has_top else 1,
+        1,
+        figure=fig,
+        height_ratios=[1, 5] if has_top else [1],
+        hspace=0.04,
+    )
+
+    ax_carpet: plt.Axes = fig.add_subplot(gs[carpet_row, 0])
+    ax_top: Optional[plt.Axes] = (
+        fig.add_subplot(gs[0, 0], sharex=ax_carpet) if has_top else None
+    )
+
+    # ------------------------------------------------------------------
+    # Carpet panel
+    # ------------------------------------------------------------------
+    im = ax_carpet.imshow(
+        plot_data,
+        aspect="auto",
+        cmap=cmap,
+        norm=norm,
+        interpolation="nearest",
+    )
+
+    # X-axis
+    n_xticks = min(10, n_timepoints)
+    xtick_idx = np.linspace(0, n_timepoints - 1, n_xticks, dtype=int)
+    ax_carpet.set_xticks(xtick_idx)
+    ax_carpet.set_xticklabels(
+        [
+            f"{time_points[i]:.1f}" if tr is not None else f"{int(time_points[i])}"
+            for i in xtick_idx
+        ],
+        fontsize=9,
+    )
+    ax_carpet.set_xlabel(x_label, fontsize=11)
+
+    # Y-axis — plain black labels
+    if show_structure_names:
+        label_size = max(4, 8 - n_structures // 20)
+        ax_carpet.set_yticks(range(n_structures))
+        ax_carpet.set_yticklabels(structure_names, fontsize=label_size)
+    else:
+        ax_carpet.set_yticks([])
+
+    ax_carpet.set_ylabel(y_label, fontsize=11)
+
+    # Horizontal white dividers at group boundaries
+    if _resolved:
+        seen: set[float] = set()
+        for grp in _resolved:
+            if grp["rows"]:
+                boundary = max(grp["rows"]) + 0.5
+                if boundary not in seen and 0.0 < boundary < n_structures:
+                    ax_carpet.axhline(boundary, color="white", lw=1.5, alpha=0.75)
+                    seen.add(boundary)
+
+    # Colorbar
+    cbar = fig.colorbar(im, ax=ax_carpet, fraction=0.02, pad=0.01, aspect=40)
+    cbar.set_label(cbar_label, rotation=270, labelpad=14, fontsize=10)
+    cbar.ax.tick_params(labelsize=8)
+
+    # Title on the topmost axes
+    (ax_top if ax_top is not None else ax_carpet).set_title(
+        title, fontsize=14, fontweight="bold", pad=6
+    )
+
+    # ------------------------------------------------------------------
+    # Top panel (FD + global signal)
+    # ------------------------------------------------------------------
+    if ax_top is not None:
+        t_axis = np.arange(n_timepoints)
+        ax_gs_twin: Optional[plt.Axes] = None
+
+        if fd_trace is not None:
+            fd_arr = np.asarray(fd_trace, dtype=float)
+            ax_top.fill_between(
+                t_axis, 0, fd_arr, color="#e15759", alpha=0.25, label="_nolegend_"
+            )
+            ax_top.plot(t_axis, fd_arr, color="#e15759", lw=0.9, label="FD")
+            ax_top.axhline(
+                fd_threshold,
+                color="#e15759",
+                lw=0.8,
+                ls="--",
+                alpha=0.9,
+                label=f"FD = {fd_threshold} mm",
+            )
+            above = fd_arr > fd_threshold
+            if above.any():
+                ax_top.fill_between(
+                    t_axis,
+                    fd_arr,
+                    fd_threshold,
+                    where=above,
+                    color="#e15759",
+                    alpha=0.55,
+                    label="_nolegend_",
+                )
+            ax_top.set_ylabel("FD (mm)", fontsize=9, color="#e15759")
+            ax_top.tick_params(axis="y", labelcolor="#e15759", labelsize=8)
+
+        if global_signal is not None:
+            gs_arr = np.asarray(global_signal, dtype=float)
+            ax_gs = ax_top.twinx() if fd_trace is not None else ax_top
+            if fd_trace is not None:
+                ax_gs_twin = ax_gs
+            ax_gs.plot(t_axis, gs_arr, color="#4e79a7", lw=0.9, label="GS")
+            ax_gs.set_ylabel("Global signal", fontsize=9, color="#4e79a7")
+            ax_gs.tick_params(axis="y", labelcolor="#4e79a7", labelsize=8)
+
+        handles, labels = ax_top.get_legend_handles_labels()
+        if ax_gs_twin is not None:
+            h2, l2 = ax_gs_twin.get_legend_handles_labels()
+            handles += h2
+            labels += l2
+        if handles:
+            ax_top.legend(
+                handles,
+                labels,
+                loc="upper right",
+                fontsize=8,
+                framealpha=0.6,
+                ncol=len(handles),
+            )
+
+        plt.setp(ax_top.get_xticklabels(), visible=False)
+        ax_top.tick_params(axis="x", bottom=False)
+        ax_top.spines["bottom"].set_visible(False)
+        ax_top.spines["top"].set_visible(False)
+
+    # ------------------------------------------------------------------
+    # Group colour rectangles — blended transform, no text, no overlap.
+    # x is in axes coordinates (0 = left spine, width ≈ 1 % of plot).
+    # y is in data coordinates (row indices).
+    # ------------------------------------------------------------------
+    if _resolved:
+        strip_width = 0.010
+        trans = blended_transform_factory(ax_carpet.transAxes, ax_carpet.transData)
+        for grp in _resolved:
+            rows = grp["rows"]
+            if not rows:
+                continue
+            ymin = min(rows) - 0.5
+            ymax = max(rows) + 0.5
+            rect = mpatches.Rectangle(
+                (0.0, ymin),
+                strip_width,
+                ymax - ymin,
+                transform=trans,
+                clip_on=False,
+                facecolor=grp["color"],
+                edgecolor="none",
+                zorder=5,
+            )
+            ax_carpet.add_patch(rect)
+
+    # ------------------------------------------------------------------
+    # Bottom figure legend — no frame, anchored well below x-axis label
+    # ------------------------------------------------------------------
+    if _resolved:
+        legend_patches = [
+            mpatches.Patch(facecolor=grp["color"], label=grp["name"])
+            for grp in _resolved
+        ]
+        n_cols = min(len(_resolved), 6)
+        if groups_title is None:
+            fig.legend(
+                handles=legend_patches,
+                loc="lower center",
+                ncol=n_cols,
+                fontsize=10,
+                frameon=False,
+                bbox_to_anchor=(0.5, 0.0),
+                title_fontsize=10,
+            )
+        else:
+            fig.legend(
+                handles=legend_patches,
+                loc="lower center",
+                ncol=n_cols,
+                fontsize=10,
+                frameon=False,
+                bbox_to_anchor=(0.5, 0.0),
+                title=groups_title,
+                title_fontsize=10,
+            )
+
+    # ------------------------------------------------------------------
+    # Final layout — reserve bottom margin for the legend
+    # ------------------------------------------------------------------
+    fig.tight_layout()
+    if _resolved:
+        n_legend_rows = max(1, len(_resolved) // 6 + (1 if len(_resolved) % 6 else 0))
+        fig.subplots_adjust(bottom=0.08 + 0.04 * n_legend_rows)
+
+    if save_path is not None:
+        fig.savefig(Path(save_path), dpi=dpi, bbox_inches="tight")
+
+    return {
+        "fig": fig,
+        "ax_carpet": ax_carpet,
+        "ax_top": ax_top,
+        "ax_strip": None,
+        "im": im,
+        "cbar": cbar,
+    }
