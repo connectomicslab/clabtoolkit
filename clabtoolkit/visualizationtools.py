@@ -2129,7 +2129,10 @@ def create_carpet_plot(
     # Time axis
     # ------------------------------------------------------------------
     if time_points is None:
-        time_points = np.arange(n_timepoints) * (tr if tr is not None else 1.0)
+        if tr is not None:
+            time_points = np.arange(1, n_timepoints + 1) * tr  # vol 0 → 1×TR
+        else:
+            time_points = np.arange(n_timepoints, dtype=float)
     time_points = np.asarray(time_points, dtype=float)
     if x_label is None:
         x_label = "Time (s)" if tr is not None else "Volume index"
@@ -2276,7 +2279,7 @@ def create_carpet_plot(
 
     # X-axis
     n_xticks = min(10, n_timepoints)
-    xtick_idx = np.linspace(0, n_timepoints - 1, n_xticks, dtype=int)
+    xtick_idx = np.linspace(0, n_timepoints - 1, n_xticks, dtype=int).tolist()
     ax_carpet.set_xticks(xtick_idx)
     ax_carpet.set_xticklabels(
         [
