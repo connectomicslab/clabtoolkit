@@ -1890,7 +1890,7 @@ class Parcellation:
         metric: str = "mean",
         roi_codes: Union[List[int], np.ndarray] = None,
         roi_names: Union[List[str], str] = None,
-    ) -> pd.DataFrame:
+    ) -> np.ndarray:
         """
         Compute region-wise time series.
 
