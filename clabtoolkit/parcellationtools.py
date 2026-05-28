@@ -3711,7 +3711,7 @@ class Parcellation:
         roi_codes: Union[List[int], np.ndarray] = None,
         roi_names: Union[List[str], str] = None,
     ) -> cltcon.Connectome:
-        """Compute a functional connectivity (FC) matrix from a ROI × time matrix.
+        """Compute a functional connectivity (FC) matrix from a ROI × time series or 4-D NIfTI file.
 
         Each entry ``FC[i, j]`` reflects the pairwise association between the
         time series of ROI *i* and ROI *j*.  The result is always a symmetric
