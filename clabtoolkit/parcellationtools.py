@@ -29,6 +29,7 @@ from . import freesurfertools as cltfree
 from . import surfacetools as cltsurf
 from . import bidstools as cltbids
 from . import colorstools as cltcol
+from . import connectivitytools as cltcon
 
 
 ####################################################################################################
@@ -3694,3 +3695,260 @@ class Parcellation:
         for method in methods:
             if not method.startswith("__"):
                 print(method)
+
+    #######################################################################################################
+    def compute_fc_matrix(
+        self,
+        data: Union[str, Path, np.ndarray],
+        method: str = "pearson",
+        *,
+        z_transform: bool = False,
+        absolute: bool = False,
+        threshold: Optional[float] = None,
+        normalize_rows: bool = False,
+        vols_to_delete: Union[str, list, np.ndarray] = None,
+        ts_method: str = "nilearn",
+        roi_codes: Union[List[int], np.ndarray] = None,
+        roi_names: Union[List[str], str] = None,
+    ) -> cltcon.Connectome:
+        """Compute a functional connectivity (FC) matrix from a ROI × time matrix.
+
+        Each entry ``FC[i, j]`` reflects the pairwise association between the
+        time series of ROI *i* and ROI *j*.  The result is always a symmetric
+        square matrix of shape ``(n_rois, n_rois)`` with ones on the diagonal
+        (except for ``"partial"`` and ``"mutual_info"``).
+
+        Parameters
+        ----------
+        data : str, Path, or np.ndarray
+            Either a path to a NIfTI file, a pre-loaded 2-D ROI × time matrix,
+            or a 4-D NIfTI array (handled via ``get_regionwise_timeseries``).
+
+        method : str, default ``"pearson"``
+            Correlation / association method.  Supported values:
+
+            ``"pearson"``
+                Standard Pearson *r*.  Fast; assumes linearity.
+
+            ``"spearman"``
+                Rank-based Spearman *ρ*.  Robust to monotone non-linearities
+                and mild outliers.
+
+            ``"kendall"``
+                Kendall *τ-b*.  More robust than Spearman but *O(n²)* in time
+                points — avoid for very long series.
+
+            ``"partial"``
+                Partial correlation via the precision matrix (inverse of the
+                covariance).  Controls for the linear influence of all other
+                ROIs.  Requires ``n_timepoints > n_rois``.
+
+            ``"mutual_info"``
+                Normalised mutual information (scikit-learn).  Captures
+                non-linear dependencies; values in ``[0, 1]``.
+
+        z_transform : bool, default False
+            Apply Fisher's *r*-to-*z* transform: ``z = arctanh(r)``.
+            Useful before group-level statistics.  Not applied for
+            ``"mutual_info"``.
+
+        absolute : bool, default False
+            Return ``|FC|`` instead of signed values.  Useful when only
+            connection *strength* matters, not sign.
+
+        threshold : float, optional
+            Zero out all entries whose absolute value is below *threshold*
+            after all other transforms.
+
+        normalize_rows : bool, default False
+            Z-score each row of *data* before computing the FC matrix.
+            Equivalent to ``create_carpet_plot``'s ``normalize_rows``.
+
+        vols_to_delete : str, list, or np.ndarray, optional
+            Volume indices to discard before computing the FC matrix.
+            Passed directly to ``get_regionwise_timeseries``.
+
+        ts_method : str, default ``"nilearn"``
+            Time-series extraction backend passed to ``get_regionwise_timeseries``.
+
+        Returns
+        -------
+        fc_connectome : cltcon.Connectome
+            A Connectome object containing the FC matrix and metadata.
+
+        Raises
+        ------
+        ValueError
+            On unsupported method, wrong data dimensionality, or insufficient
+            time points for partial correlation.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> data = np.random.randn(90, 200)      # 90 ROIs, 200 time points
+
+        >>> fc_r   = compute_fc_matrix(data, method="pearson")
+        >>> fc_rho = compute_fc_matrix(data, method="spearman", z_transform=True)
+        >>> fc_par = compute_fc_matrix(data, method="partial")
+        >>> fc_mi  = compute_fc_matrix(data, method="mutual_info")
+        """
+
+        # ------------------------------------------------------------------
+        # Validation
+        # ------------------------------------------------------------------
+        SUPPORTED = {"pearson", "spearman", "kendall", "partial", "mutual_info"}
+
+        # Check if include_by_code and include_by_name are different from None at the same time
+        if roi_codes is not None and roi_names is not None:
+            roi_codes = None
+            print(
+                "Both roi_codes and roi_names were specified. Ignoring roi_codes and using roi_names for region selection."
+            )
+
+        temp_parc = copy.deepcopy(self)
+
+        # Apply inclusion if specified
+        if roi_codes is not None:
+            temp_parc.keep_by_code(codes2keep=roi_codes)
+
+        if roi_names is not None:
+            temp_parc.keep_by_name(names2keep=roi_names)
+
+        if vols_to_delete is not None:
+            # Ensure vols_to_delete is a list
+            if not isinstance(vols_to_delete, list):
+                vols_to_delete = [vols_to_delete]
+
+            # Convert vols_to_delete to a flat list of integers
+            vols_to_delete = cltmisc.build_indices(vols_to_delete, nonzeros=False)
+
+            # Check if vols_to_delete is not empty
+            if len(vols_to_delete) == 0:
+                vols_to_delete = None  # Reset to None for get_regionwise_timeseries
+
+        if isinstance(data, (str, Path)):
+            if os.path.exists(data):
+                if isinstance(data, str):
+                    data = temp_parc.get_regionwise_timeseries(
+                        data, vols_to_delete=vols_to_delete, method=ts_method
+                    )
+            else:
+                raise ValueError(f"Data file does not exist: {data}")
+
+        elif isinstance(data, np.ndarray):
+            data = np.asarray(data, dtype=float)
+            if data.ndim == 4:
+                data = temp_parc.get_regionwise_timeseries(
+                    data, vols_to_delete=vols_to_delete, method=ts_method
+                )
+            elif data.ndim == 2:
+                if vols_to_delete is not None:
+                    if max(vols_to_delete) >= data.shape[1]:
+                        raise ValueError(
+                            f"vols_to_delete contains indices that exceed the number of time points ({data.shape[1]})."
+                        )
+                    data = np.delete(data, vols_to_delete, axis=1)
+            else:
+
+                raise ValueError(
+                    f"Data array must be 2-D (n_rois × n_timepoints) or 4-D (n_x × n_y × n_z × n_timepoints), got shape {data.shape}."
+                )
+
+        method = method.lower().strip()
+        if method not in SUPPORTED:
+            raise ValueError(
+                f"Unknown method '{method}'. Choose from: {sorted(SUPPORTED)}."
+            )
+
+        n_rois, n_timepoints = data.shape
+
+        # ------------------------------------------------------------------
+        # Optional row-wise z-scoring
+        # ------------------------------------------------------------------
+        if normalize_rows:
+            mu = data.mean(axis=1, keepdims=True)
+            sigma = data.std(axis=1, keepdims=True)
+            sigma[sigma == 0] = 1.0
+            data = (data - mu) / sigma
+
+        # ------------------------------------------------------------------
+        # Compute FC
+        # ------------------------------------------------------------------
+        if method == "pearson":
+            fc = np.corrcoef(data)  # (n_rois, n_rois), fast vectorised
+
+        elif method == "spearman":
+            # Rank each row, then run Pearson on the ranks — identical to
+            # scipy.stats.spearmanr but avoids the slow Python loop.
+            ranked = np.apply_along_axis(stats.rankdata, axis=1, arr=data)
+            fc = np.corrcoef(ranked)
+
+        elif method == "kendall":
+            fc = np.eye(n_rois)
+            for i in range(n_rois):
+                for j in range(i + 1, n_rois):
+                    tau, _ = stats.kendalltau(data[i], data[j])
+                    fc[i, j] = fc[j, i] = tau
+
+        elif method == "partial":
+            if n_timepoints <= n_rois:
+                raise ValueError(
+                    f"Partial correlation requires n_timepoints ({n_timepoints}) "
+                    f"> n_rois ({n_rois})."
+                )
+            cov = np.cov(data)  # (n_rois, n_rois)
+            prec = pinv(cov)  # precision matrix
+            # Normalise to correlation scale: pcor[i,j] = -prec[i,j] / sqrt(prec[i,i]*prec[j,j])
+            d = np.sqrt(np.diag(prec))
+            fc = -prec / np.outer(d, d)
+            np.fill_diagonal(fc, 1.0)
+
+        elif method == "mutual_info":
+            from sklearn.metrics import mutual_info_score
+            from sklearn.preprocessing import KBinsDiscretizer
+
+            # Discretise each time series into bins for MI estimation
+            n_bins = max(10, int(np.sqrt(n_timepoints)))
+            est = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile")
+            data_disc = est.fit_transform(data.T).T.astype(
+                int
+            )  # (n_rois, n_timepoints)
+
+            mi_raw = np.zeros((n_rois, n_rois))
+            for i in range(n_rois):
+                for j in range(i, n_rois):
+                    mi = mutual_info_score(data_disc[i], data_disc[j])
+                    mi_raw[i, j] = mi_raw[j, i] = mi
+
+            # Normalise: NMI(i,j) = MI(i,j) / sqrt(H(i)*H(j))  ∈ [0, 1]
+            entropies = np.diag(mi_raw)  # MI(x, x) == H(x)
+            denom = np.sqrt(np.outer(entropies, entropies))
+            denom[denom == 0] = 1.0
+            fc = mi_raw / denom
+
+        # ------------------------------------------------------------------
+        # Post-processing
+        # ------------------------------------------------------------------
+        # Clip numerical noise outside [-1, 1] for correlation-based methods
+        if method not in {"mutual_info"}:
+            fc = np.clip(fc, -1.0, 1.0)
+
+        if z_transform and method != "mutual_info":
+            # arctanh is undefined at ±1; clip diagonal / extreme values
+            fc_clip = np.clip(fc, -0.9999, 0.9999)
+            fc = np.arctanh(fc_clip)
+
+        if absolute:
+            fc = np.abs(fc)
+
+        if threshold is not None:
+            fc[np.abs(fc) < threshold] = 0.0
+
+        fc_connectome = cltcon.Connectome(
+            fc,
+            region_names=temp_parc.name,
+            region_index=temp_parc.index,
+            region_colors=temp_parc.color,
+        )
+
+        return fc_connectome
