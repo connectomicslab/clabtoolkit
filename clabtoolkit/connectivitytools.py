@@ -41,9 +41,9 @@ class Connectome:
         data: Optional[Union[np.ndarray, str, Path]] = None,
         name: Optional[str] = None,
         coordinates: Optional[np.ndarray] = None,
-        colors: Union[np.ndarray, List] = None,
         region_names: Optional[List[str]] = None,
         region_index: Optional[np.ndarray] = None,
+        region_colors: Optional[Union[np.ndarray, List]] = None,
         connectivity_type: str = "structural",
         affine: Optional[np.ndarray] = None,
     ):
@@ -61,12 +61,12 @@ class Connectome:
             Name for the connectome. If loading from file and None, uses filename stem.
         coordinates : np.ndarray, optional
             3D coordinates for each region (n_regions x 3)
-        colors : np.ndarray or List, optional
-            RGB color values or hex strings for each region
         region_names : List[str], optional
             Names/labels for each brain region
         region_index : np.ndarray, optional
             Index codes for each region
+        region_colors : np.ndarray or List, optional
+            RGB color values or hex strings for each region
         connectivity_type : str, optional
             Type of connectivity (default: 'structural')
         affine : np.ndarray, optional
@@ -103,6 +103,7 @@ class Connectome:
             elif isinstance(data, np.ndarray):
                 # Use as connectivity matrix
                 matrix = data
+
             else:
                 raise TypeError(
                     f"data must be np.ndarray, str, Path, or None. Got {type(data)}"
@@ -127,9 +128,9 @@ class Connectome:
             self.coordinates = None
 
         # Set colors
-        if colors is not None:
-            colors = cltcol.harmonize_colors(colors, "hex")
-            self.set_colors(colors)
+        if region_colors is not None:
+            region_colors = cltcol.harmonize_colors(region_colors, "hex")
+            self.set_colors(region_colors)
         elif self._n_regions > 0:
             # Only generate default colors if we have regions
             self.colors = cltcol.create_distinguishable_colors(self._n_regions)
