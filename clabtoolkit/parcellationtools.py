@@ -1935,8 +1935,9 @@ class Parcellation:
 
         # Check if include_by_code and include_by_name are different from None at the same time
         if roi_codes is not None and roi_names is not None:
-            raise ValueError(
-                "You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them."
+            roi_codes = None
+            print(
+                "Both roi_codes and roi_names were specified. Ignoring roi_codes and using roi_names for region selection."
             )
 
         temp_parc = copy.deepcopy(self)
@@ -1959,14 +1960,26 @@ class Parcellation:
                     extension=".nii.gz",
                     tmp_dir="/tmp",
                 )
+                if method == "nilearn":
+                    # Deleting the volumes from the 4D image
+                    del_img = cltimg.delete_volumes_from_4D_images(
+                        in_image=time_series_data,
+                        out_image=tmp_image,
+                        vols_to_delete=vols_to_delete,
+                    )
+                    time_series_data_tmp = tmp_image
+                elif method == "clabtoolkit":
+                    # Deleting the volumes from the 4D image and loading it as a numpy array
 
-                # Deleting the volumes from the 4D image
-                del_img = cltimg.delete_volumes_from_4D_images(
-                    in_image=time_series_data,
-                    out_image=tmp_image,
-                    vols_to_delete=vols_to_delete,
-                )
-                time_series_data_tmp = tmp_image
+                    # Load the 4D image
+                    img = nib.load(time_series_data)
+
+                    # Get the dimensions of the image
+                    dim = img.shape
+
+                    time_series_data_tmp, _ = cltimg.delete_volumes_from_4D_array(
+                        in_array=img.get_fdata(), vols_to_delete=vols_to_delete
+                    )
 
             elif isinstance(time_series_data, np.ndarray):
                 time_series_data_tmp, _ = cltimg.delete_volumes_from_4D_array(
