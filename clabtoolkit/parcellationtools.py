@@ -3862,6 +3862,11 @@ class Parcellation:
 
         n_rois, n_timepoints = data.shape
 
+        if n_rois != len(temp_parc.index):
+            raise ValueError(
+                f"Number of ROIs in data ({n_rois}) does not match number of regions in parcellation ({len(temp_parc.index)})."
+            )
+
         # ------------------------------------------------------------------
         # Optional row-wise z-scoring
         # ------------------------------------------------------------------
