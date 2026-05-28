@@ -1910,8 +1910,8 @@ class Parcellation:
 
         Returns
         -------
-        pd.DataFrame
-            DataFrame with columns: index, name, color, X, Y, Z (mm), nvoxels, volume.
+        np.ndarray
+            Region-wise time series array with shape (n_regions x timepoints).
 
         Raises
         ------
@@ -2054,8 +2054,8 @@ class Parcellation:
                 else:
                     raise ValueError("The time series file does not exist")
 
-            elif isinstance(time_series_data, np.ndarray):
-                time_series = time_series_data
+            elif isinstance(time_series_data_tmp, np.ndarray):
+                time_series = time_series_data_tmp
 
             else:
                 raise ValueError(
