@@ -3798,6 +3798,18 @@ class Parcellation:
         # ------------------------------------------------------------------
         SUPPORTED = {"pearson", "spearman", "kendall", "partial", "mutual_info"}
 
+        if isinstance(data, RegionTimeSeries):
+            fc_connectome = data.compute_fc_matrix(
+                method=method,
+                z_transform=z_transform,
+                absolute=absolute,
+                threshold=threshold,
+                roi_codes=roi_codes,
+                roi_names=roi_names,
+                normalize_rows=normalize_rows,
+            )
+            return fc_connectome
+
         # Check if include_by_code and include_by_name are different from None at the same time
         if roi_codes is not None and roi_names is not None:
             roi_codes = None
