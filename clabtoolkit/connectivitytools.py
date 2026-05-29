@@ -1287,6 +1287,122 @@ class Connectome:
         plotter.screenshot(filename)
         plotter.close()
 
+    def get_info(self) -> None:
+        """
+        Display comprehensive information about the connectome.
+
+        Provides a formatted overview including region count, connectivity type,
+        matrix statistics, coordinate ranges, and availability of optional data
+        (colors, names, index). Useful for quick inspection and validation.
+
+        The method displays:
+            - Basic identification (name, type, number of regions)
+            - Matrix statistics (min, max, mean ± SD, density)
+            - Coordinate ranges per axis (if available)
+            - Availability and shape of optional attributes
+
+        Returns
+        -------
+        None
+            Prints formatted information to stdout.
+
+        Examples
+        --------
+        >>> conn = Connectome('/path/to/connectome.h5')
+        >>> conn.get_info()
+        ╔════════════════════════════════════════════════════════════════╗
+        ║                     CONNECTOME OVERVIEW                        ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ Name: my_connectome                                            ║
+        ║ Type: structural                                               ║
+        ║ Regions: 84                                                    ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ MATRIX STATISTICS                                              ║
+        ║   Shape:      84 × 84                                          ║
+        ║   Range:      [0.000, 1.000]                                   ║
+        ║   Mean ± SD:  0.123 ± 0.045                                    ║
+        ║   Density:    0.312                                            ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ COORDINATE RANGES                                              ║
+        ║   X:  [-72.10,  68.40]                                         ║
+        ║   Y:  [-98.50,  76.20]                                         ║
+        ║   Z:  [-32.10,  78.90]                                         ║
+        ╠════════════════════════════════════════════════════════════════╣
+        ║ OPTIONAL DATA                                                  ║
+        ║   Region names:   ✔  (84 entries)                              ║
+        ║   Region colors:  ✔  (84 × 3)                                  ║
+        ║   Region index:   ✔  (84 entries)                              ║
+        ╚════════════════════════════════════════════════════════════════╝
+        """
+        import numpy as np
+
+        def print_line(content, width=64):
+            print(f"║{content.ljust(width)}║")
+
+        width = 64
+        print("╔" + "═" * width + "╗")
+        print_line("CONNECTOME OVERVIEW".center(width))
+        print("╠" + "═" * width + "╣")
+
+        # Basic identification
+        print_line(f" Name:    {self.name if self.name else 'N/A'}")
+        print_line(f" Type:    {self.type}")
+
+        if self.matrix is None:
+            print_line(" No connectivity matrix loaded.")
+            print("╚" + "═" * width + "╝")
+            return
+
+        print_line(f" Regions: {self.n_regions:,}")
+
+        # Matrix statistics
+        print("╠" + "═" * width + "╣")
+        print_line(" MATRIX STATISTICS")
+        print_line(f"   Shape:      {self.matrix.shape[0]} × {self.matrix.shape[1]}")
+        print_line(
+            f"   Range:      [{np.min(self.matrix):.4f},  {np.max(self.matrix):.4f}]"
+        )
+        print_line(
+            f"   Mean ± SD:  {np.mean(self.matrix):.4f} ± {np.std(self.matrix):.4f}"
+        )
+        print_line(f"   Density:    {self.get_density():.4f}")
+
+        # Coordinate ranges
+        print("╠" + "═" * width + "╣")
+        if self.region_coords is not None:
+            print_line(" COORDINATE RANGES")
+            for axis, label in enumerate(("X", "Y", "Z")):
+                lo = np.min(self.region_coords[:, axis])
+                hi = np.max(self.region_coords[:, axis])
+                print_line(f"   {label}:  [{lo:8.2f}, {hi:8.2f}]")
+        else:
+            print_line(" COORDINATE RANGES")
+            print_line("   Not available — 3D visualization disabled")
+
+        # Optional data availability
+        print("╠" + "═" * width + "╣")
+        print_line(" OPTIONAL DATA")
+        tick = "✔"
+        cross = "✘"
+
+        if self.region_names is not None:
+            print_line(f"   Region names:   {tick}  ({len(self.region_names)} entries)")
+        else:
+            print_line(f"   Region names:   {cross}")
+
+        if self.region_colors is not None:
+            shape = self.region_colors.shape
+            print_line(f"   Region colors:  {tick}  ({shape[0]} × {shape[1]})")
+        else:
+            print_line(f"   Region colors:  {cross}")
+
+        if self.region_index is not None:
+            print_line(f"   Region index:   {tick}  ({len(self.region_index)} entries)")
+        else:
+            print_line(f"   Region index:   {cross}")
+
+        print("╚" + "═" * width + "╝")
+
     def __repr__(self) -> str:
         """String representation of the Connectome object."""
         if self.matrix is None:
