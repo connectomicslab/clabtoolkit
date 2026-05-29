@@ -8,6 +8,8 @@ import pandas as pd
 import nibabel as nib
 import pyvista as pv
 from pathlib import Path
+from scipy import stats
+from scipy.linalg import pinv
 
 
 from typing import Union, List, Optional, Tuple, Dict
@@ -2096,8 +2098,12 @@ class Parcellation:
                 region_time_series[i, :] = ts_values
 
         # Create an attribute to hold the time series
-        temp_parc.seriesextractionmethod = method
-        temp_parc.timeseries = region_time_series
+        region_time_series = RegionTimeSeries(
+            region_time_series,
+            method=method,
+            region_names=temp_parc.name,
+            region_colors=temp_parc.color,
+        )
 
         return region_time_series
 
@@ -3844,6 +3850,9 @@ class Parcellation:
                     data = temp_parc.get_regionwise_timeseries(
                         data, vols_to_delete=vols_to_delete, method=ts_method
                     )
+                    roi_names = data.region_names
+                    data = data.data
+
             else:
                 raise ValueError(f"Data file does not exist: {data}")
 
@@ -3853,6 +3862,7 @@ class Parcellation:
                 data = temp_parc.get_regionwise_timeseries(
                     data, vols_to_delete=vols_to_delete, method=ts_method
                 )
+                data = data.data
             elif data.ndim == 2:
                 if vols_to_delete is not None:
                     if max(vols_to_delete) >= data.shape[1]:
@@ -3966,6 +3976,428 @@ class Parcellation:
             region_names=temp_parc.name,
             region_index=temp_parc.index,
             region_colors=temp_parc.color,
+            connectivity_type="functional",
         )
 
         return fc_connectome
+
+
+########################################################################################################
+class RegionTimeSeries:
+    """
+    Class for handling region-wise time series extracted from parcellations.
+
+    Attributes
+    ----------
+    data : np.ndarray
+        2-D array of shape (n_regions, n_timepoints) containing the time series for each region.
+
+    region_names : list of str
+        List of region names corresponding to the rows of `data`.
+
+    region_colors : list of tuples or list of str
+        List of region colors corresponding to the rows of `data`. Colors can be in RGB tuples or hex string format.
+
+    """
+
+    def __init__(
+        self,
+        data: np.ndarray,
+        region_names: List[str] = None,
+        region_colors: List[Union[Tuple[float, float, float], str]] = None,
+        method: str = "clabtoolkit",
+    ):
+        """
+        Initialize the RegionTimeSeries object.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            2-D array of shape (n_regions, n_timepoints) containing the time series for each region.
+
+        region_names : list of str, optional
+            List of region names corresponding to the rows of `data`. If None, regions will be named "Region 1", "Region 2", etc.
+
+        region_colors : list of tuples or list of str, optional
+            List of region colors corresponding to the rows of `data`. Colors can be in RGB tuples (e.g., (255, 0, 0)) or hex string format (e.g., "#FF0000"). If None, default colors will be assigned.
+
+        method : str, optional
+            Method to create time series. Default is "clabtoolkit". Supported values:
+            - "clabtoolkit": Use mean time series for each region.
+            - "nilearn": Use Nilearn's NiftiLabelsMasker to extract time series. Requires Nilearn to be installed.
+        """
+
+        self.data = data
+
+        n_regions = data.shape[0]
+        n_timepoints = data.shape[1]
+        self._n_regions = n_regions
+        self._n_timepoints = n_timepoints
+
+        # Validate and assign region names and colors
+        if region_names is None:
+            indexes = np.arange(1, n_regions + 1)
+            region_names = cltmisc.create_names_from_indices(indexes)
+
+        if region_colors is None:
+            region_colors = cltcol.create_distinguishable_colors(
+                n_regions, output_format="hex"
+            )
+
+        if region_names is not None:
+            if len(region_names) != n_regions:
+                raise ValueError(
+                    f"Length of region_names ({len(region_names)}) must match number of regions in data ({n_regions})."
+                )
+            self.region_names = region_names
+
+        if region_colors is not None:
+            if len(region_colors) != n_regions:
+                raise ValueError(
+                    f"Length of region_colors ({len(region_colors)}) must match number of regions in data ({n_regions})."
+                )
+            self.region_colors = region_colors
+
+    ##############################################################################################
+    def compute_fc_matrix(
+        self,
+        method: str = "pearson",
+        *,
+        z_transform: bool = False,
+        absolute: bool = False,
+        threshold: Optional[float] = None,
+        normalize_rows: bool = False,
+        vols_to_delete: Union[str, list, np.ndarray] = None,
+        roi_names: Union[List[str], str] = None,
+    ) -> cltcon.Connectome:
+        """Compute a functional connectivity (FC) matrix.
+
+        Each entry ``FC[i, j]`` reflects the pairwise association between the
+        time series of ROI *i* and ROI *j*.  The result is always a symmetric
+        square matrix of shape ``(n_rois, n_rois)`` with ones on the diagonal
+        (except for ``"partial"`` and ``"mutual_info"``).
+
+        Parameters
+        ----------
+        method : str, default ``"pearson"``
+            Correlation / association method.  Supported values:
+
+            ``"pearson"``
+                Standard Pearson *r*.  Fast; assumes linearity.
+
+            ``"spearman"``
+                Rank-based Spearman *ρ*.  Robust to monotone non-linearities
+                and mild outliers.
+
+            ``"kendall"``
+                Kendall *τ-b*.  More robust than Spearman but *O(n²)* in time
+                points — avoid for very long series.
+
+            ``"partial"``
+                Partial correlation via the precision matrix (inverse of the
+                covariance).  Controls for the linear influence of all other
+                ROIs.  Requires ``n_timepoints > n_rois``.
+
+            ``"mutual_info"``
+                Normalised mutual information (scikit-learn).  Captures
+                non-linear dependencies; values in ``[0, 1]``.
+
+        z_transform : bool, default False
+            Apply Fisher's *r*-to-*z* transform: ``z = arctanh(r)``.
+            Useful before group-level statistics.  Not applied for
+            ``"mutual_info"``.
+
+        absolute : bool, default False
+            Return ``|FC|`` instead of signed values.  Useful when only
+            connection *strength* matters, not sign.
+
+        threshold : float, optional
+            Zero out all entries whose absolute value is below *threshold*
+            after all other transforms.
+
+        normalize_rows : bool, default False
+            Z-score each row of *data* before computing the FC matrix.
+            Equivalent to ``create_carpet_plot``'s ``normalize_rows``.
+
+        vols_to_delete : str, list, or np.ndarray, optional
+            Volume indices to discard before computing the FC matrix.
+            Passed directly to ``get_regionwise_timeseries``.
+
+        Returns
+        -------
+        fc_connectome : cltcon.Connectome
+            A Connectome object containing the FC matrix and metadata.
+
+        Raises
+        ------
+        ValueError
+            On unsupported method, wrong data dimensionality, or insufficient
+            time points for partial correlation.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> data = np.random.randn(90, 200)      # 90 ROIs, 200 time points
+
+        >>> fc_r   = compute_fc_matrix(data, method="pearson")
+        >>> fc_rho = compute_fc_matrix(data, method="spearman", z_transform=True)
+        >>> fc_par = compute_fc_matrix(data, method="partial")
+        >>> fc_mi  = compute_fc_matrix(data, method="mutual_info")
+        """
+
+        # ------------------------------------------------------------------
+        # Validation
+        # ------------------------------------------------------------------
+        SUPPORTED = {"pearson", "spearman", "kendall", "partial", "mutual_info"}
+
+        if roi_names is not None:
+            if isinstance(roi_names, str):
+                roi_names = [roi_names]
+            elif isinstance(roi_names, list):
+                if not all(isinstance(name, str) for name in roi_names):
+                    raise TypeError("All items in roi_names must be strings")
+            else:
+                raise TypeError(f"roi_names must be str or list, got {type(roi_names)}")
+
+            indices = cltmisc.get_indexes_by_substring(self.region_names, roi_names)
+            data = self.data[indices, :]
+            roi_names = [self.region_names[i] for i in indices]
+            roi_colors = [self.region_colors[i] for i in indices]
+        else:
+            data = self.data
+            roi_names = self.region_names
+            roi_colors = self.region_colors
+
+        if vols_to_delete is not None:
+            # Ensure vols_to_delete is a list
+            if not isinstance(vols_to_delete, list):
+                vols_to_delete = [vols_to_delete]
+
+            # Convert vols_to_delete to a flat list of integers
+            vols_to_delete = cltmisc.build_indices(vols_to_delete, nonzeros=False)
+
+            # Check if vols_to_delete is not empty
+            if len(vols_to_delete) == 0:
+                vols_to_delete = None  # Reset to None for get_regionwise_timeseries
+
+            if max(vols_to_delete) >= data.shape[1]:
+                raise ValueError(
+                    f"vols_to_delete contains indices that exceed the number of time points ({data.shape[1]})."
+                )
+            data = np.delete(data, vols_to_delete, axis=1)
+
+        method = method.lower().strip()
+        if method not in SUPPORTED:
+            raise ValueError(
+                f"Unknown method '{method}'. Choose from: {sorted(SUPPORTED)}."
+            )
+
+        n_rois, n_timepoints = data.shape
+
+        # ------------------------------------------------------------------
+        # Optional row-wise z-scoring
+        # ------------------------------------------------------------------
+        if normalize_rows:
+            mu = data.mean(axis=1, keepdims=True)
+            sigma = data.std(axis=1, keepdims=True)
+            sigma[sigma == 0] = 1.0
+            data = (data - mu) / sigma
+
+        # ------------------------------------------------------------------
+        # Compute FC
+        # ------------------------------------------------------------------
+        if method == "pearson":
+            fc = np.corrcoef(data)  # (n_rois, n_rois), fast vectorised
+
+        elif method == "spearman":
+            # Rank each row, then run Pearson on the ranks — identical to
+            # scipy.stats.spearmanr but avoids the slow Python loop.
+            ranked = np.apply_along_axis(stats.rankdata, axis=1, arr=data)
+            fc = np.corrcoef(ranked)
+
+        elif method == "kendall":
+            fc = np.eye(n_rois)
+            for i in range(n_rois):
+                for j in range(i + 1, n_rois):
+                    tau, _ = stats.kendalltau(data[i], data[j])
+                    fc[i, j] = fc[j, i] = tau
+
+        elif method == "partial":
+            if n_timepoints <= n_rois:
+                raise ValueError(
+                    f"Partial correlation requires n_timepoints ({n_timepoints}) "
+                    f"> n_rois ({n_rois})."
+                )
+            cov = np.cov(data)  # (n_rois, n_rois)
+            prec = pinv(cov)  # precision matrix
+            # Normalise to correlation scale: pcor[i,j] = -prec[i,j] / sqrt(prec[i,i]*prec[j,j])
+            d = np.sqrt(np.diag(prec))
+            fc = -prec / np.outer(d, d)
+            np.fill_diagonal(fc, 1.0)
+
+        elif method == "mutual_info":
+            from sklearn.metrics import mutual_info_score
+            from sklearn.preprocessing import KBinsDiscretizer
+
+            # Discretise each time series into bins for MI estimation
+            n_bins = max(10, int(np.sqrt(n_timepoints)))
+            est = KBinsDiscretizer(n_bins=n_bins, encode="ordinal", strategy="quantile")
+            data_disc = est.fit_transform(data.T).T.astype(
+                int
+            )  # (n_rois, n_timepoints)
+
+            mi_raw = np.zeros((n_rois, n_rois))
+            for i in range(n_rois):
+                for j in range(i, n_rois):
+                    mi = mutual_info_score(data_disc[i], data_disc[j])
+                    mi_raw[i, j] = mi_raw[j, i] = mi
+
+            # Normalise: NMI(i,j) = MI(i,j) / sqrt(H(i)*H(j))  ∈ [0, 1]
+            entropies = np.diag(mi_raw)  # MI(x, x) == H(x)
+            denom = np.sqrt(np.outer(entropies, entropies))
+            denom[denom == 0] = 1.0
+            fc = mi_raw / denom
+
+        # ------------------------------------------------------------------
+        # Post-processing
+        # ------------------------------------------------------------------
+        # Clip numerical noise outside [-1, 1] for correlation-based methods
+        if method not in {"mutual_info"}:
+            fc = np.clip(fc, -1.0, 1.0)
+
+        if z_transform and method != "mutual_info":
+            # arctanh is undefined at ±1; clip diagonal / extreme values
+            fc_clip = np.clip(fc, -0.9999, 0.9999)
+            fc = np.arctanh(fc_clip)
+
+        if absolute:
+            fc = np.abs(fc)
+
+        if threshold is not None:
+            fc[np.abs(fc) < threshold] = 0.0
+
+        fc_connectome = cltcon.Connectome(
+            fc,
+            region_names=roi_names,
+            region_index=list(range(1, n_rois + 1)),
+            region_colors=roi_colors,
+        )
+
+        return fc_connectome
+
+    #########################################################################################################
+    def get_info(self) -> None:
+        """
+        Display a formatted summary of the RegionTimeSeries object.
+
+        Shows data shape, dtype, basic statistics, and a preview of the
+        region names / colours (up to ``_MAX_SHOWN`` rows; the rest are
+        summarised).
+
+        Examples
+        --------
+        >>> rts.get_info()
+        """
+        _MAX_SHOWN = 10
+        _NAME_W = 38  # max chars for a region name column
+        _COLOR_W = 18  # max chars for a colour column
+
+        # Inner content width: index(6) + space(1) + name + space(1) + color
+        _INNER_W = 4 + 1 + _NAME_W + 1 + _COLOR_W  # = 64
+        _WIDTH = _INNER_W + 2  # +2 for the leading "  " indent
+
+        def _border(left="╠", mid="═", right="╣") -> None:
+            print(f"{left}{mid * _WIDTH}{right}")
+
+        def _row(content: str) -> None:
+            # Pad / truncate so the closing '║' always lands in the same column.
+            print(f"║{content[:_WIDTH]:<{_WIDTH}}║")
+
+        def _trunc(s: str, max_w: int) -> str:
+            return s if len(s) <= max_w else s[: max_w - 1] + "…"
+
+        # ------------------------------------------------------------------ #
+        # Gather fields (graceful fallbacks if somehow unset)
+        # ------------------------------------------------------------------ #
+        n_regions = getattr(self, "_n_regions", self.data.shape[0])
+        n_timepoints = getattr(self, "_n_timepoints", self.data.shape[1])
+        region_names = getattr(self, "region_names", [])
+        region_colors = getattr(self, "region_colors", [])
+
+        # ------------------------------------------------------------------ #
+        # Header
+        # ------------------------------------------------------------------ #
+        _border("╔", "═", "╗")
+        _row("  REGION TIME SERIES".center(_WIDTH))
+        _border()
+
+        # ------------------------------------------------------------------ #
+        # Data block
+        # ------------------------------------------------------------------ #
+        _row("  DATA")
+        _row(f"    Shape      : {n_regions} regions  ×  {n_timepoints} timepoints")
+        _row(f"    Dtype      : {self.data.dtype}")
+        try:
+            _row(f"    Min / Max  : {self.data.min():.4g}  /  {self.data.max():.4g}")
+            _row(f"    Mean / Std : {self.data.mean():.4g}  /  {self.data.std():.4g}")
+        except (ValueError, TypeError):
+            _row("    Statistics : unavailable")
+
+        # ------------------------------------------------------------------ #
+        # Regions block
+        # ------------------------------------------------------------------ #
+        _border()
+        n_names = len(region_names)
+        _row(f"  REGIONS  ({n_names})")
+
+        if n_names == 0:
+            _row("    (no region names stored)")
+        else:
+            # Column header
+            idx_hdr = f"{'#':>4}"
+            name_hdr = f"{'Name':<{_NAME_W}}"
+            color_hdr = f"{'Color':<{_COLOR_W}}"
+            _row(f"  {idx_hdr} {name_hdr} {color_hdr}")
+            _border("╟", "─", "╢")
+
+            n_show = min(n_names, _MAX_SHOWN)
+            for i in range(n_show):
+                idx_str = f"{i + 1:>4}"
+                name_str = _trunc(str(region_names[i]), _NAME_W)
+                color_str = _trunc(
+                    str(region_colors[i]) if i < len(region_colors) else "—", _COLOR_W
+                )
+                _row(f"  {idx_str} {name_str:<{_NAME_W}} {color_str:<{_COLOR_W}}")
+
+            if n_names > _MAX_SHOWN:
+                _border("╟", "─", "╢")
+                _row(f"    … {n_names - _MAX_SHOWN} more region(s) not shown")
+
+        # ------------------------------------------------------------------ #
+        # Footer
+        # ------------------------------------------------------------------ #
+        _border("╚", "═", "╝")
+
+    def show_content(
+        self,
+        show_private=False,
+        show_dunder=False,
+        show_methods=True,
+        show_properties=True,
+        show_attributes=True,
+    ):
+        """
+        Alias for get_info() to display the content of the RegionTimeSeries object.
+
+        Examples
+        --------
+        >>> rts.show_content()
+        """
+        cltmisc.show_object_content(
+            self,
+            show_private=show_private,
+            show_dunder=show_dunder,
+            show_methods=show_methods,
+            show_properties=show_properties,
+            show_attributes=show_attributes,
+        )
