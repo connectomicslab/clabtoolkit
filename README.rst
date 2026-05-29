@@ -2,6 +2,11 @@
 Connectomics Lab Toolkit
 ========================
 
+.. image:: docs/source/_static/clabtoolkit_logo.png
+        :alt: clabtoolkit logo
+        :align: center
+        :width: 400
+
 
 .. image:: https://img.shields.io/pypi/v/clabtoolkit.svg
         :target: https://pypi.python.org/pypi/clabtoolkit
