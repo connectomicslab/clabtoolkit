@@ -1391,8 +1391,12 @@ class Connectome:
             print_line(f"   Region names:   {cross}")
 
         if self.region_colors is not None:
-            shape = self.region_colors.shape
-            print_line(f"   Region colors:  {tick}  ({shape[0]} × {shape[1]})")
+            n = len(self.region_colors)
+            if hasattr(self.region_colors, "shape"):
+                shape_str = " × ".join(str(s) for s in self.region_colors.shape)
+            else:
+                shape_str = str(n)
+            print_line(f"   Region colors:  {tick}  ({shape_str})")
         else:
             print_line(f"   Region colors:  {cross}")
 
