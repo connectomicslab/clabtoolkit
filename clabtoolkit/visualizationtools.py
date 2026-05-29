@@ -39,6 +39,7 @@ from . import surfacetools as cltsurf
 from . import tracttools as clttract
 from . import visualization_utils as visutils
 from . import colorstools as cltcol
+from . import parcellationtools as cltparc
 
 
 ####################################################################################################
@@ -1955,8 +1956,8 @@ class BrainPlotter:
 ####################################################################################################
 ####################################################################################################
 def create_carpet_plot(
-    data: np.ndarray,
-    structure_names: list[str],
+    data: Union[np.ndarray, cltparc.RegionTimeSeries],
+    structure_names: list[str] = None,
     *,
     time_points: Optional[np.ndarray] = None,
     tr: Optional[float] = None,
@@ -1987,7 +1988,7 @@ def create_carpet_plot(
         Time series data for each brain structure.
 
     structure_names : list of str
-        Names of the brain structures. Must have length ``data.shape[0]``.
+        Names of the brain structures. Must have length ``data.shape[0]``. Defaults to generic names if not provided.
 
     time_points : np.ndarray, optional
         Explicit time-point values for the x-axis. When *None*, volume
@@ -2105,6 +2106,14 @@ def create_carpet_plot(
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
+
+    if isinstance(data, cltparc.RegionTimeSeries):
+        structure_names = data.region_names
+        data = data.data
+
+    if structure_names is None:
+        structure_names = cltmisc.create_names_from_indices(np.arange(data.shape[0]))
+
     data = np.asarray(data, dtype=float)
     if data.ndim != 2:
         raise ValueError(
