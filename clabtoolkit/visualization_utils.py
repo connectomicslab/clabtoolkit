@@ -946,6 +946,17 @@ def determine_render_mode(
     - If save_path is None, display mode is used with notebook and non_blocking settings.
     - If the save directory doesn't exist, falls back to display mode with a warning.
     """
+    # Threaded display is incompatible with the notebook (trame) backend:
+    # trame starts an aiohttp server that registers SIGINT via
+    # loop.add_signal_handler, which only works on the main thread.
+    if notebook and non_blocking:
+        print(
+            "Warning: non_blocking=True is incompatible with notebook=True "
+            "(trame backend must run on the main thread). "
+            "Falling back to blocking display."
+        )
+        non_blocking = False
+
     if save_path is not None:
         save_dir = os.path.dirname(save_path)
         if save_dir == "":

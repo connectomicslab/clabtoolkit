@@ -275,7 +275,7 @@ class BrainPlotter:
         use_opacity: bool = True,
         colormaps: Union[str, List[str]] = "BrBG",
         save_path: Optional[str] = None,
-        non_blocking: bool = True,
+        non_blocking: bool = False,
         colorbar: bool = True,
         colorbar_style: str = "individual",
         colorbar_titles: Union[str, List[str]] = None,
