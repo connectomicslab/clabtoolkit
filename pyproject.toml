@@ -44,6 +44,10 @@ dependencies = [
     "pyvista>=0.45.3",
     "nilearn>=0.12.0",
     "joblib>=1.5.1",
+    "colorama>=0.4.6",
+    "dipy>=1.11.0",
+    "screeninfo>=0.8.1",
+    "ipython>=8.0.0",
 ]
 
 [project.urls]
