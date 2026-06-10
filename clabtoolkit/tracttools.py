@@ -1997,6 +1997,8 @@ class Tractogram:
 
         centroids_tractogram.compute_streamline_lengths()
 
+        # Creating a new map with the bundle ID for each centroid streamline
+
         return centroids_tractogram
 
     ##############################################################################################
