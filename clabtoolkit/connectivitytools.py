@@ -8,6 +8,7 @@ import warnings
 
 from . import colorstools as cltcol
 from . import misctools as cltmisc
+from . import plottingtools as cltplot
 
 
 class Connectome:
@@ -1258,7 +1259,7 @@ class Connectome:
 
         # --- Coordinates (needed for 'distance', handy for visualization) -----
         if region_coords is None:
-            region_coords = cltmisc.generate_spherical_coords(n_regions, rng)
+            region_coords = cltplot.generate_spherical_coords(n_regions, rng)
         else:
             region_coords = np.asarray(region_coords, dtype=float)
             if region_coords.shape != (n_regions, 3):
