@@ -8,7 +8,7 @@ import warnings
 
 from . import colorstools as cltcol
 from . import misctools as cltmisc
-from . import plottingtools as cltplot
+from . import plottools as cltplot
 
 
 class Connectome:
