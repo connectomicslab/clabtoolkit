@@ -1995,9 +1995,28 @@ class Tractogram:
         ):
             centroids_tractogram.header["nb_streamlines"] = len(self.centroids)
 
+        # Creating the length map for the centroids tractogram, which is required for some visualization tools
         centroids_tractogram.compute_streamline_lengths()
 
         # Creating a new map with the bundle ID for each centroid streamline
+        cluster_ids = np.arange(
+            len(self.centroids)
+        )  # Assign a unique cluster ID to each streamline (each streamline is its own cluster)
+        n_streamlines = len(cluster_ids)
+        colors = cltcol.create_distinguishable_colors(n_streamlines)
+        colortable = cltcol.colors_to_table(
+            colors=colors, alpha_values=1, values=range(n_streamlines)
+        )
+        tmp_colortable = {}
+        tmp_colortable = {
+            "names": [f"cluster_{i}" for i in range(n_streamlines)],
+            "color_table": colortable,
+            "lookup_table": None,
+        }
+        centroids_tractogram.colortables["cluster_id"] = tmp_colortable
+        centroids_tractogram.data_per_streamline["cluster_id"] = cluster_ids.reshape(
+            -1, 1
+        )  # Reshape to be a column vector
 
         return centroids_tractogram
 
