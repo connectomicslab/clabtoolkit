@@ -512,6 +512,9 @@ def compute_reg_area_fromsurf(
         )
         df = cltmisc.expand_and_concatenate(df_add, df)
 
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
+
     # Save table if requested
     if output_table is not None:
         output_dir = os.path.dirname(output_table)
@@ -742,6 +745,9 @@ def compute_reg_nvertices_fromsurf(
         )
         df = cltmisc.expand_and_concatenate(df_add, df)
 
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
+
     # Save table if requested
     if output_table is not None:
         output_dir = os.path.dirname(output_table)
@@ -916,6 +922,9 @@ def compute_euler_fromsurf(
             filepath=surf_file, entities_to_extract=ent_list
         )
         df = cltmisc.expand_and_concatenate(df_add, df)
+
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
 
     # Save table if requested
     output_path = None
@@ -1563,6 +1572,9 @@ def compute_reg_val_fromparcellation(
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
 
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
+
     # Save table if requested
     output_path = None
     if output_table is not None:
@@ -1860,6 +1872,9 @@ def compute_reg_volume_fromparcellation(
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
 
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
+
     # Save table if requested
     output_path = None
     if output_table is not None:
@@ -2149,6 +2164,9 @@ def parse_freesurfer_global_fromaseg(
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
+
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
 
     # Save table if requested
     output_path = None
@@ -2443,6 +2461,9 @@ def parse_freesurfer_stats_fromaseg(
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
             warnings.warn(f"Could not add BIDS entities: {str(e)}")
+
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
 
     # Save table if requested
     output_path = None
@@ -2923,6 +2944,9 @@ def parse_freesurfer_cortex_stats(
             except Exception as e:
                 warnings.warn(f"Could not add BIDS entities: {str(e)}")
 
+        # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+        df = cltmisc.drop_empty_columns(df)
+
         # Save table if requested
         output_path = None
         if output_table is not None:
@@ -3093,6 +3117,9 @@ def network_metrics_to_table(
         dict_of_cols[st_names[i - 1]] = outvals
 
     df = pd.DataFrame.from_dict(dict_of_cols)
+
+    # Cleaning the dataframe to remove columns with all missing values if include_missing is False
+    df = cltmisc.drop_empty_columns(df)
     return df
 
 

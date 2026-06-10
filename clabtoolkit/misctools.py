@@ -2556,6 +2556,72 @@ def smart_read_table(
         )
 
 
+#####################################################################################################
+def drop_empty_columns(
+    df: pd.DataFrame,
+    treat_whitespace_as_empty: bool = True,
+    inplace: bool = False,
+) -> pd.DataFrame:
+    """
+    Remove columns whose values are all NaN or empty.
+
+    A column is dropped when every one of its entries is missing (NaN/None)
+    or an empty string. Optionally, whitespace-only strings (e.g. '   ') are
+    also treated as empty. Columns with at least one meaningful value are kept.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    treat_whitespace_as_empty : bool, default=True
+        If True, strings containing only whitespace are considered empty.
+    inplace : bool, default=False
+        If True, drop the columns in place and return the same DataFrame.
+        If False (default), operate on and return a copy.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with all-empty columns removed.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> df = pd.DataFrame({
+    ...     'a': [1, 2, 3],
+    ...     'b': [np.nan, np.nan, np.nan],
+    ...     'c': ['', '', ''],
+    ...     'd': ['x', '', None],
+    ... })
+    >>> remove_empty_columns(df).columns.tolist()
+    ['a', 'd']
+    """
+    target = df if inplace else df.copy()
+
+    # Start from the standard missing-value mask (NaN, None, NaT)
+    empty_mask = target.isna()
+
+    # Also flag empty (and optionally whitespace-only) strings
+    obj_cols = target.columns[target.dtypes == object]
+    if len(obj_cols) > 0:
+        stripped = target[obj_cols].apply(
+            lambda col: col.map(
+                lambda x: (
+                    isinstance(x, str)
+                    and (x.strip() == "" if treat_whitespace_as_empty else x == "")
+                )
+            )
+        )
+        empty_mask[obj_cols] = empty_mask[obj_cols] | stripped
+
+    # A column is "empty" only if every entry is empty
+    cols_to_drop = empty_mask.columns[empty_mask.all(axis=0)]
+
+    target.drop(columns=cols_to_drop, inplace=True)
+    return target
+
+
 ####################################################################################################
 def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> dict:
     """
