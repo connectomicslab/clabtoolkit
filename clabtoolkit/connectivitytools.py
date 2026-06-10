@@ -841,39 +841,6 @@ class Connectome:
             affine=self.affine.copy(),
         )
 
-    def print_info(self) -> None:
-        """Print comprehensive information about the connectome."""
-        print(f"=== Connectome: {self.name} ===")
-
-        if self.matrix is None:
-            print("No connectivity data loaded.")
-            return
-
-        stats = self.get_connectivity_stats()
-        print(f"Number of regions: {stats['n_regions']}")
-        print(f"Connectivity type: {self.type}")
-        print(f"Matrix shape: {stats['matrix_shape']}")
-        print(
-            f"Connection strength range: [{stats['min_strength']:.3f}, {stats['max_strength']:.3f}]"
-        )
-        print(f"Mean ± SD: {stats['mean_strength']:.3f} ± {stats['std_strength']:.3f}")
-        print(f"Network density: {stats['density']:.3f}")
-
-        if "coord_ranges" in stats:
-            print("Coordinate ranges:")
-            for axis, (min_val, max_val) in stats["coord_ranges"].items():
-                print(f"  {axis.upper()}: [{min_val:.1f}, {max_val:.1f}]")
-        else:
-            print("No coordinate data available")
-
-        print(f"Colors available: {'Yes' if self.region_colors is not None else 'No'}")
-        print(
-            f"Region names available: {'Yes' if self.region_names is not None else 'No'}"
-        )
-
-        if self.region_names is not None:
-            print(f"Sample regions: {self.region_names[:3]}...")
-
     def plot_matrix(
         self,
         figsize: Tuple[int, int] = (12, 10),
