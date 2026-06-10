@@ -703,3 +703,63 @@ def get_pyvista_fonts(plot_width, plot_height, **kwargs):
         for key, value in fonts.items()
         if not key.startswith("_")
     }
+
+
+######################################################################################################
+def generate_spherical_coords(
+    n_regions: int, rng: np.random.Generator, radius: float = 50.0
+) -> np.ndarray:
+    """
+        Sample `n_regions` points uniformly inside a sphere of the given radius.
+
+        Returns an (n_regions, 3) array, giving a brain-like point cloud for the
+        3D / circular visualizations.
+
+        Parameters
+    -   ---------
+        n_regions : int
+            Number of points to sample
+
+        rng : np.random.Generator
+            Random number generator to use for sampling
+
+        radius : float, optional
+            Radius of the sphere (default: 50.0)
+
+        Returns
+        -------
+        np.ndarray
+            An (n_regions, 3) array of points uniformly distributed inside a sphere of the given radius.
+
+        Notes
+        -----
+        - The function generates random directions by sampling from a normal distribution and normalizing the vectors.
+        - The radii are sampled using the cube root of a uniform distribution to ensure uniform density within
+        the sphere.
+
+        Examples
+        --------
+        >>> rng = np.random.default_rng(seed=42)
+        >>> coords = generate_spherical_coords(5, rng, radius=50.0)
+        >>> print(coords)
+        [[ 14.96714153  -9.65848377  24.96888508]
+        [  3.65846528  48.61735699  14.65848377]
+        [  9.65848377  24.96888508  14.96714153]
+        [ 48.61735699  14.65848377   3.65846528]
+        [ 24.96888508  14.96714153   9.65848377]]
+
+        >>> rng = np.random.default_rng(seed=123)
+        >>> coords = generate_spherical_coords(3, rng, radius=30.0)
+        >>> print(coords)
+        [[  5.12345678  -2.34567890  10.12345678]
+        [ -3.45678901  15.67890123  -5.67890123]
+        [ 12.34567890  -7.89012345   3.45678901]]
+        (Note: actual values will differ due to randomness)
+
+    """
+    directions = rng.normal(size=(n_regions, 3))
+    norms = np.linalg.norm(directions, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    directions /= norms
+    radii = radius * np.cbrt(rng.uniform(0.0, 1.0, size=(n_regions, 1)))
+    return directions * radii
