@@ -2,6 +2,34 @@
 History
 =======
 
+0.4.3 (2026-06-10)
+------------------
+
+* Added compute_fc_matrix method to Parcellation class
+* Added get_info method to Connectome and Parcellation classes
+* Added create_carpet_plot function in visualizationtools
+* Added compute_scalar_maps_from_tensor in diffusiontools
+* Added RegionTimeSeries object and integration across the package
+* Added method to generate connectomes
+* Added connected components computation from edge arrays
+* Added region lookup methods in AnnotParcellation
+* Added comprehensive get_info() for AnnotParcellation
+* Added method to binarize and dilate 3D arrays by millimeter distance
+* Added support for pathlib.Path objects as inputs
+* Added option to make TSV file compatible with templateflow
+* Added new colors to the bcolors class
+* Added bundle id map and updated names
+* Added notebook with examples for OHBM 2026
+* Added new ecosystem figure and logo
+* Refactored stats_from_vector for edge cases with nonzeros_only=True
+* Refactored AnnotParcellation gii2annot/annot2gii to use nibabel instead of FreeSurfer mris_convert
+* Extended merge_to_4d method to deal with DWI data
+* Fixed strict entity and suffix validation in is_bids_filename
+* Fixed pyvista notebook crash from threaded display
+* Fixed color table names bug
+* Fixed dimensions field bugs ("dims" vs "dim")
+* Multiple bug fixes, dependency updates, and documentation improvements
+
 0.4.1 (2026-02-19)
 ------------------
 
