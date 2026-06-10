@@ -1138,6 +1138,204 @@ class Connectome:
 
         plt.show()
 
+    @classmethod
+    def generate_connectome(
+        cls,
+        n_regions: int,
+        method: str = "random",
+        value_range: Tuple[float, float] = (0.0, 1.0),
+        sparsity: Optional[float] = None,
+        region_names: Optional[List[str]] = None,
+        region_colors: Optional[Union[np.ndarray, List]] = None,
+        region_coords: Optional[np.ndarray] = None,
+        connectivity_type: str = "structural",
+        name: Optional[str] = None,
+        symmetric: bool = True,
+        n_modules: int = 4,
+        distance_decay: float = 25.0,
+        seed: Optional[int] = None,
+    ) -> "Connectome":
+        """
+        Generate a synthetic Connectome.
+
+        Builds an (n_regions x n_regions) connectivity matrix using one of several
+        generation strategies and wraps it in a Connectome object. Region names and
+        colors are created automatically when not supplied (using the same helpers
+        __init__ relies on), and 3D coordinates are generated on a sphere so the
+        result is immediately usable with the 3D / circular visualizations.
+
+        Parameters
+        ----------
+        n_regions : int
+            Number of brain regions (matrix will be n_regions x n_regions).
+        method : {'random', 'modular', 'distance'}
+            Strategy used to fill the matrix:
+              - 'random'   : i.i.d. uniform weights drawn from `value_range`.
+              - 'modular'  : block/community structure — strong within-module,
+                             weak between-module weights (alias: 'method1').
+              - 'distance' : weights decay with the Euclidean distance between
+                             region coordinates, i.e. nearby regions are more
+                             strongly connected (alias: 'method2').
+        value_range : (float, float)
+            (low, high) bounds for the generated weights. Default (0.0, 1.0).
+        sparsity : float, optional
+            Fraction of off-diagonal edges to set to zero, in [0, 1].
+            0.0 -> fully dense, 0.9 -> 90% of edges removed (very sparse).
+            Edges are removed at random (symmetrically when `symmetric=True`).
+            None (default) leaves the matrix dense.
+        region_names : list of str, optional
+            Region labels. Auto-generated when None.
+        region_colors : np.ndarray or list, optional
+            RGB values or hex strings. Auto-generated when None.
+        region_coords : np.ndarray, optional
+            (n_regions, 3) coordinates. Auto-generated on a sphere when None.
+            Required by (and drives) the 'distance' method.
+        connectivity_type : str
+            Stored connectivity type. Default 'structural'.
+        name : str, optional
+            Name for the connectome. Defaults to 'synthetic_<method>_<n_regions>'.
+        symmetric : bool
+            If True (default) the matrix is symmetric (undirected). Set False for
+            directed weights.
+        n_modules : int
+            Number of communities for the 'modular' method. Default 4.
+        distance_decay : float
+            Characteristic length (same units as coordinates) controlling how fast
+            weights fall off with distance in the 'distance' method. Default 25.0.
+        seed : int, optional
+            Seed for reproducible generation.
+
+        Returns
+        -------
+        Connectome
+            A new Connectome populated with the synthetic matrix, coordinates,
+            names and colors.
+
+        Examples
+        --------
+        >>> conn = Connectome.generate_connectomes(84, seed=0)
+        >>> conn = Connectome.generate_connectomes(
+        ...     100, method="modular", value_range=(-1, 1),
+        ...     n_modules=6, sparsity=0.7, seed=1,
+        ... )
+        >>> conn = Connectome.generate_connectomes(
+        ...     coords.shape[0], method="distance", region_coords=coords,
+        ... )
+        """
+        if n_regions <= 0:
+            raise ValueError("n_regions must be a positive integer")
+
+        if region_names is not None and len(region_names) != n_regions:
+            raise ValueError(
+                f"Length of region_names must match n_regions ({n_regions}), "
+                f"got {len(region_names)}"
+            )
+        elif region_names is None:
+            region_names = cltmisc.create_names_from_indices(np.arange(n_regions) + 1)
+
+        if region_colors is not None:
+            region_colors = cltcol.harmonize_colors(region_colors)
+            if len(region_colors) != n_regions:
+                raise ValueError(
+                    f"Length of region_colors must match n_regions ({n_regions}), "
+                    f"got {len(region_colors)}"
+                )
+        else:
+            region_colors = cltcol.create_distinguishable_colors(n_regions)
+
+        low, high = value_range
+        if low > high:
+            raise ValueError(
+                f"value_range must be (low, high) with low <= high, got {value_range}"
+            )
+        span = high - low
+
+        # Normalize method name and resolve aliases
+        method = str(method).lower()
+        method = {"method1": "modular", "method2": "distance"}.get(method, method)
+
+        rng = np.random.default_rng(seed)
+
+        # --- Coordinates (needed for 'distance', handy for visualization) -----
+        if region_coords is None:
+            region_coords = cltmisc.generate_spherical_coords(n_regions, rng)
+        else:
+            region_coords = np.asarray(region_coords, dtype=float)
+            if region_coords.shape != (n_regions, 3):
+                raise ValueError(
+                    f"region_coords must have shape ({n_regions}, 3), "
+                    f"got {region_coords.shape}"
+                )
+
+        # --- Build the raw matrix ---------------------------------------------
+        if method == "random":
+            matrix = rng.uniform(low, high, size=(n_regions, n_regions))
+
+        elif method == "modular":
+            n_mod = max(1, min(int(n_modules), n_regions))
+            # Contiguous, roughly balanced module assignment
+            module_ids = (np.arange(n_regions) * n_mod) // n_regions
+            same_module = module_ids[:, None] == module_ids[None, :]
+            within = rng.uniform(low + 0.6 * span, high, size=(n_regions, n_regions))
+            between = rng.uniform(low, low + 0.3 * span, size=(n_regions, n_regions))
+            matrix = np.where(same_module, within, between)
+
+        elif method == "distance":
+            diff = region_coords[:, None, :] - region_coords[None, :, :]
+            dist = np.sqrt(np.sum(diff**2, axis=-1))
+            weights = np.exp(-dist / float(distance_decay))
+            off = ~np.eye(n_regions, dtype=bool)
+            if np.any(off):
+                wmin, wmax = weights[off].min(), weights[off].max()
+                norm = (
+                    (weights - wmin) / (wmax - wmin)
+                    if wmax > wmin
+                    else np.full_like(weights, 0.5)
+                )
+            else:
+                norm = np.zeros_like(weights)
+            matrix = low + norm * span
+
+        else:
+            raise ValueError(
+                f"Unknown method: {method!r}. "
+                f"Use 'random', 'modular' ('method1') or 'distance' ('method2')."
+            )
+
+        # --- Enforce symmetry and zero diagonal -------------------------------
+        if symmetric:
+            upper = np.triu(matrix, k=1)
+            matrix = upper + upper.T
+        np.fill_diagonal(matrix, 0.0)
+
+        # --- Apply sparsity (random edge removal) -----------------------------
+        if sparsity is not None:
+            if not 0.0 <= sparsity <= 1.0:
+                raise ValueError("sparsity must be between 0 and 1")
+            if symmetric:
+                rows, cols = np.triu_indices(n_regions, k=1)
+            else:
+                rows, cols = np.where(~np.eye(n_regions, dtype=bool))
+            n_zero = int(round(sparsity * rows.size))
+            if n_zero > 0:
+                sel = rng.choice(rows.size, size=n_zero, replace=False)
+                matrix[rows[sel], cols[sel]] = 0.0
+                if symmetric:
+                    matrix[cols[sel], rows[sel]] = 0.0
+
+        if name is None:
+            name = f"synthetic_{method}_{n_regions}"
+
+        # __init__ fills in default names/colors when these are None
+        return cls(
+            data=matrix,
+            name=name,
+            region_coords=region_coords,
+            region_names=region_names,
+            region_colors=region_colors,
+            connectivity_type=connectivity_type,
+        )
+
     def visualize_3d(
         self,
         connectivity_threshold: float = 0.1,
