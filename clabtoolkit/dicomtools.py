@@ -1,23 +1,32 @@
+# Standard library
 import os
-from glob import glob
+import sys
+import time
 import tarfile
 import shutil
-import pandas as pd
-import sys
-import pydicom
+from glob import glob
 from datetime import datetime
 from pathlib import Path
 from shutil import copyfile
-from concurrent.futures import ThreadPoolExecutor
-
-import numpy as np
-from rich.progress import Progress
+from functools import partial
 from threading import Lock
-import time
-
 from typing import List, Optional, Union
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
-# Importing local modules
+# Third-party
+import numpy as np
+import pandas as pd
+import pydicom
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    BarColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    MofNCompleteColumn,
+)
+
+# Local
 from . import misctools as cltmisc
 
 
