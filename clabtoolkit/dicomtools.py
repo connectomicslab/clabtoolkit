@@ -368,6 +368,235 @@ def org_conv_dicoms(
         compress_dicom_session(out_dic_dir)
 
 
+##
+def organize_dicom_files(
+    in_dic_dir: str,
+    out_dic_dir: str,
+    no_sub_folder: bool = False,
+    demog_file: str = None,
+    ids_file: str = None,
+    ses_id: str = None,
+    nosub: bool = False,
+    booldic: bool = True,
+    boolcomp: bool = False,
+    force: bool = False,
+    nthreads: int = 0,
+):
+    """
+    Alias for org_conv_dicoms to maintain backward compatibility.
+    """
+
+    if no_sub_folder:
+        org_dicom_folder(
+            in_dic_dir=in_dic_dir,
+            out_dic_dir=out_dic_dir,
+            boolcomp=boolcomp,
+            force=force,
+            nthreads=nthreads,
+        )
+    else:
+
+        org_conv_dicoms(
+            in_dic_dir=in_dic_dir,
+            out_dic_dir=out_dic_dir,
+            demog_file=demog_file,
+            ids_file=ids_file,
+            ses_id=ses_id,
+            nosub=nosub,
+            booldic=booldic,
+            boolcomp=boolcomp,
+            force=force,
+            nthreads=nthreads,
+        )
+
+
+##########################################################################################################
+def _copy_dicomfile_noid(
+    dic_file: str, out_dic_dir: str, force: bool = False
+) -> tuple[str, str | None, str | None]:
+    """
+    Module-level worker: read one DICOM file, derive its destination path and copy it.
+    Must be defined at module level (not nested) so ProcessPoolExecutor can pickle it.
+
+    Parameters
+    ----------
+    dic_file : str
+        Full path to the source DICOM file.
+    out_dic_dir : str
+        Root output directory where the organised hierarchy will be written.
+    force : bool, optional
+        If True, overwrite an existing file at the destination. Default is False.
+
+    Returns
+    -------
+    dic_file : str
+        The input path (echoed back for caller bookkeeping).
+    dest_dic_dir : str or None
+        The destination directory the file was copied into, or None on failure.
+    error_msg : str or None
+        Human-readable reason for failure, or None on success.
+    """
+    try:
+        dataset = pydicom.dcmread(dic_file, stop_before_pixels=True)
+        dic_name = os.path.basename(dic_file)
+
+        attributes = dataset.dir("")
+        if not attributes:
+            return dic_file, None, "No DICOM attributes found"
+
+        subj_id = str(dataset.data_element("PatientID").value).strip()
+        ses_id, ser_id = create_session_series_names(dataset)
+        ses_id = "ses-" + ses_id
+
+        dest_dic_dir = os.path.join(out_dic_dir, subj_id, ses_id, ser_id)
+        Path(dest_dic_dir).mkdir(parents=True, exist_ok=True)
+
+        dest_dic = os.path.join(dest_dic_dir, dic_name)
+        if force:
+            if os.path.isfile(dest_dic):
+                os.remove(dest_dic)
+            copyfile(dic_file, dest_dic)
+        else:
+            if not os.path.isfile(dest_dic):
+                copyfile(dic_file, dest_dic)
+
+        return dic_file, dest_dic_dir, None
+
+    except pydicom.errors.InvalidDicomError:
+        return dic_file, None, "Not a valid DICOM file"
+    except KeyError as exc:
+        return dic_file, None, f"Missing DICOM tag: {exc}"
+    except Exception as exc:
+        return dic_file, None, f"{type(exc).__name__}: {exc}"
+
+
+##########################################################################################################
+def org_dicom_folder(
+    in_dic_dir: str,
+    out_dic_dir: str,
+    boolcomp: bool = False,
+    force: bool = False,
+    nthreads: int = 0,
+):
+    """
+    Organizes DICOM files into a subject/session/series folder hierarchy.
+    The subject folder is named after the PatientID DICOM attribute.
+
+    Parameters
+    ----------
+    in_dic_dir : str
+        Path to the input directory containing DICOM files (searched recursively).
+
+    out_dic_dir : str
+        Path to the output directory where organised files will be written.
+
+    boolcomp : bool, optional
+        If True, compress the organised sessions into tar.gz archives after copying. Default is False.
+
+    force : bool, optional
+        If True, overwrite existing files at the destination. Default is False.
+
+    nthreads : int, optional
+        Number of parallel worker processes.
+        0 (default) = use all available CPUs minus one.
+        1 = sequential (no parallelism).
+
+    Returns
+    -------
+    None
+        This function performs file organisation operations and does not return a value.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the input directory does not exist.
+    PermissionError
+        If there are insufficient permissions to write to the output directory.
+
+    Examples
+    --------
+    >>> org_dicom_folder('/path/to/raw/dicoms', '/path/to/organised')
+    >>> org_dicom_folder('/path/to/raw/dicoms', '/path/to/organised', force=True, nthreads=8)
+    """
+    if not os.path.isdir(in_dic_dir):
+        raise FileNotFoundError(f"Input directory not found: {in_dic_dir}")
+
+    Path(out_dic_dir).mkdir(parents=True, exist_ok=True)
+
+    dicom_files = cltmisc.get_all_files(in_dic_dir)
+    n_files = len(dicom_files)
+
+    if n_files == 0:
+        print("No files found in the input directory.")
+        return
+
+    if nthreads == 0:
+        nthreads = max(1, (os.cpu_count() or 2) - 1)
+    nthreads = max(1, nthreads)
+
+    print(f"Organising {n_files} files using {nthreads} worker(s)...")
+
+    failed_files = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>5.1f}%"),
+        TimeElapsedColumn(),
+        transient=False,
+    ) as progress:
+
+        task = progress.add_task("Copying DICOM files", total=n_files)
+
+        if nthreads == 1:
+            for dic_file in dicom_files:
+                try:
+                    _, dest, reason = _copy_dicomfile_noid(dic_file, out_dic_dir, force)
+                except Exception as exc:
+                    dest, reason = None, f"Unexpected: {exc}"
+                finally:
+                    progress.advance(task)
+                if dest is None:
+                    failed_files.append((dic_file, reason))
+        else:
+            worker = partial(_copy_dicomfile_noid, out_dic_dir=out_dic_dir, force=force)
+            with ProcessPoolExecutor(max_workers=nthreads) as executor:
+                futures = {executor.submit(worker, f): f for f in dicom_files}
+                for future in as_completed(futures):
+                    try:
+                        _, dest, reason = future.result()
+                    except Exception as exc:
+                        dest, reason = None, f"Future raised: {exc}"
+                    finally:
+                        progress.advance(task)
+                    if dest is None:
+                        failed_files.append((futures[future], reason))
+
+        # Force a final render before the context closes
+        progress.refresh()
+
+    succeeded = n_files - len(failed_files)
+    print(f"\n✓ Done. {succeeded}/{n_files} files organised successfully.")
+
+    # Compress sessions if requested
+
+    if failed_files:
+        print(f"\n⚠  {len(failed_files)} file(s) skipped:")
+        for path, reason in failed_files:
+            print(f"  • {path}\n    Reason: {reason}")
+
+    # Compress sessions if requested
+
+    if boolcomp:
+
+        print("\nCompressing organised sessions...")
+        print(out_dic_dir)
+        compress_dicom_session(out_dic_dir)
+        print("Compression complete.")
+
+
 ####################################################################################################
 def copy_dicom_file(
     dic_file: str,
@@ -774,7 +1003,8 @@ def compress_dicom_session(
     subj_ids : str, list of str, or None, optional
         Subject IDs to be considered. Can be:
         - None: consider all subjects in the directory (default)
-        - str: path to text file containing subject IDs (one per line)
+        - str: path to a text file containing subject IDs (one per line),
+                or a comma-separated list of subject IDs
         - list of str: explicit list of subject IDs
 
     remove_original : bool, optional, default=True
@@ -827,6 +1057,11 @@ def compress_dicom_session(
     ...     subj_ids='/path/to/subject_ids.txt'
     ... )
     """
+
+    # Normalise Path input
+    if isinstance(subj_ids, Path):
+        subj_ids = str(subj_ids)
+
     # Validate input directory
     dic_path = Path(dic_dir)
     if not dic_path.exists():
@@ -836,35 +1071,41 @@ def compress_dicom_session(
 
     # Process subject IDs
     if subj_ids is None:
-        # Get all subjects with 'sub-' prefix
-        subj_ids = [
-            item.name
-            for item in dic_path.iterdir()
-            if item.is_dir() and item.name.startswith("sub-")
-        ]
-        subj_ids.sort()
+        # Only pick up directories that follow the BIDS 'sub-' convention
+        subj_ids = sorted(item.name for item in dic_path.iterdir() if item.is_dir())
+
     elif isinstance(subj_ids, str):
-        # Read subject IDs from file
-        try:
-            with open(subj_ids, "r", encoding="utf-8") as file:
-                subj_ids = [line.strip() for line in file if line.strip()]
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Subject IDs file {subj_ids} not found")
-        except Exception as e:
-            raise ValueError(f"Error reading subject IDs file: {e}")
+        if os.path.isfile(subj_ids):
+            # Read one subject ID per line from the file
+            try:
+                with open(subj_ids, "r", encoding="utf-8") as fh:
+                    subj_ids = [line.strip() for line in fh if line.strip()]
+            except Exception as e:
+                raise ValueError(f"Error reading subject IDs file: {e}")
+        else:
+            # Treat the string as a comma-separated list of IDs
+            subj_ids = [s.strip() for s in subj_ids.split(",") if s.strip()]
+            if not subj_ids:
+                raise ValueError(
+                    f"subj_ids string '{subj_ids}' is neither a valid file path "
+                    "nor a comma-separated list of subject IDs"
+                )
+
     elif isinstance(subj_ids, list):
-        # Validate list elements
-        if not all(isinstance(subj_id, str) for subj_id in subj_ids):
+        if not all(isinstance(s, str) for s in subj_ids):
             raise ValueError("All subject IDs must be strings")
+
     else:
-        raise ValueError("subj_ids must be None, str (file path), or list of str")
+        raise ValueError(
+            "subj_ids must be None, str (file path or CSV), or list of str"
+        )
 
     if not subj_ids:
-        print("No subjects found to process")
+        print("No subjects found to process.")
         return []
 
     n_subj = len(subj_ids)
-    failed_sessions = []
+    failed_sessions: List[str] = []
     total_sessions = 0
     compressed_sessions = 0
 
@@ -876,47 +1117,51 @@ def compress_dicom_session(
 
             pb.update(
                 task_id=task,
-                description=f"[green]Processing {subj_id} ({i+1}/{n_subj})",
-                completed=i,
+                description=f"[green]Processing {subj_id} ({i + 1}/{n_subj})",
+                completed=i,  # mark the *previous* subject as done while this one runs
             )
 
-            # Skip if subject directory doesn't exist
             if not subj_dir.exists():
-                print(f"Warning: Subject directory {subj_dir} not found, skipping...")
+                print(f"Warning: subject directory '{subj_dir}' not found — skipping.")
                 continue
 
-            # Find all session directories (starting with 'ses-')
-            session_dirs = [
+            # Collect BIDS session directories (must start with 'ses-')
+            session_dirs = sorted(
                 item
                 for item in subj_dir.iterdir()
                 if item.is_dir() and item.name.startswith("ses-")
-            ]
+            )
+
+            if not session_dirs:
+                print(
+                    f"Warning: no 'ses-' directories found in '{subj_dir}' — skipping subject."
+                )
+                continue
 
             total_sessions += len(session_dirs)
 
             for ses_dir in session_dirs:
                 tar_file_path = ses_dir.with_suffix(".tar.gz")
+                # ses_dir.with_suffix replaces only the last suffix; for a dir named
+                # 'ses-01' that gives 'ses-01.tar.gz' as intended, but we use
+                # Path(str(ses_dir) + ".tar.gz") to be unambiguous:
+                tar_file_path = Path(str(ses_dir) + ".tar.gz")
 
-                # Skip if tar file already exists
                 if tar_file_path.exists():
-                    print(f"Warning: {tar_file_path} already exists, skipping...")
+                    print(f"Warning: '{tar_file_path}' already exists — skipping.")
                     continue
 
                 try:
-                    # Create tar.gz archive using Python's tarfile module
                     with tarfile.open(tar_file_path, "w:gz") as tar:
-                        # Add the session directory to the archive
-                        # Use arcname to preserve the directory structure
                         tar.add(ses_dir, arcname=ses_dir.name)
 
-                    # Remove original directory if requested and compression succeeded
                     if remove_original:
                         shutil.rmtree(ses_dir)
 
                     compressed_sessions += 1
 
                 except tarfile.TarError as e:
-                    print(f"Error compressing {ses_dir}: {e}")
+                    print(f"Error: failed to compress '{ses_dir}': {e}")
                     failed_sessions.append(str(ses_dir))
                     # Clean up partially created tar file
                     if tar_file_path.exists():
