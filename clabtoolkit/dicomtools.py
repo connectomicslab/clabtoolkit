@@ -1163,35 +1163,44 @@ def compress_dicom_session(
                 except tarfile.TarError as e:
                     print(f"Error: failed to compress '{ses_dir}': {e}")
                     failed_sessions.append(str(ses_dir))
-                    # Clean up partially created tar file
-                    if tar_file_path.exists():
-                        try:
-                            tar_file_path.unlink()
-                        except Exception:
-                            pass
-                except PermissionError as e:
-                    print(f"Permission error with {ses_dir}: {e}")
-                    failed_sessions.append(str(ses_dir))
-                except Exception as e:
-                    print(f"Unexpected error with {ses_dir}: {e}")
-                    failed_sessions.append(str(ses_dir))
+                    _safe_unlink(tar_file_path)
 
+                except PermissionError as e:
+                    print(f"Error: permission denied for '{ses_dir}': {e}")
+                    failed_sessions.append(str(ses_dir))
+                    _safe_unlink(tar_file_path)
+
+                except OSError as e:
+                    print(f"Error: OS error with '{ses_dir}': {e}")
+                    failed_sessions.append(str(ses_dir))
+                    _safe_unlink(tar_file_path)
+
+        # Mark all subjects as complete
         pb.update(
-            task_id=task, description=f"[green]Completed compression", completed=n_subj
+            task_id=task, description="[green]Compression complete", completed=n_subj
         )
 
-    # Report results
-    if failed_sessions:
-        print("\nTHE PROCESS FAILED TO COMPRESS THE FOLLOWING SESSIONS:")
-        for failed_session in failed_sessions:
-            print(f"  - {failed_session}")
-    else:
-        print("\nAll sessions compressed successfully!")
-
+    # Summary
     print(
-        f"\nProcessed {n_subj} subjects, {compressed_sessions}/{total_sessions} sessions compressed successfully."
+        f"\nProcessed {n_subj} subject(s), "
+        f"{compressed_sessions}/{total_sessions} session(s) compressed successfully."
     )
+
+    if failed_sessions:
+        print("\nThe following sessions could not be compressed:")
+        for s in failed_sessions:
+            print(f"  - {s}")
+
     return failed_sessions
+
+
+def _safe_unlink(path: Path) -> None:
+    """Remove a file, silently ignoring errors (used for partial tar cleanup)."""
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception:
+        pass
 
 
 #####################################################################################################
