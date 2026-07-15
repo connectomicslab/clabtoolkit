@@ -8,7 +8,6 @@ from scipy.interpolate import RegularGridInterpolator
 from typing import Union, List, Dict, Optional, Tuple
 from pathlib import Path
 import pandas as pd
-import copy
 
 # Importing local modules
 from . import misctools as cltmisc
@@ -460,7 +459,7 @@ class Tractogram:
     ###############################################################################################
     def resample_streamlines(
         self,
-        num_points: int = 51,
+        nb_points: int = 51,
         interp_method: str = "linear",
     ) -> Union[List[np.ndarray], nb.streamlines.array_sequence.ArraySequence]:
         """
@@ -468,7 +467,7 @@ class Tractogram:
 
         Parameters
         ----------
-        num_points : int, optional
+        nb_points : int, optional
             Number of points to resample each streamline to. Default is 51.
 
         Returns
@@ -495,10 +494,8 @@ class Tractogram:
         >>> print(f"Resampled {len(resampled_streamlines)} streamlines to 100 points each")
         """
         # Check if nb_points is a positive integer
-        if not isinstance(num_points, int) or num_points <= 0:
-            raise ValueError(
-                "Number of points (num_points) must be a positive integer."
-            )
+        if not isinstance(nb_points, int) or nb_points <= 0:
+            raise ValueError("Number of points (nb_points) must be a positive integer.")
 
         # Check if the tractogram has streamlines loaded
         if not hasattr(self, "tracts") or self.tracts is None:
@@ -541,7 +538,7 @@ class Tractogram:
 
         # Resample each streamline to the specified number of points
         # Use dipy's set_number_of_points for ArraySequence
-        resampled_streamlines = set_number_of_points(streamlines, num_points)
+        resampled_streamlines = set_number_of_points(streamlines, nb_points)
 
         # Resampling the data_per_point if it exists
         if hasattr(self, "data_per_point") and self.data_per_point:
