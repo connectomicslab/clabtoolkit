@@ -2077,15 +2077,41 @@ class Tractogram:
             affine = self.affine
 
         if header is None:
-            header = self.header
+            # Only reuse self.header if it matches the target format; a TRK
+            # header written into a TCK file (or vice versa) produces a file
+            # with the wrong magic bytes despite the correct extension.
+            current_ext = (
+                os.path.splitext(str(self.tract_file))[1].lower()
+                if self.tract_file
+                else None
+            )
+            if (file_type == "trk" and current_ext == ".trk") or (
+                file_type == "tck" and current_ext == ".tck"
+            ):
+                header = self.header
+            else:
+                header = {}
 
         if file_type not in ["tck", "trk"]:
             raise ValueError("Unsupported file type. Please specify 'tck' or 'trk'.")
 
-        if os.path.isfile(out_file) and not overwrite:
-            raise FileExistsError(
-                f"The output file already exists: {out_file}. Use overwrite=True to overwrite it."
-            )
+        # Normalize the extension BEFORE checking existence/overwrite
+        if file_type == "tck" and not out_file.endswith(".tck"):
+            out_file = os.path.splitext(out_file)[0] + ".tck"
+        elif file_type == "trk" and not out_file.endswith(".trk"):
+            out_file = os.path.splitext(out_file)[0] + ".trk"
+
+        if os.path.isfile(out_file):
+            if not overwrite:
+                raise FileExistsError(
+                    f"The output file already exists: {out_file}. Use overwrite=True to overwrite it."
+                )
+            # IMPORTANT: remove any existing file first. nibabel's
+            # detect_format() sniffs the *content* of a pre-existing file at
+            # this path before falling back to the extension — so overwriting
+            # a stale file of a different format silently keeps writing the
+            # OLD format under the NEW extension.
+            os.remove(out_file)
 
         # Create a new tractogram object
         new_tractogram = nb.streamlines.Tractogram(tracts, affine_to_rasmm=affine)
@@ -2128,17 +2154,8 @@ class Tractogram:
 
         # Save the tractogram using nibabel
         if file_type == "tck":
-            # Check if it finishes with .tck, if not, add it
-            if not out_file.endswith(".tck"):
-                out_file = os.path.splitext(out_file)[0] + ".tck"
-
             nb.streamlines.save(new_tractogram, out_file, header=header)
         elif file_type == "trk":
-            # Check if it finishes with .trk, if not, add it
-            if not out_file.endswith(".trk"):
-                # Replace the extension with .trk
-                out_file = os.path.splitext(out_file)[0] + ".trk"
-
             nb.streamlines.save(new_tractogram, out_file, header=header)
 
     ###############################################################################################
@@ -2595,3 +2612,148 @@ def merge_tractograms(
     merged_tractogram.colortables[map_name] = color_table_dict
 
     return merged_tractogram
+
+
+###############################################################################################
+###############################################################################################
+def trk2tck(
+    in_trk: Union[str, Path, "Tractogram"],
+    out_tck: Union[str, Path],
+    overwrite: bool = False,
+) -> "Tractogram":
+    """
+    Converts a .trk tractogram to .tck format.
+    """
+    if isinstance(in_trk, Tractogram):
+        tractogram_obj = in_trk
+    else:
+        in_trk = str(in_trk)
+
+        if not os.path.isfile(in_trk):
+            raise FileNotFoundError(f"Input TRK file not found: {in_trk}")
+
+        if nb.streamlines.detect_format(in_trk) != nb.streamlines.TrkFile:
+            raise ValueError(f"Input file is not a valid TRK file: {in_trk}")
+
+        tractogram_obj = Tractogram(in_trk)
+
+    out_tck = str(out_tck)
+    if not out_tck.endswith(".tck"):
+        out_tck = os.path.splitext(out_tck)[0] + ".tck"
+
+    if os.path.isfile(out_tck) and not overwrite:
+        raise FileExistsError(
+            f"The output file already exists: {out_tck}. Use overwrite=True to overwrite it."
+        )
+
+    # IMPORTANT: pass an empty header (not self.header) so save_tractogram
+    # doesn't reuse the TRK header when writing TCK. Nibabel will build a
+    # correct MRtrix-style header from scratch.
+    tractogram_obj.save_tractogram(
+        out_tck, header={}, file_type="tck", overwrite=overwrite
+    )
+
+    return tractogram_obj
+
+
+###############################################################################################
+def tck2trk(
+    in_tck: Union[str, Path],
+    ref_image: Union[str, Path],
+    out_trk: Union[str, Path],
+    overwrite: bool = False,
+) -> "Tractogram":
+    """
+    Converts a .tck tractogram to .trk format using a reference NIfTI image.
+
+    TCK files do not store voxel-grid information (dimensions, voxel sizes,
+    voxel order), which the TRK format requires in its header. This function
+    borrows that information from a reference image that shares the same
+    voxel grid as the tractogram (e.g. the B0 or FA map used for tracking
+    in MRtrix3).
+
+    Parameters
+    ----------
+    in_tck : str or Path
+        Path to the input .tck tractogram file.
+
+    ref_image : str or Path
+        Path to a NIfTI image defining the voxel grid (dimensions, voxel
+        sizes, affine) the streamlines were generated in.
+
+    out_trk : str or Path
+        Path to the output .trk file.
+
+    overwrite : bool, optional
+        Whether to overwrite an existing output file. Default is False.
+
+    Returns
+    -------
+    Tractogram
+        A Tractogram object wrapping the newly written .trk file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the input TCK file or the reference image does not exist.
+    ValueError
+        If the input file is not a valid TCK file.
+    FileExistsError
+        If the output file already exists and overwrite is False.
+
+    Examples
+    --------
+    >>> tract = tck2trk('streamlines.tck', 'fa.nii.gz', 'streamlines.trk')
+    """
+    in_tck = str(in_tck)
+    ref_image = str(ref_image)
+    out_trk = str(out_trk)
+
+    if not os.path.isfile(in_tck):
+        raise FileNotFoundError(f"Input TCK file not found: {in_tck}")
+
+    if not os.path.isfile(ref_image):
+        raise FileNotFoundError(f"Reference image not found: {ref_image}")
+
+    if nb.streamlines.detect_format(in_tck) != nb.streamlines.TckFile:
+        raise ValueError(f"Input file is not a valid TCK file: {in_tck}")
+
+    if not out_trk.endswith(".trk"):
+        out_trk = os.path.splitext(out_trk)[0] + ".trk"
+
+    if os.path.isfile(out_trk) and not overwrite:
+        raise FileExistsError(
+            f"The output file already exists: {out_trk}. Use overwrite=True to overwrite it."
+        )
+
+    # Load the tck streamlines (already in RAS mm space)
+    tck_obj = nb.streamlines.load(in_tck)
+
+    # Load the reference image to recover voxel-grid information
+    ref_img = nb.load(ref_image)
+
+    # Build a valid TRK header from the reference image
+    trk_header = nb.streamlines.TrkFile.create_empty_header()
+    trk_header["voxel_sizes"] = np.array(
+        ref_img.header.get_zooms()[:3], dtype=np.float32
+    )
+    trk_header["dimensions"] = np.array(ref_img.shape[:3], dtype=np.int16)
+    trk_header["voxel_to_rasmm"] = ref_img.affine.astype(np.float32)
+    trk_header["voxel_order"] = "".join(nb.aff2axcodes(ref_img.affine))
+    trk_header["nb_streamlines"] = len(tck_obj.streamlines)
+
+    new_nb_tractogram = nb.streamlines.Tractogram(
+        streamlines=tck_obj.streamlines,
+        data_per_point=tck_obj.tractogram.data_per_point,
+        data_per_streamline=tck_obj.tractogram.data_per_streamline,
+        affine_to_rasmm=tck_obj.tractogram.affine_to_rasmm,
+    )
+
+    trk_file = nb.streamlines.TrkFile(new_nb_tractogram, header=trk_header)
+
+    if os.path.isfile(out_trk) and overwrite:
+        os.remove(out_trk)
+
+    nb.streamlines.save(trk_file, out_trk)
+
+    return Tractogram(out_trk)
