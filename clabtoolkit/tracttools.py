@@ -315,6 +315,9 @@ class Tractogram:
             map_name (str):
                 Name of the map to associate with the loaded colortable.
 
+            opacity (float or np.ndarray):
+                Opacity value(s) for the colortable. Can be a single float or an array of floats.
+
         Returns:
         -------
             None
@@ -323,62 +326,45 @@ class Tractogram:
         if isinstance(lut_file, (str, Path)):
             if os.path.exists(lut_file):
                 lut_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
-
             else:
                 raise ValueError("The lut file does not exist")
-
         elif isinstance(lut_file, dict):
             lut_dict = copy.deepcopy(lut_file)
 
         colors = lut_dict["color"]
-        if map_name in self.data_per_streamline or map_name not in self.data_per_point:
-            if (
-                map_name in self.data_per_streamline
-                and map_name not in self.data_per_point
-            ):
-                values = np.unique(np.concatenate(self.data_per_streamline[map_name]))
-                if len(values) != len(colors):
-                    raise ValueError(
-                        f"Colortable in {lut_file} does not cover all IDs in data_per_point for map '{map_name}'."
-                    )
-            elif (
-                map_name not in self.data_per_streamline
-                and map_name in self.data_per_point
-            ):
-                values = np.unique(np.concatenate(self.data_per_point[map_name]))
-                if len(values) != len(colors):
-                    raise ValueError(
-                        f"Colortable in {lut_file} does not cover all IDs in data_per_point for map '{map_name}'."
-                    )
 
-            elif (
-                map_name in self.data_per_streamline and map_name in self.data_per_point
-            ):
-                values = np.unique(np.concatenate(self.data_per_point[map_name]))
-                if len(values) != len(colors):
-                    raise ValueError(
-                        f"Colortable in {lut_file} does not cover all IDs in data_per_point for map '{map_name}'."
-                    )
+        # Determine the set of values this map takes, if the map exists.
+        # A map can live in data_per_point, data_per_streamline, or both;
+        # in the "both" case we use data_per_point since it's the finer-grained source.
+        in_point = map_name in self.data_per_point
+        in_streamline = map_name in self.data_per_streamline
 
+        if in_point:
+            values = np.unique(np.concatenate(self.data_per_point[map_name]))
+        elif in_streamline:
+            values = np.unique(np.concatenate(self.data_per_streamline[map_name]))
+        else:
+            values = None
+
+        if values is not None:
+            if len(values) != len(colors):
+                raise ValueError(
+                    f"Colortable in {lut_file} does not cover all IDs in "
+                    f"data for map '{map_name}'. Expected {len(values)} colors, got {len(colors)}."
+                )
             color_table = cltcol.colors_to_table(colors=colors, values=values)
         else:
             color_table = cltcol.colors_to_table(colors=colors)
 
         if isinstance(opacity, (int, float)):
-            # opacity is a scalar, no need to check length
             opacity_array = np.full(color_table.shape[0], opacity)
-
         elif len(opacity) != color_table.shape[0]:
             opacity_array = np.full(color_table.shape[0], opacity[0])
-
         else:
             opacity_array = np.array(opacity)
 
-        color_table[:, :3] = color_table[:, :3]  # Ensure colors are between 0 and 1
+        color_table[:, 3] = opacity_array  # Set opacity column
 
-        color_table[:, 3] = opacity_array  # Set uniform opacity
-
-        # Store parcellation information in organized structure
         self.colortables[map_name] = {
             "names": lut_dict["name"],
             "color_table": color_table,
@@ -897,7 +883,14 @@ class Tractogram:
 
     ####################################################################################################
     def add_tractogram(
-        self, tract2add: Union["Tractogram", List["Tractogram"]]
+        self,
+        tract2add: Union[
+            "Tractogram",
+            List["Tractogram"],
+            str,
+            Path,
+            List[Union[str, Path, "Tractogram"]],
+        ],
     ) -> "Tractogram":
         """
         This method merges the current Tractogram with one or more other Tractogram objects.
@@ -906,8 +899,10 @@ class Tractogram:
 
         Parameters
         ----------
-        tractograms : Tractogram or list of Tractogram
-            A single Tractogram object or a list of Tractogram objects to merge with the current one.
+        tractograms : Tractogram, List[Tractogram], str, Path, or List[Union[str, Path, Tractogram]]
+            The Tractogram(s) to merge with the current Tractogram. This can be a single Tractogram object,
+            a list of Tractogram objects, a file path (str or Path) to a tractogram file, or a list
+            containing any combination of these types.
 
         Returns
         -------
@@ -929,24 +924,27 @@ class Tractogram:
 
         """
 
-        if isinstance(tract2add, (str, Path)):
+        def _load_if_path(item):
+            """Resolve a single item to a Tractogram object, loading from disk if needed."""
+            if isinstance(item, Tractogram):
+                return item
+            if isinstance(item, (str, Path)):
+                path_str = str(item)
+                if not os.path.isfile(path_str):
+                    raise FileNotFoundError(f"File '{path_str}' not found")
+                return Tractogram(path_str)
+            raise TypeError(f"Item is not a Tractogram, str, or Path: {type(item)}")
 
-            if isinstance(tract2add, str):
-                if not os.path.isfile(tract2add):
-                    raise FileNotFoundError(f"File '{tract2add}' not found")
-
-            elif isinstance(tract2add, Path):
-                # Check if Path is valid
-                if not tract2add.exists():
-                    raise FileNotFoundError(f"Path '{str(tract2add)}' does not exist")
-                if not tract2add.is_file():
-                    raise ValueError(f"Path '{str(tract2add)}' is not a file")
-
-            # Load the tractogram from file
-            tract2add = [copy.deepcopy(Tractogram(tract2add))]
-
-        elif isinstance(tract2add, Tractogram):
-            tract2add = [tract2add]
+        if isinstance(tract2add, (str, Path, Tractogram)):
+            tract2add = [_load_if_path(tract2add)]
+        elif isinstance(tract2add, list):
+            if len(tract2add) == 0:
+                raise ValueError("Tractograms list cannot be empty")
+            tract2add = [_load_if_path(item) for item in tract2add]
+        else:
+            raise TypeError(
+                f"tract2add must be a Tractogram, str, Path, or list of these, got {type(tract2add)}"
+            )
 
         if len(tract2add) == 0:
             raise ValueError("Tractograms list cannot be empty")
@@ -2531,6 +2529,7 @@ def merge_tractograms(
         return Tractogram(tractograms[0])
 
     n_tracts = len(tractograms)
+
     if color_table is not None:
         if not isinstance(color_table, dict):
             raise TypeError("color_table must be a dictionary")
@@ -2547,13 +2546,22 @@ def merge_tractograms(
                 "Number of rows in 'color_table' must match number of tractograms"
             )
 
-    # Creating a colortable in case it is not provided
-    if color_table is None:
+        # Normalize the user-supplied dict into the same shape used below
+        color_table_dict = {
+            "names": color_table["names"],
+            "color_table": color_table["color_table"],
+            "lookup_table": color_table.get("lookup_table", None),
+        }
+        color_table = color_table[
+            "color_table"
+        ]  # ndarray, so color_table[i, 4] works later
+
+    else:
+        # Creating a colortable in case it is not provided
         colors = cltcol.create_distinguishable_colors(n_tracts)
         color_table = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=range(n_tracts)
         )
-        color_table[:, :3] = color_table[:, :3]  # Ensure colors are between 0 and 1
         color_table[:, 4] = np.arange(n_tracts) + 1  # Set the value column
         bundle_names = [f"tract_{i}" for i in range(n_tracts)]
         color_table_dict = {
