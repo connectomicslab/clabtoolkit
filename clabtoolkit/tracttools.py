@@ -43,11 +43,43 @@ class Tractogram:
     """
     A class to represent and manipulate tractograms.
 
-    Attributes:
-        tractogram_input (str): Path to the tractogram file.
-        tracts (list): List of streamlines in the tractogram.
-        affine (np.ndarray): Affine transformation matrix.
-        header (dict): Header information from the tractogram file.
+    Attributes
+    ----------
+    name : str
+        Identifier for this tractogram instance.
+
+    tract_file : str or None
+        Path to the source file, or a sentinel ('from_object', 'from_components')
+        indicating how the tractogram was constructed.
+
+    tracts : ArraySequence or list of np.ndarray
+        The streamlines themselves.
+
+    affine : np.ndarray
+        Affine transformation matrix (voxel-to-RASmm or similar, per nibabel convention).
+
+    header : dict
+        Header information from the source tractogram file (format-specific).
+
+    data_per_point : dict
+        Scalar/vector maps defined per streamline point. Each value is an
+        ArraySequence-like structure with one entry per streamline point.
+
+    data_per_streamline : dict
+        Scalar/vector maps defined per streamline (one value per streamline).
+        Always includes a 'length' entry (streamline length in mm).
+
+    colortables : dict
+        Named color tables (e.g. for categorical overlays like 'cluster_id'),
+        each an entry with 'names', 'color_table', and 'lookup_table' keys.
+
+    centroids : ArraySequence, optional
+        Cluster centroids computed by `compute_centroids()`. Only present
+        after that method has been called.
+
+    centroids_indexes : list of list of int, optional
+        For each centroid, the indices of the original streamlines belonging
+        to that cluster. Only present after `compute_centroids()` has been called.
     """
 
     def __init__(
@@ -1281,25 +1313,19 @@ class Tractogram:
         storage_mode: str = "data_per_point",
         map_name: str = "fa",
         reduction: str = "mean",
-    ):
+    ) -> None:
         """
-        Interpolate scalar values (e.g., FA) from a NIfTI image onto a tractogram.
+        Interpolate scalar values (e.g., FA) from a NIfTI image onto this tractogram.
 
-        This function loads a tractogram and a scalar map, then interpolates the scalar
-        values at each streamline point or aggregates them per streamline. The resulting
-        tractogram is saved with the interpolated values attached as metadata.
+        Loads a scalar map and interpolates its values at each streamline point
+        (or aggregates them per streamline), storing the result on this
+        Tractogram instance under `map_name`.
 
         Parameters
         ----------
-        in_tract : str or Path
-            Path to input .trk tractogram file. Must exist and be readable.
-
         scal_map : str or Path
-            Path to scalar image (e.g., FA map in NIfTI format). Must exist and be readable.
-
-        out_tract : str or Path
-            Path to save the new tractogram with interpolated values. The parent directory
-            must exist and be writable.
+            Path to the scalar image (e.g., FA map in NIfTI format). Must exist
+            and be readable.
 
         interp_method : {'linear', 'nearest'}, default='linear'
             Interpolation method used for RegularGridInterpolator.
@@ -1307,93 +1333,61 @@ class Tractogram:
             - 'nearest': Nearest neighbor interpolation
 
         storage_mode : {'data_per_point', 'data_per_streamline'}, default='data_per_point'
-            Storage format for the interpolated values:
-            - 'data_per_point': Store scalar value for each streamline point
-            - 'data_per_streamline': Store aggregated scalar value per streamline
+            Where to store the interpolated values:
+            - 'data_per_point': one value per streamline point, stored in
+            `self.data_per_point[map_name]`
+            - 'data_per_streamline': one aggregated value per streamline, stored
+            in `self.data_per_streamline[f"{map_name}_{reduction}"]`
 
         map_name : str, default='fa'
-            Name used for the scalar map in the output tractogram metadata.
-            This will be the key in data_per_point or data_per_streamline.
+            Key under which to store the scalar map.
 
         reduction : {'mean', 'median', 'min', 'max'}, default='mean'
             Aggregation method used when storage_mode='data_per_streamline'.
-            Applied to all scalar values along each streamline to produce a single value.
-
-        preserve_both_storage_modes : bool, default=False
-            If True, preserve existing data in both data_per_point and data_per_streamline.
-            **Warning**: This may cause visualization conflicts in some tools (FSLeyes, etc.)
-            that have trouble rendering tractograms with both storage modes present.
-            Use only when you specifically need both storage modes for different applications.
+            Applied to all scalar values along each streamline to produce a
+            single value.
 
         Returns
         -------
-        new_tractogram : nibabel.streamlines.Tractogram
-            The tractogram object with interpolated scalar values attached.
-
-        scalar_values_per_streamline : list of numpy.ndarray
-            List containing the interpolated scalar values for each streamline.
-            Each array has shape (n_points,) where n_points is the number of points
-            in the corresponding streamline. Contains NaN for points outside the scalar map.
+        None
+            This method mutates the Tractogram in place: it populates either
+            `self.data_per_point[map_name]` or
+            `self.data_per_streamline[f"{map_name}_{reduction}"]`, depending
+            on `storage_mode`.
 
         Raises
         ------
         FileNotFoundError
-            If input tractogram file or scalar map file does not exist.
-
-        NotADirectoryError
-            If the parent directory of the output path does not exist.
-
-        PermissionError
-            If the output directory is not writable.
-
+            If the scalar map file does not exist.
         ValueError
             If interp_method is not 'linear' or 'nearest', if storage_mode is not
-            'data_per_point' or 'data_per_streamline', or if reduction method is
-            not one of 'mean', 'median', 'min', 'max'.
-
+            'data_per_point' or 'data_per_streamline', or if reduction is not one
+            of 'mean', 'median', 'min', 'max'.
         IOError
-            If there are issues reading the input files or writing the output file.
+            If there are issues loading the scalar map.
 
         Notes
         -----
-        - Points outside the scalar map boundaries will have NaN values
-        - Empty streamlines are handled gracefully with empty arrays
-        - The function preserves the original tractogram's affine transformation
-        - When using 'data_per_streamline' mode, the map name will be suffixed
-        with the reduction method (e.g., 'fa_mean')
-        - **Important**: By default, the function only populates the requested
-        storage_mode and clears the other to prevent visualization conflicts.
-        Many tools (FSLeyes, etc.) have trouble rendering tractograms with both
-        data_per_point and data_per_streamline present simultaneously.
-        - Set preserve_both_storage_modes=True only if you specifically need both
-        storage modes for different applications, but be aware of potential
-        visualization issues.
+        - Points outside the scalar map boundaries are assigned NaN.
+        - Empty streamlines are handled gracefully with empty arrays.
+        - When using 'data_per_streamline' mode, the stored key is suffixed with
+        the reduction method (e.g., 'fa_mean').
+        - This method only populates the requested `storage_mode` and does not
+        touch the other one; if you need the same scalar in both storage
+        modes, call this method twice with different `storage_mode` values
+        (e.g. once with 'data_per_point' and once with 'data_per_streamline').
 
         Examples
         --------
-        Basic usage with FA map:
+        >>> tractogram = Tractogram('input.trk')
+        >>> tractogram.interpolate_on_tractogram('fa_map.nii.gz', map_name='fractional_anisotropy')
+        >>> print(tractogram.data_per_point['fractional_anisotropy'])
 
-        >>> new_tract, values = interpolate_on_tractogram(
-        ...     'input.trk', 'fa_map.nii.gz', 'output_with_fa.trk',
-        ...     map_name='fractional_anisotropy'
+        >>> tractogram.interpolate_on_tractogram(
+        ...     'md_map.nii.gz', storage_mode='data_per_streamline',
+        ...     reduction='median', map_name='mean_diffusivity'
         ... )
-
-        Using median aggregation per streamline:
-
-        >>> new_tract, values = interpolate_on_tractogram(
-        ...     'input.trk', 'md_map.nii.gz', 'output_with_md.trk',
-        ...     storage_mode='data_per_streamline',
-        ...     reduction='median',
-        ...     map_name='mean_diffusivity'
-        ... )
-
-        Preserving both storage modes (use with caution):
-
-        >>> new_tract, values = interpolate_on_tractogram(
-        ...     'input.trk', 'fa_map.nii.gz', 'output_with_fa.trk',
-        ...     preserve_both_storage_modes=True
-        ... )
-        # Warning: May cause visualization issues in FSLeyes and other tools
+        >>> print(tractogram.data_per_streamline['mean_diffusivity_median'])
         """
 
         # --- Input validation ---
@@ -1501,11 +1495,11 @@ class Tractogram:
         range_min: np.float64 = None,
         range_max: np.float64 = None,
         range_color: Tuple = (128, 128, 128, 255),
-    ) -> None:
+    ) -> ArraySequence:
         """
         Compute streamlines colors for visualization based on the specified overlay.
 
-        This method processes the overlay data and creates appropiate point colors
+        This method processes the overlay data and creates appropriate point colors
         for visualization, handling both scalar data (with colormaps) and
         categorical data (with discrete color tables).
 
@@ -1519,53 +1513,50 @@ class Tractogram:
             for categorical data or 'viridis' for scalar data.
 
         vmin : np.float64, optional
-            Minimum value for scaling the colormap. If None, uses the minimum value of the overlay
+            Minimum value for scaling the colormap. If None, uses the minimum value of the overlay.
 
         vmax : np.float64, optional
-            Maximum value for scaling the colormap. If None, uses the maximum value of the overlay
-        If both vmin and vmax are None, the colormap will be applied to the full range of the overlay values.
-        If both are provided, they will be used to scale the colormap.
+            Maximum value for scaling the colormap. If None, uses the maximum value of the overlay.
+            If both vmin and vmax are None, the colormap will be applied to the full range of
+            the overlay values. If both are provided, they will be used to scale the colormap.
 
         range_min : np.float64, optional
-            Minimum threshold for the overlay values. Values below this will be colored with range_color.
-            If None, no minimum threshold is applied.
+            Minimum threshold for the overlay values. Values below this will be colored with
+            range_color. If None, no minimum threshold is applied.
 
         range_max : np.float64, optional
-            Maximum threshold for the overlay values. Values above this will be colored with range_color.
-            If None, no maximum threshold is applied.
+            Maximum threshold for the overlay values. Values above this will be colored with
+            range_color. If None, no maximum threshold is applied.
 
-        range_color : List[int, int, int, int], optional
+        range_color : Tuple[int, int, int, int], optional
             RGBA color to use for values outside the specified range (range_min, range_max).
-            Default is gray [128, 128, 128].
+            Default is gray (128, 128, 128, 255).
 
         Returns
         -------
         point_colors : ArraySequence
-            Array of RGBA colors for each point in the tractogram.
+            RGBA colors for each point in each streamline, in the same nested
+            structure as the tractogram's streamlines (one array per streamline).
 
         Raises
         ------
         ValueError
-            If the specified overlay is not found in the mesh point data
-
-        ValueError
-            If no overlays are available
+            If the specified overlay is not found among available point/streamline maps.
 
         Notes
         -----
-        This method sets the vertices colors based on the specified overlay.
-
+        Categorical overlays (those with an entry in `self.colortables`) are colored
+        using the associated discrete color table. Scalar overlays are colored using
+        `colormap` scaled by `vmin`/`vmax`.
 
         Examples
         --------
-        >>> # Prepare colors for a parcellation (uses discrete colors)
-        >>> tractogram.get_vertexwise_colors(overlay_name="aparc")
+        >>> tractogram = Tractogram('input.trk')
+        >>> # Colors for a categorical overlay (uses discrete colortable)
+        >>> point_colors = tractogram.get_pointwise_colors(overlay_name="cluster_id")
         >>>
-        >>> # Prepare colors for scalar data with custom colormap
-        >>> tractogram.get_vertexwise_colors(overlay_name="thickness", colormap="hot")
-        >>>
-        >>> # Prepare colors for the tractogram overlay
-        >>> tractogram.get_vertexwise_colors()
+        >>> # Colors for scalar data with a custom colormap
+        >>> point_colors = tractogram.get_pointwise_colors(overlay_name="fa", colormap="hot")
         """
 
         # Get the list of overlays
@@ -1814,23 +1805,26 @@ class Tractogram:
             return filtered_streamlines
 
     ###############################################################################################
-    def list_maps(self) -> List[str]:
+    def list_maps(self) -> Dict[str, List[str]]:
         """
         Lists all available scalar maps in the tractogram.
 
-        Returns:
+        Returns
+        -------
+        dict
+            Dictionary with two keys:
+
+            - 'maps_per_point' : list of str
+                Names of scalar maps stored per point. Empty list if none available.
+            - 'maps_per_streamline' : list of str
+                Names of scalar maps stored per streamline. Empty list if none available.
+
+        Examples
         --------
-            maps_per_point (set or None):
-                Set of scalar map names stored per point. None if no maps are available.
-
-            maps_per_streamline (set or None):
-                Set of scalar map names stored per streamline. None if no maps are available.
-
-        Examples:
-        ---------
         >>> tractogram = Tractogram('input.trk')
-        >>> maps = tractogram.list_streamlines_maps()
-        >>> print("Available scalar maps:", maps)
+        >>> maps = tractogram.list_maps()
+        >>> print("Point maps:", maps['maps_per_point'])
+        >>> print("Streamline maps:", maps['maps_per_streamline'])
         """
         maps_per_point = []
         maps_per_streamline = []
