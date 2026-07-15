@@ -2509,7 +2509,7 @@ def merge_tractograms(
     if not isinstance(tractograms, list):
         raise TypeError("tractograms must be a list")
 
-    if any(not isinstance(surf, (str, Path, Tractogram)) for surf in tractograms):
+    if any(not isinstance(t, (str, Path, Tractogram)) for t in tractograms):
         raise TypeError(
             "All items in tractograms must be Tractogran objects, file paths, or Path objects"
         )
