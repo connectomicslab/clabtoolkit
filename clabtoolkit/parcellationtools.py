@@ -884,6 +884,333 @@ class Parcellation:
 
         return info
 
+    ##########################################################################################################
+    def get_data(self) -> np.ndarray:
+        """
+        Get the parcellation data as a numpy array.
+
+        Returns
+        -------
+        np.ndarray
+            The parcellation data array.
+
+        Raises
+        ------
+        ValueError
+            If the parcellation data is not set.
+
+        Notes
+        -----
+        This method provides direct access to the underlying parcellation data.
+        It is useful for analyses or manipulations that require the raw label values.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> data_array = parc.get_data()
+        >>> print(data_array.shape)
+        (182, 218, 182)
+        """
+        if not hasattr(self, "data"):
+            raise ValueError(
+                "The parcellation data is not set. Please load a parcellation file first."
+            )
+        return self.data
+
+    ############################################################################################################
+    def get_affine(self) -> np.ndarray:
+        """
+        Get the affine transformation matrix of the parcellation.
+
+        Returns
+        -------
+        np.ndarray
+            The 4x4 affine transformation matrix.
+
+        Raises
+        ------
+        ValueError
+            If the affine matrix is not set.
+
+        Notes
+        -----
+        The affine matrix defines the spatial orientation and voxel size of the parcellation.
+        It is essential for spatial transformations and alignment with other neuroimaging data.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> affine_matrix = parc.get_affine()
+        >>> print(affine_matrix)
+        [[-1.   0.   0.  90.]
+         [ 0.   1.   0. -126.]
+         [ 0.   0.   1. -72.]
+         [ 0.   0.   0.   1.]]
+        """
+        if not hasattr(self, "affine"):
+            raise ValueError(
+                "The affine matrix is not set. Please load a parcellation file first."
+            )
+        return self.affine
+
+    ####################################################################################################
+    def get_index(self) -> List[int]:
+        """
+        Get the list of region indices (codes) defined in the parcellation.
+
+        Returns
+        -------
+        List[int]
+            List of region indices.
+
+        Raises
+        ------
+        ValueError
+            If the index is not set.
+
+        Notes
+        -----
+        The index represents the unique integer codes assigned to each region in the parcellation.
+        It is useful for mapping label values to region names and colors.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> indices = parc.get_index()
+        >>> print(indices)
+        [1, 2, 3, 4, 5]
+        """
+        if not hasattr(self, "index"):
+            raise ValueError(
+                "The index is not set. Please load a parcellation file first."
+            )
+        return self.index
+
+    ####################################################################################################
+    def get_names(self) -> List[str]:
+        """
+        Get the list of region names defined in the parcellation.
+
+        Returns
+        -------
+        List[str]
+            List of region names.
+
+        Raises
+        ------
+        ValueError
+            If the names are not set.
+
+        Notes
+        -----
+        The names correspond to the human-readable labels for each region in the parcellation.
+        They are useful for reporting and visualization purposes.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> names = parc.get_names()
+        >>> print(names)
+        ['Region 1', 'Region 2', 'Region 3', 'Region 4', 'Region 5']
+        """
+        if not hasattr(self, "name"):
+            raise ValueError(
+                "The names are not set. Please load a parcellation file first."
+            )
+        return self.name
+
+    ####################################################################################################
+    def get_colors(self) -> List[str]:
+        """
+        Get the list of region colors defined in the parcellation.
+
+        Returns
+        -------
+        List[str]
+            List of region colors in hex format.
+
+        Raises
+        ------
+        ValueError
+            If the colors are not set.
+
+        Notes
+        -----
+        The colors correspond to the visual representation of each region in the parcellation.
+        They are useful for visualization and plotting purposes.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> colors = parc.get_colors()
+        >>> print(colors)
+        ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF']
+        """
+        if not hasattr(self, "color"):
+            raise ValueError(
+                "The colors are not set. Please load a parcellation file first."
+            )
+
+        colors = cltcol.harmonize_colors(self.color, output_format="hex")
+
+        return colors
+
+    ####################################################################################################
+    def set_data(self, data: np.ndarray) -> None:
+        """
+        Set the parcellation data.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            The parcellation data array to set.
+
+        Raises
+        ------
+        TypeError
+            If the provided data is not a numpy array.
+
+        Notes
+        -----
+        This method allows direct assignment of the underlying parcellation data.
+        Use with caution, as it does not automatically update dependent attributes
+        such as the index, names, or colors.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> parc.set_data(new_data_array)
+        """
+        if not isinstance(data, np.ndarray):
+            raise TypeError("The data must be a numpy array.")
+        self.data = data
+
+    ####################################################################################################
+    def set_affine(self, affine: np.ndarray) -> None:
+        """
+        Set the affine transformation matrix of the parcellation.
+
+        Parameters
+        ----------
+        affine : np.ndarray
+            The 4x4 affine transformation matrix to set.
+
+        Raises
+        ------
+        TypeError
+            If the provided affine is not a numpy array.
+        ValueError
+            If the affine matrix does not have shape (4, 4).
+
+        Notes
+        -----
+        The affine matrix defines the spatial orientation and voxel size of the
+        parcellation. It is essential for spatial transformations and alignment
+        with other neuroimaging data.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> parc.set_affine(new_affine_matrix)
+        """
+        if not isinstance(affine, np.ndarray):
+            raise TypeError("The affine matrix must be a numpy array.")
+        if affine.shape != (4, 4):
+            raise ValueError("The affine matrix must have shape (4, 4).")
+        self.affine = affine
+
+    ####################################################################################################
+    def set_index(self, index: List[int]) -> None:
+        """
+        Set the list of region indices (codes) defined in the parcellation.
+
+        Parameters
+        ----------
+        index : List[int]
+            List of region indices to set.
+
+        Raises
+        ------
+        TypeError
+            If the provided index is not a list of integers.
+
+        Notes
+        -----
+        The index represents the unique integer codes assigned to each region
+        in the parcellation. It is useful for mapping label values to region
+        names and colors.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> parc.set_index([1, 2, 3, 4, 5])
+        """
+        if not isinstance(index, list) or not all(
+            isinstance(i, (int, np.integer)) for i in index
+        ):
+            raise TypeError("The index must be a list of integers.")
+        self.index = index
+
+    ####################################################################################################
+    def set_names(self, names: List[str]) -> None:
+        """
+        Set the list of region names defined in the parcellation.
+
+        Parameters
+        ----------
+        names : List[str]
+            List of region names to set.
+
+        Raises
+        ------
+        TypeError
+            If the provided names is not a list of strings.
+
+        Notes
+        -----
+        The names correspond to the human-readable labels for each region in
+        the parcellation. They are useful for reporting and visualization
+        purposes.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> parc.set_names(['Region 1', 'Region 2', 'Region 3'])
+        """
+        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+            raise TypeError("The names must be a list of strings.")
+        self.name = names
+
+    ####################################################################################################
+    def set_colors(self, colors: List[str]) -> None:
+        """
+        Set the list of region colors defined in the parcellation.
+
+        Parameters
+        ----------
+        colors : List[str]
+            List of region colors (e.g., hex strings) to set.
+
+        Raises
+        ------
+        TypeError
+            If the provided colors is not a list.
+
+        Notes
+        -----
+        The colors correspond to the visual representation of each region in
+        the parcellation. They are harmonized to a consistent hex format
+        before being stored.
+
+        Examples
+        --------
+        >>> parc = Parcellation('parcellation.nii.gz')
+        >>> parc.set_colors(['#FF0000', '#00FF00', '#0000FF'])
+        """
+        if not isinstance(colors, list):
+            raise TypeError("The colors must be a list.")
+        self.color = cltcol.harmonize_colors(colors, output_format="hex")
+
     ####################################################################################################
     def export_summary_to_hdf5(self, out_file: str, overwrite: bool = False):
         """
