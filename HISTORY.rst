@@ -2,6 +2,24 @@
 History
 =======
 
+0.4.4 (2026-07-17)
+------------------
+
+* Added get/set accessor methods for Parcellation attributes (data, affine, index, names and colors) with validation
+* Added support for organizing DICOM folders without requiring individual per-series folders
+* Improved the method to compress DICOM sessions
+* Fixed save_tractogram writing the wrong format when overwriting an existing file
+* Fixed colortable loading in tracttools for point-only maps and for maps absent from both data_per_point and data_per_streamline
+* Fixed tractogram merging in tracttools
+* Fixed out_image=None crash and added pathlib.Path support in delete_dwi_volumes
+* Fixed docstrings and type hints in tracttools
+* Renamed the streamline point count variable to nb_points for consistency
+* Removed surf as a variable name for tractograms
+* Removed the old connectome and old_dwitool modules (use connectivitytools and dwitools instead)
+* Reorganized the package imports
+* Documented the tracttools, pointstools and colorstools modules for the first time
+* Corrected the module documentation to match the actual API
+
 0.4.3 (2026-06-10)
 ------------------
 
