@@ -60,6 +60,7 @@ API Reference
    :maxdepth: 2
    
    modules/bidstools
+   modules/colorstools
    modules/connectivitytools
    modules/dicomtools
    modules/dwitools
@@ -71,9 +72,11 @@ API Reference
    modules/parcellationtools
    modules/pipelinetools
    modules/plottools
+   modules/pointstools
    modules/qcqatools
    modules/segmentationtools
    modules/surfacetools
+   modules/tracttools
    modules/visualizationtools
 
 Indices and tables

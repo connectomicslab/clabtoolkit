@@ -1,5 +1,5 @@
 connectivitytools module
-=======================
+========================
 
 .. automodule:: clabtoolkit.connectivitytools
    :members:

@@ -1,5 +1,5 @@
 segmentationtools module
-=======================
+========================
 
 .. automodule:: clabtoolkit.segmentationtools
    :members:

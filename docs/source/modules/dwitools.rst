@@ -6,44 +6,46 @@ dwitools module
    :undoc-members:
    :show-inheritance:
 
-The dwitools module provides specialized tools for diffusion-weighted imaging (DWI) analysis, tractography processing, and white matter analysis.
+The dwitools module provides tools for diffusion-weighted imaging (DWI) data: volume management, b-value and gradient direction handling, and tensor-derived map generation.
+
+.. note::
+   Tractogram handling lives in :doc:`tracttools`, not here. Streamline loading,
+   clustering, format conversion (``trk2tck`` / ``tck2trk``) and visualization are
+   all provided by ``clabtoolkit.tracttools``.
 
 Key Features
 ------------
-- DWI volume manipulation and quality control
-- Tractography file processing (.trk, .tck formats)
-- B-value and gradient direction management
-- Bundle analysis and clustering
-- DTI and advanced diffusion modeling support
-- Integration with DIPY and MRtrix workflows
+- DWI volume manipulation and removal by index or b-value
+- B0 volume extraction
+- Acquisition scheme handling from bvec/bval or b-matrix sources
+- Gradient direction visualization
+- Tensor eigenvalue to scalar map conversion (FA, MD, and related maps)
+
+Main Classes
+------------
+
+DiffusionScheme
+~~~~~~~~~~~~~~~
+Represents a diffusion acquisition scheme, built through class-method constructors rather than direct instantiation.
+
+Key Methods:
+- ``from_bvec_bval_files()``: Build a scheme from bvec and bval files
+- ``from_bvec_bval_arrays()``: Build a scheme from bvec and bval arrays
+- ``from_bmatrix_file()``: Build a scheme from a b-matrix file
+- ``from_bmatrix_array()``: Build a scheme from a b-matrix array
+- ``plot()``: Visualize the gradient directions on a sphere
 
 Main Functions
 --------------
 
 Volume Management
 ~~~~~~~~~~~~~~~~~
-- ``delete_dwi_volumes()``: Remove specific DWI volumes based on indices or b-values
-- ``get_b0s()``: Extract b=0 volumes from DWI data
+- ``delete_dwi_volumes()``: Remove DWI volumes by volume index or by b-value
+- ``get_b0s()``: Extract b=0 volumes from a DWI dataset
 
-Tractography Processing
-~~~~~~~~~~~~~~~~~~~~~~~
-- ``tck2trk()``: Convert TCK format to TRK format
-- ``trk2tck()``: Convert TRK format to TCK format
-- ``concatenate_tractograms()``: Concatenate multiple tractogram files
-- ``resample_streamlines()``: Resample streamlines in tractograms
-- ``resample_tractogram()``: Resample entire tractogram
-- ``compute_tractogram_centroids()``: Compute centroids of tractogram streamlines
-- ``create_trackvis_colored_trk()``: Create colored TRK files for TrackVis
-- ``extract_cluster_by_id()``: Extract specific cluster from tractogram
-- ``explore_trk()``: Explore TRK file properties
-- ``interpolate_on_tractogram()``: Interpolate data on tractogram
-
-Main Classes
-------------
-
-TRKExplorer
+Tensor Maps
 ~~~~~~~~~~~
-Class for exploring and analyzing TRK tractogram files.
+- ``maps_from_tensor_eigenvalues()``: Derive scalar maps from tensor eigenvalues
 
 Common Usage Examples
 ---------------------
@@ -51,40 +53,63 @@ Common Usage Examples
 DWI volume manipulation::
 
     from clabtoolkit.dwitools import delete_dwi_volumes
-    
-    # Remove specific volumes from DWI dataset
+
+    # Remove specific volumes, keeping the bvec/bval files in sync
     delete_dwi_volumes(
-        dwi_file="dwi.nii.gz",
-        bval_file="dwi.bval",
+        in_image="dwi.nii.gz",
         bvec_file="dwi.bvec",
-        volumes_to_delete=[0, 5, 10],  # Remove specific volumes
-        output_prefix="cleaned_dwi"
+        bval_file="dwi.bval",
+        vols_to_delete=[0, 5, 10],
+        out_image="cleaned_dwi.nii.gz"
+    )
+
+    # Or remove every volume acquired at a given b-value
+    delete_dwi_volumes(
+        in_image="dwi.nii.gz",
+        bvec_file="dwi.bvec",
+        bval_file="dwi.bval",
+        bvals_to_delete=[3000],
+        out_image="cleaned_dwi.nii.gz"
     )
 
 Working with b-values::
 
-    # Extract b=0 volumes
-    b0_indices = get_b0s(
+    from clabtoolkit.dwitools import get_b0s
+
+    # Extract the b=0 volumes into their own image
+    b0s_img, b0_vols = get_b0s(
+        dwi_img="dwi.nii.gz",
+        b0s_img="dwi_b0s.nii.gz",
         bval_file="dwi.bval",
-        tolerance=50
+        bval_thresh=50
+    )
+    print(f"Found {len(b0_vols)} b0 volumes")
+
+Inspecting an acquisition scheme::
+
+    from clabtoolkit.dwitools import DiffusionScheme
+
+    # Build the scheme from the gradient files
+    scheme = DiffusionScheme.from_bvec_bval_files(
+        bvec_file="dwi.bvec",
+        bval_file="dwi.bval"
     )
 
-Tractography format conversion::
+    # Visualize the gradient directions
+    scheme.plot(show=True)
 
-    # Convert between tractography formats
-    tck2trk(
-        input_tck="tractography.tck",
-        output_trk="tractography.trk",
-        reference="dwi.nii.gz"
+    # A scheme can also be built from a b-matrix
+    scheme = DiffusionScheme.from_bmatrix_file("dwi.bmat")
+
+Tensor-derived maps::
+
+    from clabtoolkit.dwitools import maps_from_tensor_eigenvalues
+
+    # Generate scalar maps from tensor eigenvalues
+    maps = maps_from_tensor_eigenvalues(
+        eigvals="dti_eigenvalues.nii.gz",
+        out_basename="/path/to/output/sub-01_dti",
+        dtmaps=["all"],
+        overwrite=True
     )
-    
-    # Explore tractography file
-    explorer = TRKExplorer("tractography.trk")
-    summary = explorer.explore()
-    print(f"Number of streamlines: {summary['n_streamlines']}")
-    
-    # Concatenate multiple tractograms
-    concatenate_tractograms(
-        input_files=["tract1.trk", "tract2.trk"],
-        output_file="combined.trk"
-    )
+    print(maps)  # dict mapping each map tag to its saved path

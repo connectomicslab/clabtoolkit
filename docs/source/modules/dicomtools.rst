@@ -55,6 +55,7 @@ Compressing the DICOM sessions::
     )
 
 Session management::
+
     # Compress processed DICOM session
     compress_dicom_session(
         dic_dir="/path/to/bids_dataset",

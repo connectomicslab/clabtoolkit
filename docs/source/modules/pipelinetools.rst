@@ -1,5 +1,5 @@
 pipelinetools module
-===================
+====================
 
 .. automodule:: clabtoolkit.pipelinetools
    :members:
