@@ -347,6 +347,39 @@ class MorphologicalOperations:
         return binary_fill_holes(binary_array, structure=structure)
 
     ########################################################################################################
+    def detect_communities(self, binary_array, structure=None):
+        """
+        Detect connected components (communities) in a binary array.
+
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            Binary numpy array (2D or 3D).
+
+        structure : np.ndarray, optional
+            Structuring element for connectivity. Default is None.
+
+        Returns
+        -------
+        labeled_array : np.ndarray
+            Array where each connected component has a unique label.
+        num_labels : int
+            Number of connected components detected.
+
+        Examples
+        --------
+        >>> labeled, num = morph.detect_communities(binary_image)
+        """
+
+        binary_array = self._ensure_binary(binary_array)
+
+        if structure is None:
+            structure = self.create_structuring_element("cube", 3, binary_array.ndim)
+
+        labeled_array, num_labels = label(binary_array, structure=structure)
+        return labeled_array, num_labels
+
+    ########################################################################################################
     def remove_small_objects(self, binary_array, min_size=50):
         """
         Remove connected components smaller than specified size.
