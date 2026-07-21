@@ -13,6 +13,7 @@ import pandas as pd
 from . import misctools as cltmisc
 from . import colorstools as cltcol
 from . import pointstools as cltpts
+from . import parcellationtools as cltparc
 
 from dipy.segment.clustering import QuickBundlesX, QuickBundles
 from dipy.tracking.streamline import set_number_of_points
@@ -1305,7 +1306,7 @@ class Tractogram:
     ##########################################################################################################
     def interpolate_on_tractogram(
         self,
-        scal_map: str,
+        scal_map: Union[str, Path, cltparc.Parcellation],
         interp_method: str = "linear",
         storage_mode: str = "data_per_point",
         map_name: str = "fa",
@@ -1388,7 +1389,8 @@ class Tractogram:
         """
 
         # --- Input validation ---
-        scal_map = Path(scal_map)
+        if isinstance(scal_map, str):
+            scal_map = Path(scal_map)
 
         # Check if input files exist
         if not scal_map.exists():
@@ -1417,15 +1419,19 @@ class Tractogram:
             )
 
         streamlines = self.tracts
+        if isinstance(scal_map, cltparc.Parcellation):
+            scalar_data = scal_map.get_data()
+            inv_affine = np.linalg.inv(scal_map.get_affine())
 
-        # --- Load scalar image ---
-        try:
-            scalar_img = nb.load(str(scal_map))
-        except Exception as e:
-            raise IOError(f"Failed to load scalar map '{scal_map}': {e}")
+        else:
+            # --- Load scalar image ---
+            try:
+                scalar_img = nb.load(str(scal_map))
+            except Exception as e:
+                raise IOError(f"Failed to load scalar map '{scal_map}': {e}")
 
-        scalar_data = scalar_img.get_fdata()
-        inv_affine = np.linalg.inv(scalar_img.affine)
+            scalar_data = scalar_img.get_fdata()
+            inv_affine = np.linalg.inv(scalar_img.affine)
 
         # Creating interpolation function
         x = np.arange(scalar_data.shape[0])
