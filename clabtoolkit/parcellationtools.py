@@ -3158,7 +3158,7 @@ class Parcellation:
         self,
         out_file: Union[str, Path],
         affine: np.float64 = None,
-        headerlines: Union[list, str] = [],
+        headerlines: Union[list, str] = None,
         lut_file: Union[str, Path, List[str], List[Path]] = None,
         lut_type: Union[str, List[str]] = "lut",
         force: bool = True,
@@ -3227,8 +3227,16 @@ class Parcellation:
         # Handle headerlines
         if headerlines is None:
             headerlines = self.headerlines
+
         elif isinstance(headerlines, str):
             headerlines = [headerlines]
+
+            # Add an empty line at the end if not present
+            headerlines = (
+                headerlines + "\n"
+                if not headerlines[-1].endswith("\n")
+                else headerlines
+            )
 
         # Normalise out_file to str
         if isinstance(out_file, Path):
@@ -3385,7 +3393,7 @@ class Parcellation:
         self,
         out_file: str,
         lut_type: str = "lut",
-        headerlines: Union[list, str] = [],
+        headerlines: Union[list, str] = None,
         force: bool = True,
     ):
         """
@@ -3414,8 +3422,11 @@ class Parcellation:
         >>> parc.export_colortable('regions.tsv', lut_type='tsv')
         """
 
-        if isinstance(headerlines, str):
-            headerlines = [headerlines]
+        if headerlines is None:
+            headerlines = self.headerlines
+        else:
+            if isinstance(headerlines, str):
+                headerlines = [headerlines]
 
         if len(headerlines) == 0:
             headerlines = self.headerlines
@@ -3511,7 +3522,9 @@ class Parcellation:
         }
 
         col_obj = cltcol.ColorTableLoader(col_dict)
-        col_obj.export(out_file, out_format=lut_type, overwrite=force)
+        col_obj.export(
+            out_file, out_format=lut_type, overwrite=force, headerlines=headerlines
+        )
 
     ######################################################################################################
     def replace_values(

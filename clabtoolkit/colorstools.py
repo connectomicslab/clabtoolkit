@@ -3503,142 +3503,187 @@ class ColorTableLoader:
         headerlines: Union[list, str] = None,
         append: bool = False,
         overwrite: bool = False,
-    ) -> str:
+    ) -> Union[str, list]:
         """
         Export the color table to LUT format.
+
         This function writes the color table to a FreeSurfer-compatible LUT file.
+        The layout is::
+
+            <header lines>
+            <blank line>
+            #No. Label Name:                       R   G   B   A
+            <blank line>
+            1    ctx-lh-bankssts                  25   100 40  255
+            ...
 
         Parameters
         ----------
-        out_ctab : str or Path
-            Path for the output LUT file. If None, returns the LUT lines as a list of strings.
+        out_ctab : str or Path, optional
+            Path for the output LUT file. If None, the LUT lines are returned as a
+            list of strings instead of being written to disk. Default is None.
 
         headerlines : list or str, optional
             Custom header lines to include at the top of the file. If None, a default
-            header with timestamp will be generated. Default is None.
+            header with a timestamp is generated. Default is None.
 
         append : bool, optional
-            If True, append to existing file. If False, create new file or overwrite.
+            If True, append to an existing file instead of replacing it. The default
+            timestamp header and the column header are not repeated when appending.
             Default is False.
 
         overwrite : bool, optional
-            Whether to overwrite the output file if it already exists.
-            Default: False
+            Whether to overwrite the output file if it already exists. Default is False.
+
+        Returns
+        -------
+        str or list of str
+            The path to the written file, or the LUT lines if ``out_ctab`` is None.
 
         Raises
         ------
         FileNotFoundError
-            If output directory doesn't exist
+            If the output directory does not exist.
 
         FileExistsError
-            If output file exists and overwrite=False
+            If the output file exists and both ``overwrite`` and ``append`` are False.
 
+        ValueError
+            If ``headerlines`` is not a list or a string, if the colors are in an
+            unsupported format, or if the table fields have inconsistent lengths.
         """
 
+        # ------------------------------------------------------------------
+        # Validate the output path
+        # ------------------------------------------------------------------
         if out_ctab is not None:
-            # Convert to Path objects
-            if isinstance(out_ctab, str):
-                out_ctab = Path(out_ctab)
+            out_ctab = Path(out_ctab)
 
-            # Check if output file exists and handle overwrite
-            if out_ctab.exists() and not overwrite and not append:
-                raise FileExistsError(
-                    f"Output file already exists: {out_ctab}. Use overwrite=True to overwrite."
+            if not out_ctab.parent.exists():
+                raise FileNotFoundError(
+                    f"Output directory does not exist: {out_ctab.parent}"
                 )
 
-        # Write LUT file
+            if out_ctab.exists() and not overwrite and not append:
+                raise FileExistsError(
+                    f"Output file already exists: {out_ctab}. "
+                    "Use overwrite=True to overwrite."
+                )
+
+        # Only a real, existing file can be appended to
+        append_mode = append and out_ctab is not None and out_ctab.is_file()
+
+        # ------------------------------------------------------------------
+        # Collect the table content
+        # ------------------------------------------------------------------
         codes = self.index
         names = self.name
         colors = self.color
 
         if self.opacity is not None:
-            opacities = self.opacity
-
-            # Ensure opacity values are in the correct range [0, 255]
-            opacities = [min(max(int(opacity * 255), 0), 255) for opacity in opacities]
-
+            # Opacities are stored as floats in [0, 1] and written as [0, 255]
+            opacities = [min(max(int(op * 255), 0), 255) for op in self.opacity]
         else:
-            opacities = [255] * len(self.color)
+            opacities = [255] * len(names)
 
-        if headerlines is None:
-            happend_bool = (
-                False  # Only add this if it is the first time the file is created
+        # Harmonize the color representation into an (N, 3) integer array
+        if isinstance(colors, list):
+            if isinstance(colors[0], str):
+                colors = multi_hex2rgb(harmonize_colors(colors))
+            elif isinstance(colors[0], (list, tuple)):
+                colors = np.array(colors)
+            elif isinstance(colors[0], np.ndarray):
+                colors = np.vstack(colors)
+            else:
+                raise ValueError(
+                    "Unsupported color format. Expected hex strings, lists or arrays."
+                )
+        elif isinstance(colors, np.ndarray):
+            pass  # already in the correct format
+        else:
+            raise ValueError("Colors must be a list or a numpy array")
+
+        colors = np.asarray(colors).astype(int)
+
+        if not (len(codes) == len(names) == colors.shape[0] == len(opacities)):
+            raise ValueError(
+                "Inconsistent table lengths: "
+                f"{len(codes)} indices, {len(names)} names, "
+                f"{colors.shape[0]} colors, {len(opacities)} opacities."
             )
-            now = datetime.now()
-            date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
-            headerlines = ["# $Id: {} {} \n".format(str(out_ctab), date_time)]
-        elif isinstance(headerlines, str):
-            headerlines = [headerlines]
 
+        # ------------------------------------------------------------------
+        # Normalize the header lines
+        # ------------------------------------------------------------------
+        if headerlines is None:
+            # The default timestamp header is only written on file creation
+            write_header = not append_mode
+            lut_id = out_ctab.name if out_ctab is not None else "colortable"
+            date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+            headerlines = ["# $Id: {} {}".format(lut_id, date_time)]
+        elif isinstance(headerlines, str):
+            write_header = True
+            headerlines = [headerlines]
         elif isinstance(headerlines, list):
-            pass
+            write_header = True
         else:
             raise ValueError("The headerlines parameter must be a list or a string")
 
-        if append:
-            with open(str(out_ctab), "r") as file:
-                luttable = file.readlines()
+        # Strip trailing newlines so that the spacing is controlled explicitly below
+        headerlines = [str(line).rstrip("\n\r") for line in headerlines]
 
-            luttable = [l.strip("\n\r") for l in luttable]
-            luttable = ["\n" if element == "" else element for element in luttable]
-
-            if happend_bool:
-                luttable = luttable + headerlines
-
-        else:
-            luttable = headerlines
-
-        headerlines.append(
-            "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
-                "#No.", "Label Name:", "R", "G", "B", "A"
-            )
+        col_header = "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
+            "#No.", "Label Name:", "R", "G", "B", "A"
         )
 
-        # Handle different color input formats
-        if isinstance(colors, list):
-            if isinstance(colors[0], str):
-                colors = harmonize_colors(colors)
-                colors = multi_hex2rgb(colors)
+        # ------------------------------------------------------------------
+        # Assemble the file, one list element per output line
+        # ------------------------------------------------------------------
+        luttable = []
 
-            elif isinstance(colors[0], list):
-                colors = np.array(colors)
+        if append_mode:
+            with open(str(out_ctab), "r") as file:
+                luttable = [line.rstrip("\n\r") for line in file.readlines()]
 
-            elif isinstance(colors[0], np.ndarray):
-                colors = np.vstack(colors)
+            # Exactly one blank line between the old content and the new block
+            while luttable and luttable[-1] == "":
+                luttable.pop()
+            if luttable:
+                luttable.append("")
 
-        elif isinstance(colors, np.ndarray):
-            pass  # Already in correct format
-
+            if write_header:
+                luttable.extend(headerlines)
+                luttable.append("")
         else:
-            raise ValueError("Colors must be a list or numpy array")
+            luttable.extend(headerlines)
+            luttable.append("")  # one blank line after the header lines
+            luttable.append(col_header)
+            luttable.append("")  # one blank line before the table
 
-        # Add regions to table
         for roi_pos, roi_name in enumerate(names):
-            if roi_pos == 0:
-                luttable.append("\n")
-
             luttable.append(
                 "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
                     codes[roi_pos],
-                    names[roi_pos],
+                    roi_name,
                     colors[roi_pos, 0],
                     colors[roi_pos, 1],
                     colors[roi_pos, 2],
                     opacities[roi_pos],
                 )
             )
-        luttable.append("\n")
 
-        # Write to file if path provided
+        luttable.append("")  # the file ends with a single trailing newline
+
+        # ------------------------------------------------------------------
+        # Write or return
+        # ------------------------------------------------------------------
         if out_ctab is not None:
-            if not os.path.isfile(out_ctab) or overwrite:
-                with open(out_ctab, "w") as colorLUT_f:
-                    colorLUT_f.write("\n".join(luttable))
+            with open(out_ctab, "w") as colorLUT_f:
+                colorLUT_f.write("\n".join(luttable))
 
             return str(out_ctab)
 
-        else:
-            return luttable
+        return luttable
 
     ###########################################################################################
     def export_to_tsvctab(
