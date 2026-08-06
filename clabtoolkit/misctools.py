@@ -2,7 +2,18 @@ import numpy as np
 import h5py
 import uuid
 
-from typing import Union, Dict, List, Tuple, Set, Any, Optional, Literal
+from typing import (
+    Union,
+    Dict,
+    List,
+    Tuple,
+    Set,
+    Any,
+    Optional,
+    Literal,
+    Callable,
+    Hashable,
+)
 from collections.abc import Iterable
 
 import shlex
@@ -2402,6 +2413,124 @@ def save_dictionary_to_json(data_dictionary: dict, json_file_path: str):
         print(f"Dictionary successfully saved to: {json_file_path}")
     except Exception as e:
         print(f"An error occurred while saving the dictionary: {e}")
+
+
+####################################################################################################
+def compare_dicts(
+    dict1: Dict[Hashable, Any],
+    dict2: Dict[Hashable, Any],
+    ignore_keys: Optional[List[Hashable]] = None,
+    comparator: Optional[Callable[[Any, Any], bool]] = None,
+) -> Dict[str, Any]:
+    """
+    Compare two dictionaries and report keys with differing values.
+
+    The comparison distinguishes between keys that are present in both
+    dictionaries but hold different values, and keys that are exclusive to one
+    of the two dictionaries. Key ordering follows the insertion order of
+    ``dict1``, which is useful when the dictionaries encode ordered structures
+    such as BIDS entity dictionaries.
+
+    Parameters
+    ----------
+    dict1 : dict
+        First dictionary to compare. Its key order defines the order of the
+        reported results.
+    dict2 : dict
+        Second dictionary to compare.
+    ignore_keys : list of hashable, optional
+        Keys to exclude from the comparison. Default is None, meaning that all
+        keys are considered.
+    comparator : callable, optional
+        Function of signature ``comparator(value1, value2) -> bool`` returning
+        True when the two values are considered equal. Default is None, in
+        which case the ``==`` operator is used. Supply a custom comparator for
+        values that do not return a scalar boolean, e.g.
+        ``numpy.array_equal`` for array values.
+
+    Returns
+    -------
+    dict
+        Dictionary with the following entries:
+
+        ``differing`` : dict
+            Mapping from each shared key with unequal values to a tuple
+            ``(value_in_dict1, value_in_dict2)``.
+        ``identical`` : list of hashable
+            Shared keys holding equal values.
+        ``only_in_first`` : list of hashable
+            Keys present in ``dict1`` but absent from ``dict2``.
+        ``only_in_second`` : list of hashable
+            Keys present in ``dict2`` but absent from ``dict1``.
+
+    Raises
+    ------
+    TypeError
+        If ``dict1`` or ``dict2`` is not a dictionary, or if ``comparator`` is
+        provided but is not callable.
+
+    See Also
+    --------
+    dict.keys : Returns a set-like view supporting intersection and difference.
+
+    Notes
+    -----
+    The default comparison relies on ``!=``, which raises a ``ValueError`` for
+    NumPy arrays with more than one element. Pass ``comparator=numpy.array_equal``
+    in that case. Nested dictionaries are compared as whole objects rather than
+    recursively; for a recursive report consider the ``deepdiff`` package.
+
+    Examples
+    --------
+    >>> dict1 = {'sub': 'sub-002', 'ses': 'V1', 'run': '01',
+    ...          'acq': 'mpragep3', 'atlas': 'chimeraHFIFFFFFFN',
+    ...          'suffix': 'dseg'}
+    >>> dict2 = {'sub': 'sub-002', 'ses': 'V1', 'run': '01',
+    ...          'acq': 'mpragep3', 'atlas': 'chimeraLFIFFFFFFN',
+    ...          'suffix': 'dseg'}
+    >>> result = compare_dicts(dict1, dict2)
+    >>> result['differing']
+    {'atlas': ('chimeraHFIFFFFFFN', 'chimeraLFIFFFFFFN')}
+    >>> result['identical']
+    ['sub', 'ses', 'run', 'acq', 'suffix']
+    >>> compare_dicts(dict1, dict2, ignore_keys=['atlas'])['differing']
+    {}
+    """
+
+    if not isinstance(dict1, dict) or not isinstance(dict2, dict):
+        raise TypeError("Both dict1 and dict2 must be dictionaries.")
+
+    if comparator is not None and not callable(comparator):
+        raise TypeError("comparator must be a callable or None.")
+
+    ignore = set(ignore_keys) if ignore_keys else set()
+    are_equal = comparator if comparator is not None else lambda a, b: a == b
+
+    differing: Dict[Hashable, Tuple[Any, Any]] = {}
+    identical: List[Hashable] = []
+    only_in_first: List[Hashable] = []
+
+    for key, value1 in dict1.items():
+        if key in ignore:
+            continue
+        if key not in dict2:
+            only_in_first.append(key)
+            continue
+
+        value2 = dict2[key]
+        if are_equal(value1, value2):
+            identical.append(key)
+        else:
+            differing[key] = (value1, value2)
+
+    only_in_second = [key for key in dict2 if key not in dict1 and key not in ignore]
+
+    return {
+        "differing": differing,
+        "identical": identical,
+        "only_in_first": only_in_first,
+        "only_in_second": only_in_second,
+    }
 
 
 ####################################################################################################
