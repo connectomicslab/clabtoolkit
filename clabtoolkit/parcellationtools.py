@@ -3526,6 +3526,91 @@ class Parcellation:
             out_file, out_format=lut_type, overwrite=force, headerlines=headerlines
         )
 
+    #########################################################################################################
+    def create_5tt(self, output_file: Union[str, Path] = None) -> np.ndarray:
+        """
+        Create a 5-tissue-type (5TT) image from a parcellation following the
+        MRtrix3 convention: [cortical GM, subcortical GM, WM, CSF, pathology].
+
+        Parameters
+        ----------
+        output_file : str or Path, optional
+            Path to save the 5TT image. If None, the image is not saved.
+
+        Returns
+        -------
+        five_tt_image : np.ndarray
+            4D array with shape (X, Y, Z, 5) representing the five tissue types.
+
+        Raises
+        ------
+        ValueError
+            If no supra-regions match the expected tissue groups, indicating that
+            the parcellation does not follow the Chimera naming convention.
+
+        Examples
+        --------
+        >>> # Create 5TT image and save to file
+        >>> five_tt = parc.create_5tt(output_file='5tt_image.nii.gz')
+
+        """
+
+        tissue_groups = {
+            "cortical_gm": ["ctx", "cer"],
+            "subcortical_gm": ["subc", "thal", "hipp", "amygd", "hypo"],
+            "wm": ["wm", "bstem"],
+            "csf": ["vent", "csf"],
+        }
+
+        masks = []
+        for tissue, names in tissue_groups.items():
+            tmp = copy.deepcopy(self)
+            tmp.keep_by_name(names2keep=names)  # mutates tmp in place, returns None
+            mask = tmp.data > 0
+            if not mask.any():
+                import warnings
+
+                warnings.warn(
+                    f"No voxels found for 5TT tissue '{tissue}' "
+                    f"(names: {names}). Check the Chimera naming convention.",
+                    stacklevel=2,
+                )
+            masks.append(mask)
+
+        if not any(m.any() for m in masks):
+            raise ValueError(
+                "No supra-regions matched. The parcellation does not appear to "
+                "follow the Chimera naming convention."
+            )
+
+        # Pathology volume is empty (no lesion model here).
+        masks.append(np.zeros(self.data.shape, dtype=bool))
+
+        # Enforce mutual exclusivity by priority so each voxel sums to <= 1.
+        assigned = np.zeros(self.data.shape, dtype=bool)
+        for i, mask in enumerate(masks):
+            masks[i] = mask & ~assigned
+            assigned |= masks[i]
+
+        five_tt_image = np.stack(masks, axis=-1).astype(np.float32)
+
+        if output_file is not None:
+            if not isinstance(output_file, (str, Path)):
+                raise TypeError(
+                    f"output_file must be a string or Path, got {type(output_file)}"
+                )
+            output_file = Path(output_file)
+            if not output_file.parent.exists():
+                raise FileNotFoundError(
+                    f"Output directory does not exist: {output_file.parent}"
+                )
+            nib.save(
+                nib.Nifti1Image(five_tt_image, affine=self.affine), str(output_file)
+            )
+            print(f"Saved 5TT image to {output_file}")
+
+        return five_tt_image
+
     ######################################################################################################
     def replace_values(
         self,
