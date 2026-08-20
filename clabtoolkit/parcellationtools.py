@@ -3537,6 +3537,10 @@ class Parcellation:
         output_file : str or Path, optional
             Path to save the 5TT image. If None, the image is not saved.
 
+        mergectx : bool, optional
+            If True, merges cortical GM and the WM next to the cortex into a single tissue type.
+            Default is False.
+
         Returns
         -------
         five_tt_image : np.ndarray
@@ -3562,14 +3566,23 @@ class Parcellation:
             "csf": ["vent", "csf"],
         }
 
+        # Work on a copy when merging so the caller's parcellation is left untouched.
+        work = copy.deepcopy(self) if mergectx else self
+
+        if mergectx:
+            work.merge_ctx_wm()
+
         masks = []
         for tissue, names in tissue_groups.items():
-            tmp = copy.deepcopy(self)
-            tmp.keep_by_name(names2keep=names)  # mutates tmp in place, returns None
-            mask = tmp.data > 0
-            if not mask.any():
-                import warnings
+            indexes = cltmisc.get_indexes_by_substring(
+                input_list=work.name, or_filter=names, bool_case=False
+            )
+            if indexes:
+                mask = np.isin(work.data, [work.index[i] for i in indexes])
+            else:
+                mask = np.zeros(work.data.shape, dtype=bool)
 
+            if not mask.any():
                 warnings.warn(
                     f"No voxels found for 5TT tissue '{tissue}' "
                     f"(names: {names}). Check the Chimera naming convention.",
@@ -3584,10 +3597,10 @@ class Parcellation:
             )
 
         # Pathology volume is empty (no lesion model here).
-        masks.append(np.zeros(self.data.shape, dtype=bool))
+        masks.append(np.zeros(work.data.shape, dtype=bool))
 
         # Enforce mutual exclusivity by priority so each voxel sums to <= 1.
-        assigned = np.zeros(self.data.shape, dtype=bool)
+        assigned = np.zeros(work.data.shape, dtype=bool)
         for i, mask in enumerate(masks):
             masks[i] = mask & ~assigned
             assigned |= masks[i]
