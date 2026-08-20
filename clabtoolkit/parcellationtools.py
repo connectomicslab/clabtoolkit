@@ -3561,7 +3561,7 @@ class Parcellation:
 
         tissue_groups = {
             "cortical_gm": ["ctx", "cer"],
-            "subcortical_gm": ["subc", "thal", "hipp", "amygd", "hypo"],
+            "subcortical_gm": ["subc", "thal", "hipp", "amygd", "hypo", "vdc"],
             "wm": ["wm", "bstem"],
             "csf": ["vent", "csf"],
         }
