@@ -3528,7 +3528,54 @@ class Parcellation:
         )
 
     #########################################################################################################
-    def create_5tt(self, output_file: Union[str, Path] = None) -> np.ndarray:
+    def merge_ctx_wm(self, output_file: Union[str, Path] = None):
+        """
+        Merge cortical gray matter (GM) and adjacent white matter (WM) into a single tissue type.
+
+        This method modifies the parcellation in place, combining cortical GM parcels with their
+        corresponding WM parcels. The WM parcels are identified by adding 3000 to the cortical GM
+        parcel codes. After merging, the parcellation's index, name, color, and opacity attributes
+        are updated accordingly.
+
+        Examples
+        --------
+        >>> # Merge cortical GM and adjacent WM in the parcellation
+        >>> parc.merge_ctx_wm()
+        """
+
+        ind_codes = cltmisc.get_indexes_by_substring(self.name, ["wm-lh", "wm-rh"])
+        ctx_wm_codes = [self.index[i] for i in ind_codes]
+
+        if not ctx_wm_codes:
+            warnings.warn(
+                "No WM parcel has a matching cortical code (WM code = cortical code + 2000). No merging was performed.",
+                stacklevel=2,
+            )
+
+        ind_wm_ctx_vox = np.isin(self.data, ctx_wm_codes)
+        self.data[ind_wm_ctx_vox] = (
+            self.data[ind_wm_ctx_vox] - 3000
+        )  # Assign to GM tissue
+
+        self.adjust_values()  # Update index, name, color, opacity after modification
+
+        if output_file is not None:
+            if not isinstance(output_file, (str, Path)):
+                raise TypeError(
+                    f"output_file must be a string or Path, got {type(output_file)}"
+                )
+            output_file = Path(output_file)
+            if not output_file.parent.exists():
+                raise FileNotFoundError(
+                    f"Output directory does not exist: {output_file.parent}"
+                )
+            self.save_parcellation(out_file=output_file, force=True)
+            print(f"Saved merged parcellation to {output_file}")
+
+    #########################################################################################################
+    def create_5tt(
+        self, output_file: Union[str, Path] = None, mergectx: bool = False
+    ) -> np.ndarray:
         """
         Create a 5-tissue-type (5TT) image from a parcellation following the
         MRtrix3 convention: [cortical GM, subcortical GM, WM, CSF, pathology].
