@@ -3041,6 +3041,109 @@ class Surface:
             )
 
     ###############################################################################################
+    def apply_cras(
+        self,
+        cras: Union[str, Path, np.ndarray, tuple, list],
+        source: bool = True,
+        inverse: bool = False,
+    ) -> "Surface":
+        """
+        Apply the CRAS (Center of the Rotation in Anatomical Space) offset to the
+        surface mesh.
+
+        FreeSurfer surfaces are stored in surface RAS (tkrRAS) coordinates, whose
+        origin is the center of the conformed volume. Adding the CRAS offset moves the
+        vertices into the scanner RAS space of the original volume, which is required
+        before mapping a volume onto the surface with :meth:`map_volume_to_surface`.
+
+        Parameters
+        ----------
+        cras : str, Path, np.ndarray, tuple or list
+            CRAS transformation to apply. It can be:
+            - str or Path: path to a FreeSurfer ``.lta`` file (e.g.
+              ``mri/transforms/talairach.lta``) from which the coordinates are read.
+            - tuple, list or np.ndarray of 3 values: the (x, y, z) offset itself.
+            - np.ndarray of shape (4, 4): a full affine transformation.
+
+        source : bool, default True
+            Only used when ``cras`` is a file path. If True the source volume CRAS is
+            used, otherwise the destination volume CRAS.
+
+        inverse : bool, default False
+            If True, apply the inverse transformation, moving the vertices from
+            scanner RAS back to surface RAS.
+
+        Returns
+        -------
+        Surface
+            The surface itself, so the call can be chained.
+
+        Raises
+        ------
+        ValueError
+            If the mesh is empty, if the ``.lta`` file does not exist or contains no
+            CRAS entry, or if the transformation is neither 3 coordinates nor a 4x4
+            matrix.
+
+        Notes
+        -----
+        This method modifies the mesh points in place.
+
+        Examples
+        --------
+        >>> surface = Surface('lh.pial')
+        >>> surface.apply_cras('/opt/freesurfer/subjects/bert/mri/transforms/talairach.lta')
+        >>> print(surface.mesh.points[:5])  # Check transformed coordinates
+
+        >>> # Passing the coordinates directly, then undoing the shift
+        >>> surface.apply_cras((5.3, 18.2, -7.1))
+        >>> surface.apply_cras((5.3, 18.2, -7.1), inverse=True)
+        """
+
+        if self.mesh is None or self.mesh.n_points == 0:
+            raise ValueError("Mesh is empty or not defined.")
+
+        # Read the coordinates from the .lta file when a path is supplied
+        if isinstance(cras, (str, Path)):
+            lta_file = str(cras)
+
+            if not os.path.exists(lta_file):
+                raise ValueError(f"CRAS file not found: {lta_file}")
+
+            cras = cltfree.get_cras_coordinates(lta_file, source=source)
+            if cras is None:
+                raise ValueError(
+                    f"No {'src' if source else 'dst'} CRAS entry found in {lta_file}"
+                )
+
+        # get_cras_coordinates returns a tuple, so cast it to an array for the arithmetic
+        cras = np.asarray(cras, dtype=float)
+
+        if cras.size == 3:
+            # A CRAS offset is a pure translation
+            offset = cras.ravel()
+            if inverse:
+                offset = -offset
+
+            self.mesh.points = self.mesh.points + offset
+
+        elif cras.shape == (4, 4):
+            if inverse:
+                cras = np.linalg.inv(cras)
+
+            ones = np.ones((self.mesh.n_points, 1))
+            points_homogeneous = np.hstack([self.mesh.points, ones])
+            self.mesh.points = (cras @ points_homogeneous.T).T[:, :3]
+
+        else:
+            raise ValueError(
+                "Invalid CRAS transformation provided. It must contain 3 coordinates "
+                f"or be a 4x4 matrix, got shape {cras.shape}."
+            )
+
+        return self
+
+    ###############################################################################################
     def plot(
         self,
         overlay_name: str = None,
