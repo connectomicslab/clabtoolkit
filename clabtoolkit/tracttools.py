@@ -1951,7 +1951,9 @@ class Tractogram:
         return info
 
     ##############################################################################################
-    def apply_affine(self, affine: np.ndarray, inverse: bool = False) -> None:
+    def apply_affine(
+        self, affine: np.ndarray, inverse: bool = False, inplace: bool = True
+    ) -> Optional[ArraySequence]:
         """
         Applies an affine transformation to all streamlines in the tractogram.
 
@@ -1959,12 +1961,19 @@ class Tractogram:
         -----------
             affine (np.ndarray):
                 A 4x4 affine transformation matrix to apply to the streamlines.
+
             inverse (bool, default False):
                 If True, applies the inverse of the affine transformation.
 
+            inplace (bool, default True):
+                If True, modifies the current object. If False it returns
+                the transformed streamlines as an ArraySequence.
+
         Returns:
         --------
-            None
+            ArraySequence or None:
+                If inplace=False, returns the transformed streamlines.
+                If inplace=True, returns None.
 
         Raises:
         -------
@@ -1972,18 +1981,24 @@ class Tractogram:
 
         Notes:
         ------
-            This method modifies the tractogram in place, transforming all streamlines
-            according to the provided affine matrix.
+            With inplace=True the tractogram is modified in place, transforming all
+            streamlines according to the provided affine matrix. With inplace=False
+            only the coordinates are returned, so the remaining attributes of the
+            tractogram, such as data_per_point or data_per_streamline, are not copied.
 
         Examples:
         ---------
         >>> tractogram = Tractogram('input.trk')
         >>> affine_matrix = np.array([[1, 0, 0, 10],
-                                       [0, 1, 0, 5],
-                                       [0, 0, 1, -3],
-                                       [0, 0, 0, 1]])
+                                    [0, 1, 0, 5],
+                                    [0, 0, 1, -3],
+                                    [0, 0, 0, 1]])
         >>> tractogram.apply_affine(affine_matrix)
         >>> print("Applied affine transformation to all streamlines.")
+
+        >>> # Keeping the original tractogram untouched
+        >>> moved = tractogram.apply_affine(affine_matrix, inplace=False)
+        >>> print(moved[0])  # Transformed coordinates of the first streamline
         """
         if affine.shape != (4, 4):
             raise ValueError("Affine must be a 4x4 matrix.")
@@ -1992,7 +2007,7 @@ class Tractogram:
             affine = np.linalg.inv(affine)
 
         if len(self.tracts) == 0:
-            return
+            return None if inplace else ArraySequence()
 
         # Concatenate all the streamlines into a single array so the transformation
         # is applied to every point with a single matrix multiplication
@@ -2009,8 +2024,14 @@ class Tractogram:
         split_indices = np.cumsum(lengths)[:-1]
 
         # Split array_all back into a list of arrays
-        transformed_streamlines = np.split(all_data, split_indices)
-        self.tracts = ArraySequence(transformed_streamlines)
+        transformed_streamlines = ArraySequence(np.split(all_data, split_indices))
+
+        # Return the transformed streamlines either in place or as a new object
+        if inplace:
+            self.tracts = transformed_streamlines
+            return None
+        else:
+            return transformed_streamlines
 
     ##############################################################################################
     def centroids_to_tractogram(self):
