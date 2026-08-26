@@ -191,10 +191,10 @@ class BrainPlotter:
     def _build_plotting_config(
         self,
         views: list,
-        hemi_id: str = ["lh", "rh"],
+        hemi_id: Union[str, List[str]] = None,
         orientation: str = "horizontal",
         objs2plot: Union[Any, List[Any]] = None,
-        maps_dict: Dict = {},
+        maps_dict: Dict = None,
         colorbar: bool = True,
         colorbar_style: str = "individual",
         colorbar_position: str = "right",
@@ -209,6 +209,8 @@ class BrainPlotter:
         """
 
         # Normalize inputs
+        hemi_id = ["lh", "rh"] if hemi_id is None else hemi_id
+        maps_dict = {} if maps_dict is None else maps_dict
         objs2plot = cltmisc.to_list(objs2plot) if objs2plot else []
         maps_names = list(maps_dict.keys())
         n_maps = len(maps_names)
@@ -254,6 +256,326 @@ class BrainPlotter:
             colorbar_list,
         )
 
+    ###############################################################################################
+    @staticmethod
+    def _prepare_rgba(
+        rgba: np.ndarray, use_opacity: bool = True, opacity: float = None
+    ) -> np.ndarray:
+        """
+        Adjust the alpha channel of an RGBA array before adding it to the plotter.
+
+        Parameters
+        ----------
+        rgba : np.ndarray
+            RGB or RGBA colors with shape (n_points, 3) or (n_points, 4).
+
+        use_opacity : bool, default True
+            If False, the alpha channel is removed and the colors are fully opaque.
+
+        opacity : float, optional
+            Constant opacity, between 0 and 1, replacing the alpha channel. If None,
+            the alpha channel of the input is kept unchanged.
+
+        Returns
+        -------
+        np.ndarray
+            The colors with the alpha channel removed, kept or replaced.
+        """
+
+        rgba = np.asarray(rgba)
+
+        if not use_opacity:
+            return rgba[:, :3]
+
+        if opacity is None:
+            return rgba
+
+        # Replace the alpha channel by the requested constant opacity, respecting
+        # whether the colors are stored in the 0-1 or in the 0-255 range
+        rgb = rgba[:, :3]
+        scale = 255.0 if rgb.size and rgb.max() > 1.0 else 1.0
+        alpha = np.full((rgb.shape[0], 1), opacity * scale)
+
+        return np.column_stack([rgb, alpha]).astype(rgba.dtype, copy=False)
+
+    ###############################################################################################
+    def _add_object_to_plotter(
+        self,
+        plotter: pv.Plotter,
+        obj: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud],
+        use_opacity: bool = True,
+        opacity: float = None,
+    ) -> None:
+        """
+        Add a single object to the current subplot of a PyVista plotter.
+
+        This method centralizes the rendering of the different object types so that
+        all the plotting methods of the class behave in the same way.
+
+        Parameters
+        ----------
+        plotter : pv.Plotter
+            Plotter instance. The target subplot must be selected beforehand.
+
+        obj : Surface, Tractogram or PointCloud
+            Object to render. It must already contain its "rgba" colors.
+
+        use_opacity : bool, default True
+            If False, the alpha channel is discarded and the object is fully opaque.
+
+        opacity : float, optional
+            Constant opacity, between 0 and 1, applied to the whole object. If None,
+            the alpha channel already stored in the object is used.
+
+        Raises
+        ------
+        TypeError
+            If the object is not a Surface, Tractogram or PointCloud.
+        """
+
+        # Common appearance settings shared by all the object types
+        mesh_kwargs = {
+            "ambient": self.figure_conf["mesh_ambient"],
+            "diffuse": self.figure_conf["mesh_diffuse"],
+            "specular": self.figure_conf["mesh_specular"],
+            "specular_power": self.figure_conf["mesh_specular_power"],
+            "smooth_shading": self.figure_conf["mesh_smooth_shading"],
+            "show_scalar_bar": False,
+        }
+
+        if isinstance(obj, clttract.Tractogram):
+            tracts = obj.tracts
+            all_points = np.vstack(tracts)
+            all_rgba = self._prepare_rgba(
+                np.vstack(obj.data_per_point["rgba"]), use_opacity, opacity
+            )
+
+            # Build the lines connectivity array
+            # Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
+            lines = []
+            offset = 0
+            for tract in tracts:
+                n = len(tract)
+                lines.append(n)
+                lines.extend(range(offset, offset + n))
+                offset += n
+
+            # Create a single PolyData with all the curves
+            poly = pv.PolyData()
+            poly.points = all_points
+            poly.lines = np.array(lines, dtype=np.int_)
+            poly.point_data["rgba"] = all_rgba
+
+            if self.objs_conf["tracts"]["tubes"]:
+                # The tube filter propagates the point data to the generated tubes
+                poly = poly.tube(
+                    radius=self.objs_conf["tracts"]["tube_radius"],
+                    n_sides=self.objs_conf["tracts"]["tube_sides"],
+                )
+                plotter.add_mesh(poly, scalars="rgba", rgb=True, **mesh_kwargs)
+
+            else:
+                plotter.add_mesh(
+                    poly, scalars="rgba", line_width=2, rgb=True, **mesh_kwargs
+                )
+
+        elif isinstance(obj, cltpts.PointCloud):
+            rgba_data = self._prepare_rgba(
+                obj.point_data["rgba"], use_opacity, opacity
+            )
+
+            plotter.add_points(
+                obj.coords,
+                render_points_as_spheres=self.objs_conf["points"]["spheres"],
+                point_size=self.objs_conf["points"]["spheres_radius"],
+                scalars=rgba_data,
+                rgb=True,
+                **mesh_kwargs,
+            )
+
+        elif isinstance(obj, cltsurf.Surface):
+            # Work on a copy so the colors of the supplied object are not modified
+            mesh = copy.deepcopy(obj.mesh)
+            if "rgba" in mesh.point_data:
+                mesh.point_data["rgba"] = self._prepare_rgba(
+                    mesh.point_data["rgba"], use_opacity, opacity
+                )
+
+            plotter.add_mesh(mesh, scalars="rgba", rgb=True, **mesh_kwargs)
+
+        else:
+            raise TypeError(
+                f"Objects to plot must be Surface, Tractogram or PointCloud instances, got {type(obj).__name__}."
+            )
+
+    ###############################################################################################
+    def _set_subplot_camera(self, plotter: pv.Plotter, view_id: str) -> None:
+        """
+        Apply the camera parameters of a given view to the current subplot.
+
+        Parameters
+        ----------
+        plotter : pv.Plotter
+            Plotter instance. The target subplot must be selected beforehand.
+
+        view_id : str
+            Identifier of the view, as defined in the views configuration. Merged
+            views ("merg-*") reuse the camera of their left hemisphere equivalent.
+        """
+
+        # Replace merg from the view id if needed
+        if "merg" in view_id:
+            view_id = view_id.replace("merg", "lh")
+
+        camera_params = self.views_conf[view_id]
+        plotter.camera_position = camera_params["view"]
+        plotter.camera.azimuth = camera_params["azimuth"]
+        plotter.camera.elevation = camera_params["elevation"]
+        plotter.camera.zoom(camera_params["zoom"])
+
+    ###############################################################################################
+    @staticmethod
+    def _build_subplot_title(view_id: str) -> str:
+        """
+        Build the title of a subplot from its view identifier.
+
+        Parameters
+        ----------
+        view_id : str
+            Identifier of the view, usually formatted as "<hemisphere>-<view>".
+
+        Returns
+        -------
+        str
+            Title of the subplot. View identifiers that do not follow the expected
+            format are capitalized and returned as they are.
+        """
+
+        if "-" not in view_id:
+            return view_id.capitalize()
+
+        view_name = view_id.split("-")[1].capitalize()
+
+        if "lh" in view_id:
+            return f"Left hemisphere: {view_name} view"
+
+        elif "rh" in view_id:
+            return f"Right hemisphere: {view_name} view"
+
+        return f"{view_name} view"
+
+    ###############################################################################################
+    def _remove_duplicated_views(self, view_ids: List[str]) -> List[str]:
+        """
+        Remove the view identifiers that share the same camera parameters.
+
+        Single view names, such as "dorsal", are expanded by the views configuration
+        into one identifier per hemisphere ("lh-dorsal" and "rh-dorsal"). Some of
+        those pairs, the dorsal and the ventral ones, define exactly the same camera.
+        Methods rendering all the objects on every view must keep only one of them to
+        avoid producing identical subplots.
+
+        Parameters
+        ----------
+        view_ids : List[str]
+            View identifiers, as returned by the views configuration.
+
+        Returns
+        -------
+        List[str]
+            The view identifiers whose cameras are different, in their original order.
+        """
+
+        unique_views = []
+        seen_cameras = []
+
+        for view_id in view_ids:
+            camera = self.views_conf[view_id.replace("merg", "lh")]
+
+            if camera not in seen_cameras:
+                seen_cameras.append(camera)
+                unique_views.append(view_id)
+
+        return unique_views
+
+    ###############################################################################################
+    @staticmethod
+    def _build_scene_titles(view_ids: List[str]) -> List[str]:
+        """
+        Build the subplot titles of a scene.
+
+        A scene contains all its objects on every view, so the titles refer to the
+        camera and not to a hemisphere. The side is only mentioned when the same view
+        is shown from both sides, as happens with the lateral or the medial views.
+
+        Parameters
+        ----------
+        view_ids : List[str]
+            View identifiers of the scene.
+
+        Returns
+        -------
+        List[str]
+            One title per view identifier.
+        """
+
+        view_names = [
+            view_id.split("-")[1] if "-" in view_id else view_id for view_id in view_ids
+        ]
+
+        titles = []
+        for view_id, view_name in zip(view_ids, view_names):
+            # Only disambiguate the sides when the same view appears more than once
+            if view_names.count(view_name) > 1:
+                side = {"lh": "Left ", "rh": "Right "}.get(view_id.split("-")[0], "")
+            else:
+                side = ""
+
+            if side:
+                titles.append(f"{side}{view_name.lower()} view")
+            else:
+                titles.append(f"{view_name.capitalize()} view")
+
+        return titles
+
+    ###############################################################################################
+    def _add_colorbars(self, plotter: pv.Plotter, colorbar_list: List[Dict]) -> None:
+        """
+        Add the colorbars to their corresponding subplots.
+
+        Parameters
+        ----------
+        plotter : pv.Plotter
+            Plotter instance where the colorbars will be added.
+
+        colorbar_list : List[Dict]
+            Colorbar descriptions. Entries equal to False are skipped, as well as
+            the ones belonging to categorical maps, for which no colorbar is
+            currently implemented.
+        """
+
+        for colorbar_dict in colorbar_list or []:
+            if colorbar_dict is False:
+                continue
+
+            row, col = colorbar_dict["position"]
+            plotter.subplot(row, col)
+
+            if colorbar_dict["colormap"] == "colortable":
+                continue  # Currently, no colorbar for categorical maps is implemented
+
+            visutils.add_colorbar(
+                self,
+                plotter=plotter,
+                colorbar_subplot=(row, col),
+                vmin=colorbar_dict["vmin"],
+                vmax=colorbar_dict["vmax"],
+                map_name=colorbar_dict["map_name"],
+                colormap=colorbar_dict["colormap"],
+                colorbar_title=colorbar_dict["title"],
+                colorbar_position=colorbar_dict["orientation"],
+            )
+
     ###############################################################################
     def plot(
         self,
@@ -262,7 +584,7 @@ class BrainPlotter:
         views: Union[str, List[str]] = "dorsal",
         views_orientation: str = "horizontal",
         notebook: bool = False,
-        map_names: Union[str, List[str]] = ["default"],
+        map_names: Union[str, List[str]] = None,
         v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
             None,
             None,
@@ -302,8 +624,8 @@ class BrainPlotter:
         notebook : bool, default False
             Whether running in Jupyter notebook environment.
 
-        map_names : Union[str, List[str]], default ["default"]
-            Names of the surface maps to plot.
+        map_names : Union[str, List[str]], optional
+            Names of the surface maps to plot. Defaults to ["default"].
 
         v_limits : Optional[Union[Tuple[float, float], List[Tuple[float, float]]]], default (None, None)
             Value limits for colormapping.
@@ -340,6 +662,16 @@ class BrainPlotter:
         colorbar_position : str, default "right"
             Position of the colorbars.
 
+        config_file : str, Path or Dict, optional
+            Path to a custom configuration file (JSON) or a dictionary containing
+            configuration settings. If provided, it overrides the default settings.
+
+        Returns
+        -------
+        None
+            The function does not return any value. It either displays the plot or
+            saves it to a file, depending on the parameters provided.
+
         """
 
         # Validate and process hemi_id parameter
@@ -371,13 +703,12 @@ class BrainPlotter:
         else:
             obj2plot = copy.deepcopy(objs2plot)
 
-        # Number of objects to plot
-        n_objects = len(obj2plot)
-
         # Filter to only available maps
-        if isinstance(map_names, str):
+        if map_names is None:
+            map_names = ["default"]
+
+        elif isinstance(map_names, str):
             map_names = [map_names]
-        n_maps = len(map_names)
 
         # Available overlays
         no_ctab_maps, map_names = visutils.find_common_map_names(obj2plot, map_names)
@@ -550,161 +881,13 @@ class BrainPlotter:
                 range_color=range_color,
             )
             for tmp_obj in prep_obj:
-                if isinstance(tmp_obj, clttract.Tractogram):
+                self._add_object_to_plotter(pv_plotter, tmp_obj, use_opacity)
 
-                    tracts = tmp_obj.tracts
-                    rgba_data = tmp_obj.data_per_point["rgba"]
-
-                    # 1. Concatenate all points and colors
-                    all_points = np.vstack(tracts)
-                    all_rgba = np.vstack(rgba_data)
-
-                    if use_opacity is False:
-                        all_rgba = all_rgba[:, :3]
-
-                    # 2. Build the lines connectivity array
-                    #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
-                    lines = []
-                    offset = 0
-                    for tract in tracts:
-                        n = len(tract)
-                        lines.append(n)
-                        lines.extend(range(offset, offset + n))
-                        offset += n
-                    lines = np.array(lines, dtype=np.int_)
-
-                    # 3. Create single PolyData with all curves
-                    if self.objs_conf["tracts"]["tubes"]:
-                        # Create a PolyData object for tube representation
-                        # Create a PolyData object for tube representation
-                        poly = pv.PolyData()
-                        poly.points = all_points
-                        poly.lines = lines
-
-                        # Attach your RGBA scalars
-                        poly.point_data["rgba"] = all_rgba  # <-- important
-
-                        # Add tube filter (tube cannot take scalars directly)
-                        tube_radius = self.objs_conf["tracts"]["tube_radius"]
-                        tube_sides = self.objs_conf["tracts"]["tube_sides"]
-                        tube_poly = poly.tube(
-                            radius=tube_radius,
-                            n_sides=tube_sides,
-                        )
-
-                        # Add the mesh with tube representation
-                        pv_plotter.add_mesh(
-                            tube_poly,
-                            scalars="rgba",  # use the same name
-                            rgb=True,
-                            ambient=self.figure_conf["mesh_ambient"],
-                            diffuse=self.figure_conf["mesh_diffuse"],
-                            specular=self.figure_conf["mesh_specular"],
-                            specular_power=self.figure_conf["mesh_specular_power"],
-                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                            show_scalar_bar=False,
-                        )
-                    else:
-                        poly = pv.PolyData()
-                        poly.points = all_points
-                        poly.lines = lines
-                        poly.point_data["rgba"] = all_rgba
-
-                        # 4. Single add_mesh call
-                        pv_plotter.add_mesh(
-                            poly,
-                            scalars="rgba",
-                            line_width=2,
-                            rgb=True,
-                            ambient=self.figure_conf["mesh_ambient"],
-                            diffuse=self.figure_conf["mesh_diffuse"],
-                            specular=self.figure_conf["mesh_specular"],
-                            specular_power=self.figure_conf["mesh_specular_power"],
-                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                            show_scalar_bar=False,
-                        )
-
-                elif isinstance(tmp_obj, cltpts.PointCloud):
-
-                    rgba_data = tmp_obj.point_data["rgba"]
-                    if use_opacity is False:
-                        rgba_data = rgba_data[:, :3]
-
-                    pv_plotter.add_points(
-                        tmp_obj.coords,
-                        render_points_as_spheres=self.objs_conf["points"]["spheres"],
-                        point_size=self.objs_conf["points"]["spheres_radius"],
-                        scalars=rgba_data,
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-
-                elif isinstance(tmp_obj, cltsurf.Surface):
-                    if not use_opacity:
-                        # delete the alpha channel if exists
-                        if "rgba" in tmp_obj.mesh.point_data:
-                            tmp_obj.mesh.point_data["rgba"] = tmp_obj.mesh.point_data[
-                                "rgba"
-                            ][:, :3]
-
-                    pv_plotter.add_mesh(
-                        copy.deepcopy(tmp_obj.mesh),
-                        scalars="rgba",
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-
-                # Set the camera view
-                tmp_view = view_ids[view_idx]
-
-                # Replace merg from the view id if needed
-                if "merg" in tmp_view:
-                    tmp_view = tmp_view.replace("merg", "lh")
-
-                camera_params = self.views_conf[tmp_view]
-                pv_plotter.camera_position = camera_params["view"]
-                pv_plotter.camera.azimuth = camera_params["azimuth"]
-                pv_plotter.camera.elevation = camera_params["elevation"]
-                pv_plotter.camera.zoom(camera_params["zoom"])
+            # Set the camera view
+            self._set_subplot_camera(pv_plotter, view_ids[view_idx])
 
         # And place colorbars at their positions
-        if len(colorbar_dict_list):
-
-            for colorbar_dict in colorbar_dict_list:
-                if colorbar_dict is not False:
-                    row, col = colorbar_dict["position"]
-                    orientation = colorbar_dict["orientation"]
-                    colorbar_id = colorbar_dict["map_name"]
-                    colormap = colorbar_dict["colormap"]
-                    colorbar_title = colorbar_dict["title"]
-                    vmin = colorbar_dict["vmin"]
-                    vmax = colorbar_dict["vmax"]
-                    pv_plotter.subplot(row, col)
-
-                    if colormap == "colortable":
-                        pass  # Currently, no colorbar for categorical maps is implemented
-                    else:
-                        visutils.add_colorbar(
-                            self,
-                            plotter=pv_plotter,
-                            colorbar_subplot=(row, col),
-                            vmin=vmin,
-                            vmax=vmax,
-                            map_name=colorbar_id,
-                            colormap=colormap,
-                            colorbar_title=colorbar_title,
-                            colorbar_position=orientation,
-                        )
+        self._add_colorbars(pv_plotter, colorbar_dict_list)
 
         # Linking the cameras from the subplots with the same view
         unique_v_indices = set(key[2] for key in brain_positions.keys())
@@ -724,7 +907,7 @@ class BrainPlotter:
                 # Link all views in this group
                 try:
                     pv_plotter.link_views(positions)
-                except:
+                except Exception:
                     try:
                         # Try substracting 1 from positions bigger than n_horz_plots
                         # This is to handle the case when there are colorbars in the last column
@@ -740,7 +923,7 @@ class BrainPlotter:
                             new_positions.remove(n_horz_plots)
 
                         pv_plotter.link_views(new_positions)
-                    except:
+                    except Exception:
                         print(
                             f"Could not link views for view index {v_idx} at positions {positions}"
                         )
@@ -805,7 +988,7 @@ class BrainPlotter:
         range_color : Tuple, default (128, 128, 128, 255)
             RGBA color to use for values outside the specified v_range.
 
-        colormap : str or list of str, default "BrBG"
+        colormap : str, default "viridis"
             Colormap to use for visualization.
 
         colorbar : bool, default True
@@ -974,25 +1157,8 @@ class BrainPlotter:
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
-            tmp_view_name = valid_views[view_idx]
-
-            # Split the view name if it contains '_'
-            if "-" in tmp_view_name:
-                tmp_view_name = tmp_view_name.split("-")[1]
-
-                # Capitalize the first letter
-                tmp_view_name = tmp_view_name.capitalize()
-
-                # Detecting if the view is left or right
-                if "lh" in valid_views[view_idx]:
-                    subplot_title = "Left hemisphere: " + tmp_view_name + " view"
-                elif "rh" in valid_views[view_idx]:
-                    subplot_title = "Right hemisphere: " + tmp_view_name + " view"
-                elif "merg" in valid_views[view_idx]:
-                    subplot_title = tmp_view_name + " view"
-
             pv_plotter.add_text(
-                subplot_title,
+                self._build_subplot_title(valid_views[view_idx]),
                 font_size=self.figure_conf["title_font_size"],
                 position="upper_edge",
                 color=self.figure_conf["title_font_color"],
@@ -1038,161 +1204,13 @@ class BrainPlotter:
                 )
 
             for tmp_obj in prep_obj:
-                if isinstance(tmp_obj, clttract.Tractogram):
+                self._add_object_to_plotter(pv_plotter, tmp_obj, use_opacity)
 
-                    tracts = tmp_obj.tracts
-                    rgba_data = tmp_obj.data_per_point["rgba"]
-
-                    # 1. Concatenate all points and colors
-                    all_points = np.vstack(tracts)
-                    all_rgba = np.vstack(rgba_data)
-
-                    if use_opacity is False:
-                        all_rgba = all_rgba[:, :3]
-
-                    # 2. Build the lines connectivity array
-                    #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
-                    lines = []
-                    offset = 0
-                    for tract in tracts:
-                        n = len(tract)
-                        lines.append(n)
-                        lines.extend(range(offset, offset + n))
-                        offset += n
-                    lines = np.array(lines, dtype=np.int_)
-
-                    # 3. Create single PolyData with all curves
-                    if self.objs_conf["tracts"]["tubes"]:
-                        # Create a PolyData object for tube representation
-                        # Create a PolyData object for tube representation
-                        poly = pv.PolyData()
-                        poly.points = all_points
-                        poly.lines = lines
-
-                        # Attach your RGBA scalars
-                        poly.point_data["rgba"] = all_rgba  # <-- important
-
-                        # Add tube filter (tube cannot take scalars directly)
-                        tube_radius = self.objs_conf["tracts"]["tube_radius"]
-                        tube_sides = self.objs_conf["tracts"]["tube_sides"]
-                        tube_poly = poly.tube(
-                            radius=tube_radius,
-                            n_sides=tube_sides,
-                        )
-
-                        # Add the mesh with tube representation
-                        pv_plotter.add_mesh(
-                            tube_poly,
-                            scalars="rgba",  # use the same name
-                            rgb=True,
-                            ambient=self.figure_conf["mesh_ambient"],
-                            diffuse=self.figure_conf["mesh_diffuse"],
-                            specular=self.figure_conf["mesh_specular"],
-                            specular_power=self.figure_conf["mesh_specular_power"],
-                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                            show_scalar_bar=False,
-                        )
-                    else:
-                        poly = pv.PolyData()
-                        poly.points = all_points
-                        poly.lines = lines
-                        poly.point_data["rgba"] = all_rgba
-
-                        # 4. Single add_mesh call
-                        pv_plotter.add_mesh(
-                            poly,
-                            scalars="rgba",
-                            line_width=2,
-                            rgb=True,
-                            ambient=self.figure_conf["mesh_ambient"],
-                            diffuse=self.figure_conf["mesh_diffuse"],
-                            specular=self.figure_conf["mesh_specular"],
-                            specular_power=self.figure_conf["mesh_specular_power"],
-                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                            show_scalar_bar=False,
-                        )
-
-                elif isinstance(tmp_obj, cltpts.PointCloud):
-
-                    rgba_data = tmp_obj.point_data["rgba"]
-                    if use_opacity is False:
-                        rgba_data = rgba_data[:, :3]
-
-                    pv_plotter.add_points(
-                        tmp_obj.coords,
-                        render_points_as_spheres=self.objs_conf["points"]["spheres"],
-                        point_size=self.objs_conf["points"]["spheres_radius"],
-                        scalars=rgba_data,
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-
-                elif isinstance(tmp_obj, cltsurf.Surface):
-                    if not use_opacity:
-                        # delete the alpha channel if exists
-                        if "rgba" in tmp_obj.mesh.point_data:
-                            tmp_obj.mesh.point_data["rgba"] = tmp_obj.mesh.point_data[
-                                "rgba"
-                            ][:, :3]
-
-                    pv_plotter.add_mesh(
-                        copy.deepcopy(tmp_obj.mesh),
-                        scalars="rgba",
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-
-                # Set the camera view
-                tmp_view = valid_views[view_idx]
-
-                # Replace merg from the view id if needed
-                if "merg" in tmp_view:
-                    tmp_view = tmp_view.replace("merg", "lh")
-
-                camera_params = self.views_conf[tmp_view]
-                pv_plotter.camera_position = camera_params["view"]
-                pv_plotter.camera.azimuth = camera_params["azimuth"]
-                pv_plotter.camera.elevation = camera_params["elevation"]
-                pv_plotter.camera.zoom(camera_params["zoom"])
+            # Set the camera view
+            self._set_subplot_camera(pv_plotter, valid_views[view_idx])
 
         # And place colorbars at their positions
-        if len(colorbar_list):
-
-            for colorbar_dict in colorbar_list:
-                if colorbar_dict is not False:
-                    row, col = colorbar_dict["position"]
-                    orientation = colorbar_dict["orientation"]
-                    colorbar_id = colorbar_dict["map_name"]
-                    colormap = colorbar_dict["colormap"]
-                    colorbar_title = colorbar_dict["title"]
-                    vmin = colorbar_dict["vmin"]
-                    vmax = colorbar_dict["vmax"]
-                    pv_plotter.subplot(row, col)
-
-                    if colormap == "colortable":
-                        pass  # Currently, no colorbar for categorical maps is implemented
-                    else:
-                        visutils.add_colorbar(
-                            self,
-                            plotter=pv_plotter,
-                            colorbar_subplot=(row, col),
-                            vmin=vmin,
-                            vmax=vmax,
-                            map_name=colorbar_id,
-                            colormap=colormap,
-                            colorbar_title=colorbar_title,
-                            colorbar_position=orientation,
-                        )
+        self._add_colorbars(pv_plotter, colorbar_list)
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
@@ -1213,6 +1231,69 @@ class BrainPlotter:
         save_path: Optional[str] = None,
         config_file: Union[str, Path, Dict] = None,
     ):
+        """
+        Plot a scene combining several objects with independent color settings.
+
+        Unlike :meth:`plot`, which applies the same map settings to every object,
+        this method renders all the objects together on each view, each one with its
+        own map, colormap, limits and opacity, as described in ``scene_config``.
+
+        Parameters
+        ----------
+        scene_objects : Surface, Tractogram, PointCloud or List
+            Object or list of objects composing the scene. All of them are rendered
+            on every requested view.
+
+        scene_config : Dict, optional
+            Per-object plotting settings (map name, colormap, value limits, value
+            range, range color and opacity). Missing entries are completed with
+            default values.
+
+        views : str or List[str], default "dorsal"
+            Views to display. It can be a single view, a list of views or the name
+            of one of the available layouts.
+
+        notebook : bool, default False
+            Whether to render the plot in a Jupyter notebook environment.
+
+        colorbar : bool, default True
+            Whether to reserve space for the colorbars in the layout.
+
+        colorbar_position : str, default "right"
+            Position of the reserved colorbar space. Options are 'right' or 'bottom'.
+
+        use_opacity : bool, default True
+            Whether to apply the per-object opacity. If False, all the objects are
+            rendered fully opaque.
+
+        non_blocking : bool, default False
+            If True, displays the plot in a non-blocking manner using threading.
+            Only applicable when `notebook` is False and `save_path` is None.
+
+        save_path : str, optional
+            File path to save the rendered figure. If provided, the figure is saved
+            instead of being displayed.
+
+        config_file : str, Path or Dict, optional
+            Custom configuration overriding the default plotting settings.
+
+        Returns
+        -------
+        None
+            The function does not return any value. It either displays the plot or
+            saves it to a file, depending on the parameters provided.
+
+        Notes
+        -----
+        Colorbars are not drawn yet for scenes. The ``colorbar`` and
+        ``colorbar_position`` parameters only reserve the corresponding space in the
+        layout.
+
+        Examples
+        --------
+        >>> plotter = BrainPlotter()
+        >>> plotter.plot_scene([surf_lh, tractogram], views="merg-dorsal")
+        """
 
         # Loading custom configuration file if provided
         if config_file is not None:
@@ -1224,13 +1305,22 @@ class BrainPlotter:
                     f"Error loading configuration file: {e}. Using existing configurations."
                 )
 
+        # A single object is also a valid scene
+        if not isinstance(scene_objects, List):
+            scene_objects = [scene_objects]
+
         fin_obj_config = visutils.create_final_object_config(
             scene_objects, maps_config=scene_config
         )
 
         valid_views = visutils.get_views_to_plot(self, views, ["lh", "rh"])
 
-        n_views = len(valid_views)
+        # A scene draws every object on every view, so two view identifiers sharing
+        # the same camera, such as "lh-dorsal" and "rh-dorsal", would only produce
+        # duplicated subplots.
+        valid_views = self._remove_duplicated_views(valid_views)
+        subplot_titles = self._build_scene_titles(valid_views)
+
         colorbar_size = self.figure_conf["colorbar_size"]
 
         config_dict = vislayout.scene_layout(
@@ -1267,29 +1357,35 @@ class BrainPlotter:
 
         brain_positions = config_dict["brain_positions"]
 
+        # Prepare the objects once, they are the same for all the views. Each object
+        # is paired with its own opacity because a single entry of the scene can
+        # expand into several objects to plot.
+        prep_obj = []
+        obj_opacities = []
+        for idx, obj in enumerate(scene_objects):
+            obj_config = fin_obj_config[idx]
+
+            prepared = visutils.prepare_list_obj_for_plotting(
+                obj,
+                obj_config["map_name"],
+                obj_config["colormap"],
+                vmin=obj_config["v_limits"][0],
+                vmax=obj_config["v_limits"][1],
+                range_min=obj_config["v_range"][0],
+                range_max=obj_config["v_range"][1],
+                range_color=obj_config["range_color"],
+            )
+
+            prep_obj.extend(prepared)
+            obj_opacities.extend([obj_config["opacity"]] * len(prepared))
+
         for (map_idx, obj_idx, view_idx), (row, col) in brain_positions.items():
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
-            tmp_view_name = valid_views[view_idx]
-
-            # Split the view name if it contains '_'
-            if "-" in tmp_view_name:
-                tmp_view_name = tmp_view_name.split("-")[1]
-
-                # Capitalize the first letter
-                tmp_view_name = tmp_view_name.capitalize()
-
-                # Detecting if the view is left or right
-                if "lh" in valid_views[view_idx]:
-                    subplot_title = "Left hemisphere: " + tmp_view_name + " view"
-                elif "rh" in valid_views[view_idx]:
-                    subplot_title = "Right hemisphere: " + tmp_view_name + " view"
-                elif "merg" in valid_views[view_idx]:
-                    subplot_title = tmp_view_name + " view"
 
             pv_plotter.add_text(
-                subplot_title,
+                subplot_titles[view_idx],
                 font_size=self.figure_conf["title_font_size"],
                 position="upper_edge",
                 color=self.figure_conf["title_font_color"],
@@ -1297,240 +1393,13 @@ class BrainPlotter:
                 font=self.figure_conf["title_font_type"],
             )
 
-            prep_obj = []
-            for idx, obj in enumerate(scene_objects):
-                map_name = fin_obj_config[idx]["map_name"]
-                colormap = fin_obj_config[idx]["colormap"]
-                vmin = fin_obj_config[idx]["v_limits"][0]
-                vmax = fin_obj_config[idx]["v_limits"][1]
-                range_min = fin_obj_config[idx]["v_range"][0]
-                range_max = fin_obj_config[idx]["v_range"][1]
-                range_color = fin_obj_config[idx]["range_color"]
-                opacity = fin_obj_config[idx]["opacity"]
-
-                prep_obj.extend(
-                    visutils.prepare_list_obj_for_plotting(
-                        obj,
-                        map_name,
-                        colormap,
-                        vmin=vmin,
-                        vmax=vmax,
-                        range_min=range_min,
-                        range_max=range_max,
-                        range_color=range_color,
-                    )
+            for tmp_obj, opacity in zip(prep_obj, obj_opacities):
+                self._add_object_to_plotter(
+                    pv_plotter, tmp_obj, use_opacity, opacity=opacity
                 )
 
-            for idx, tmp_obj in enumerate(prep_obj):
-                opacity = fin_obj_config[idx]["opacity"]
-                if isinstance(tmp_obj, clttract.Tractogram):
-
-                    tracts = tmp_obj.tracts
-                    rgba_data = tmp_obj.data_per_point["rgba"]
-
-                    # 1. Concatenate all points and colors
-                    all_points = np.vstack(tracts)
-                    all_rgba = np.vstack(rgba_data)
-                    all_rgba = all_rgba[:, :3]
-                    if use_opacity is True:
-
-                        # Check if data is in 0-1 range or 0-255 range
-                        if all_rgba.max() <= 1.0:
-                            # Data is in 0-1 range
-                            alpha_column = np.ones(all_rgba.shape[0]) * opacity
-                        else:
-                            # Data is in 0-255 range
-                            alpha_column = np.ones(all_rgba.shape[0]) * opacity * 255
-
-                        # Add alpha channel
-                        rgba_with_alpha = np.column_stack([all_rgba, alpha_column])
-
-                        # Maintain the same dtype as original
-                        rgba_with_alpha = rgba_with_alpha.astype(all_rgba.dtype)
-
-                        # Assign back
-                        all_rgba = rgba_with_alpha
-
-                    # 2. Build the lines connectivity array
-                    #    Format: [n1, idx0, idx1, ..., n2, idx0, idx1, ...]
-                    lines = []
-                    offset = 0
-                    for tract in tracts:
-                        n = len(tract)
-                        lines.append(n)
-                        lines.extend(range(offset, offset + n))
-                        offset += n
-                    lines = np.array(lines, dtype=np.int_)
-
-                    # 3. Create single PolyData with all curves
-                    if self.objs_conf["tracts"]["tubes"]:
-                        # Create a PolyData object for tube representation
-                        # Create a PolyData object for tube representation
-                        poly = pv.PolyData()
-                        poly.points = all_points
-                        poly.lines = lines
-
-                        # Attach your RGBA scalars
-                        poly.point_data["rgba"] = all_rgba  # <-- important
-
-                        # Add tube filter (tube cannot take scalars directly)
-                        tube_radius = self.objs_conf["tracts"]["tube_radius"]
-                        tube_sides = self.objs_conf["tracts"]["tube_sides"]
-                        tube_poly = poly.tube(
-                            radius=tube_radius,
-                            n_sides=tube_sides,
-                        )
-
-                        # Add the mesh with tube representation
-                        pv_plotter.add_mesh(
-                            tube_poly,
-                            scalars="rgba",  # use the same name
-                            rgb=True,
-                            ambient=self.figure_conf["mesh_ambient"],
-                            diffuse=self.figure_conf["mesh_diffuse"],
-                            specular=self.figure_conf["mesh_specular"],
-                            specular_power=self.figure_conf["mesh_specular_power"],
-                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                            show_scalar_bar=False,
-                        )
-                    else:
-                        poly = pv.PolyData()
-                        poly.points = all_points
-                        poly.lines = lines
-                        poly.point_data["rgba"] = all_rgba
-
-                        # 4. Single add_mesh call
-                        pv_plotter.add_mesh(
-                            poly,
-                            scalars="rgba",
-                            line_width=2,
-                            rgb=True,
-                            ambient=self.figure_conf["mesh_ambient"],
-                            diffuse=self.figure_conf["mesh_diffuse"],
-                            specular=self.figure_conf["mesh_specular"],
-                            specular_power=self.figure_conf["mesh_specular_power"],
-                            smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                            show_scalar_bar=False,
-                        )
-
-                elif isinstance(tmp_obj, cltpts.PointCloud):
-
-                    rgba_data = tmp_obj.point_data["rgba"]
-
-                    # Check if data is in 0-1 range or 0-255 range
-                    if rgba_data.max() <= 1.0:
-                        # Data is in 0-1 range
-                        alpha_column = np.ones(rgba_data.shape[0]) * opacity
-                    else:
-                        # Data is in 0-255 range
-                        alpha_column = np.ones(rgba_data.shape[0]) * opacity * 255
-
-                    # Add alpha channel
-                    rgba_with_alpha = np.column_stack([rgba_data, alpha_column])
-
-                    # Maintain the same dtype as original
-                    rgba_with_alpha = rgba_with_alpha.astype(rgba_data.dtype)
-
-                    # Assign back
-                    tmp_obj.point_data["rgba"] = rgba_with_alpha
-
-                    if use_opacity is False:
-                        rgba_data = rgba_data[:, :3]
-
-                    pv_plotter.add_points(
-                        tmp_obj.coords,
-                        render_points_as_spheres=self.objs_conf["points"]["spheres"],
-                        point_size=self.objs_conf["points"]["spheres_radius"],
-                        scalars=rgba_data,
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-
-                elif isinstance(tmp_obj, cltsurf.Surface):
-                    if not use_opacity:
-                        # delete the alpha channel if exists
-                        if "rgba" in tmp_obj.mesh.point_data:
-
-                            rgba_data = tmp_obj.mesh.point_data["rgba"][:, :3]
-
-                    else:
-                        rgba_data = tmp_obj.mesh.point_data["rgba"][:, :3]
-
-                        # Check if data is in 0-1 range or 0-255 range
-                        if rgba_data.max() <= 1.0:
-                            # Data is in 0-1 range
-                            alpha_column = np.ones(rgba_data.shape[0]) * opacity
-                        else:
-                            # Data is in 0-255 range
-                            alpha_column = np.ones(rgba_data.shape[0]) * opacity * 255
-
-                        # Add alpha channel
-                        rgba_with_alpha = np.column_stack([rgba_data, alpha_column])
-
-                        # Maintain the same dtype as original
-                        rgba_with_alpha = rgba_with_alpha.astype(rgba_data.dtype)
-
-                        # Assign back
-                        tmp_obj.mesh.point_data["rgba"] = rgba_with_alpha
-
-                    pv_plotter.add_mesh(
-                        copy.deepcopy(tmp_obj.mesh),
-                        scalars="rgba",
-                        rgb=True,
-                        ambient=self.figure_conf["mesh_ambient"],
-                        diffuse=self.figure_conf["mesh_diffuse"],
-                        specular=self.figure_conf["mesh_specular"],
-                        specular_power=self.figure_conf["mesh_specular_power"],
-                        smooth_shading=self.figure_conf["mesh_smooth_shading"],
-                        show_scalar_bar=False,
-                    )
-
-                # Set the camera view
-                tmp_view = valid_views[view_idx]
-
-                # Replace merg from the view id if needed
-                if "merg" in tmp_view:
-                    tmp_view = tmp_view.replace("merg", "lh")
-
-                camera_params = self.views_conf[tmp_view]
-                pv_plotter.camera_position = camera_params["view"]
-                pv_plotter.camera.azimuth = camera_params["azimuth"]
-                pv_plotter.camera.elevation = camera_params["elevation"]
-                pv_plotter.camera.zoom(camera_params["zoom"])
-
-        # # And place colorbars at their positions
-        # if len(colorbar_list):
-
-        #     for colorbar_dict in colorbar_list:
-        #         if colorbar_dict is not False:
-        #             row, col = colorbar_dict["position"]
-        #             orientation = colorbar_dict["orientation"]
-        #             colorbar_id = colorbar_dict["map_name"]
-        #             colormap = colorbar_dict["colormap"]
-        #             colorbar_title = colorbar_dict["title"]
-        #             vmin = colorbar_dict["vmin"]
-        #             vmax = colorbar_dict["vmax"]
-        #             pv_plotter.subplot(row, col)
-
-        #             if colormap == "colortable":
-        #                 pass  # Currently, no colorbar for categorical maps is implemented
-        #             else:
-        #                 visutils.add_colorbar(
-        #                     self,
-        #                     plotter=pv_plotter,
-        #                     colorbar_subplot=(row, col),
-        #                     vmin=vmin,
-        #                     vmax=vmax,
-        #                     map_name=colorbar_id,
-        #                     colormap=colormap,
-        #                     colorbar_title=colorbar_title,
-        #                     colorbar_position=orientation,
-        #                 )
+            # Set the camera view
+            self._set_subplot_camera(pv_plotter, valid_views[view_idx])
 
         # Handle final rendering - either save, display blocking, or display non-blocking
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
@@ -1974,7 +1843,7 @@ def create_carpet_plot(
     vmax: Optional[float] = None,
     fd_threshold: float = 0.5,
     show_structure_names: bool = True,
-    x_label: str = "Volume index",
+    x_label: str = None,
     y_label: str = "Brain structures",
     title: str = "Carpet Plot",
     save_path: Optional[Union[str, Path]] = None,
@@ -2052,8 +1921,9 @@ def create_carpet_plot(
     show_structure_names : bool, default True
         Whether to display y-axis structure labels.
 
-    x_label : str, default ``"Volume index"``
-        Label for the x-axis. If *time_points* is provided, this should be set to something like ``"Time (s)"``.
+    x_label : str, optional
+        Label for the x-axis. When *None*, it is set to ``"Time (s)"`` if *tr* is
+        provided and to ``"Volume index"`` otherwise.
 
     y_label : str, default ``"Brain structures"``
 
@@ -2248,6 +2118,12 @@ def create_carpet_plot(
     # ------------------------------------------------------------------
     if center_colormap:
         _vmax = float(vmax) if vmax is not None else float(np.abs(plot_data).max())
+
+        # TwoSlopeNorm requires vmin < vcenter < vmax. A non positive limit happens
+        # with constant data, with a single time point or when vmax=0 is supplied.
+        if not np.isfinite(_vmax) or _vmax <= 0:
+            _vmax = 1.0
+
         norm: Normalize = TwoSlopeNorm(vmin=-_vmax, vcenter=0.0, vmax=_vmax)
     else:
         norm = Normalize(
