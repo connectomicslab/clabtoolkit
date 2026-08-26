@@ -3144,6 +3144,42 @@ class Surface:
         return self
 
     ###############################################################################################
+    def apply_affine(self, affine: np.ndarray, inverse: bool = False):
+        """
+        Apply an affine transformation to the surface mesh.
+
+        Parameters
+        ----------
+        affine : np.ndarray
+            A 4x4 affine transformation matrix.
+
+        inverse : bool, default False
+            If True, apply the inverse of the affine transformation.
+
+        Returns
+        -------
+        self : SurfaceTools
+            The surface object with the transformed mesh.
+        """
+
+        if self.mesh is None or self.mesh.n_points == 0:
+            raise ValueError("Mesh is empty or not defined.")
+
+        if affine.shape != (4, 4):
+            raise ValueError(
+                f"Invalid affine transformation provided. It must be a 4x4 matrix, got shape {affine.shape}."
+            )
+
+        if inverse:
+            affine = np.linalg.inv(affine)
+
+        ones = np.ones((self.mesh.n_points, 1))
+        points_homogeneous = np.hstack([self.mesh.points, ones])
+        self.mesh.points = (affine @ points_homogeneous.T).T[:, :3]
+
+        return self
+
+    ###############################################################################################
     def plot(
         self,
         overlay_name: str = None,
