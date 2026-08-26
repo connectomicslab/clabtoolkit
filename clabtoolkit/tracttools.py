@@ -1951,6 +1951,68 @@ class Tractogram:
         return info
 
     ##############################################################################################
+    def apply_affine(self, affine: np.ndarray, inverse: bool = False) -> None:
+        """
+        Applies an affine transformation to all streamlines in the tractogram.
+
+        Parameters:
+        -----------
+            affine (np.ndarray):
+                A 4x4 affine transformation matrix to apply to the streamlines.
+            inverse (bool, default False):
+                If True, applies the inverse of the affine transformation.
+
+        Returns:
+        --------
+            None
+
+        Raises:
+        -------
+            ValueError: If the provided affine is not a 4x4 matrix.
+
+        Notes:
+        ------
+            This method modifies the tractogram in place, transforming all streamlines
+            according to the provided affine matrix.
+
+        Examples:
+        ---------
+        >>> tractogram = Tractogram('input.trk')
+        >>> affine_matrix = np.array([[1, 0, 0, 10],
+                                       [0, 1, 0, 5],
+                                       [0, 0, 1, -3],
+                                       [0, 0, 0, 1]])
+        >>> tractogram.apply_affine(affine_matrix)
+        >>> print("Applied affine transformation to all streamlines.")
+        """
+        if affine.shape != (4, 4):
+            raise ValueError("Affine must be a 4x4 matrix.")
+
+        if inverse:
+            affine = np.linalg.inv(affine)
+
+        if len(self.tracts) == 0:
+            return
+
+        # Concatenate all the streamlines into a single array so the transformation
+        # is applied to every point with a single matrix multiplication
+        all_data = np.concatenate(self.tracts)
+        lengths = [len(arr) for arr in self.tracts]
+
+        # Rotation and translation applied separately, which is equivalent to
+        # multiplying the homogeneous coordinates by the 4x4 matrix
+        all_data = (all_data @ affine[:3, :3].T + affine[:3, 3]).astype(
+            all_data.dtype, copy=False
+        )
+
+        # Calculate split indices (cumulative sum of lengths, excluding the last one)
+        split_indices = np.cumsum(lengths)[:-1]
+
+        # Split array_all back into a list of arrays
+        transformed_streamlines = np.split(all_data, split_indices)
+        self.tracts = ArraySequence(transformed_streamlines)
+
+    ##############################################################################################
     def centroids_to_tractogram(self):
         """
         Converts the computed centroids into a new tractogram object.
