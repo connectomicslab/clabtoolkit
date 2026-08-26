@@ -16,6 +16,7 @@ from __future__ import annotations
 # Standard library imports
 import copy
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -2329,7 +2330,17 @@ def create_carpet_plot(
     # ------------------------------------------------------------------
     # Final layout — reserve bottom margin for the legend
     # ------------------------------------------------------------------
-    fig.tight_layout()
+    # The group rectangles use a blended transform and are not compatible with
+    # tight_layout, which is harmless here because the bottom margin is adjusted
+    # afterwards, so the warning is silenced instead of being shown to the user.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*not compatible with tight_layout.*",
+            category=UserWarning,
+        )
+        fig.tight_layout()
+
     if _resolved:
         n_legend_rows = max(1, len(_resolved) // 6 + (1 if len(_resolved) % 6 else 0))
         fig.subplots_adjust(bottom=0.08 + 0.04 * n_legend_rows)
