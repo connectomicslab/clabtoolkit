@@ -3144,7 +3144,9 @@ class Surface:
         return self
 
     ###############################################################################################
-    def apply_affine(self, affine: np.ndarray, inverse: bool = False):
+    def apply_affine(
+        self, affine: np.ndarray, inverse: bool = False, inplace: bool = True
+    ) -> Union["Surface", np.ndarray]:
         """
         Apply an affine transformation to the surface mesh.
 
@@ -3156,10 +3158,31 @@ class Surface:
         inverse : bool, default False
             If True, apply the inverse of the affine transformation.
 
+        inplace : bool, default True
+            If True, modifies the current object. If False it leaves the surface
+            untouched and returns the transformed coordinates.
+
         Returns
         -------
-        self : SurfaceTools
-            The surface object with the transformed mesh.
+        Surface or np.ndarray
+            If inplace=True, returns the surface object with the transformed mesh.
+            If inplace=False, returns the transformed coordinates with shape
+            (n_points, 3), leaving the surface untouched.
+
+        Raises
+        ------
+        ValueError
+            If the mesh is empty or if the affine is not a 4x4 matrix.
+
+        Examples
+        --------
+        >>> surface = Surface('lh.pial')
+        >>> surface.apply_affine(affine_matrix)
+        >>> print(surface.mesh.points[:5])  # Check transformed coordinates
+
+        >>> # Keeping the surface untouched
+        >>> moved = surface.apply_affine(affine_matrix, inplace=False)
+        >>> print(moved[:5])  # Transformed coordinates
         """
 
         if self.mesh is None or self.mesh.n_points == 0:
@@ -3175,7 +3198,13 @@ class Surface:
 
         ones = np.ones((self.mesh.n_points, 1))
         points_homogeneous = np.hstack([self.mesh.points, ones])
-        self.mesh.points = (affine @ points_homogeneous.T).T[:, :3]
+        transformed_points = (affine @ points_homogeneous.T).T[:, :3]
+
+        # Return the transformed coordinates either in place or as a new array
+        if not inplace:
+            return transformed_points
+
+        self.mesh.points = transformed_points
 
         return self
 
