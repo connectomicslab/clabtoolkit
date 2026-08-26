@@ -30,7 +30,7 @@ Key Methods:
 - ``save()``: Save the point cloud to a file
 - ``copy()``: Create a deep copy of the point cloud
 - ``add_point_data()``: Attach named scalar data to each point
-- ``transform()``: Apply an affine transformation to the coordinates
+- ``apply_affine()``: Apply an affine transformation to the coordinates
 - ``filter_by_bounds()``: Filter points by spatial bounds
 - ``filter()``: Filter points by coordinate values or point data attributes
 - ``get_bounds()``: Compute the bounding box
@@ -85,7 +85,7 @@ Spatial operations::
 
     # Apply an affine transformation
     affine = np.eye(4)
-    pc.transform(affine, inplace=True)
+    pc.apply_affine(affine, inplace=True)
 
 Colortables and visualization::
 

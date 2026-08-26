@@ -12,7 +12,6 @@ import copy
 from . import misctools as cltmisc
 from . import colorstools as cltcol
 
-
 # Utility function for interpolating streamline values
 from rich.progress import (
     Progress,
@@ -237,8 +236,8 @@ class PointCloud:
         self.point_data[name] = data
 
     ###############################################################################################
-    def transform(
-        self, affine: np.ndarray, inplace: bool = True
+    def apply_affine(
+        self, affine: np.ndarray, inverse: bool = False, inplace: bool = True
     ) -> Optional["PointCloud"]:
         """
         Applies an affine transformation to the point coordinates.
@@ -247,6 +246,9 @@ class PointCloud:
         -----------
             affine (np.ndarray):
                 A 4x4 affine transformation matrix.
+
+            inverse (bool, default False):
+                If True, applies the inverse of the affine transformation.
 
             inplace (bool):
                 If True, modifies the current object. If False, returns a new object.
@@ -257,7 +259,28 @@ class PointCloud:
             PointCloud or None:
                 If inplace=False, returns a new transformed PointCloud.
                 If inplace=True, returns None.
+
+        Raises:
+        -------
+            ValueError: If the provided affine is not a 4x4 matrix.
+
+        Examples:
+        ---------
+        >>> pc = PointCloud(coords)
+        >>> pc.apply_affine(affine_matrix)
+
+        >>> # Keeping the original point cloud untouched
+        >>> moved = pc.apply_affine(affine_matrix, inplace=False)
+        >>> print(moved.coords[:5])  # Transformed coordinates
         """
+        if affine.shape != (4, 4):
+            raise ValueError(
+                f"Invalid affine transformation provided. It must be a 4x4 matrix, got shape {affine.shape}."
+            )
+
+        if inverse:
+            affine = np.linalg.inv(affine)
+
         if self.coords is None:
             if inplace:
                 return None
