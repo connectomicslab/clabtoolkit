@@ -1,30 +1,36 @@
-import os
-import sys
 import copy
+import json
+import os
+import subprocess
+import sys
 import warnings
+from pathlib import Path
 
 import nibabel as nib
 import numpy as np
-import subprocess
-from pathlib import Path
-from typing import Union, Optional, List, Tuple, Dict
 import pyvista as pv
-import json
-
-from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, convolve
-from scipy.ndimage import binary_fill_holes, label, binary_closing, gaussian_filter
-from scipy.spatial import distance
 from scipy.interpolate import RegularGridInterpolator
-
+from scipy.ndimage import (
+    binary_closing,
+    binary_dilation,
+    binary_erosion,
+    binary_fill_holes,
+    binary_opening,
+    convolve,
+    gaussian_filter,
+    label,
+)
+from scipy.spatial import distance
 from skimage import measure
 
-# Importing local modules
-from . import misctools as cltmisc
 from . import bidstools as cltbids
-from . import parcellationtools as cltparc
 from . import colorstools as cltcol
 from . import dwitools_utils as dwiutils
 from . import imagetools_utils as imgutils
+
+# Importing local modules
+from . import misctools as cltmisc
+from . import parcellationtools as cltparc
 
 
 ####################################################################################################
@@ -847,9 +853,9 @@ def get_vox_neighbors(
 ####################################################################################################
 def crop_image_from_mask(
     in_image: str,
-    mask: Union[str, np.ndarray],
+    mask: str | np.ndarray,
     out_image: str,
-    st_codes: Union[list, np.ndarray] = None,
+    st_codes: list | np.ndarray = None,
 ) -> str:
     """
     Crop image using a mask to minimum bounding box containing specified structures.
@@ -893,7 +899,7 @@ def crop_image_from_mask(
     ... )
     """
 
-    if isinstance(in_image, str) == False:
+    if not isinstance(in_image, str):
         raise ValueError("The 'image' parameter must be a string.")
 
     if isinstance(mask, str):
@@ -916,7 +922,7 @@ def crop_image_from_mask(
 
     # Create the output directory if it does not exist
     out_pth = os.path.dirname(out_image)
-    if os.path.exists(out_pth) == False:
+    if not os.path.exists(out_pth):
         Path(out_pth).mkdir(parents=True, exist_ok=True)
 
     # Loading both images
@@ -927,7 +933,6 @@ def crop_image_from_mask(
 
     # Get the destination shape
     img1_data = img1.get_fdata()
-    img1_shape = img1_data.shape
 
     # Finding the minimum and maximum indexes for the mask
     tmask = np.isin(mask_data, st_codes)
@@ -1003,15 +1008,15 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str) -> str:
     ... )
     """
 
-    if isinstance(in_image, str) == False:
+    if not isinstance(in_image, str):
         raise ValueError("The 'in_image' parameter must be a string.")
 
-    if isinstance(native_image, str) == False:
+    if not isinstance(native_image, str):
         raise ValueError("The 'native_image' parameter must be a string.")
 
     # Create the output directory if it does not exist
     out_pth = os.path.dirname(out_image)
-    if os.path.exists(out_pth) == False:
+    if not os.path.exists(out_pth):
         Path(out_pth).mkdir(parents=True, exist_ok=True)
 
     # Loading both images
@@ -1100,7 +1105,7 @@ def apply_multi_transf(
     invert: bool = False,
     cont_tech: str = "local",
     cont_image: str = None,
-    force: bool = False,
+    overwrite: bool = False,
 ) -> None:
     """
     Apply ANTs transformation to image with support for multiple transform types.
@@ -1132,8 +1137,8 @@ def apply_multi_transf(
     cont_image : str, optional
         Container image specification. Default is None.
 
-    force : bool, optional
-        Force recomputation if output exists. Default is False.
+    overwrite : bool, optional
+        overwrite recomputation if output exists. Default is False.
 
     Examples
     --------
@@ -1192,8 +1197,8 @@ def apply_multi_transf(
     nl_transf = os.path.join(stransf_dir, nl_name + "_xfm.nii.gz")
     invnl_transf = os.path.join(stransf_dir, invnl_name + "_xfm.nii.gz")
 
-    # Check if out_image is not computed and force is True
-    if not os.path.isfile(out_image) or force:
+    # Check if out_image is not computed and overwrite is True
+    if not os.path.isfile(out_image) or overwrite:
 
         if not os.path.isfile(affine_transf):
             print("The spatial transformation file does not exist.")
@@ -1235,9 +1240,7 @@ def apply_multi_transf(
         cmd_cont = cltmisc.generate_container_command(
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
-        out_cmd = subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-        )
+        subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
 
 
 ####################################################################################################
@@ -1348,10 +1351,10 @@ def mm2vox(mm_coords, affine) -> np.ndarray:
 ####################################################################################################
 ####################################################################################################
 def merge_to_4d(
-    file_paths: Union[str, Path, List[Union[str, Path]]],
-    output_path: Optional[Union[str, Path]] = None,
+    file_paths: str | Path | list[str | Path],
+    output_path: str | Path | None = None,
     check_affine: bool = True,
-) -> Tuple[nib.Nifti1Image, Optional[Dict]]:
+) -> tuple[nib.Nifti1Image, dict | None]:
     """
     Merge multiple 3D or 4D NIfTI files into a single 4D NIfTI file.
 
@@ -1482,7 +1485,9 @@ def merge_to_4d(
     if partial:
         missing = [
             fp
-            for fp, bvec, bval, js in zip(file_paths, has_bvec, has_bval, has_json)
+            for fp, bvec, bval, js in zip(
+                file_paths, has_bvec, has_bval, has_json, strict=False
+            )
             if not (bvec and bval and js)
         ]
         raise ValueError(
@@ -1524,7 +1529,7 @@ def merge_to_4d(
         data_arrays = [first_data]
 
     except Exception as e:
-        raise IOError(f"Error loading first file {file_paths[0]}: {e}")
+        raise OSError(f"Error loading first file {file_paths[0]}: {e}") from e
 
     for fp in file_paths[1:]:
         try:
@@ -1554,7 +1559,7 @@ def merge_to_4d(
             data_arrays.append(data)
 
         except Exception as e:
-            raise IOError(f"Error loading file {fp}: {e}")
+            raise OSError(f"Error loading file {fp}: {e}") from e
 
     # ------------------------------------------------------------------ #
     #  Concatenate along 4th dimension                                     #
@@ -1585,7 +1590,9 @@ def merge_to_4d(
         all_bvecs = [dwiutils.load_bvecs(s["bvec"]) for s in sidecars]
         all_bvals = [dwiutils.load_bvals(s["bval"]) for s in sidecars]
 
-        for fp, arr, bvecs, bvals in zip(file_paths, data_arrays, all_bvecs, all_bvals):
+        for fp, arr, bvecs, bvals in zip(
+            file_paths, data_arrays, all_bvecs, all_bvals, strict=False
+        ):
             n_vols = arr.shape[3]
             if bvecs.shape[1] != n_vols:
                 raise ValueError(
@@ -1647,9 +1654,9 @@ def merge_to_4d(
 
 #####################################################################################################
 def create_spams(
-    in_parcs: Union[List[Path], List[str]],
-    out_spams: Union[str, Path],
-    lut_table: Union[str, Path, dict],
+    in_parcs: list[Path] | list[str],
+    out_spams: str | Path,
+    lut_table: str | Path | dict,
     save_color_spams: bool = False,
     rgb255: bool = True,
 ):
@@ -1750,7 +1757,7 @@ def create_spams(
                     lut_dict = cltcol.create_lut_dictionary(np.unique(all_subj))
 
                 else:
-                    with open(lut_table, "r") as f:
+                    with open(lut_table) as f:
                         first_line = f.readline().strip()
 
                         # TSV format has tab-separated header: index, name, color
@@ -1764,7 +1771,7 @@ def create_spams(
                             )
 
     sts_ids = lut_dict["index"]
-    sts_names = lut_dict["name"]
+    lut_dict["name"]
     sts_colors = lut_dict["color"]
     sts_colors = cltcol.multi_hex2rgb(sts_colors)
 
@@ -1801,7 +1808,7 @@ def create_spams(
         # Full path
         color_spam_path = out_spams.with_name(colored_spam_name)
 
-        for i, vol_index in enumerate(sts_ids):
+        for i, _vol_index in enumerate(sts_ids):
             color = sts_colors[i]
             color_spam_image[..., 0] = (
                 color_spam_image[..., 0] + spam_image[..., i] * color[0]
@@ -1925,11 +1932,11 @@ def spams2maxprob(
 
 #####################################################################################################
 def simulate_image(
-    input_image: Union[str, nib.Nifti1Image],
+    input_image: str | nib.Nifti1Image,
     simulated_image: str = None,
     n_volumes: int = 3,
     distribution: str = "normal",
-    random_seed: Optional[int] = None,
+    random_seed: int | None = None,
     **dist_params,
 ) -> nib.Nifti1Image:
     """
@@ -2044,7 +2051,7 @@ def simulate_image(
         try:
             input_img = nib.load(input_image)
         except Exception as e:
-            raise ValueError(f"Failed to load input image: {e}")
+            raise ValueError(f"Failed to load input image: {e}") from e
 
     elif isinstance(input_image, nib.Nifti1Image):
         input_img = input_image
@@ -2064,7 +2071,9 @@ def simulate_image(
 
     if not simulated_image.endswith((".nii", ".nii.gz")):
         warnings.warn(
-            "Output filename should have .nii or .nii.gz extension", UserWarning
+            "Output filename should have .nii or .nii.gz extension",
+            UserWarning,
+            stacklevel=2,
         )
 
     # Extract image properties
@@ -2111,7 +2120,7 @@ def simulate_image(
                 return np.random.exponential(scale, size)
 
         except Exception as e:
-            raise ValueError(f"Error generating random values: {e}")
+            raise ValueError(f"Error generating random values: {e}") from e
 
     # Create simulated data array
     if n_volumes == 1:
@@ -2154,10 +2163,10 @@ def simulate_image(
         nib.save(simulated_img, simulated_image)
 
     except Exception as e:
-        raise RuntimeError(f"Failed to create or save simulated image: {e}")
+        raise RuntimeError(f"Failed to create or save simulated image: {e}") from e
 
     # Log summary information
-    print(f"Successfully created simulated image:")
+    print("Successfully created simulated image:")
     print(f"  Input shape: {original_shape}")
     print(f"  Output shape: {output_shape}")
     print(f"  Non-zero voxels: {n_nonzero_voxels:,}")
@@ -2171,9 +2180,9 @@ def simulate_image(
 def delete_volumes_from_4D_images(
     in_image: str,
     out_image: str,
-    vols_to_delete: List[Union[int, tuple, list, str, np.ndarray]] = None,
+    vols_to_delete: list[int | tuple | list | str | np.ndarray] = None,
     overwrite: bool = False,
-) -> Tuple[str, List[int]]:
+) -> tuple[str, list[int]]:
     """
     Remove specific volumes from a 4D neuroimaging file.
 
@@ -2544,7 +2553,7 @@ def extract_mesh_from_volume(
     )
     if len(faces) == 0:
         raise ValueError(
-            f"No surface extracted for value. The volume may not contain sufficient data."
+            "No surface extracted for value. The volume may not contain sufficient data."
         )
 
     # Move vertices to mm space and the apply affine transformation if the affine is provided
@@ -2701,7 +2710,7 @@ def extract_centroid_from_volume(
 
 ####################################################################################################
 def create_spams_from_volume(
-    indiv_parc: np.ndarray, sts_ids: Union[List[int], np.ndarray]
+    indiv_parc: np.ndarray, sts_ids: list[int] | np.ndarray
 ) -> np.ndarray:
     """
     Create SPAMs (Spatial Probability Maps) from individual parcellation volumes.
@@ -2774,7 +2783,7 @@ def create_spams_from_volume(
 def spams2maxprob_from_volume(
     spam_vol: np.ndarray,
     prob_thresh: float = 0.0,
-    vol_indexes: Union[List[int], np.ndarray] = None,
+    vol_indexes: list[int] | np.ndarray = None,
 ) -> np.ndarray:
     """
     Convert SPAMs (Spatial Probability Maps) to a maximum probability parcellation volume.
@@ -3065,7 +3074,7 @@ def interpolate(
 
 #####################################################################################################
 def region_growing(
-    iparc: np.ndarray, mask: Union[np.ndarray, np.bool_], neighborhood="26"
+    iparc: np.ndarray, mask: np.ndarray | np.bool_, neighborhood="26"
 ) -> np.ndarray:
     """
     Fill gaps in parcellation using region growing algorithm.
@@ -3138,7 +3147,7 @@ def region_growing(
     ind_orig = ind.copy() * 0
 
     # Loop until no more voxels could be labeled or all the voxels are labeled
-    while (len(ind) > 0) & (np.array_equal(ind, ind_orig) == False):
+    while (len(ind) > 0) & (not np.array_equal(ind, ind_orig)):
         ind_orig = ind.copy()
         # Process each unlabeled voxel
         for coord in ind:
@@ -3176,7 +3185,7 @@ def region_growing(
                     # In case of tie, choose the label of the closest neighbor
                     distances = [
                         distance.euclidean(coord, (dx, dy, dz))
-                        for (dx, dy, dz), lbl in zip(neighbors, neigh_lab)
+                        for (dx, dy, dz), lbl in zip(neighbors, neigh_lab, strict=False)
                         if lbl in max_labels
                     ]
                     closest_label = max_labels[np.argmin(distances)]
@@ -3205,7 +3214,7 @@ def simulate_array(
     mask_array: np.ndarray,
     n_volumes: int = 1,
     distribution: str = "normal",
-    random_seed: Optional[int] = None,
+    random_seed: int | None = None,
     **dist_params,
 ) -> np.ndarray:
     """
@@ -3344,7 +3353,7 @@ def simulate_array(
                 return np.random.exponential(scale, size).astype(np.float32)
 
         except Exception as e:
-            raise ValueError(f"Error generating random values: {e}")
+            raise ValueError(f"Error generating random values: {e}") from e
 
     # Get mask shape
     mask_shape = mask_array.shape
@@ -3373,8 +3382,8 @@ def simulate_array(
 #####################################################################################################
 def delete_volumes_from_4D_array(
     in_array: np.ndarray,
-    vols_to_delete: List[Union[int, tuple, list, str, np.ndarray]] = None,
-) -> Tuple[str, List[int]]:
+    vols_to_delete: list[int | tuple | list | str | np.ndarray] = None,
+) -> tuple[str, list[int]]:
     """
     Remove specific volumes from a 4D array.
 

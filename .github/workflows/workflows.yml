@@ -53,6 +53,7 @@ jobs:
         repository-url: https://test.pypi.org/legacy/
         user: __token__
         password: ${{ secrets.TESTPYPI_KEY }}
+        skip-existing: true  # main is pushed often; the version is only bumped at release time
 
   publish-to-pypi:
     name: Publish to PyPI
@@ -71,3 +72,4 @@ jobs:
       with:
         user: __token__
         password: ${{ secrets.PYPI_KEY }}
+        skip-existing: true  # tolerate a re-run of an already published tag

@@ -18,29 +18,30 @@ import copy
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+
+import matplotlib.gridspec as gridspec
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 
 # Third-party imports
 import numpy as np
 import pyvista as pv
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as mpatches
-from matplotlib.colors import TwoSlopeNorm, Normalize
+from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.transforms import blended_transform_factory
 
 # Use TYPE_CHECKING to avoid circular imports
 # Importing local modules
 # Note: The following imports are placed here to avoid circular import issues. If you need to use these modules
 from . import build_visualization_layout as vislayout
+from . import colorstools as cltcol
 from . import misctools as cltmisc
+from . import parcellationtools as cltparc
 from . import plottools as cltplot
 from . import pointstools as cltpts
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
 from . import visualization_utils as visutils
-from . import colorstools as cltcol
-from . import parcellationtools as cltparc
 
 
 ####################################################################################################
@@ -81,7 +82,7 @@ class BrainPlotter:
     """
 
     ###############################################################################################
-    def __init__(self, config_file: Union[str, Path, Dict] = None):
+    def __init__(self, config_file: str | Path | dict = None):
         """
         Initialize the BrainPlotter with configuration file.
 
@@ -120,7 +121,7 @@ class BrainPlotter:
         if config_file is not None:
             # Use the provided configuration file path
             try:
-                if isinstance(config_file, Dict):
+                if isinstance(config_file, dict):
                     user_configs = copy.deepcopy(config_file)
 
                 elif isinstance(config_file, str) or isinstance(config_file, Path):
@@ -152,7 +153,7 @@ class BrainPlotter:
         }
 
     ################################################################################################
-    def _update_configs(self, config_file: Union[str, Path, Dict]):
+    def _update_configs(self, config_file: str | Path | dict):
         """
         Update the plotting configurations from a new configuration file.
 
@@ -163,7 +164,7 @@ class BrainPlotter:
         """
 
         # Load new configurations
-        if isinstance(config_file, Dict):
+        if isinstance(config_file, dict):
             configs = copy.deepcopy(config_file)
 
         else:
@@ -192,10 +193,10 @@ class BrainPlotter:
     def _build_plotting_config(
         self,
         views: list,
-        hemi_id: Union[str, List[str]] = None,
+        hemi_id: str | list[str] = None,
         orientation: str = "horizontal",
-        objs2plot: Union[Any, List[Any]] = None,
-        maps_dict: Dict = None,
+        objs2plot: Any | list[Any] = None,
+        maps_dict: dict = None,
         colorbar: bool = True,
         colorbar_style: str = "individual",
         colorbar_position: str = "right",
@@ -303,7 +304,7 @@ class BrainPlotter:
     def _add_object_to_plotter(
         self,
         plotter: pv.Plotter,
-        obj: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud],
+        obj: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud,
         use_opacity: bool = True,
         opacity: float = None,
     ) -> None:
@@ -381,9 +382,7 @@ class BrainPlotter:
                 )
 
         elif isinstance(obj, cltpts.PointCloud):
-            rgba_data = self._prepare_rgba(
-                obj.point_data["rgba"], use_opacity, opacity
-            )
+            rgba_data = self._prepare_rgba(obj.point_data["rgba"], use_opacity, opacity)
 
             plotter.add_points(
                 obj.coords,
@@ -466,7 +465,7 @@ class BrainPlotter:
         return f"{view_name} view"
 
     ###############################################################################################
-    def _remove_duplicated_views(self, view_ids: List[str]) -> List[str]:
+    def _remove_duplicated_views(self, view_ids: list[str]) -> list[str]:
         """
         Remove the view identifiers that share the same camera parameters.
 
@@ -501,7 +500,7 @@ class BrainPlotter:
 
     ###############################################################################################
     @staticmethod
-    def _build_scene_titles(view_ids: List[str]) -> List[str]:
+    def _build_scene_titles(view_ids: list[str]) -> list[str]:
         """
         Build the subplot titles of a scene.
 
@@ -525,7 +524,7 @@ class BrainPlotter:
         ]
 
         titles = []
-        for view_id, view_name in zip(view_ids, view_names):
+        for view_id, view_name in zip(view_ids, view_names, strict=False):
             # Only disambiguate the sides when the same view appears more than once
             if view_names.count(view_name) > 1:
                 side = {"lh": "Left ", "rh": "Right "}.get(view_id.split("-")[0], "")
@@ -540,7 +539,7 @@ class BrainPlotter:
         return titles
 
     ###############################################################################################
-    def _add_colorbars(self, plotter: pv.Plotter, colorbar_list: List[Dict]) -> None:
+    def _add_colorbars(self, plotter: pv.Plotter, colorbar_list: list[dict]) -> None:
         """
         Add the colorbars to their corresponding subplots.
 
@@ -580,30 +579,30 @@ class BrainPlotter:
     ###############################################################################
     def plot(
         self,
-        objs2plot: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List],
-        hemi_id: Union[str, List[str]] = "lh",
-        views: Union[str, List[str]] = "dorsal",
+        objs2plot: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
+        hemi_id: str | list[str] = "lh",
+        views: str | list[str] = "dorsal",
         views_orientation: str = "horizontal",
         notebook: bool = False,
-        map_names: Union[str, List[str]] = None,
-        v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
+        map_names: str | list[str] = None,
+        v_limits: tuple[float, float] | list[tuple[float, float]] | None = (
             None,
             None,
         ),
-        v_range: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]] = (
+        v_range: tuple[float, float] | list[tuple[float, float]] | None = (
             None,
             None,
         ),
-        range_color: Tuple = (128, 128, 128, 255),
+        range_color: tuple = (128, 128, 128, 255),
         use_opacity: bool = True,
-        colormaps: Union[str, List[str]] = "BrBG",
-        save_path: Optional[str] = None,
+        colormaps: str | list[str] = "BrBG",
+        save_path: str | None = None,
         non_blocking: bool = False,
         colorbar: bool = True,
         colorbar_style: str = "individual",
-        colorbar_titles: Union[str, List[str]] = None,
+        colorbar_titles: str | list[str] = None,
         colorbar_position: str = "right",
-        config_file: Union[str, Path, Dict] = None,
+        config_file: str | Path | dict = None,
     ) -> None:
         """
         Plot brain surfaces with optional threading and screenshot support.
@@ -699,7 +698,7 @@ class BrainPlotter:
                 )
 
         # Preparing the surfaces to be plotted
-        if not isinstance(objs2plot, List):
+        if not isinstance(objs2plot, list):
             obj2plot = [copy.deepcopy(objs2plot)]
         else:
             obj2plot = copy.deepcopy(objs2plot)
@@ -803,7 +802,7 @@ class BrainPlotter:
 
         subplot_indices = []
 
-        for (map_idx, obj_idx, view_idx), position in brain_positions.items():
+        for _key, position in brain_positions.items():
             # Handle case where position might be a list/tuple of coordinates
             if isinstance(position, (list, tuple)) and len(position) >= 2:
                 row, col = position[0], position[1]
@@ -891,12 +890,12 @@ class BrainPlotter:
         self._add_colorbars(pv_plotter, colorbar_dict_list)
 
         # Linking the cameras from the subplots with the same view
-        unique_v_indices = set(key[2] for key in brain_positions.keys())
+        unique_v_indices = {key[2] for key in brain_positions.keys()}
         grouped_by_v_idx = {}
 
         for v_idx in unique_v_indices:
             grouped_by_v_idx[v_idx] = []
-            for i, ((m_idx, s_idx, v_idx), (row, col)) in enumerate(
+            for i, ((_m_idx, _s_idx, v_idx), (_row, _col)) in enumerate(
                 brain_positions.items()
             ):
                 if v_idx in grouped_by_v_idx:  # Safety check
@@ -935,15 +934,15 @@ class BrainPlotter:
     ###########################################################################
     def plot_hemispheres(
         self,
-        obj_rh: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List],
-        obj_lh: Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List],
+        obj_rh: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
+        obj_lh: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
         map_name: str = "default",
-        views: Union[str, List[str]] = "dorsal",
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
-        range_min: Optional[float] = None,
-        range_max: Optional[float] = None,
-        range_color: Tuple = (128, 128, 128, 255),
+        views: str | list[str] = "dorsal",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        range_min: float | None = None,
+        range_max: float | None = None,
+        range_color: tuple = (128, 128, 128, 255),
         use_opacity: bool = True,
         colormap: str = "viridis",
         colorbar: bool = True,
@@ -951,8 +950,8 @@ class BrainPlotter:
         colorbar_position: str = "right",
         notebook: bool = False,
         non_blocking: bool = False,
-        save_path: Optional[str] = None,
-        config_file: Union[str, Path, Dict] = None,
+        save_path: str | None = None,
+        config_file: str | Path | dict = None,
     ):
         """
         Plot brain hemispheres with multiple views.
@@ -1036,10 +1035,10 @@ class BrainPlotter:
                 )
 
         # Preparing the surfaces to be plotted
-        if not isinstance(obj_lh, List):
+        if not isinstance(obj_lh, list):
             obj_lh = [copy.deepcopy(obj_lh)]
 
-        if not isinstance(obj_rh, List):
+        if not isinstance(obj_rh, list):
             obj_rh = [copy.deepcopy(obj_rh)]
 
         # Filter to only available maps
@@ -1154,7 +1153,7 @@ class BrainPlotter:
         range_max = maps_dict[map_name]["range_max"]
         range_color = maps_dict[map_name]["range_color"]
 
-        for (map_idx, obj_idx, view_idx), (row, col) in brain_positions.items():
+        for (_map_idx, _obj_idx, view_idx), (row, col) in brain_positions.items():
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
@@ -1219,18 +1218,16 @@ class BrainPlotter:
     ###########################################################################
     def plot_scene(
         self,
-        scene_objects: Union[
-            cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List
-        ],
-        scene_config: Dict = None,
-        views: Union[str, List[str]] = "dorsal",
+        scene_objects: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
+        scene_config: dict = None,
+        views: str | list[str] = "dorsal",
         notebook: bool = False,
         colorbar: bool = True,
         colorbar_position: str = "right",
         use_opacity: bool = True,
         non_blocking: bool = False,
-        save_path: Optional[str] = None,
-        config_file: Union[str, Path, Dict] = None,
+        save_path: str | None = None,
+        config_file: str | Path | dict = None,
     ):
         """
         Plot a scene combining several objects with independent color settings.
@@ -1307,7 +1304,7 @@ class BrainPlotter:
                 )
 
         # A single object is also a valid scene
-        if not isinstance(scene_objects, List):
+        if not isinstance(scene_objects, list):
             scene_objects = [scene_objects]
 
         fin_obj_config = visutils.create_final_object_config(
@@ -1380,7 +1377,7 @@ class BrainPlotter:
             prep_obj.extend(prepared)
             obj_opacities.extend([obj_config["opacity"]] * len(prepared))
 
-        for (map_idx, obj_idx, view_idx), (row, col) in brain_positions.items():
+        for (_map_idx, _obj_idx, view_idx), (row, col) in brain_positions.items():
             pv_plotter.subplot(row, col)
             # Set background color from figure configuration
             pv_plotter.set_background(self.figure_conf["background_color"])
@@ -1394,7 +1391,7 @@ class BrainPlotter:
                 font=self.figure_conf["title_font_type"],
             )
 
-            for tmp_obj, opacity in zip(prep_obj, obj_opacities):
+            for tmp_obj, opacity in zip(prep_obj, obj_opacities, strict=False):
                 self._add_object_to_plotter(
                     pv_plotter, tmp_obj, use_opacity, opacity=opacity
                 )
@@ -1406,7 +1403,7 @@ class BrainPlotter:
         visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
 
     ###############################################################################################
-    def list_available_view_names(self) -> List[str]:
+    def list_available_view_names(self) -> list[str]:
         """
         List available view names for dynamic view selection.
 
@@ -1426,7 +1423,7 @@ class BrainPlotter:
         return visutils.list_available_view_names(self)
 
     ###############################################################################################
-    def list_available_layouts(self) -> Dict[str, Dict[str, Any]]:
+    def list_available_layouts(self) -> dict[str, dict[str, Any]]:
         """
         Display available visualization layouts and their configurations.
 
@@ -1452,7 +1449,7 @@ class BrainPlotter:
         return visutils.list_available_layouts(self)
 
     ###############################################################################################
-    def get_layout_details(self, views: str) -> Optional[Dict[str, Any]]:
+    def get_layout_details(self, views: str) -> dict[str, Any] | None:
         """
         Get detailed information about a specific layout configuration.
 
@@ -1482,7 +1479,7 @@ class BrainPlotter:
         return visutils.get_layout_details(self, views)
 
     ###############################################################################################
-    def get_figure_config(self) -> Dict[str, Any]:
+    def get_figure_config(self) -> dict[str, Any]:
         """
         Get the current figure configuration settings.
 
@@ -1503,7 +1500,7 @@ class BrainPlotter:
         return visutils.get_figure_config(self)
 
     ###############################################################################################
-    def _list_all_views_and_layouts(self) -> List[str]:
+    def _list_all_views_and_layouts(self) -> list[str]:
         """
         List available layout configurations from the loaded JSON file.
 
@@ -1527,7 +1524,7 @@ class BrainPlotter:
         return all_views_and_layouts
 
     ###############################################################################################
-    def _list_multiviews_layouts(self) -> List[str]:
+    def _list_multiviews_layouts(self) -> list[str]:
         """
         List available multi-view configurations from the loaded JSON file.
 
@@ -1547,7 +1544,7 @@ class BrainPlotter:
         return visutils.list_multiviews_layouts(self)
 
     ###############################################################################################
-    def _list_single_views(self) -> List[str]:
+    def _list_single_views(self) -> list[str]:
         """
         List available single view names.
 
@@ -1602,7 +1599,7 @@ class BrainPlotter:
         print("=" * 50)
 
     ###############################################################################################
-    def _get_valid_views(self, views: Union[str, List[str]]) -> List[str]:
+    def _get_valid_views(self, views: str | list[str]) -> list[str]:
         """
         Get valid view names from the provided views parameter.
 
@@ -1826,28 +1823,28 @@ class BrainPlotter:
 ####################################################################################################
 ####################################################################################################
 def create_carpet_plot(
-    data: Union[np.ndarray, cltparc.RegionTimeSeries],
+    data: np.ndarray | cltparc.RegionTimeSeries,
     structure_names: list[str] = None,
     *,
-    time_points: Optional[np.ndarray] = None,
-    tr: Optional[float] = None,
-    groups: Optional[dict[str, list[int]]] = None,
-    group_colors: Optional[list[str]] = None,
+    time_points: np.ndarray | None = None,
+    tr: float | None = None,
+    groups: dict[str, list[int]] | None = None,
+    group_colors: list[str] | None = None,
     groups_title: str = None,
-    fd_trace: Optional[np.ndarray] = None,
-    global_signal: Optional[np.ndarray] = None,
+    fd_trace: np.ndarray | None = None,
+    global_signal: np.ndarray | None = None,
     normalize_rows: bool = True,
     figsize: tuple[float, float] = (15, 10),
     cmap: str = "RdBu_r",
-    unknown_color: Union[str, np.ndarray, tuple] = "#888888",
+    unknown_color: str | np.ndarray | tuple = "#888888",
     center_colormap: bool = True,
-    vmax: Optional[float] = None,
+    vmax: float | None = None,
     fd_threshold: float = 0.5,
     show_structure_names: bool = True,
     x_label: str = None,
     y_label: str = "Brain structures",
     title: str = "Carpet Plot",
-    save_path: Optional[Union[str, Path]] = None,
+    save_path: str | Path | None = None,
     dpi: int = 150,
 ) -> dict:
     """Create a carpet plot for brain structure time series data.
@@ -2148,7 +2145,7 @@ def create_carpet_plot(
     )
 
     ax_carpet: plt.Axes = fig.add_subplot(gs[carpet_row, 0])
-    ax_top: Optional[plt.Axes] = (
+    ax_top: plt.Axes | None = (
         fig.add_subplot(gs[0, 0], sharex=ax_carpet) if has_top else None
     )
 
@@ -2211,7 +2208,7 @@ def create_carpet_plot(
     # ------------------------------------------------------------------
     if ax_top is not None:
         t_axis = np.arange(n_timepoints)
-        ax_gs_twin: Optional[plt.Axes] = None
+        ax_gs_twin: plt.Axes | None = None
 
         if fd_trace is not None:
             fd_arr = np.asarray(fd_trace, dtype=float)

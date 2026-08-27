@@ -1,23 +1,23 @@
-import os
-from typing import Union, Tuple, Optional, Dict, List
 import copy
 import json
-import warnings
+import os
 import tempfile
-
-import pandas as pd
-import nibabel as nib
-from nibabel.processing import resample_from_to
-import numpy as np
+import warnings
 from pathlib import Path
+
+import nibabel as nib
+import numpy as np
+import pandas as pd
+from nibabel.processing import resample_from_to
+
+from . import bidstools as cltbids
+from . import colorstools as cltcol
+from . import freesurfertools as cltfree
 
 # Importing local modules
 from . import misctools as cltmisc
-from . import surfacetools as cltsurf
 from . import parcellationtools as cltparc
-from . import bidstools as cltbids
-from . import freesurfertools as cltfree
-from . import colorstools as cltcol
+from . import surfacetools as cltsurf
 
 
 ####################################################################################################
@@ -30,19 +30,19 @@ from . import colorstools as cltcol
 ####################################################################################################
 ####################################################################################################
 def compute_reg_val_fromannot(
-    metric_file: Union[str, np.ndarray],
-    parc_file: Union[str, cltfree.AnnotParcellation],
+    metric_file: str | np.ndarray,
+    parc_file: str | cltfree.AnnotParcellation,
     hemi: str,
     output_table: str = None,
     nonzeros_only: bool = False,
     metric: str = "unknown",
     units: str = None,
-    stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
+    stats_list: str | list = None,
     table_type: str = "metric",
     include_unknown: bool = False,
     include_global: bool = True,
     add_bids_entities: bool = True,
-) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
+) -> tuple[pd.DataFrame, np.ndarray, str | None]:
     """
     Compute regional statistics from a surface metric file and an annotation file.
 
@@ -133,6 +133,8 @@ def compute_reg_val_fromannot(
     """
 
     # Input validation
+    if stats_list is None:
+        stats_list = ["value", "median", "std", "min", "max"]
     if isinstance(stats_list, str):
         stats_list = [stats_list]
 
@@ -283,8 +285,8 @@ def compute_reg_val_fromannot(
 
 ####################################################################################################
 def compute_reg_area_fromsurf(
-    surf_file: Union[str, cltsurf.Surface],
-    parc_file: Union[str, cltfree.AnnotParcellation],
+    surf_file: str | cltsurf.Surface,
+    parc_file: str | cltfree.AnnotParcellation,
     hemi: str,
     table_type: str = "metric",
     surf_type: str = "",
@@ -292,7 +294,7 @@ def compute_reg_area_fromsurf(
     include_global: bool = True,
     add_bids_entities: bool = True,
     output_table: str = None,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     Compute surface area for each region defined in an annotation file.
 
@@ -530,8 +532,8 @@ def compute_reg_area_fromsurf(
 
 ####################################################################################################
 def compute_reg_nvertices_fromsurf(
-    surf_file: Union[str, cltsurf.Surface],
-    parc_file: Union[str, cltfree.AnnotParcellation],
+    surf_file: str | cltsurf.Surface,
+    parc_file: str | cltfree.AnnotParcellation,
     hemi: str,
     table_type: str = "metric",
     surf_type: str = "",
@@ -539,7 +541,7 @@ def compute_reg_nvertices_fromsurf(
     include_global: bool = True,
     add_bids_entities: bool = True,
     output_table: str = None,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     Compute the number of vertices for each region defined in an annotation file.
 
@@ -649,10 +651,10 @@ def compute_reg_nvertices_fromsurf(
         if not os.path.exists(surf_file):
             raise FileNotFoundError(f"Surface file not found: {surf_file}")
 
-        surf = cltsurf.Surface(surface_file=surf_file)
+        cltsurf.Surface(surface_file=surf_file)
         filename = surf_file
     elif isinstance(surf_file, cltsurf.Surface):
-        surf = copy.deepcopy(surf_file)
+        copy.deepcopy(surf_file)
     else:
         raise TypeError(
             f"surf_file must be a string or Surface object, got {type(surf_file)}"
@@ -763,13 +765,13 @@ def compute_reg_nvertices_fromsurf(
 
 ####################################################################################################
 def compute_euler_fromsurf(
-    surf_file: Union[str, cltsurf.Surface],
+    surf_file: str | cltsurf.Surface,
     hemi: str,
     output_table: str = None,
     table_type: str = "metric",
     surf_type: str = "",
     add_bids_entities: bool = True,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     Compute the Euler characteristic of a surface mesh.
 
@@ -942,7 +944,7 @@ def compute_euler_fromsurf(
 
 
 ####################################################################################################
-def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> Tuple[float, np.ndarray]:
+def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> tuple[float, np.ndarray]:
     """
     Compute the total area and per-triangle areas of a mesh surface.
 
@@ -1143,23 +1145,23 @@ def euler_from_mesh(coords: np.ndarray, faces: np.ndarray) -> int:
 ####################################################################################################
 ####################################################################################################
 def compute_reg_val_fromparcellation(
-    metric_file: Union[str, np.ndarray],
-    parc_file: Union[str, cltparc.Parcellation, np.ndarray],
+    metric_file: str | np.ndarray,
+    parc_file: str | cltparc.Parcellation | np.ndarray,
     output_table: str = None,
     metric: str = "unknown",
     units: str = None,
-    stats_list: Union[str, list] = ["value", "median", "std", "min", "max"],
+    stats_list: str | list = None,
     nonzeros_only: bool = False,
     table_type: str = "metric",
-    exclude_by_code: Union[list, np.ndarray] = None,
-    exclude_by_name: Union[list, str] = None,
-    include_by_code: Union[list, np.ndarray] = None,
-    include_by_name: Union[list, str] = None,
+    exclude_by_code: list | np.ndarray = None,
+    exclude_by_name: list | str = None,
+    include_by_code: list | np.ndarray = None,
+    include_by_name: list | str = None,
     include_global: bool = True,
     add_bids_entities: bool = True,
     region_prefix: str = "supra-side",
     interp_method: str = "linear",
-) -> Tuple[pd.DataFrame, np.ndarray, Optional[str]]:
+) -> tuple[pd.DataFrame, np.ndarray, str | None]:
     """
     Compute regional statistics from a volumetric metric map and a parcellation.
 
@@ -1354,6 +1356,8 @@ def compute_reg_val_fromparcellation(
     """
 
     # Input validation
+    if stats_list is None:
+        stats_list = ["value", "median", "std", "min", "max"]
     if isinstance(stats_list, str):
         stats_list = [stats_list]
 
@@ -1417,7 +1421,8 @@ def compute_reg_val_fromparcellation(
         ):
             warnings.warn(
                 f"Metric image ({metric_shape}) and parcellation image ({parc_shape}) have different "
-                f"dimensions or orientations. Resampling metric to match parcellation."
+                f"dimensions or orientations. Resampling metric to match parcellation.",
+                stacklevel=2,
             )
 
             # Resample metric to match parcellation space
@@ -1570,7 +1575,7 @@ def compute_reg_val_fromparcellation(
             )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
-            warnings.warn(f"Could not add BIDS entities: {str(e)}")
+            warnings.warn(f"Could not add BIDS entities: {str(e)}", stacklevel=2)
 
     # Cleaning the dataframe to remove columns with all missing values if include_missing is False
     df = cltmisc.drop_empty_columns(df)
@@ -1596,17 +1601,17 @@ def compute_reg_val_fromparcellation(
 
 ####################################################################################################
 def compute_reg_volume_fromparcellation(
-    parc_file: Union[str, cltparc.Parcellation, np.ndarray],
+    parc_file: str | cltparc.Parcellation | np.ndarray,
     output_table: str = None,
     table_type: str = "metric",
-    exclude_by_code: Union[list, np.ndarray] = None,
-    exclude_by_name: Union[list, str] = None,
-    include_by_code: Union[list, np.ndarray] = None,
-    include_by_name: Union[list, str] = None,
+    exclude_by_code: list | np.ndarray = None,
+    exclude_by_name: list | str = None,
+    include_by_code: list | np.ndarray = None,
+    include_by_name: list | str = None,
     add_bids_entities: bool = True,
     region_prefix: str = "supra-side",
     include_global: bool = True,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     Compute volume for all regions in a parcellation.
 
@@ -1870,7 +1875,7 @@ def compute_reg_volume_fromparcellation(
             )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
-            warnings.warn(f"Could not add BIDS entities: {str(e)}")
+            warnings.warn(f"Could not add BIDS entities: {str(e)}", stacklevel=2)
 
     # Cleaning the dataframe to remove columns with all missing values if include_missing is False
     df = cltmisc.drop_empty_columns(df)
@@ -1906,7 +1911,7 @@ def parse_freesurfer_global_fromaseg(
     add_bids_entities: bool = True,
     include_missing: bool = True,
     config_json: str = None,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     Parse global volume measurements from a FreeSurfer aseg.stats file.
 
@@ -1955,7 +1960,7 @@ def parse_freesurfer_global_fromaseg(
     # Load volume measurements from config file or use defaults
     if config_json and os.path.isfile(config_json):
         try:
-            with open(config_json, "r") as f:
+            with open(config_json) as f:
                 config_data = json.load(f)
                 # Check if the config has a "global" key
                 if "global" in config_data:
@@ -1963,7 +1968,7 @@ def parse_freesurfer_global_fromaseg(
                 else:
                     volume_measurements = config_data
         except Exception as e:
-            warnings.warn(f"Error loading config file {config_json}: {e}")
+            warnings.warn(f"Error loading config file {config_json}: {e}", stacklevel=2)
             volume_measurements = get_stats_dictionary("global")
     else:
         volume_measurements = get_stats_dictionary("global")
@@ -1973,7 +1978,7 @@ def parse_freesurfer_global_fromaseg(
 
     # Read the stats file
     try:
-        with open(stat_file, "r") as file:
+        with open(stat_file) as file:
             file_content = file.readlines()
 
             # Create dictionaries to store parsed data
@@ -1997,13 +2002,14 @@ def parse_freesurfer_global_fromaseg(
                                 global_measures[short_name] = measure_value
                     except Exception as e:
                         warnings.warn(
-                            f"Error parsing global measure line: {line.strip()}. Error: {e}"
+                            f"Error parsing global measure line: {line.strip()}. Error: {e}",
+                            stacklevel=2,
                         )
 
             # Next, parse segmentation table (lines starting with a number)
             # First identify where the table starts
             table_start = False
-            for i, line in enumerate(file_content):
+            for _i, line in enumerate(file_content):
                 if line.startswith("# ColHeaders"):
                     table_start = True
                     continue
@@ -2018,7 +2024,8 @@ def parse_freesurfer_global_fromaseg(
                             segmented_data[seg_name] = seg_volume
                     except Exception as e:
                         warnings.warn(
-                            f"Error parsing table line: {line.strip()}. Error: {e}"
+                            f"Error parsing table line: {line.strip()}. Error: {e}",
+                            stacklevel=2,
                         )
 
             # If we didn't find table data with the precise method, try a more general approach
@@ -2031,7 +2038,7 @@ def parse_freesurfer_global_fromaseg(
                                 seg_name = parts[4]
                                 seg_volume = float(parts[3])
                                 segmented_data[seg_name] = seg_volume
-                        except Exception as e:
+                        except Exception:
                             pass  # Silently skip lines that don't match expected format
 
             # Now extract the values based on the configuration
@@ -2092,18 +2099,20 @@ def parse_freesurfer_global_fromaseg(
                                     break
                             except (IndexError, ValueError) as e:
                                 warnings.warn(
-                                    f"Error parsing value for {region_key} using index: {e}"
+                                    f"Error parsing value for {region_key} using index: {e}",
+                                    stacklevel=2,
                                 )
 
                 # If value not found and we're including missing values
                 if not value_found and include_missing:
                     extracted_values[region_key] = [0.0]
                     warnings.warn(
-                        f"Value for {region_key} (key: {key}) not found in {stat_file}"
+                        f"Value for {region_key} (key: {key}) not found in {stat_file}",
+                        stacklevel=2,
                     )
 
     except Exception as e:
-        raise RuntimeError(f"Error reading stats file {stat_file}: {e}")
+        raise RuntimeError(f"Error reading stats file {stat_file}: {e}") from e
 
     # Check if we found any values
     if not extracted_values:
@@ -2163,7 +2172,7 @@ def parse_freesurfer_global_fromaseg(
             )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
-            warnings.warn(f"Could not add BIDS entities: {str(e)}")
+            warnings.warn(f"Could not add BIDS entities: {str(e)}", stacklevel=2)
 
     # Cleaning the dataframe to remove columns with all missing values if include_missing is False
     df = cltmisc.drop_empty_columns(df)
@@ -2191,7 +2200,7 @@ def parse_freesurfer_stats_fromaseg(
     add_bids_entities: bool = True,
     include_missing: bool = True,
     config_json: str = None,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     Parse regional volume measurements from a FreeSurfer aseg.stats file.
 
@@ -2285,7 +2294,7 @@ def parse_freesurfer_stats_fromaseg(
     # Load region measurements from config file or use defaults
     if config_json and os.path.isfile(config_json):
         try:
-            with open(config_json, "r") as f:
+            with open(config_json) as f:
                 config_data = json.load(f)
                 # Check if the config has an "aseg" key
                 if "aseg" in config_data:
@@ -2293,7 +2302,7 @@ def parse_freesurfer_stats_fromaseg(
                 else:
                     region_measurements = config_data
         except Exception as e:
-            warnings.warn(f"Error loading config file {config_json}: {e}")
+            warnings.warn(f"Error loading config file {config_json}: {e}", stacklevel=2)
             region_measurements = get_stats_dictionary("aseg")
     else:
         region_measurements = get_stats_dictionary("aseg")
@@ -2303,7 +2312,7 @@ def parse_freesurfer_stats_fromaseg(
 
     # Read the stats file
     try:
-        with open(stat_file, "r") as file:
+        with open(stat_file) as file:
             file_content = file.readlines()
 
             # Parse the tabular data from the aseg.stats file
@@ -2326,7 +2335,8 @@ def parse_freesurfer_stats_fromaseg(
                                 volume_index = col_num
                     except (ValueError, IndexError) as e:
                         warnings.warn(
-                            f"Error parsing TableCol line: {line.strip()}. Error: {e}"
+                            f"Error parsing TableCol line: {line.strip()}. Error: {e}",
+                            stacklevel=2,
                         )
 
             # Parse the table rows (lines starting with a number)
@@ -2352,7 +2362,8 @@ def parse_freesurfer_stats_fromaseg(
                             }
                     except Exception as e:
                         warnings.warn(
-                            f"Error parsing table line: {line.strip()}. Error: {e}"
+                            f"Error parsing table line: {line.strip()}. Error: {e}",
+                            stacklevel=2,
                         )
 
             # Extract values based on the configuration
@@ -2385,7 +2396,7 @@ def parse_freesurfer_stats_fromaseg(
                 # Fallback to SegId lookup if provided
                 seg_id = region_info.get("seg_id")
                 if seg_id is not None:
-                    for name, data in region_data.items():
+                    for _name, data in region_data.items():
                         if data["SegId"] == seg_id:
                             value = data["Volume"] / divisor
                             extracted_values[region_key] = [value]
@@ -2396,11 +2407,12 @@ def parse_freesurfer_stats_fromaseg(
                 if not value_found and include_missing:
                     extracted_values[region_key] = [0.0]
                     warnings.warn(
-                        f"Value for {region_key} (key: {key}) not found in {stat_file}"
+                        f"Value for {region_key} (key: {key}) not found in {stat_file}",
+                        stacklevel=2,
                     )
 
     except Exception as e:
-        raise RuntimeError(f"Error reading stats file {stat_file}: {e}")
+        raise RuntimeError(f"Error reading stats file {stat_file}: {e}") from e
 
     # Check if we found any values
     if not extracted_values:
@@ -2460,7 +2472,7 @@ def parse_freesurfer_stats_fromaseg(
             )
             df = cltmisc.expand_and_concatenate(df_add, df)
         except Exception as e:
-            warnings.warn(f"Could not add BIDS entities: {str(e)}")
+            warnings.warn(f"Could not add BIDS entities: {str(e)}", stacklevel=2)
 
     # Cleaning the dataframe to remove columns with all missing values if include_missing is False
     df = cltmisc.drop_empty_columns(df)
@@ -2489,7 +2501,7 @@ def parse_freesurfer_cortex_stats(
     hemi: str = None,
     config_json: str = None,
     include_metrics: list = None,
-) -> Tuple[pd.DataFrame, Optional[str]]:
+) -> tuple[pd.DataFrame, str | None]:
     """
     Parse cortical parcellation statistics from a FreeSurfer aparc.stats file.
 
@@ -2616,7 +2628,7 @@ def parse_freesurfer_cortex_stats(
             hemi = "rh"
         else:
             # Try to detect from file content
-            with open(stats_file, "r") as f:
+            with open(stats_file) as f:
                 content = f.read()
                 if "# hemi lh" in content:
                     hemi = "lh"
@@ -2624,14 +2636,15 @@ def parse_freesurfer_cortex_stats(
                     hemi = "rh"
                 else:
                     warnings.warn(
-                        f"Could not determine hemisphere from file: {stats_file}. Using 'lh' as default."
+                        f"Could not determine hemisphere from file: {stats_file}. Using 'lh' as default.",
+                        stacklevel=2,
                     )
                     hemi = "lh"
 
     # Load metrics configuration from file or use defaults
     if config_json and os.path.isfile(config_json):
         try:
-            with open(config_json, "r") as f:
+            with open(config_json) as f:
                 config_data = json.load(f)
                 # Check if the config has a "cortex" key
                 if "cortex" in config_data:
@@ -2653,7 +2666,7 @@ def parse_freesurfer_cortex_stats(
                     metric_mapping["volume"]["unit"] = "cm³"
 
         except Exception as e:
-            warnings.warn(f"Error loading config file {config_json}: {e}")
+            warnings.warn(f"Error loading config file {config_json}: {e}", stacklevel=2)
             metric_mapping = get_stats_dictionary("cortex")
     else:
         metric_mapping = get_stats_dictionary("cortex")
@@ -2678,7 +2691,7 @@ def parse_freesurfer_cortex_stats(
 
     # Read the stats file
     try:
-        with open(stats_file, "r") as file:
+        with open(stats_file) as file:
             lines = file.readlines()
 
         # Find the data section by looking for column headers
@@ -2942,7 +2955,7 @@ def parse_freesurfer_cortex_stats(
                 )
                 df = cltmisc.expand_and_concatenate(df_add, df)
             except Exception as e:
-                warnings.warn(f"Could not add BIDS entities: {str(e)}")
+                warnings.warn(f"Could not add BIDS entities: {str(e)}", stacklevel=2)
 
         # Cleaning the dataframe to remove columns with all missing values if include_missing is False
         df = cltmisc.drop_empty_columns(df)
@@ -2962,7 +2975,7 @@ def parse_freesurfer_cortex_stats(
         return df, output_path
 
     except Exception as e:
-        raise RuntimeError(f"Error parsing stats file {stats_file}: {e}")
+        raise RuntimeError(f"Error parsing stats file {stats_file}: {e}") from e
 
 
 ####################################################################################################
@@ -2998,8 +3011,8 @@ def get_stats_dictionary(region_level: str = "global"):
 ####################################################################################################
 def network_metrics_to_table(
     conn_mat: np.ndarray,
-    lut_file: Union[str, Path, Dict] = None,
-    cmat_met: Union[str, List[str]] = "weight",
+    lut_file: str | Path | dict = None,
+    cmat_met: str | list[str] = "weight",
 ) -> pd.DataFrame:
     """
     Compute network metrics from a connectivity matrix and return them in a DataFrame.
@@ -3078,10 +3091,10 @@ def network_metrics_to_table(
     ]
     cmat_bin = conn_mat > 0
     deg_coeff = bct.degree.degrees_und(cmat_bin)
-    str_coeff = bct.degree.strengths_und(cmat)
+    str_coeff = bct.degree.strengths_und(conn_mat)
     clu_coeff = bct.clustering_coef_bu(cmat_bin)
     btw_cent = bct.betweenness_bin(cmat_bin)
-    sho_path = bct.distance_bin(cmat_bin)
+    bct.distance_bin(cmat_bin)
     loc_eff = bct.efficiency_bin(cmat_bin, local=True)
 
     trans_coeff_g = bct.transitivity_bu(cmat_bin)
@@ -3134,7 +3147,7 @@ def network_metrics_to_table(
 ####################################################################################################
 def stats_from_vector(
     metric_vect,
-    stats_list: Union[list, tuple] = ["value", "median", "std", "min", "max"],
+    stats_list: list | tuple = None,
     nonzeros_only: bool = True,
 ) -> list:
     """
@@ -3202,6 +3215,8 @@ def stats_from_vector(
         ...
     ValueError: Unsupported statistics: mode
     """
+    if stats_list is None:
+        stats_list = ["value", "median", "std", "min", "max"]
     if not isinstance(stats_list, (list, tuple)):
         raise TypeError("stats_list must be a list or tuple")
 
@@ -3238,8 +3253,8 @@ def stats_from_vector(
 
 ####################################################################################################
 def get_units(
-    metrics: Union[str, List[str]], metrics_json: Optional[Union[str, Dict]] = None
-) -> List[str]:
+    metrics: str | list[str], metrics_json: str | dict | None = None
+) -> list[str]:
     """
     Get the units associated with specified metrics.
 
@@ -3297,25 +3312,25 @@ def get_units(
         # Use default configuration
         config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 config_data = json.load(f)
             metric_dict = config_data.get("metrics_units", {})
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            raise ValueError(f"Error loading default configuration: {str(e)}")
+            raise ValueError(f"Error loading default configuration: {str(e)}") from e
     elif isinstance(metrics_json, str):
         # Load from provided JSON file path
         if not os.path.isfile(metrics_json):
             raise ValueError(f"Invalid JSON file path: {metrics_json}")
         try:
-            with open(metrics_json, "r") as f:
+            with open(metrics_json) as f:
                 config_data = json.load(f)
             metric_dict = config_data.get("metrics_units", {})
             if not metric_dict:
                 raise ValueError(
                     "Missing 'metrics_units' key in the provided JSON file"
                 )
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON format in file: {metrics_json}")
+        except json.JSONDecodeError as err:
+            raise ValueError(f"Invalid JSON format in file: {metrics_json}") from err
     elif isinstance(metrics_json, dict):
         # Use provided dictionary
         metric_dict = metrics_json.get("metrics_units", metrics_json)

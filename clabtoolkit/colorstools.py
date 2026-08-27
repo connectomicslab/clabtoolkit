@@ -58,30 +58,25 @@ for anatomical regions, and developing visualization tools that require consiste
 color handling across different data formats and software packages.
 """
 
-import numpy as np
-import os
 import copy
-from datetime import datetime
-from typing import Union, List, Any, Optional
+import os
 import re
-import pandas as pd
-from IPython.display import HTML
-from pathlib import Path
-from colorama import init, Fore, Style, Back
-
-init(autoreset=True)
-
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib import colormaps
-from matplotlib.colors import to_hex
-from matplotlib.colors import is_color_like as mpl_is_color_like
-from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
-
 import textwrap
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from colorama import init
+from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex
+from matplotlib.colors import is_color_like as mpl_is_color_like
 
 from . import misctools as cltmisc
+
+init(autoreset=True)
 
 
 ####################################################################################################
@@ -518,7 +513,7 @@ def is_valid_rgb_01(rgb: Any) -> bool:
 
 
 #####################################################################################################
-def normalize_rgb(rgb: Any) -> Union[List[float], None]:
+def normalize_rgb(rgb: Any) -> list[float] | None:
     """
     Convert RGB array to 0-1 range regardless of input format.
 
@@ -545,7 +540,7 @@ def normalize_rgb(rgb: Any) -> Union[List[float], None]:
 
 
 ####################################################################################################
-def rgb2hex(r: Union[int, float], g: Union[int, float], b: Union[int, float]) -> str:
+def rgb2hex(r: int | float, g: int | float, b: int | float) -> str:
     """
     Convert RGB values to hexadecimal color code.
     Handles both integer (0-255) and normalized float (0-1) inputs.
@@ -604,13 +599,13 @@ def rgb2hex(r: Union[int, float], g: Union[int, float], b: Union[int, float]) ->
     # Ensure values are within byte range after conversion
     r, g, b = (max(0, min(255, x)) for x in (r, g, b))
 
-    return "#{:02x}{:02x}{:02x}".format(r, g, b)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 ####################################################################################################
 def multi_rgb2hex(
-    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
-) -> List[str]:
+    colors: list[str | list | np.ndarray] | np.ndarray,
+) -> list[str]:
     """
     Function to convert rgb to hex for an array of colors.
     Note: If there are already elements in hexadecimal format the will not be transformed.
@@ -736,7 +731,7 @@ def hex2rgb(hexcode: str) -> tuple:
 
 
 ####################################################################################################
-def multi_hex2rgb(hexcodes: Union[str, List[str]]) -> np.ndarray:
+def multi_hex2rgb(hexcodes: str | list[str]) -> np.ndarray:
     """
     Function to convert a list of colores in hexadecimal format to rgb format.
 
@@ -766,8 +761,8 @@ def multi_hex2rgb(hexcodes: Union[str, List[str]]) -> np.ndarray:
 
 ####################################################################################################
 def invert_colors(
-    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
-) -> Union[List[Union[str, list, np.ndarray]], np.ndarray]:
+    colors: list[str | list | np.ndarray] | np.ndarray,
+) -> list[str | list | np.ndarray] | np.ndarray:
     """
     Invert colors while maintaining the original input format and value ranges.
 
@@ -813,7 +808,7 @@ def invert_colors(
 
     # Convert all to normalized (0-1) for inversion
     normalized_colors = []
-    for color, orig_range in zip(colors, input_ranges):
+    for color, orig_range in zip(colors, input_ranges, strict=False):
         if orig_range == "0-255":
             if isinstance(color, str):
                 hex_color = color.lstrip("#")
@@ -836,15 +831,17 @@ def invert_colors(
 
     # Convert back to original formats and ranges
     result = []
-    for inv_color, orig_type, orig_range in zip(inverted, input_types, input_ranges):
+    for inv_color, orig_type, orig_range in zip(
+        inverted, input_types, input_ranges, strict=False
+    ):
         if orig_range == "0-255":
             inv_color = (inv_color * 255).round().astype(np.uint8)
 
-        if orig_type == str:
+        if orig_type is str:
             result.append(
                 to_hex(inv_color / 255 if orig_range == "0-255" else inv_color).lower()
             )
-        elif orig_type == list:
+        elif orig_type is list:
             if orig_range == "0-255":
                 result.append([int(x) for x in inv_color])
             else:
@@ -861,9 +858,9 @@ def invert_colors(
 
 ####################################################################################################
 def harmonize_colors(
-    colors: Union[str, List[Union[str, list, np.ndarray]], np.ndarray, tuple],
+    colors: str | list[str | list | np.ndarray] | np.ndarray | tuple,
     output_format: str = "hex",
-) -> Union[List[str], np.ndarray]:
+) -> list[str] | np.ndarray:
     """
     Convert all colors in a list to a consistent format.
     Handles hex strings, RGB/RGBA lists, tuples, and numpy arrays (both 0-255 and 0-1 ranges).
@@ -928,7 +925,7 @@ def harmonize_colors(
             colors = [colors]
         elif colors.ndim == 2:
             # Multiple colors (Nx3 or Nx4)
-            colors = [row for row in colors]
+            colors = list(colors)
         else:
             raise ValueError("NumPy array must be 1D or 2D for colors")
 
@@ -1015,9 +1012,9 @@ def harmonize_colors(
 
 ####################################################################################################
 def readjust_colors(
-    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+    colors: list[str | list | np.ndarray] | np.ndarray,
     output_format: str = "rgb",
-) -> Union[list[str], np.ndarray]:
+) -> list[str] | np.ndarray:
     """
     Function to readjust the colors to a certain format. It is just a wrapper from harmonize_colors function.
 
@@ -1055,9 +1052,9 @@ def readjust_colors(
 def create_random_colors(
     n: int,
     output_format: str = "rgb",
-    cmap: Optional[str] = None,
-    random_seed: Optional[int] = None,
-) -> Union[list[str], np.ndarray]:
+    cmap: str | None = None,
+    random_seed: int | None = None,
+) -> list[str] | np.ndarray:
     """
     Generate n colors either randomly or from a specified matplotlib colormap.
 
@@ -1148,11 +1145,11 @@ def create_random_colors(
         # Generate colors from colormap
         try:
             colormap = plt.get_cmap(cmap)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"'{cmap}' is not a valid matplotlib colormap name. "
                 f"Use plt.colormaps() to see available options."
-            )
+            ) from err
 
         # Generate evenly spaced points across the colormap
         if n == 1:
@@ -1187,7 +1184,7 @@ def create_random_colors(
         elif output_format == "rgbnorm":
             return colors / 255.0
         else:  # hex
-            return ["#{:02x}{:02x}{:02x}".format(r, g, b) for r, g, b in colors]
+            return [f"#{r:02x}{g:02x}{b:02x}" for r, g, b in colors]
 
 
 #####################################################################################################
@@ -1292,7 +1289,7 @@ def get_colormaps_names(n, cmap_type="sequential"):
 
 
 #########################################################################################################
-def create_lut_dictionary(parc_values: Union[List[int], np.ndarray]) -> dict:
+def create_lut_dictionary(parc_values: list[int] | np.ndarray) -> dict:
     """
     Create a lookup table (LUT) dictionary mapping parcel values to colors.
 
@@ -1339,11 +1336,11 @@ def create_lut_dictionary(parc_values: Union[List[int], np.ndarray]) -> dict:
 def create_distinguishable_colors(
     n: int,
     output_format: str = "rgb",
-    exclude_colors: Optional[list] = None,
+    exclude_colors: list | None = None,
     lightness_range: tuple[float, float] = (0.4, 0.85),
     saturation_range: tuple[float, float] = (0.5, 1.0),
-    random_seed: Optional[int] = None,
-) -> Union[list[str], np.ndarray]:
+    random_seed: int | None = None,
+) -> list[str] | np.ndarray:
     """
     Generate n maximally distinguishable colors using perceptual color spacing.
 
@@ -1521,14 +1518,14 @@ def create_distinguishable_colors(
         hex_colors = []
         for color in rgb_colors_norm:
             r, g, b = (color * 255).astype(int)
-            hex_colors.append("#{:02X}{:02X}{:02X}".format(r, g, b))
+            hex_colors.append(f"#{r:02X}{g:02X}{b:02X}")
         return hex_colors
 
 
 ####################################################################################################
 def get_predefined_distinguishable_colors(
     n: int, output_format: str = "rgb"
-) -> Union[list[str], np.ndarray]:
+) -> list[str] | np.ndarray:
     """
     Get a predefined set of maximally distinguishable colors.
 
@@ -1597,8 +1594,8 @@ def get_predefined_distinguishable_colors(
 
 ###################################################################################################
 def colortable_visualization(
-    colortable: Union[np.ndarray, str, Path],
-    region_names: Union[str, List[str]] = None,
+    colortable: np.ndarray | str | Path,
+    region_names: str | list[str] = None,
     columns: int = 2,
     export_path: str = None,
     title: str = "Color Table",
@@ -1903,7 +1900,7 @@ def get_colors_from_colortable(
         colors = np.ones((len(labels), 3), dtype=np.uint8) * 240 / 255  # Default gray
         colors = np.append(colors, np.ones((len(labels), 1), dtype=np.uint8), axis=1)
 
-    for i, region_info in enumerate(reg_ctable):
+    for _i, region_info in enumerate(reg_ctable):
         # Find vertices with this label
         indices = np.where(labels == region_info[4])[0]
 
@@ -1916,17 +1913,17 @@ def get_colors_from_colortable(
 
 #####################################################################################################
 def values2colors(
-    values: Union[List[Union[int, float]], np.ndarray],
+    values: list[int | float] | np.ndarray,
     cmap: str = "viridis",
     output_format: str = "hex",
     invert_cl: bool = False,
     invert_clmap: bool = False,
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
-    range_min: Optional[float] = None,
-    range_max: Optional[float] = None,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    range_min: float | None = None,
+    range_max: float | None = None,
     range_color: tuple = (200, 200, 200),
-) -> Union[List[str], np.ndarray]:
+) -> list[str] | np.ndarray:
     """
     Map numerical values to colors using a specified colormap with optional inversions.
 
@@ -1996,8 +1993,10 @@ def values2colors(
     # Check the range_color format
     try:
         range_color = harmonize_colors(range_color, output_format="rgb")
-    except Exception:
-        raise ValueError("range_color must be a value convertible to RGB format")
+    except Exception as err:
+        raise ValueError(
+            "range_color must be a value convertible to RGB format"
+        ) from err
 
     if isinstance(range_color, list):
         range_color = range_color[0]
@@ -2024,11 +2023,11 @@ def values2colors(
     # Get the matplotlib colormap
     try:
         colormap = plt.get_cmap(cmap)
-    except ValueError:
+    except ValueError as err:
         raise ValueError(
             f"'{cmap}' is not a valid matplotlib colormap name. "
             f"Use plt.colormaps() to see available options."
-        )
+        ) from err
 
     # Invert colormap if requested
     if invert_clmap:
@@ -2147,7 +2146,7 @@ def values2colors(
 
 #####################################################################################################
 def colors_to_table(
-    colors: Union[list, np.ndarray],
+    colors: list | np.ndarray,
     alpha_values: np.ndarray = 0,
     values: np.ndarray = None,
 ) -> np.ndarray:
@@ -2248,15 +2247,15 @@ def colors_to_table(
 
 ###################################################################################################
 def visualize_colors(
-    colors: Union[List[Union[str, list, np.ndarray]], np.ndarray],
+    colors: list[str | list | np.ndarray] | np.ndarray,
     figsize: tuple = (10, 1),
     label_position: str = "below",  # or "above"
     label_rotation: int = 45,
-    label_size: Optional[float] = None,
+    label_size: float | None = None,
     spacing: float = 0.1,
     aspect_ratio: float = 0.1,
     background_color: str = "white",
-    edge_color: Optional[str] = None,
+    edge_color: str | None = None,
 ) -> None:
     """
     Visualize a list of color codes in a clean, professional layout with configurable display options.
@@ -2344,7 +2343,7 @@ def visualize_colors(
         label_size = max(6, min(12, 100 / num_colors))
 
     # Set axis limits (with extra space for labels)
-    y_offset = rect_height + spacing if label_position == "above" else -spacing
+    rect_height + spacing if label_position == "above" else -spacing
     ax.set_xlim(0, total_width)
     ax.set_ylim(
         -spacing if label_position == "below" else 0,
@@ -2402,7 +2401,7 @@ def visualize_colors(
 class ColorTableLoader:
     """Class for loading and managing color lookup tables."""
 
-    def __init__(self, ctab_file: Union[str, Path, dict]):
+    def __init__(self, ctab_file: str | Path | dict):
         """
         Initialize ColorTableLoader by loading a color lookup table from a file.
 
@@ -2492,9 +2491,7 @@ class ColorTableLoader:
         self.headerlines = col_dict["headerlines"]
 
     @staticmethod
-    def load_colortable(
-        in_file: str, filter_by_name: Union[str, List[str]] = None
-    ) -> dict:
+    def load_colortable(in_file: str, filter_by_name: str | list[str] = None) -> dict:
         """
         Automatically detect and load a color lookup table from either LUT or TSV format.
 
@@ -2620,10 +2617,10 @@ class ColorTableLoader:
 
         # Analyze content for .txt, .lut, or extensionless files
         try:
-            with open(in_file, "r", encoding="utf-8") as f:
+            with open(in_file, encoding="utf-8") as f:
                 lines_to_check = [line.strip() for line in f if line.strip()]
         except UnicodeDecodeError:
-            with open(in_file, "r") as f:
+            with open(in_file) as f:
                 lines_to_check = [line.strip() for line in f if line.strip()]
 
         if not lines_to_check:
@@ -2692,9 +2689,7 @@ class ColorTableLoader:
             return "lut" if has_hash_comments else "tsv"
 
     @staticmethod
-    def read_luttable(
-        in_file: str, filter_by_name: Union[str, List[str]] = None
-    ) -> dict:
+    def read_luttable(in_file: str, filter_by_name: str | list[str] = None) -> dict:
         """
         Read and parse a FreeSurfer Color Lookup Table (LUT) file.
 
@@ -2760,17 +2755,17 @@ class ColorTableLoader:
         """
         # Read the LUT file content
         try:
-            with open(in_file, "r", encoding="utf-8") as f:
+            with open(in_file, encoding="utf-8") as f:
                 lut_content = f.readlines()
         except UnicodeDecodeError:
-            with open(in_file, "r") as f:
+            with open(in_file) as f:
                 lut_content = f.readlines()
-        except FileNotFoundError:
-            raise FileNotFoundError(f"LUT file not found: {in_file}")
-        except PermissionError:
+        except FileNotFoundError as err:
+            raise FileNotFoundError(f"LUT file not found: {in_file}") from err
+        except PermissionError as err:
             raise PermissionError(
                 f"Permission denied when accessing LUT file: {in_file}"
-            )
+            ) from err
 
         # Initialize lists to store parsed data
         region_codes = []
@@ -2890,9 +2885,7 @@ class ColorTableLoader:
         }
 
     @staticmethod
-    def read_tsvtable(
-        in_file: str, filter_by_name: Union[str, List[str]] = None
-    ) -> dict:
+    def read_tsvtable(in_file: str, filter_by_name: str | list[str] = None) -> dict:
         """
         Read and parse a TSV (Tab-Separated Values) lookup table file.
 
@@ -3002,21 +2995,23 @@ class ColorTableLoader:
 
             return tsv_dict
 
-        except pd.errors.EmptyDataError:
+        except pd.errors.EmptyDataError as err:
             raise ValueError(
                 f"The TSV file is empty or improperly formatted: {in_file}"
-            )
-        except pd.errors.ParserError:
-            raise ValueError(f"The TSV file could not be parsed correctly: {in_file}")
+            ) from err
+        except pd.errors.ParserError as err:
+            raise ValueError(
+                f"The TSV file could not be parsed correctly: {in_file}"
+            ) from err
         except Exception as e:
-            raise ValueError(f"Error reading TSV file {in_file}: {str(e)}")
+            raise ValueError(f"Error reading TSV file {in_file}: {str(e)}") from e
 
     @staticmethod
     def write_luttable(
-        lut_df: Union[pd.DataFrame, dict],
+        lut_df: pd.DataFrame | dict,
         out_file: str = None,
         boolappend: bool = False,
-        force: bool = True,
+        overwrite: bool = True,
     ):
         """
         Write a FreeSurfer format lookup table file.
@@ -3046,7 +3041,7 @@ class ColorTableLoader:
             If True, append to existing file. If False, create new file or overwrite.
             Default is False.
 
-        force : bool, optional
+        overwrite : bool, optional
             If True, overwrite existing files without warning. If False, warn before
             overwriting. Default is True.
 
@@ -3068,7 +3063,7 @@ class ColorTableLoader:
         ...     lut_df=lut_data,
         ...     out_file='output_lut.txt',
         ...     boolappend=False,
-        ...     force=True
+        ...     overwrite=True
         ... )
 
         Notes
@@ -3088,9 +3083,9 @@ class ColorTableLoader:
         # Move the opacity to the range of 0-255
         opacities = [int(op * 255) for op in opacities]
 
-        # Check if the file already exists and if the force parameter is False
+        # Check if the file already exists and if the overwrite parameter is False
         if out_file is not None:
-            if os.path.exists(out_file) and not force:
+            if os.path.exists(out_file) and not overwrite:
                 print("Warning: The file already exists. It will be overwritten.")
 
             out_dir = os.path.dirname(out_file)
@@ -3105,7 +3100,7 @@ class ColorTableLoader:
             now = datetime.now()
             date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
             headerlines = [
-                "# $Id: {} {} \n".format(out_file, date_time),
+                f"# $Id: {out_file} {date_time} \n",
             ]
         elif isinstance(headerlines, str):
             headerlines = [headerlines]
@@ -3118,10 +3113,10 @@ class ColorTableLoader:
             if not os.path.exists(out_file):
                 raise ValueError(f"Cannot append: file does not exist: {out_file}")
             else:
-                with open(out_file, "r") as file:
+                with open(out_file) as file:
                     luttable = file.readlines()
 
-                luttable = [l.strip("\n\r") for l in luttable]
+                luttable = [line.strip("\n\r") for line in luttable]
                 luttable = ["\n" if element == "" else element for element in luttable]
 
                 if happend_bool:
@@ -3151,25 +3146,18 @@ class ColorTableLoader:
             raise ValueError("Colors must be a list or numpy array")
 
         # Add regions to table
-        for roi_pos, roi_name in enumerate(names):
+        for roi_pos, _roi_name in enumerate(names):
             if roi_pos == 0:
                 luttable.append("\n")
 
             luttable.append(
-                "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
-                    codes[roi_pos],
-                    names[roi_pos],
-                    colors[roi_pos, 0],
-                    colors[roi_pos, 1],
-                    colors[roi_pos, 2],
-                    opacities[roi_pos],
-                )
+                f"{codes[roi_pos]:<4} {names[roi_pos]:<50} {colors[roi_pos, 0]:>3} {colors[roi_pos, 1]:>3} {colors[roi_pos, 2]:>3} {opacities[roi_pos]:>3}"
             )
         luttable.append("\n")
 
         # Write to file if path provided
         if out_file is not None:
-            if os.path.isfile(out_file) and force:
+            if os.path.isfile(out_file) and overwrite:
                 with open(out_file, "w") as colorLUT_f:
                     colorLUT_f.write("\n".join(luttable))
             elif not os.path.isfile(out_file):
@@ -3180,10 +3168,10 @@ class ColorTableLoader:
 
     @staticmethod
     def write_tsvtable(
-        tsv_df: Union[pd.DataFrame, dict],
+        tsv_df: pd.DataFrame | dict,
         out_file: str,
         boolappend: bool = False,
-        force: bool = False,
+        overwrite: bool = False,
     ):
         """
         Write a TSV format lookup table file.
@@ -3205,7 +3193,7 @@ class ColorTableLoader:
             If True, append to existing TSV file. If False, create new file or overwrite.
             Default is False.
 
-        force : bool, optional
+        overwrite : bool, optional
             If True, overwrite existing files without warning. If False, warn before
             overwriting. Default is False.
 
@@ -3229,13 +3217,13 @@ class ColorTableLoader:
         ...     'name': ['region1', 'region2', 'region3'],
         ...     'color': ['#FF0000', '#00FF00', '#0000FF']
         ... }
-        >>> ColorTableLoader.write_tsvtable(data, 'regions.tsv', force=True)
+        >>> ColorTableLoader.write_tsvtable(data, 'regions.tsv', overwrite=True)
         'regions.tsv'
 
         >>> # Write from DataFrame
         >>> import pandas as pd
         >>> df = pd.DataFrame(data)
-        >>> ColorTableLoader.write_tsvtable(df, 'regions.tsv', force=True)
+        >>> ColorTableLoader.write_tsvtable(df, 'regions.tsv', overwrite=True)
 
         >>> # Append to existing file
         >>> new_data = {
@@ -3252,8 +3240,8 @@ class ColorTableLoader:
         - When appending, columns are matched by name; missing values are filled with empty strings
         - The output file includes a header row with column names
         """
-        # Check if the file already exists and if the force parameter is False
-        if os.path.exists(out_file) and not force and not boolappend:
+        # Check if the file already exists and if the overwrite parameter is False
+        if os.path.exists(out_file) and not overwrite and not boolappend:
             print("Warning: The TSV file already exists. It will be overwritten.")
 
         out_dir = os.path.dirname(out_file)
@@ -3319,7 +3307,7 @@ class ColorTableLoader:
         tsv_df = pd.DataFrame(tsv_dict)
 
         # Write to file
-        if os.path.isfile(out_file) and force:
+        if os.path.isfile(out_file) and overwrite:
             with open(out_file, "w") as tsv_file:
                 tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
         elif not os.path.isfile(out_file):
@@ -3331,9 +3319,9 @@ class ColorTableLoader:
     #################################################
     def export(
         self,
-        out_ctab: Union[str, Path],
+        out_ctab: str | Path,
         out_format: str = "lut",
-        headerlines: Union[list, str] = None,
+        headerlines: list | str = None,
         append: bool = False,
         overwrite: bool = True,
     ):
@@ -3380,7 +3368,7 @@ class ColorTableLoader:
             )
 
     ######################################################################################################
-    def export_to_fslctab(self, out_ctab: Union[str, Path], overwrite: bool = True):
+    def export_to_fslctab(self, out_ctab: str | Path, overwrite: bool = True):
         """
         Export the loaded color table to FSL LUT format.
 
@@ -3418,13 +3406,7 @@ class ColorTableLoader:
         for roi_pos, st_code in enumerate(st_codes_lut):
             st_name = st_names_lut[roi_pos]
             lut_lines.append(
-                "{:<4} {:>3.5f} {:>3.5f} {:>3.5f} {:<40} ".format(
-                    st_code,
-                    st_colors_lut[roi_pos, 0] / 255,
-                    st_colors_lut[roi_pos, 1] / 255,
-                    st_colors_lut[roi_pos, 2] / 255,
-                    st_name,
-                )
+                f"{st_code:<4} {st_colors_lut[roi_pos, 0] / 255:>3.5f} {st_colors_lut[roi_pos, 1] / 255:>3.5f} {st_colors_lut[roi_pos, 2] / 255:>3.5f} {st_name:<40} "
             )
 
         if os.path.isfile(out_ctab) or overwrite:
@@ -3433,7 +3415,7 @@ class ColorTableLoader:
 
     ######################################################################################################
     def export_to_nilearnctab(
-        self, out_ctab: Union[str, Path], overwrite: bool = False
+        self, out_ctab: str | Path, overwrite: bool = False
     ) -> str:
         """
         Export the color table to nilearn-compatible format.
@@ -3499,11 +3481,11 @@ class ColorTableLoader:
     ######################################################################################################
     def export_to_lutctab(
         self,
-        out_ctab: Union[str, Path] = None,
-        headerlines: Union[list, str] = None,
+        out_ctab: str | Path = None,
+        headerlines: list | str = None,
         append: bool = False,
         overwrite: bool = False,
-    ) -> Union[str, list]:
+    ) -> str | list:
         """
         Export the color table to LUT format.
 
@@ -3620,7 +3602,7 @@ class ColorTableLoader:
             write_header = not append_mode
             lut_id = out_ctab.name if out_ctab is not None else "colortable"
             date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
-            headerlines = ["# $Id: {} {}".format(lut_id, date_time)]
+            headerlines = [f"# $Id: {lut_id} {date_time}"]
         elif isinstance(headerlines, str):
             write_header = True
             headerlines = [headerlines]
@@ -3642,7 +3624,7 @@ class ColorTableLoader:
         luttable = []
 
         if append_mode:
-            with open(str(out_ctab), "r") as file:
+            with open(str(out_ctab)) as file:
                 luttable = [line.rstrip("\n\r") for line in file.readlines()]
 
             # Exactly one blank line between the old content and the new block
@@ -3662,14 +3644,7 @@ class ColorTableLoader:
 
         for roi_pos, roi_name in enumerate(names):
             luttable.append(
-                "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
-                    codes[roi_pos],
-                    roi_name,
-                    colors[roi_pos, 0],
-                    colors[roi_pos, 1],
-                    colors[roi_pos, 2],
-                    opacities[roi_pos],
-                )
+                f"{codes[roi_pos]:<4} {roi_name:<50} {colors[roi_pos, 0]:>3} {colors[roi_pos, 1]:>3} {colors[roi_pos, 2]:>3} {opacities[roi_pos]:>3}"
             )
 
         luttable.append("")  # the file ends with a single trailing newline
@@ -3687,7 +3662,7 @@ class ColorTableLoader:
 
     ###########################################################################################
     def export_to_tsvctab(
-        self, out_ctab: Union[str, Path] = None, overwrite: bool = False
+        self, out_ctab: str | Path = None, overwrite: bool = False
     ) -> str:
         """
         Export the color table to TSV format.

@@ -1,17 +1,19 @@
-import os
-import numpy as np
-import nibabel as nib
-from typing import Union, List, Dict, Optional, Tuple
-from pathlib import Path
-import pyvista as pv
-import pandas as pd
 import copy
+import os
 import warnings
+from pathlib import Path
+from typing import Union
+
+import nibabel as nib
+import numpy as np
+import pandas as pd
+import pyvista as pv
+
+from . import colorstools as cltcol
 
 # Importing local modules
 from . import freesurfertools as cltfree
 from . import misctools as cltmisc
-from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -61,10 +63,10 @@ class Surface:
     ##############################################################################################
     def __init__(
         self,
-        surface_file: Union[str, Path] = None,
+        surface_file: str | Path = None,
         vertices: np.ndarray = None,
         faces: np.ndarray = None,
-        color: Union[str, np.ndarray] = "#f0f0f0",
+        color: str | np.ndarray = "#f0f0f0",
         alpha: float = 1.0,
         hemi: str = None,
     ) -> None:
@@ -120,7 +122,7 @@ class Surface:
         self.mesh = None
         self.hemi = None
         self.active_scalar = "default"
-        self.colortables: Dict[str, Dict] = {}
+        self.colortables: dict[str, dict] = {}
 
         # Create the defalt colortable for the surface
 
@@ -176,8 +178,8 @@ class Surface:
     ################################################################################################
     def load_from_file(
         self,
-        surface_file: Union[str, Path],
-        color: Union[str, np.ndarray] = "#f0f0f0",
+        surface_file: str | Path,
+        color: str | np.ndarray = "#f0f0f0",
         alpha: np.float32 = 1.0,
         hemi: str = None,
     ) -> None:
@@ -296,7 +298,7 @@ class Surface:
         self,
         vertices: np.ndarray,
         faces: np.ndarray,
-        color: Union[str, np.ndarray] = "#f0f0f0",
+        color: str | np.ndarray = "#f0f0f0",
         alpha: float = 1.0,
         hemi: str = None,
         surface_file: str = None,
@@ -364,7 +366,7 @@ class Surface:
     def load_from_mesh(
         self,
         mesh: pv.PolyData,
-        color: Union[str, np.ndarray] = "#f0f0f0",
+        color: str | np.ndarray = "#f0f0f0",
         alpha: float = 1.0,
         hemi: str = None,
     ) -> None:
@@ -442,7 +444,7 @@ class Surface:
 
     ##############################################################################################
     def _create_default_parcellation(
-        self, color: Union[str, np.ndarray] = "#f0f0f0", alpha: np.ndarray = 1.0
+        self, color: str | np.ndarray = "#f0f0f0", alpha: np.ndarray = 1.0
     ) -> None:
         """
         Create default parcellation data for surface visualization.
@@ -889,7 +891,7 @@ class Surface:
                 )
 
     ##############################################################################################
-    def get_normals(self) -> Optional[np.ndarray]:
+    def get_normals(self) -> np.ndarray | None:
         """
         Get vertex normals from the surface mesh if available.
 
@@ -924,7 +926,7 @@ class Surface:
     ##############################################################################################
     def load_annotation(
         self,
-        annotation: Union[str, Path, cltfree.AnnotParcellation],
+        annotation: str | Path | cltfree.AnnotParcellation,
         parc_name: str = None,
     ) -> None:
         """
@@ -1003,7 +1005,7 @@ class Surface:
             parc_name = annot_parc.id
 
         # Store the parcellation data
-        tmp_colors = reg_ctable[:, :3]
+        reg_ctable[:, :3]
 
         reg_ctable[:, :3] = reg_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
@@ -1021,7 +1023,7 @@ class Surface:
         self,
         labels: np.ndarray,
         reg_ctable: np.ndarray,
-        reg_names: List[str],
+        reg_names: list[str],
         parc_name: str,
     ) -> None:
         """
@@ -1062,7 +1064,7 @@ class Surface:
 
     ##############################################################################################
     def _get_parcellation_data(
-        self, annotation: Union[str, Path, cltfree.AnnotParcellation]
+        self, annotation: str | Path | cltfree.AnnotParcellation
     ) -> cltfree.AnnotParcellation:
         """
         Load or retrieve parcellation data from annotation file or object.
@@ -1147,9 +1149,9 @@ class Surface:
     ##############################################################################################
     def load_scalar_maps(
         self,
-        scalar_map: Union[str, Path, np.ndarray, pd.DataFrame],
-        annotation: Union[str, Path, cltfree.AnnotParcellation] = None,
-        maps_names: Union[str, List[str]] = None,
+        scalar_map: str | Path | np.ndarray | pd.DataFrame,
+        annotation: str | Path | cltfree.AnnotParcellation = None,
+        maps_names: str | list[str] = None,
     ) -> None:
         """
         Load data from a FreeSurfer vertex-wise map, a numpy array, a CSV file or
@@ -1390,10 +1392,12 @@ class Surface:
                 # Store the map data in the mesh point data
                 self.mesh.point_data[map_name] = map_data
 
-        except:
+        except Exception as err:
             if isinstance(scalar_map, (str, Path)):
                 if not os.path.isfile(scalar_map):
-                    raise FileNotFoundError(f"Map file not found: {scalar_map}")
+                    raise FileNotFoundError(
+                        f"Map file not found: {scalar_map}"
+                    ) from err
 
                 # Read the map file
                 tmp_map = nib.freesurfer.read_morph_data(str(scalar_map))
@@ -1406,23 +1410,23 @@ class Surface:
                         if len(maps_names) != 1:
                             raise ValueError(
                                 "maps_names must be a single string or a list with one name"
-                            )
+                            ) from err
 
                         self.mesh.point_data[maps_names[0]] = tmp_map
 
                 else:
                     raise ValueError(
                         f"Map file {scalar_map} does not match the number of vertices"
-                    )
+                    ) from err
 
     ###############################################################################################
     def separate_mesh_components(
         self,
-        component_labels: Optional[str] = "components",
-        labels_to_extract: Optional[List[int]] = None,
+        component_labels: str | None = "components",
+        labels_to_extract: list[int] | None = None,
         clean_mesh: bool = True,
         preserve_order: bool = False,
-    ) -> List[pv.PolyData]:
+    ) -> list[pv.PolyData]:
         """
         Separate a mesh into independent submeshes based on connected component labels.
 
@@ -1594,6 +1598,7 @@ class Surface:
             warnings.warn(
                 "Non-triangular faces detected. Only triangular faces are supported.",
                 UserWarning,
+                stacklevel=2,
             )
 
         triangle_faces = faces_data[:, 1:4]  # Extract vertex indices only
@@ -1612,7 +1617,9 @@ class Surface:
 
             if len(vertex_indices) == 0:
                 warnings.warn(
-                    f"No vertices found for component label {label}", UserWarning
+                    f"No vertices found for component label {label}",
+                    UserWarning,
+                    stacklevel=2,
                 )
                 continue
 
@@ -1622,7 +1629,9 @@ class Surface:
 
             if len(component_faces) == 0:
                 warnings.warn(
-                    f"No faces found for component label {label}", UserWarning
+                    f"No faces found for component label {label}",
+                    UserWarning,
+                    stacklevel=2,
                 )
                 continue
 
@@ -1714,7 +1723,7 @@ class Surface:
         return submeshes
 
     ###############################################################################################
-    def list_overlays(self) -> Dict[str, str]:
+    def list_overlays(self) -> dict[str, str]:
         """
         List all available surface overlays and their data types.
 
@@ -1886,12 +1895,12 @@ class Surface:
                     remaining_overlays = list(self.mesh.point_data.keys())
                     if remaining_overlays:
                         self.mesh.set_active_scalars(remaining_overlays[0])
-        except:
+        except Exception:
             # If there's any issue with active scalars, just continue
             pass
 
     ##############################################################################################
-    def get_overlay_info(self, overlay_name: str) -> Dict:
+    def get_overlay_info(self, overlay_name: str) -> dict:
         """
         Get information about a specific surface overlay.
 
@@ -2019,7 +2028,7 @@ class Surface:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: Tuple = (128, 128, 128, 255),
+        range_color: tuple = (128, 128, 128, 255),
     ) -> None:
         """
         Compute vertices colors for visualization based on the specified overlay.
@@ -2146,7 +2155,7 @@ class Surface:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: Tuple = (128, 128, 128, 255),
+        range_color: tuple = (128, 128, 128, 255),
     ) -> None:
         """
         Prepare vertices colors for visualization based on the specified overlay.
@@ -2226,10 +2235,10 @@ class Surface:
             )  # Handle NaNs and infinities
             self.mesh.point_data[overlay_name] = vertex_values
 
-        except KeyError:
+        except KeyError as err:
             raise ValueError(
                 f"Data array '{overlay_name}' not found in surface point_data"
-            )
+            ) from err
 
         # Apply colors to mesh data
         self.mesh.point_data["rgba"] = self.get_vertexwise_colors(
@@ -2369,7 +2378,7 @@ class Surface:
     #############################################################################################
     def map_volume_to_surface(
         self,
-        image: Union[str, np.ndarray, nib.Nifti1Image],
+        image: str | np.ndarray | nib.Nifti1Image,
         method: str = "nilearn",
         interp_method: str = "linear",
         overlay_name: str = None,
@@ -2531,11 +2540,11 @@ class Surface:
 
             try:
                 from nilearn import surface as nlsurf
-            except ImportError:
+            except ImportError as err:
                 raise ImportError(
                     "nilearn is required for this projection method. "
                     "Install with: pip install nilearn"
-                )
+                ) from err
 
             # Get mesh faces in correct format for nilearn
             faces = self.mesh.faces.reshape(-1, 4)[:, 1:4]
@@ -2757,7 +2766,7 @@ class Surface:
         faces = self.mesh.regular_faces
 
         with open(filename, "w") as f:
-            f.write(f"# OBJ file exported from Surface class\n")
+            f.write("# OBJ file exported from Surface class\n")
             f.write(f"# Vertices: {len(vertices)}\n")
             f.write(f"# Faces: {len(faces)}\n\n")
 
@@ -3034,7 +3043,7 @@ class Surface:
             annot_obj.create_from_data(
                 maps_array, ctable, struct_names, annot_id=parc_name
             )
-            annot_obj.save_annotation(filename, force=overwrite)
+            annot_obj.save_annotation(filename, overwrite=overwrite)
         else:
             print(
                 f"Warning: No colortable found for map '{parc_name}'. Annotation file will not be saved."
@@ -3043,7 +3052,7 @@ class Surface:
     ###############################################################################################
     def apply_cras(
         self,
-        cras: Union[str, Path, np.ndarray, tuple, list],
+        cras: str | Path | np.ndarray | tuple | list,
         source: bool = True,
         inverse: bool = False,
     ) -> "Surface":
@@ -3217,9 +3226,9 @@ class Surface:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: Tuple = (128, 128, 128, 255),
+        range_color: tuple = (128, 128, 128, 255),
         use_opacity: bool = False,
-        views: Union[str, List[str]] = ["lateral"],
+        views: str | list[str] = None,
         views_orientation: str = "grid",
         hemi: str = "lh",
         notebook: bool = False,
@@ -3305,6 +3314,8 @@ class Surface:
 
         # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
+        if views is None:
+            views = ["lateral"]
         if overlay_name is None:
             overlay_name = self.active_scalar
 
@@ -3344,10 +3355,10 @@ class Surface:
 
 #################################################################################################
 def merge_surfaces(
-    surfaces: List[Union[str, Path, Surface]],
+    surfaces: list[str | Path | Surface],
     color_table: dict = None,
     map_name: str = "surf_id",
-) -> Union[Surface, None]:
+) -> Surface | None:
     """
     Merge multiple surface meshes into a single surface with distinct region IDs.
     Combines multiple surface meshes into one, assigning unique IDs to each
@@ -3493,8 +3504,8 @@ def merge_surfaces(
 
 ################################################################################################
 def create_surface_colortable(
-    colors: Union[str, List[str], np.ndarray],
-    struct_names: List[str] = None,
+    colors: str | list[str] | np.ndarray,
+    struct_names: list[str] = None,
     alpha: float = 1.0,
 ) -> dict:
     """

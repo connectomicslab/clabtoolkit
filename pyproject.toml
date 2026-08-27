@@ -14,7 +14,7 @@ maintainers = [
 ]
 license = "Apache-2.0"
 readme = "README.rst"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 keywords = ["neuroimaging", "image-processing", "bids", "freesurfer", "connectivity"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -23,10 +23,9 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
@@ -92,7 +91,9 @@ clabtoolkit = ["config/*"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py39"
+target-version = "py311"
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -106,15 +107,19 @@ ignore = [
     "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
+    # Deprecated in ruff, and isinstance(x, int | float) builds a union object
+    # at every call, so it is measurably slower than the tuple form in the
+    # per-voxel/per-vertex hot paths here.
+    "UP038",  # non-pep604-isinstance
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**/*" = ["S101", "D"]
 
 [tool.black]
 line-length = 88
-target-version = ['py39', 'py310', 'py311', 'py312']
+target-version = ['py311', 'py312', 'py313']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -161,7 +166,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -182,10 +187,29 @@ module = [
 ]
 ignore_missing_imports = true
 
+[tool.check-manifest]
+# Developer-machine configuration that has no place in a source distribution.
+ignore = [
+    ".editorconfig",
+    ".pre-commit-config.yaml",
+    ".readthedocs.yml",
+    "environment_tmp.yaml",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "docs", "notebooks", "usage_examples"]
+# clabtoolkit's job is to drive external neuroimaging binaries (FreeSurfer, ANTs,
+# containers), so importing subprocess and calling it with an argv list is the
+# intended design, not a finding. Everything else is still reported.
+skips = [
+    "B404",  # import subprocess
+    "B603",  # subprocess call without shell=True (argv lists are the safe form)
+]
+
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py39, py310, py311, py312, lint, type-check
+envlist = py311, py312, py313, lint, type-check
 isolated_build = true
 
 [testenv]

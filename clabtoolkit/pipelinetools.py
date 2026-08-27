@@ -2,21 +2,16 @@
 import json
 import os
 import queue
-import re
-import shutil
 import threading
 import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import glob
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 
 # Third-party imports
-import numpy as np
 import pandas as pd
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -52,8 +47,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="ipykernel
 ####################################################################################################
 ####################################################################################################
 def get_ids2process(
-    ids: Union[str, List[str], None] = None, in_dir: str = None
-) -> List[str]:
+    ids: str | list[str] | None = None, in_dir: str = None
+) -> list[str]:
     """
     Get list of subject IDs to process from various input sources.
 
@@ -131,7 +126,7 @@ def get_ids2process(
 
         # File path
         if os.path.isfile(ids):
-            with open(ids, "r", encoding="utf-8") as f:
+            with open(ids, encoding="utf-8") as f:
                 return [line.strip() for line in f if line.strip()]
 
         # Comma-separated or single ID
@@ -151,7 +146,7 @@ def get_ids2process(
 ####################################################################################################
 def create_processing_status_table(
     deriv_dir: str,
-    subj_ids: Union[list, str],
+    subj_ids: list | str,
     output_table: str = None,
     n_jobs: int = -1,
 ):
@@ -202,7 +197,6 @@ def create_processing_status_table(
     """
 
     from joblib import Parallel, delayed
-    from . import morphometrytools as cltmorpho
 
     # Initialize rich console
     console = Console()
@@ -220,7 +214,7 @@ def create_processing_status_table(
         if not os.path.isfile(subj_ids):
             raise FileNotFoundError(f"The file {subj_ids} does not exist.")
         else:
-            with open(subj_ids, "r") as f:
+            with open(subj_ids) as f:
                 subj_list = f.read().splitlines()
     elif isinstance(subj_ids, list):
         if len(subj_ids) == 0:
@@ -249,7 +243,7 @@ def create_processing_status_table(
         try:
             # Parse the subject ID
             id_dict = cltbids.str2entity(full_id)
-            subject = id_dict["sub"]
+            id_dict["sub"]
 
             # Get entity information for this subject
             ent_list = cltbids.entities4table(selected_entities=full_id)
@@ -317,7 +311,6 @@ def create_processing_status_table(
             raise e
 
     # Use Rich for progress tracking
-    all_results = []
     stop_monitor = threading.Event()
 
     # Start a separate thread for the progress bar
@@ -470,16 +463,8 @@ def process_freesurfer_subject(args):
 ########################################################################################################
 def scan_derivatives(
     pipe_dir: str,
-    subj_ids: Union[str, list] = None,
-    extensions: list = [
-        ".nii.gz",
-        ".nii",
-        ".mgz",
-        ".stats",
-        ".annot",
-        ".gii",
-        ".gii.gz",
-    ],
+    subj_ids: str | list = None,
+    extensions: list = None,
 ) -> list:
     """
     Recursively collect all matching files under the derivatives folder.
@@ -503,6 +488,8 @@ def scan_derivatives(
 
     """
     # Detect all the directories in case no subject IDs are provided, just to check if there are any subject folders in the derivatives
+    if extensions is None:
+        extensions = [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"]
     if subj_ids is None:
         subj_ids = get_ids2process(None, in_dir=pipe_dir)
 
@@ -586,17 +573,9 @@ def build_inventory(
     pipe_index: int,
     pipe_total: int,
     progress: Progress,
-    subj_ids: Union[str, list] = None,
-    extensions: list = [
-        ".nii.gz",
-        ".nii",
-        ".mgz",
-        ".stats",
-        ".annot",
-        ".gii",
-        ".gii.gz",
-    ],
-    output_csv: Union[str, Path] = None,
+    subj_ids: str | list = None,
+    extensions: list = None,
+    output_csv: str | Path = None,
     n_workers: int = 8,
 ) -> pd.DataFrame:
     """
@@ -633,6 +612,8 @@ def build_inventory(
     pd.DataFrame
         Inventory table for this pipeline.
     """
+    if extensions is None:
+        extensions = [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"]
     pipe_dir = os.path.join(deriv_dir, pipe_id)
     bar_label = f"Pipeline: {pipe_id} [{pipe_index}/{pipe_total}]"
 
@@ -747,18 +728,10 @@ def build_inventory(
 ####################################################################################################
 def build_derivatives_inventory(
     deriv_dir: str,
-    pipe_dirs: Union[list, None] = None,
-    subj_ids: Union[str, list] = None,
-    extensions: list = [
-        ".nii.gz",
-        ".nii",
-        ".mgz",
-        ".stats",
-        ".annot",
-        ".gii",
-        ".gii.gz",
-    ],
-    output_csv: Union[str, Path] = None,
+    pipe_dirs: list | None = None,
+    subj_ids: str | list = None,
+    extensions: list = None,
+    output_csv: str | Path = None,
     n_workers: int = 8,
 ) -> pd.DataFrame:
     """
@@ -793,6 +766,8 @@ def build_derivatives_inventory(
     ValueError
         If no pipeline folders are found or provided.
     """
+    if extensions is None:
+        extensions = [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"]
     if pipe_dirs is None:
         pipe_dirs = cltbids.get_derivatives_folders(deriv_dir)
     if not pipe_dirs:
@@ -840,10 +815,10 @@ def build_derivatives_inventory(
 
 ####################################################################################################
 def get_processing_status_details_json(
-    proc_status_df: Union[str, dict],
-    subj_ids: Union[List[str], str],
+    proc_status_df: str | dict,
+    subj_ids: list[str] | str,
     deriv_dir: str,
-    pipe_dirs: Union[List[str], str] = None,
+    pipe_dirs: list[str] | str = None,
     out_json: str = None,
     only_ids: bool = False,
 ):
@@ -880,9 +855,7 @@ def get_processing_status_details_json(
         Path to the saved JSON file if out_json is provided, otherwise None.
     """
 
-    from . import morphometrytools as cltmorpho
     import os
-    import numpy as np
 
     if isinstance(proc_status_df, str):
         if not os.path.isfile(proc_status_df):
@@ -897,7 +870,7 @@ def get_processing_status_details_json(
         if not os.path.isfile(subj_ids):
             raise FileNotFoundError(f"The file {subj_ids} does not exist.")
         else:
-            with open(subj_ids, "r") as f:
+            with open(subj_ids) as f:
                 subj_list = f.read().splitlines()
     elif isinstance(subj_ids, list):
         if len(subj_ids) == 0:
@@ -1091,10 +1064,10 @@ def get_processing_status_details_json(
 
 ####################################################################################################
 def get_processing_status_details_sqlite3(
-    proc_status_df: Union[str, dict],
-    subj_ids: Union[List[str], str],
+    proc_status_df: str | dict,
+    subj_ids: list[str] | str,
     deriv_dir: str,
-    pipe_dirs: Union[List[str], str] = None,
+    pipe_dirs: list[str] | str = None,
     out_json: str = None,
     db_path: str = None,
     only_ids: bool = False,
@@ -1136,7 +1109,6 @@ def get_processing_status_details_sqlite3(
         Path to the saved JSON file if out_json is provided, otherwise None.
     """
 
-    from . import morphometrytools as cltmorpho
     import sqlite3
 
     if isinstance(proc_status_df, str):
@@ -1152,7 +1124,7 @@ def get_processing_status_details_sqlite3(
         if not os.path.isfile(subj_ids):
             raise FileNotFoundError(f"The file {subj_ids} does not exist.")
         else:
-            with open(subj_ids, "r") as f:
+            with open(subj_ids) as f:
                 subj_list = f.read().splitlines()
     elif isinstance(subj_ids, list):
         if len(subj_ids) == 0:
@@ -1459,6 +1431,7 @@ def query_processing_status_db(
         Result of the query as a DataFrame.
     """
     import sqlite3
+
     import pandas as pd
 
     conn = sqlite3.connect(db_path)
@@ -1493,7 +1466,7 @@ def query_processing_status_db(
     elif query_type == "missing_files_count":
         if pipeline:
             query = """
-            SELECT m.subject_id, COUNT(*) as missing_count 
+            SELECT m.subject_id, COUNT(*) as missing_count
             FROM mismatches m
             JOIN file_details f ON m.id = f.mismatch_id
             WHERE f.status = 'missing' AND m.pipeline_id = ?
@@ -1503,7 +1476,7 @@ def query_processing_status_db(
             df = pd.read_sql_query(query, conn, params=(pipeline,))
         else:
             query = """
-            SELECT m.subject_id, m.pipeline_id, COUNT(*) as missing_count 
+            SELECT m.subject_id, m.pipeline_id, COUNT(*) as missing_count
             FROM mismatches m
             JOIN file_details f ON m.id = f.mismatch_id
             WHERE f.status = 'missing'
@@ -1515,7 +1488,7 @@ def query_processing_status_db(
     elif query_type == "extra_files_count":
         if pipeline:
             query = """
-            SELECT m.subject_id, COUNT(*) as extra_count 
+            SELECT m.subject_id, COUNT(*) as extra_count
             FROM mismatches m
             JOIN file_details f ON m.id = f.mismatch_id
             WHERE f.status = 'extra' AND m.pipeline_id = ?
@@ -1525,7 +1498,7 @@ def query_processing_status_db(
             df = pd.read_sql_query(query, conn, params=(pipeline,))
         else:
             query = """
-            SELECT m.subject_id, m.pipeline_id, COUNT(*) as extra_count 
+            SELECT m.subject_id, m.pipeline_id, COUNT(*) as extra_count
             FROM mismatches m
             JOIN file_details f ON m.id = f.mismatch_id
             WHERE f.status = 'extra'
@@ -1561,8 +1534,6 @@ def export_db_to_json(db_path, out_json):
         Dictionary containing the details of the processing status of the subjects.
     """
     import sqlite3
-    import json
-    import os
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -1581,8 +1552,8 @@ def export_db_to_json(db_path, out_json):
         # Get all mismatches for this pipeline
         cursor.execute(
             """
-        SELECT id, subject_id 
-        FROM mismatches 
+        SELECT id, subject_id
+        FROM mismatches
         WHERE pipeline_id = ?
         """,
             (pipe_id,),
@@ -1593,8 +1564,8 @@ def export_db_to_json(db_path, out_json):
             # Get missing files
             cursor.execute(
                 """
-            SELECT file_path 
-            FROM file_details 
+            SELECT file_path
+            FROM file_details
             WHERE mismatch_id = ? AND status = 'missing'
             """,
                 (mismatch_id,),
@@ -1604,8 +1575,8 @@ def export_db_to_json(db_path, out_json):
             # Get extra files
             cursor.execute(
                 """
-            SELECT file_path 
-            FROM file_details 
+            SELECT file_path
+            FROM file_details
             WHERE mismatch_id = ? AND status = 'extra'
             """,
                 (mismatch_id,),

@@ -1,39 +1,39 @@
+import copy
+import json
 import os
-import time
+import shutil
 import subprocess
 import sys
-from glob import glob
-from typing import List, Union, Tuple, Dict
-from pathlib import Path
-from datetime import datetime
-import warnings
-import shutil
-import json
+import time
 import uuid
-import numpy as np
-import nibabel as nib
-import pandas as pd
+import warnings
 from collections import defaultdict
-import copy
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from rich.progress import (
-    Progress,
-    BarColumn,
-    TimeRemainingColumn,
-    TextColumn,
-    MofNCompleteColumn,
-    SpinnerColumn,
-)
+from datetime import datetime
+from glob import glob
+from pathlib import Path
+
+import nibabel as nib
+import numpy as np
+import pandas as pd
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
+
+from . import bidstools as cltbids
+from . import colorstools as cltcol
 
 # Importing local modules
 from . import misctools as cltmisc
-from . import bidstools as cltbids
-from . import pipelinetools as cltpipe
-from . import colorstools as cltcol
 from . import misctools_utils as cltmisc_utils
+from . import pipelinetools as cltpipe
 
 
 ####################################################################################################
@@ -60,11 +60,11 @@ class AnnotParcellation:
     ####################################################################################################
     def __init__(
         self,
-        parc_file: Union[str, Path] = None,
+        parc_file: str | Path = None,
         annot_id: str = None,
-        ref_surf: Union[str, Path] = None,
+        ref_surf: str | Path = None,
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
+        cont_image: str | Path = None,
     ):
         """
         Initialize the AnnotParcellation object
@@ -113,11 +113,11 @@ class AnnotParcellation:
     ####################################################################################################
     def load_from_file(
         self,
-        parc_file: Union[str, Path],
+        parc_file: str | Path,
         annot_id: str = None,
-        ref_surf: Union[str, Path] = None,
+        ref_surf: str | Path = None,
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
+        cont_image: str | Path = None,
     ):
         """
         Load parcellation data from file
@@ -221,7 +221,7 @@ class AnnotParcellation:
 
         # Detect the codes in the table that are not in the vertex wise data
         # Find the indexes where the codes are not in the vertex wise data
-        tmp_ind = np.where(np.isin(reg_table[:, 4], np.unique(codes)) == False)[0]
+        tmp_ind = np.where(~np.isin(reg_table[:, 4], np.unique(codes)))[0]
 
         # If there are codes that are not in the vertex wise data, then remove them from the table
         if tmp_ind.size > 0:
@@ -345,7 +345,7 @@ class AnnotParcellation:
 
         if self.codes is not None and self.regtable is not None:
             table_codes = set(self.regtable[:, 4].astype(int))
-            vertex_codes = set(int(c) for c in np.unique(self.codes))
+            vertex_codes = {int(c) for c in np.unique(self.codes)}
 
             # Labels found on vertices but missing from the table
             info["labels_not_in_table"] = sorted(vertex_codes - table_codes)
@@ -481,7 +481,7 @@ class AnnotParcellation:
 
         # Detect the codes in the table that are not in the vertex wise data
         # Find the indexes where the codes are not in the vertex wise data
-        tmp_ind = np.where(np.isin(regtable[:, 4], np.unique(codes)) == False)[0]
+        tmp_ind = np.where(~np.isin(regtable[:, 4], np.unique(codes)))[0]
 
         # If there are codes that are not in the vertex wise data, then remove them from the table
         if tmp_ind.size > 0:
@@ -499,14 +499,14 @@ class AnnotParcellation:
             self.name = os.path.basename(filename)
 
     ####################################################################################################
-    def save_annotation(self, out_file: str = None, force: bool = True):
+    def save_annotation(self, out_file: str = None, overwrite: bool = True):
         """
         Save the annotation file. If the file already exists, it will be overwritten.
 
         Parameters
         ----------
         out_file     - Optional  : Output annotation file:
-        force        - Optional  : Force to overwrite the annotation file. Default is True:
+        overwrite        - Optional  : overwrite to overwrite the annotation file. Default is True:
 
         Returns
         -------
@@ -523,11 +523,11 @@ class AnnotParcellation:
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
 
-        if os.path.exists(out_file) and not force:
+        if os.path.exists(out_file) and not overwrite:
             raise ValueError(
-                "The annotation file already exists. Set force to True to overwrite it."
+                "The annotation file already exists. Set overwrite to True to overwrite it."
             )
-        elif os.path.exists(out_file) and force:
+        elif os.path.exists(out_file) and overwrite:
             os.remove(out_file)
 
         # Restructuring the codes to consecutive numbers
@@ -779,8 +779,8 @@ class AnnotParcellation:
     #####################################################################################################
     def correct_vertexwise_parcellation(
         self,
-        surf: Union[str, Path],
-        cortex_file: Union[str, Path] = None,
+        surf: str | Path,
+        cortex_file: str | Path = None,
         min_cluster_size: int = None,
     ):
         """
@@ -1033,7 +1033,7 @@ class AnnotParcellation:
         reg_ctable = self.regtable
         reg_names = self.regnames
 
-        ctx_lab = vert_lab[cortex_label].astype(
+        vert_lab[cortex_label].astype(
             int
         )  # Vertices from the cortex label file that have a label in the annotation file
 
@@ -1062,7 +1062,6 @@ class AnnotParcellation:
 
         # Detect if the array bound_vert is equal to bound_vert_orig
         bound = np.array_equal(bound_vert, bound_vert_orig)
-        it_count = 0
         while len(bound_vert) > 0:
 
             if not bound:
@@ -1095,7 +1094,7 @@ class AnnotParcellation:
                     # Assign the most frequent label to the vertex
                     vert_lab[i] = most_frequent_label
 
-                ctx_lab = vert_lab[cortex_label].astype(
+                vert_lab[cortex_label].astype(
                     int
                 )  # Vertices from the cortex label file that have a label in the annotation file
 
@@ -1147,7 +1146,7 @@ class AnnotParcellation:
         prefix2add: str = None,
         reg_offset: int = 1000,
         hemi: str = "L",
-        tsv_file: Union[str, Path] = None,
+        tsv_file: str | Path = None,
         output_format: str = None,
     ):
         """
@@ -1348,9 +1347,9 @@ class AnnotParcellation:
     ####################################################################################################
     def map_values(
         self,
-        regional_values: Union[str, pd.DataFrame, np.ndarray],
+        regional_values: str | pd.DataFrame | np.ndarray,
         is_dataframe: bool = False,
-    ) -> Union[np.ndarray, pd.DataFrame]:
+    ) -> np.ndarray | pd.DataFrame:
         """
         Map regional values to vertex-wise values using the parcellation codes and region table.
 
@@ -1542,7 +1541,6 @@ class AnnotParcellation:
                     # Convert the pandas dataframe to a numpy array
                     col_names = regional_values.columns.tolist()
                     regional_values = regional_values.to_numpy()
-                    is_df = True
 
         elif isinstance(regional_values, np.ndarray):
             col_names = None
@@ -1790,7 +1788,7 @@ class AnnotParcellation:
         label_table = nib.gifti.GiftiLabelTable()
         code_to_row: dict[int, int] = {}
 
-        for row_idx, (row, name) in enumerate(zip(ctab, names)):
+        for row_idx, (row, name) in enumerate(zip(ctab, names, strict=False)):
             r, g, b, a, code = (
                 int(row[0]),
                 int(row[1]),
@@ -1846,132 +1844,132 @@ class AnnotParcellation:
     ####################################################################################################
     @staticmethod
     def gcs2annot(
-        gcs_file: Union[str, Path],
-        annot_file: Union[str, Path] = None,
-        freesurfer_dir: Union[str, Path] = None,
+        gcs_file: str | Path,
+        annot_file: str | Path = None,
+        freesurfer_dir: str | Path = None,
         ref_id: str = "fsaverage",
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
+        cont_image: str | Path = None,
     ):
         """
         Convert FreeSurfer GCS (Gaussian Classifier Surface) files to annotation files.
-        
-        This method applies a trained GCS classifier to generate subject-specific 
-        parcellations. GCS files contain statistical models trained on manual 
-        parcellations that can be applied to new subjects to automatically generate 
+
+        This method applies a trained GCS classifier to generate subject-specific
+        parcellations. GCS files contain statistical models trained on manual
+        parcellations that can be applied to new subjects to automatically generate
         anatomically consistent region labels.
-        
+
         Parameters
         ----------
         gcs_file : str or Path
-            Path to the input GCS classifier file. These files contain trained 
-            Gaussian classifiers for automatic parcellation (e.g., aparc.gcs, 
-            aparc.a2009s.gcs). The hemisphere is automatically detected from 
+            Path to the input GCS classifier file. These files contain trained
+            Gaussian classifiers for automatic parcellation (e.g., aparc.gcs,
+            aparc.a2009s.gcs). The hemisphere is automatically detected from
             the filename.
-            
+
         annot_file : str or Path, optional
-            Path for the output annotation file. If None, the output file is 
-            created in the same directory as the GCS file with the extension 
+            Path for the output annotation file. If None, the output file is
+            created in the same directory as the GCS file with the extension
             changed from .gcs to .annot. Default is None.
-            
+
         freesurfer_dir : str or Path, optional
-            Path to the FreeSurfer subjects directory containing the reference 
-            subject data. If None, uses the SUBJECTS_DIR environment variable. 
+            Path to the FreeSurfer subjects directory containing the reference
+            subject data. If None, uses the SUBJECTS_DIR environment variable.
             The directory will be created if it doesn't exist. Default is None.
-            
+
         ref_id : str, optional
-            Subject ID of the reference subject containing the surface files 
-            needed for classification (sphere.reg, cortex.label, aseg.mgz). 
+            Subject ID of the reference subject containing the surface files
+            needed for classification (sphere.reg, cortex.label, aseg.mgz).
             Typically 'fsaverage' for standard space analysis. Default is 'fsaverage'.
-            
+
         cont_tech : str, optional
-            Container technology for running FreeSurfer commands. Options include 
-            'local' (run directly), 'singularity', 'docker', or other supported 
+            Container technology for running FreeSurfer commands. Options include
+            'local' (run directly), 'singularity', 'docker', or other supported
             containerization methods. Default is 'local'.
-            
+
         cont_image : str or Path, optional
-            Container image specification when using containerized execution. 
-            Required when cont_tech is not 'local'. Should specify the FreeSurfer 
+            Container image specification when using containerized execution.
+            Required when cont_tech is not 'local'. Should specify the FreeSurfer
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
-        
+
         Returns
         -------
         annot_file : str
-            Path to the created annotation file containing the classified 
+            Path to the created annotation file containing the classified
             parcellation labels.
-        
+
         Raises
         ------
         ValueError
             If the input GCS file does not exist.
-            
+
         ValueError
-            If neither freesurfer_dir is provided nor SUBJECTS_DIR environment 
+            If neither freesurfer_dir is provided nor SUBJECTS_DIR environment
             variable is set, and FREESURFER_HOME is also not available.
-        
+
         Notes
         -----
-        This method uses FreeSurfer's `mris_ca_label` command to apply the GCS 
+        This method uses FreeSurfer's `mris_ca_label` command to apply the GCS
         classifier. The command structure is:
-        
+
         .. code-block:: bash
-        
+
             mris_ca_label -l cortex.label -aseg aseg.mgz subject_id hemisphere \\
                         sphere.reg classifier.gcs output.annot
-        
-        The classification process requires several FreeSurfer files from the 
+
+        The classification process requires several FreeSurfer files from the
         reference subject:
-        
+
         - **cortex.label**: Defines the cortical vertices to be labeled
         - **aseg.mgz**: Volumetric segmentation for spatial context
         - **sphere.reg**: Spherical surface registration for spatial normalization
-        
-        The method automatically manages the FreeSurfer environment by setting 
-        the SUBJECTS_DIR variable and ensuring the necessary directory structure 
+
+        The method automatically manages the FreeSurfer environment by setting
+        the SUBJECTS_DIR variable and ensuring the necessary directory structure
         exists. The hemisphere is detected from the GCS filename.
-        
+
         GCS-based parcellation is particularly useful for:
-        
+
         - Applying consistent parcellation schemes across subjects
         - Automated processing pipelines
         - Reproducing published parcellation protocols
         - Cross-study standardization
-        
+
         Examples
         --------
         Basic GCS application with default settings:
-        
+
         >>> # Apply Desikan-Killiany parcellation
         >>> gcs_file = '/path/to/lh.aparc.gcs'
         >>> annot_file = AnnotParcellation.gcs2annot(gcs_file)
         >>> print(f"Created parcellation: {annot_file}")
-        
+
         Specify custom FreeSurfer directory:
-        
+
         >>> # Use custom subjects directory
         >>> gcs_file = '/atlases/rh.aparc.a2009s.gcs'
         >>> fs_dir = '/data/freesurfer_subjects'
-        >>> 
+        >>>
         >>> result = AnnotParcellation.gcs2annot(
         ...     gcs_file=gcs_file,
         ...     freesurfer_dir=fs_dir,
         ...     ref_id='fsaverage'
         ... )
-        
+
         Apply to individual subject space:
-        
+
         >>> # Use subject-specific reference
         >>> gcs_file = '/atlases/lh.aparc.gcs'
         >>> output_file = '/subjects/sub001/label/lh.aparc.annot'
-        >>> 
+        >>>
         >>> annot_file = AnnotParcellation.gcs2annot(
         ...     gcs_file=gcs_file,
         ...     annot_file=output_file,
         ...     ref_id='sub001'  # Use subject's own surfaces
         ... )
-        
+
         Using Docker for processing:
-        
+
         >>> # Run classification in container
         >>> result = AnnotParcellation.gcs2annot(
         ...     gcs_file='parcellation.gcs',
@@ -1979,23 +1977,23 @@ class AnnotParcellation:
         ...     cont_tech='docker',
         ...     cont_image='freesurfer/freesurfer:7.2.0'
         ... )
-        
+
         Batch processing multiple GCS files:
-        
+
         >>> import glob
         >>> gcs_files = glob.glob('/atlases/*.gcs')
-        >>> 
+        >>>
         >>> for gcs_file in gcs_files:
         ...     output_dir = '/parcellations'
         ...     basename = os.path.basename(gcs_file).replace('.gcs', '.annot')
         ...     output_file = os.path.join(output_dir, basename)
-        ...     
+        ...
         ...     AnnotParcellation.gcs2annot(
         ...         gcs_file=gcs_file,
         ...         annot_file=output_file,
         ...         freesurfer_dir='/data/freesurfer'
         ...     )
-        
+
         See Also
         --------
         mris_ca_label : FreeSurfer command for applying GCS classifiers
@@ -2087,7 +2085,7 @@ class AnnotParcellation:
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
         subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+            cmd_cont, stdout=subprocess.PIPE, text=True
         )  # Running container command
 
         return annot_file
@@ -2095,117 +2093,117 @@ class AnnotParcellation:
     ####################################################################################################
     def annot2gcs(
         self,
-        gcs_file: Union[str, Path] = None,
-        freesurfer_dir: Union[str, Path] = None,
+        gcs_file: str | Path = None,
+        freesurfer_dir: str | Path = None,
         fssubj_id: str = None,
         hemi: str = None,
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
+        cont_image: str | Path = None,
     ):
         """
         Convert FreeSurfer annotation files to GCS (Gaussian Classifier Surface) files.
-        
-        This method creates a trained Gaussian classifier from an existing manual 
-        or semi-manual parcellation. The resulting GCS file can be applied to new 
-        subjects to automatically generate parcellations with the same regional 
+
+        This method creates a trained Gaussian classifier from an existing manual
+        or semi-manual parcellation. The resulting GCS file can be applied to new
+        subjects to automatically generate parcellations with the same regional
         definitions and boundaries as the training annotation.
-        
+
         Parameters
         ----------
         gcs_file : str or Path, optional
-            Path for the output GCS classifier file. If None, the file is saved 
-            in the same directory as the annotation file with the extension 
+            Path for the output GCS classifier file. If None, the file is saved
+            in the same directory as the annotation file with the extension
             changed from .annot to .gcs. Default is None.
-            
+
         freesurfer_dir : str or Path, optional
-            Path to the FreeSurfer subjects directory containing the training 
-            subject data. If None, uses the SUBJECTS_DIR environment variable. 
+            Path to the FreeSurfer subjects directory containing the training
+            subject data. If None, uses the SUBJECTS_DIR environment variable.
             The directory will be created if it doesn't exist. Default is None.
-            
+
         fssubj_id : str, required
-            Subject ID of the FreeSurfer subject to use for training the classifier. 
-            This subject must have the required surface files (sphere.reg) and 
-            should be the same subject from which the annotation was derived. 
+            Subject ID of the FreeSurfer subject to use for training the classifier.
+            This subject must have the required surface files (sphere.reg) and
+            should be the same subject from which the annotation was derived.
             No default value - must be provided.
-            
+
         hemi : str, optional
-            Hemisphere specification ('lh' or 'rh'). If None, the hemisphere is 
+            Hemisphere specification ('lh' or 'rh'). If None, the hemisphere is
             automatically detected from the annotation filename. Default is None.
-            
+
         cont_tech : str, optional
-            Container technology for running FreeSurfer commands. Options include 
-            'local' (run directly), 'singularity', 'docker', or other supported 
+            Container technology for running FreeSurfer commands. Options include
+            'local' (run directly), 'singularity', 'docker', or other supported
             containerization methods. Default is 'local'.
-            
+
         cont_image : str or Path, optional
-            Container image specification when using containerized execution. 
-            Required when cont_tech is not 'local'. Should specify the FreeSurfer 
+            Container image specification when using containerized execution.
+            Required when cont_tech is not 'local'. Should specify the FreeSurfer
             container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
-        
+
         Returns
         -------
         gcs_name : str
             Filename (not full path) of the created GCS classifier file.
-        
+
         Raises
         ------
         ValueError
-            If SUBJECTS_DIR environment variable is not set and freesurfer_dir 
+            If SUBJECTS_DIR environment variable is not set and freesurfer_dir
             is not provided.
-            
+
         ValueError
             If fssubj_id is not provided (required parameter).
-            
+
         ValueError
             If the FreeSurfer subject directory does not exist.
-            
+
         ValueError
             If the required sphere.reg file is not found in the subject directory.
-            
+
         ValueError
-            If the hemisphere cannot be determined from the filename and is not 
+            If the hemisphere cannot be determined from the filename and is not
             provided as a parameter.
-        
+
         Notes
         -----
-        This method uses FreeSurfer's `mris_ca_train` command to create the GCS 
+        This method uses FreeSurfer's `mris_ca_train` command to create the GCS
         classifier. The process involves:
-        
-        1. **Color table creation**: Generates a temporary .ctab file with region 
+
+        1. **Color table creation**: Generates a temporary .ctab file with region
         names and RGB color values from the annotation.
-        
-        2. **Classifier training**: Uses spherical surface registration and the 
+
+        2. **Classifier training**: Uses spherical surface registration and the
         annotation labels to train Gaussian classifiers for each region.
-        
-        3. **Model output**: Creates a .gcs file containing the trained statistical 
+
+        3. **Model output**: Creates a .gcs file containing the trained statistical
         models that can be applied to new subjects.
-        
+
         The command structure is:
-        
+
         .. code-block:: bash
-        
+
             mris_ca_train -n 2 -t color_table.ctab hemisphere sphere.reg \\
                         annotation.annot subject_id output.gcs
-        
+
         Required FreeSurfer files for the training subject:
-        
+
         - **sphere.reg**: Spherical surface registration for spatial normalization
         - **Proper directory structure**: Standard FreeSurfer subject organization
-        
-        The resulting GCS file can be used with the `gcs2annot` method to apply 
+
+        The resulting GCS file can be used with the `gcs2annot` method to apply
         the same parcellation scheme to new subjects automatically.
-        
+
         Examples
         --------
         Basic GCS creation with required subject ID:
-        
+
         >>> # Train classifier from manual parcellation
         >>> annot = Annotation('/data/sub001/label/lh.manual.annot')
         >>> gcs_name = AnnotParcellation.annot2gcs(fssubj_id='sub001')
         >>> print(f"Created classifier: {gcs_name}")
-        
+
         Specify custom output location:
-        
+
         >>> # Save GCS file to specific location
         >>> output_file = '/atlases/custom_parcellation.gcs'
         >>> gcs_name = AnnotParcellation.annot2gcs(
@@ -2213,9 +2211,9 @@ class AnnotParcellation:
         ...     fssubj_id='fsaverage',
         ...     freesurfer_dir='/data/freesurfer'
         ... )
-        
+
         Create classifier from template subject:
-        
+
         >>> # Use fsaverage as training template
         >>> annot = Annotation('/templates/fsaverage/label/rh.custom.annot')
         >>> gcs_name = AnnotParcellation.annot2gcs(
@@ -2223,27 +2221,27 @@ class AnnotParcellation:
         ...     hemi='rh',
         ...     freesurfer_dir='/usr/local/freesurfer/subjects'
         ... )
-        
+
         Using Docker for training:
-        
+
         >>> # Train classifier in container environment
         >>> gcs_name = AnnotParcellation.annot2gcs(
         ...     fssubj_id='training_subject',
         ...     cont_tech='docker',
         ...     cont_image='freesurfer/freesurfer:7.2.0'
         ... )
-        
+
         Complete workflow - train and apply:
-        
+
         >>> # Step 1: Create GCS from manual annotation
         >>> manual_annot = AnnotParcellation('/manual/lh.expert_labels.annot')
         >>> gcs_file = '/classifiers/expert_parcellation.gcs'
-        >>> 
+        >>>
         >>> gcs_name = manual_annot.annot2gcs(
         ...     gcs_file=gcs_file,
         ...     fssubj_id='template_subject'
         ... )
-        >>> 
+        >>>
         >>> # Step 2: Apply to new subjects
         >>> for subject in ['sub002', 'sub003', 'sub004']:
         ...     output_annot = f'/results/{subject}/lh.expert_auto.annot'
@@ -2252,9 +2250,9 @@ class AnnotParcellation:
         ...         annot_file=output_annot,
         ...         ref_id=subject
         ...     )
-        
+
         Quality control after training:
-        
+
         >>> # Verify the trained classifier works
         >>> test_output = '/tmp/test_application.annot'
         >>> AnnotParcellation.gcs2annot(
@@ -2262,12 +2260,12 @@ class AnnotParcellation:
         ...     annot_file=test_output,
         ...     ref_id='fsaverage'
         ... )
-        >>> 
+        >>>
         >>> # Compare with original
         >>> original = AnnotParcellation('/original/annotation.annot')
         >>> test_result = AnnotParcellation(test_output)
         >>> # Implement comparison logic...
-        
+
         See Also
         --------
         gcs2annot : Apply GCS classifiers to generate annotations
@@ -2278,9 +2276,8 @@ class AnnotParcellation:
         if gcs_file is None:
             gcs_name = self.name.replace(".annot", ".gcs")
 
-            # Create te gcs folder if it does not exist
-            if gcs_folder is None:
-                gcs_folder = self.path
+            # Default the output folder to the annotation's own directory.
+            gcs_folder = self.path
 
             gcs_file = os.path.join(gcs_folder, gcs_name)
 
@@ -2302,14 +2299,7 @@ class AnnotParcellation:
         for roi_pos, roi_name in enumerate(self.regnames):
 
             luttable.append(
-                "{:<4} {:<40} {:>3} {:>3} {:>3} {:>3}".format(
-                    roi_pos + 1,
-                    roi_name,
-                    reg_colors[roi_pos, 0],
-                    reg_colors[roi_pos, 1],
-                    reg_colors[roi_pos, 2],
-                    0,
-                )
+                f"{roi_pos + 1:<4} {roi_name:<40} {reg_colors[roi_pos, 0]:>3} {reg_colors[roi_pos, 1]:>3} {reg_colors[roi_pos, 2]:>3} {0:>3}"
             )
 
         # Set the FreeSurfer directory
@@ -2345,18 +2335,14 @@ class AnnotParcellation:
         # If the freesurfer subject directory does not exist, raise an error
         if not os.path.isdir(os.path.join(freesurfer_dir, fssubj_id)):
             raise ValueError(
-                "The FreeSurfer subject directory for {} does not exist".format(
-                    fssubj_id
-                )
+                f"The FreeSurfer subject directory for {fssubj_id} does not exist"
             )
 
         if not os.path.isfile(
             os.path.join(freesurfer_dir, fssubj_id, "surf", "sphere.reg")
         ):
             raise ValueError(
-                "The FreeSurfer subject directory for {} does not contain the sphere.reg file".format(
-                    fssubj_id
-                )
+                f"The FreeSurfer subject directory for {fssubj_id} does not contain the sphere.reg file"
             )
 
         # Save the lookup table for the left hemisphere
@@ -2389,7 +2375,7 @@ class AnnotParcellation:
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
         subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+            cmd_cont, stdout=subprocess.PIPE, text=True
         )  # Running container command
 
         # Delete the ctab file
@@ -2401,10 +2387,10 @@ class AnnotParcellation:
     def group_into_lobes(
         self,
         grouping: str = "desikan",
-        lobes_json: Union[str, Path] = None,
-        out_annot: Union[str, Path] = None,
+        lobes_json: str | Path = None,
+        out_annot: str | Path = None,
         ctxprefix: str = None,
-        force: bool = False,
+        overwrite: bool = False,
     ):
         """
         Group parcellation regions into anatomical lobes for coarser-grained analysis.
@@ -2440,7 +2426,7 @@ class AnnotParcellation:
             distinguishing between hemispheres (e.g., 'lh_' or 'rh_') or different
             analysis contexts. If None, no prefix is added. Default is None.
 
-        force : bool, optional
+        overwrite : bool, optional
             Whether to overwrite existing output files. If False and the output
             file already exists, an error will be raised. If True, existing files
             will be overwritten without warning. Default is False.
@@ -2456,7 +2442,7 @@ class AnnotParcellation:
         Raises
         ------
         FileExistsError
-            If the output annotation file already exists and force=False.
+            If the output annotation file already exists and overwrite=False.
 
         FileNotFoundError
             If the specified lobes_json file does not exist.
@@ -2522,13 +2508,13 @@ class AnnotParcellation:
         ... )
 
 
-        Force overwrite existing files:
+        overwrite overwrite existing files:
 
         >>> # Overwrite existing lobar parcellation
         >>> lobar_parc = parc.group_into_lobes(
         ...     grouping='desikan',
         ...     out_annot='/existing/file.annot',
-        ...     force=True
+        ...     overwrite=True
         ... )
 
 
@@ -2572,8 +2558,8 @@ class AnnotParcellation:
             if len(reg_indexes) != 0:
                 reg_values = reg_codes[reg_indexes]
                 vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
-                orig_codes[np.isin(self.codes, reg_values) == True] = vert_val
-                new_codes[np.isin(self.codes, reg_values) == True] = i + 1
+                orig_codes[np.isin(self.codes, reg_values)] = vert_val
+                new_codes[np.isin(self.codes, reg_values)] = i + 1
 
                 # Concatenate the new table
                 new_table = np.concatenate(
@@ -2606,11 +2592,11 @@ class AnnotParcellation:
             if not os.path.exists(self.path):
                 os.makedirs(self.path, exist_ok=True)
 
-            if os.path.exists(out_annot) and not force:
+            if os.path.exists(out_annot) and not overwrite:
                 raise ValueError(
-                    "The output annotation file already exists. Use the force option to overwrite it."
+                    "The output annotation file already exists. Use the overwrite option to overwrite it."
                 )
-            elif os.path.exists(out_annot) and force:
+            elif os.path.exists(out_annot) and overwrite:
                 os.remove(out_annot)
 
             # Save the annotation file
@@ -2639,7 +2625,7 @@ class FreeSurferSubject:
     """
 
     ####################################################################################################
-    def __init__(self, subj_id: str, subjs_dir: Union[str, Path] = None):
+    def __init__(self, subj_id: str, subjs_dir: str | Path = None):
         """
         Initialize the FreeSurferSubject object with subject ID and subjects directory.
 
@@ -3053,19 +3039,19 @@ class FreeSurferSubject:
             ]
 
             # Check if the files exist in the FreeSurfer subject directory for auto-recon1
-            if all([os.path.exists(f) for f in arecon1_files]):
+            if all(os.path.exists(f) for f in arecon1_files):
                 arecon1_bool = True
             else:
                 arecon1_bool = False
 
             # Check if the files exist in the FreeSurfer subject directory for auto-recon2
-            if all([os.path.exists(f) for f in arecon2_files]):
+            if all(os.path.exists(f) for f in arecon2_files):
                 arecon2_bool = True
             else:
                 arecon2_bool = False
 
             # Check if the files exist in the FreeSurfer subject directory for auto-recon3
-            if all([os.path.exists(f) for f in arecon3_files]):
+            if all(os.path.exists(f) for f in arecon3_files):
                 arecon3_bool = True
             else:
                 arecon3_bool = False
@@ -3083,7 +3069,7 @@ class FreeSurferSubject:
         self.pstatus = pstatus
 
     ##################################################################################################
-    def get_cras(self) -> Tuple:
+    def get_cras(self) -> tuple:
         """
         Extract the CRAS (Center of Rotation in AC-PC Space) coordinates from the Talairach transform file.
         Reads the Talairach transform file (talairach.lta) to extract the CRAS coordinates,
@@ -3122,13 +3108,13 @@ class FreeSurferSubject:
     ####################################################################################################
     def launch_freesurfer(
         self,
-        t1w_img: Union[str, Path] = None,
-        proc_stage: Union[str, list] = "all",
-        extra_proc: Union[str, list] = None,
+        t1w_img: str | Path = None,
+        proc_stage: str | list = "all",
+        extra_proc: str | list = None,
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
-        fs_license: Union[str, Path] = None,
-        force=False,
+        cont_image: str | Path = None,
+        fs_license: str | Path = None,
+        overwrite=False,
     ):
         """
         Launch FreeSurfer recon-all processing with flexible options and containerization support.
@@ -3158,8 +3144,8 @@ class FreeSurferSubject:
         fs_license : str or Path, optional
             Path to FreeSurfer license file for containers.
 
-        force : bool, optional
-            Force reprocessing even if outputs exist. Default is False.
+        overwrite : bool, optional
+            overwrite reprocessing even if outputs exist. Default is False.
 
         Returns
         -------
@@ -3223,9 +3209,7 @@ class FreeSurferSubject:
             cmd_cont = cltmisc.generate_container_command(
                 cmd_bashargs, cont_tech, cont_image
             )  # Generating container command
-            out_cmd = subprocess.run(
-                cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-            )
+            out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
             cont_subjs_dir = out_cmd.stdout.split("\n")[0]
             if cont_tech == "singularity":
                 mount_dirs.append("--bind")
@@ -3238,9 +3222,7 @@ class FreeSurferSubject:
             cmd_cont = cltmisc.generate_container_command(
                 cmd_bashargs, cont_tech, cont_image
             )  # Generating container command
-            out_cmd = subprocess.run(
-                cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-            )
+            out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
             cont_license = os.path.join(out_cmd.stdout.split("\n")[0], "license.txt")
             if fs_license is not None:
                 if isinstance(fs_license, Path):
@@ -3300,7 +3282,7 @@ class FreeSurferSubject:
                 if stage not in val_extra_stages:
                     raise ValueError(f"Stage {stage} is not valid")
 
-        if force:
+        if overwrite:
 
             if t1w_img is None:
                 if os.path.isdir(
@@ -3315,7 +3297,7 @@ class FreeSurferSubject:
                             cmd_cont,
                             stderr=subprocess.DEVNULL,
                             stdout=subprocess.PIPE,
-                            universal_newlines=True,
+                            text=True,
                         )  # Running container command
             else:
                 if isinstance(t1w_img, Path):
@@ -3338,7 +3320,7 @@ class FreeSurferSubject:
                             cmd_cont,
                             stderr=subprocess.DEVNULL,
                             stdout=subprocess.PIPE,
-                            universal_newlines=True,
+                            text=True,
                         )  # Running container command
                 else:
                     raise ValueError("The T1w image does not exist")
@@ -3380,7 +3362,7 @@ class FreeSurferSubject:
                     cmd_cont,
                     stderr=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
-                    universal_newlines=True,
+                    text=True,
                 )  # Running container command
             elif proc_status == "autorecon1":
                 cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-autorecon2"]
@@ -3391,7 +3373,7 @@ class FreeSurferSubject:
                     cmd_cont,
                     stderr=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
-                    universal_newlines=True,
+                    text=True,
                 )  # Running container command
 
                 cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-autorecon3"]
@@ -3402,7 +3384,7 @@ class FreeSurferSubject:
                     cmd_cont,
                     stderr=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
-                    universal_newlines=True,
+                    text=True,
                 )  # Running container command
 
             elif proc_status == "autorecon2":
@@ -3414,7 +3396,7 @@ class FreeSurferSubject:
                     cmd_cont,
                     stderr=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
-                    universal_newlines=True,
+                    text=True,
                 )  # Running container command
 
         self.get_proc_status()
@@ -3437,7 +3419,7 @@ class FreeSurferSubject:
                             and not os.path.isfile(
                                 self.fs_files["surf"]["rh"]["map"]["lgi"]
                             )
-                        ) or force == True:
+                        ) or overwrite:
                             cmd_bashargs = [
                                 "recon-all",
                                 "-subjid",
@@ -3456,7 +3438,7 @@ class FreeSurferSubject:
                             )
                         )
 
-                        if len(th_files) != 3 or force == True:
+                        if len(th_files) != 3 or overwrite:
                             if vert_int < 730:
                                 cmd_bashargs = [
                                     "segmentThalamicNuclei.sh",
@@ -3481,7 +3463,7 @@ class FreeSurferSubject:
                             )
                         )
 
-                        if len(bs_files) != 3 or force == True:
+                        if len(bs_files) != 3 or overwrite:
                             os.system("WRITE_POSTERIORS=1")
                             if vert_int < 730:
                                 cmd_bashargs = [
@@ -3512,7 +3494,7 @@ class FreeSurferSubject:
                             )
                         )
 
-                        if len(ha_files) != 16 or force == True:
+                        if len(ha_files) != 16 or overwrite:
                             if (
                                 vert_int < 730
                             ):  # Use the FreeSurfer script for versions below 7.2.0
@@ -3542,7 +3524,7 @@ class FreeSurferSubject:
                             )
                         )
                         os.system("WRITE_POSTERIORS=1")
-                        if len(hy_files) != 3 or force == True:
+                        if len(hy_files) != 3 or overwrite:
                             cmd_bashargs = [
                                 "mri_segment_hypothalamic_subunits",
                                 "--s",
@@ -3565,7 +3547,7 @@ class FreeSurferSubject:
                         cmd_cont,
                         stderr=subprocess.DEVNULL,
                         stdout=subprocess.PIPE,
-                        universal_newlines=True,
+                        text=True,
                     )  # Running container command
 
         return proc_status
@@ -3575,7 +3557,7 @@ class FreeSurferSubject:
         self,
         lobes_grouping: str = "desikan",
         add_bids_entities: bool = False,
-        output_file: Union[str, Path] = None,
+        output_file: str | Path = None,
     ) -> pd.DataFrame:
         """
         Generate comprehensive FreeSurfer statistics table combining morphometric measurements.
@@ -3672,7 +3654,7 @@ class FreeSurferSubject:
     ####################################################################################################
     def volume_morpho(
         self,
-        parcellations: list = ["desikan+aseg", "destrieux+aseg", "dkt+aseg"],
+        parcellations: list = None,
         lobes_grouping: str = "desikan",
     ) -> pd.DataFrame:
         """
@@ -3713,6 +3695,8 @@ class FreeSurferSubject:
         from . import parcellationtools as parc
 
         # Initialize an empty DataFrame for results
+        if parcellations is None:
+            parcellations = ["desikan+aseg", "destrieux+aseg", "dkt+aseg"]
         df_vol = pd.DataFrame()
 
         # Iterate over each specified parcellation
@@ -3733,7 +3717,7 @@ class FreeSurferSubject:
             # Concatenate results
             df_vol = pd.concat([df_vol, df], axis=0)
 
-        nrows = df_vol.shape[0]
+        df_vol.shape[0]
 
         return df_vol
 
@@ -3879,11 +3863,11 @@ class FreeSurferSubject:
 
             # Compute surface area and Euler characteristic for both pial and white surfaces
             df_parc = pd.DataFrame()
-            df_e = pd.DataFrame()
+            pd.DataFrame()
             cont_metric += 1
             cont_euler = cont_metric + 1
             for surface, source_label in zip(
-                [pial_surf, white_surf], ["pial", "white"]
+                [pial_surf, white_surf], ["pial", "white"], strict=False
             ):
                 start_time = time.time()
                 df_area_region, _ = morpho.compute_reg_area_fromsurf(
@@ -3963,7 +3947,7 @@ class FreeSurferSubject:
 
     ####################################################################################################
     @staticmethod
-    def set_freesurfer_directory(fs_dir: Union[str, Path] = None):
+    def set_freesurfer_directory(fs_dir: str | Path = None):
         """
         Set up the FreeSurfer subjects directory and configure environment variables.
 
@@ -4016,11 +4000,11 @@ class FreeSurferSubject:
         self,
         ref_id: str,
         hemi: str,
-        fs_annot: Union[str, Path],
-        ind_annot: Union[str, Path],
+        fs_annot: str | Path,
+        ind_annot: str | Path,
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
-        force=False,
+        cont_image: str | Path = None,
+        overwrite=False,
         verbose=False,
     ):
         """
@@ -4052,8 +4036,8 @@ class FreeSurferSubject:
         cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
-        force : bool, optional
-            Force processing even if output file exists. Default is False.
+        overwrite : bool, optional
+            overwrite processing even if output file exists. Default is False.
 
         verbose : bool, optional
             Print verbose messages about processing status. Default is False.
@@ -4127,7 +4111,7 @@ class FreeSurferSubject:
             )
             fs_annot = tmp_annot
 
-        if not os.path.isfile(ind_annot) or force:
+        if not os.path.isfile(ind_annot) or overwrite:
 
             FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
 
@@ -4141,9 +4125,7 @@ class FreeSurferSubject:
                 cmd_cont = cltmisc.generate_container_command(
                     cmd_bashargs, cont_tech, cont_image
                 )  # Generating container command
-                out_cmd = subprocess.run(
-                    cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-                )
+                out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
                 subjs_dir_cont = out_cmd.stdout.split("\n")[0]
                 dir_cad = self.subjs_dir + ":" + subjs_dir_cont
 
@@ -4177,7 +4159,7 @@ class FreeSurferSubject:
                 cmd_cont,
                 stderr=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                universal_newlines=True,
+                text=True,
             )  # Running container command
 
             # Correcting the parcellation file in order to refill the parcellation with the correct labels
@@ -4192,11 +4174,11 @@ class FreeSurferSubject:
                 corr_annot=ind_annot, label_file=label_file, surf_file=surf_file
             )
 
-        elif os.path.isfile(ind_annot) and not force:
+        elif os.path.isfile(ind_annot) and not overwrite:
             # Print a message
             if verbose:
                 print(
-                    f"File {ind_annot} already exists. Use force=True to overwrite it"
+                    f"File {ind_annot} already exists. Use overwrite=True to overwrite it"
                 )
 
         return ind_annot
@@ -4204,12 +4186,12 @@ class FreeSurferSubject:
     ####################################################################################################
     def gcs2ind(
         self,
-        fs_gcs: Union[str, Path],
-        ind_annot: Union[str, Path],
+        fs_gcs: str | Path,
+        ind_annot: str | Path,
         hemi: str,
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
-        force=False,
+        cont_image: str | Path = None,
+        overwrite=False,
         verbose=False,
     ):
         """
@@ -4237,8 +4219,8 @@ class FreeSurferSubject:
         cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
-        force : bool, optional
-            Force processing even if output file exists. Default is False.
+        overwrite : bool, optional
+            overwrite processing even if output file exists. Default is False.
 
         verbose : bool, optional
             Print verbose messages about processing status. Default is False.
@@ -4270,12 +4252,12 @@ class FreeSurferSubject:
         ...     hemi='lh'
         ... )
         >>>
-        >>> # Force reprocessing with custom classifier
+        >>> # overwrite reprocessing with custom classifier
         >>> output_file = subject.gcs2ind(
         ...     fs_gcs='/custom/rh.custom_atlas.gcs',
         ...     ind_annot='/output/rh.custom.individual.annot',
         ...     hemi='rh',
-        ...     force=True,
+        ...     overwrite=True,
         ...     verbose=True
         ... )
         """
@@ -4285,7 +4267,7 @@ class FreeSurferSubject:
         if isinstance(ind_annot, Path):
             ind_annot = str(ind_annot)
 
-        if not os.path.isfile(ind_annot) or force:
+        if not os.path.isfile(ind_annot) or overwrite:
 
             FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
 
@@ -4299,9 +4281,7 @@ class FreeSurferSubject:
                 cmd_cont = cltmisc.generate_container_command(
                     cmd_bashargs, cont_tech, cont_image
                 )  # Generating container command
-                out_cmd = subprocess.run(
-                    cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-                )
+                out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
                 subjs_dir_cont = out_cmd.stdout.split("\n")[0]
                 dir_cad = self.subjs_dir + ":" + subjs_dir_cont
 
@@ -4340,7 +4320,7 @@ class FreeSurferSubject:
                 cmd_cont,
                 stderr=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                universal_newlines=True,
+                text=True,
             )  # Running container command
 
             # Correcting the parcellation file in order to refill the parcellation with the correct labels
@@ -4355,11 +4335,11 @@ class FreeSurferSubject:
                 corr_annot=ind_annot, label_file=label_file, surf_file=surf_file
             )
 
-        elif os.path.isfile(ind_annot) and not force:
+        elif os.path.isfile(ind_annot) and not overwrite:
             # Print a message
             if verbose:
                 print(
-                    f"File {ind_annot} already exists. Use force=True to overwrite it"
+                    f"File {ind_annot} already exists. Use overwrite=True to overwrite it"
                 )
 
         return ind_annot
@@ -4367,15 +4347,15 @@ class FreeSurferSubject:
     ####################################################################################################
     def surf2vol(
         self,
-        atlas: Union[str, Path],
-        out_vol: Union[str, Path],
-        gm_grow: Union[int, str] = "0",
-        color_table: Union[list, str] = None,
+        atlas: str | Path,
+        out_vol: str | Path,
+        gm_grow: int | str = "0",
+        color_table: list | str = None,
         bool_native: bool = False,
         bool_mixwm: bool = False,
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
-        force: bool = False,
+        cont_image: str | Path = None,
+        overwrite: bool = False,
         verbose: bool = False,
     ):
         """
@@ -4416,8 +4396,8 @@ class FreeSurferSubject:
         cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
-        force : bool, optional
-            Force processing even if output file exists. Default is False.
+        overwrite : bool, optional
+            overwrite processing even if output file exists. Default is False.
 
         verbose : bool, optional
             Print verbose messages about processing progress. Default is False.
@@ -4461,7 +4441,7 @@ class FreeSurferSubject:
         ...     atlas='custom_atlas',
         ...     out_vol='/output/custom_native.nii.gz',
         ...     bool_native=True,
-        ...     force=True
+        ...     overwrite=True
         ... )
         """
         from . import parcellationtools as cltparc
@@ -4478,9 +4458,7 @@ class FreeSurferSubject:
             cmd_cont = cltmisc.generate_container_command(
                 cmd_bashargs, cont_tech, cont_image
             )  # Generating container command
-            out_cmd = subprocess.run(
-                cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-            )
+            out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
             subjs_dir_cont = out_cmd.stdout.split("\n")[0]
             dir_cad = self.subjs_dir + ":" + subjs_dir_cont
 
@@ -4511,24 +4489,22 @@ class FreeSurferSubject:
                 cmd_cont = cltmisc.generate_container_command(
                     cmd_bashargs, cont_tech, cont_image
                 )  # Generating container command
-                out_cmd = subprocess.run(
-                    cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-                )
+                out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
                 fslut_file_cont = os.path.join(
                     out_cmd.stdout.split("\n")[0], "FreeSurferColorLUT.txt"
                 )
                 tmp_name = str(uuid.uuid4())
-                cmd_bashargs = ["cp", "replace_cad", "/tmp/" + tmp_name]
+                # "/tmp" here is a path *inside* the container image, not on the
+                # host, so it must stay literal.
+                cmd_bashargs = ["cp", "replace_cad", "/tmp/" + tmp_name]  # nosec B108
                 cmd_cont = cltmisc.generate_container_command(
                     cmd_bashargs, cont_tech, cont_image
                 )
 
                 # Replace the element of the list equal to replace_cad by the path of the lut file
                 cmd_cont = [w.replace("replace_cad", fslut_file_cont) for w in cmd_cont]
-                subprocess.run(
-                    cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
-                )
-                fslut_file = os.path.join("/tmp", tmp_name)
+                subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
+                fslut_file = os.path.join("/tmp", tmp_name)  # nosec B108 - see above
 
                 lut_dict = cltcol.ColorTableLoader.read_luttable(fslut_file)
 
@@ -4551,7 +4527,7 @@ class FreeSurferSubject:
         temp_dir = Path(temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
-        if not os.path.isfile(out_vol) or force:
+        if not os.path.isfile(out_vol) or overwrite:
 
             if gm_grow == "0":
 
@@ -4614,7 +4590,7 @@ class FreeSurferSubject:
                 cmd_cont,
                 stderr=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
-                universal_newlines=True,
+                text=True,
             )  # Running container command
 
             if bool_native:
@@ -4623,7 +4599,7 @@ class FreeSurferSubject:
                 self.conform2native(
                     mgz_conform=out_vol,
                     nii_native=out_vol,
-                    force=force,
+                    overwrite=overwrite,
                     cont_tech=cont_tech,
                     cont_image=cont_image,
                 )
@@ -4639,7 +4615,7 @@ class FreeSurferSubject:
                 mask = np.logical_and(parc_vol >= 3000, parc_vol < 5000)
                 parc_vol[mask] = parc_vol[mask] - 2000
                 parc.data = parc_vol
-                parc.adjust_values
+                parc.adjust_values()
                 parc.save_parcellation(out_file=out_vol)
 
             if color_table is not None:
@@ -4756,7 +4732,7 @@ class FreeSurferSubject:
                 if "tsv" in color_table:
                     out_file = out_vol.replace(".nii.gz", ".tsv")
 
-                    col_obj.export(out_file, out_format="tsv", overwrite=force)
+                    col_obj.export(out_file, out_format="tsv", overwrite=overwrite)
 
                 if "lut" in color_table:
                     out_file = out_vol.replace(".nii.gz", ".lut")
@@ -4764,7 +4740,7 @@ class FreeSurferSubject:
                     now = datetime.now()
                     date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
                     headerlines = [
-                        "# $Id: {} {} \n".format(out_vol, date_time),
+                        f"# $Id: {out_vol} {date_time} \n",
                         "{:<4} {:<50} {:>3} {:>3} {:>3} {:>3}".format(
                             "#No.", "Label Name:", "R", "G", "B", "A"
                         ),
@@ -4774,25 +4750,27 @@ class FreeSurferSubject:
                         out_file,
                         out_format="lut",
                         headerlines=headerlines,
-                        overwrite=force,
+                        overwrite=overwrite,
                     )
 
-        elif os.path.isfile(out_vol) and not force:
+        elif os.path.isfile(out_vol) and not overwrite:
             # Print a message
             if verbose:
-                print(f"File {out_vol} already exists. Use force=True to overwrite it")
+                print(
+                    f"File {out_vol} already exists. Use overwrite=True to overwrite it"
+                )
 
         return out_vol
 
     ####################################################################################################
     def conform2native(
         self,
-        mgz_conform: Union[str, Path],
-        nii_native: Union[str, Path],
+        mgz_conform: str | Path,
+        nii_native: str | Path,
         interp_method: str = "nearest",
         cont_tech: str = "local",
-        cont_image: Union[str, Path] = None,
-        force: bool = False,
+        cont_image: str | Path = None,
+        overwrite: bool = False,
     ):
         """
         Transform image from FreeSurfer conform space to native acquisition space.
@@ -4819,8 +4797,8 @@ class FreeSurferSubject:
         cont_image : str or Path, optional
             Container image specification when using containerization. Default is None.
 
-        force : bool, optional
-            Force processing even if output exists. If False, checks dimensions
+        overwrite : bool, optional
+            overwrite processing even if output exists. If False, checks dimensions
             before deciding whether to reprocess. Default is False.
 
         Returns
@@ -4876,7 +4854,7 @@ class FreeSurferSubject:
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
         subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+            cmd_cont, stdout=subprocess.PIPE, text=True
         )  # Running container command
 
         img = nib.load(tmp_raw)
@@ -4885,7 +4863,7 @@ class FreeSurferSubject:
         # Remove tmp_raw
         os.remove(tmp_raw)
 
-        if not os.path.isfile(nii_native) or force:
+        if not os.path.isfile(nii_native) or overwrite:
             # Moving the resulting parcellation from conform space to native
             raw_vol = os.path.join(self.subjs_dir, self.subj_id, "mri", "rawavg.mgz")
 
@@ -4906,10 +4884,10 @@ class FreeSurferSubject:
                 cmd_bashargs, cont_tech, cont_image
             )  # Generating container command
             subprocess.run(
-                cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+                cmd_cont, stdout=subprocess.PIPE, text=True
             )  # Running container command
 
-        elif os.path.isfile(nii_native) and not force:
+        elif os.path.isfile(nii_native) and not overwrite:
             # Print a message
 
             img = nib.load(nii_native)
@@ -4919,7 +4897,7 @@ class FreeSurferSubject:
             if all(tmp_raw_hd == tmp_nii_hd):
                 print(f"File {nii_native} already exists and has the same dimensions")
                 print(
-                    f"File {nii_native} already exists. Use force=True to overwrite it"
+                    f"File {nii_native} already exists. Use overwrite=True to overwrite it"
                 )
 
             else:
@@ -4940,7 +4918,7 @@ class FreeSurferSubject:
                     cmd_bashargs, cont_tech, cont_image
                 )  # Generating container command
                 subprocess.run(
-                    cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+                    cmd_cont, stdout=subprocess.PIPE, text=True
                 )  # Running container command
 
     #####################################################################################################
@@ -5104,8 +5082,8 @@ class FreeSurferSubject:
 ####################################################################################################
 def create_individual_freesurfer_table(
     subj_id: str,
-    subjs_dir: Union[str, Path] = None,
-    out_tab_file: Union[str, Path] = None,
+    subjs_dir: str | Path = None,
+    out_tab_file: str | Path = None,
     add_bids_entities: bool = False,
 ) -> pd.DataFrame:
     """
@@ -5191,7 +5169,7 @@ def create_individual_freesurfer_table(
 
 #####################################################################################################
 def process_subject(
-    fs_fullid: str, fs_subject_dir: Union[str, Path], out_folder: Union[str, Path]
+    fs_fullid: str, fs_subject_dir: str | Path, out_folder: str | Path
 ) -> tuple:
     """
     Process a single subject and return the result.
@@ -5231,7 +5209,7 @@ def process_subject(
         out_tab_file = os.path.join(out_flder, file_name)
 
         if not os.path.isfile(out_tab_file):
-            df = create_individual_freesurfer_table(
+            create_individual_freesurfer_table(
                 fs_fullid,
                 fs_subject_dir,
                 out_tab_file=out_tab_file,
@@ -5247,9 +5225,9 @@ def process_subject(
 
 #####################################################################################################
 def create_freesurfer_table(
-    out_folder: Union[str, Path],
-    ids_file: Union[str, List[str]] = None,
-    fs_subject_dir: Union[str, Path] = None,
+    out_folder: str | Path,
+    ids_file: str | list[str] = None,
+    fs_subject_dir: str | Path = None,
     max_workers: int = 1,
 ):
     """
@@ -5410,8 +5388,8 @@ def create_freesurfer_table(
 
 #####################################################################################################
 def create_fsaverage_links(
-    fssubj_dir: Union[str, Path],
-    fsavg_dir: Union[str, Path] = None,
+    fssubj_dir: str | Path,
+    fsavg_dir: str | Path = None,
     refsubj_name: str = None,
 ):
     """
@@ -5508,10 +5486,10 @@ def create_fsaverage_links(
         if not os.path.exists(link_folder):  # Changed from os.path.isdir
             try:
                 if sys.platform.startswith("win"):
-                    # Windows implementation
-                    subprocess.run(
-                        ["mklink", "/D", link_folder, fsavg_dir], check=True, shell=True
-                    )
+                    # Windows implementation. os.symlink avoids shelling out to
+                    # cmd.exe's "mklink" builtin, which needs shell=True and
+                    # mangles paths containing spaces.
+                    os.symlink(fsavg_dir, link_folder, target_is_directory=True)
                 else:
                     # Unix/Linux implementation
                     subprocess.run(
@@ -5522,18 +5500,17 @@ def create_fsaverage_links(
                             link_folder,
                         ],  # Fixed: specify exact target
                         check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        universal_newlines=True,
+                        capture_output=True,
+                        text=True,
                     )
             except subprocess.CalledProcessError as e:
-                raise ValueError(f"Failed to create symbolic link: {e}")
+                raise ValueError(f"Failed to create symbolic link: {e}") from e
 
     return link_folder
 
 
 ####################################################################################################
-def remove_fsaverage_links(linkavg_folder: Union[str, Path]):
+def remove_fsaverage_links(linkavg_folder: str | Path):
     """
     Remove symbolic links to the fsaverage folder.
 
@@ -5680,7 +5657,7 @@ def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarr
 
 
 #####################################################################################################
-def colors2colortable(colors: Union[list, np.ndarray]):
+def colors2colortable(colors: list | np.ndarray):
     """
     Convert color list to FreeSurfer color table format.
 
@@ -5988,7 +5965,7 @@ def verify_packed_rgb_values(color_table):
 
 
 ########################################################################################################
-def detect_hemi(file_name: Union[str, Path]) -> Union[str, None]:
+def detect_hemi(file_name: str | Path) -> str | None:
     """
     Detect hemisphere from filename using common naming conventions.
 
@@ -6046,19 +6023,21 @@ def detect_hemi(file_name: Union[str, Path]) -> Union[str, None]:
         else:
             hemi = None
             warnings.warn(
-                "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
+                "The hemisphere could not be extracted from the annot filename. Please provide it as an argument",
+                stacklevel=2,
             )
     else:
         hemi = None
         warnings.warn(
-            "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
+            "The hemisphere could not be extracted from the annot filename. Please provide it as an argument",
+            stacklevel=2,
         )
 
     return hemi
 
 
 ###########################################################################################################
-def parse_freesurfer_lta(filepath: Union[str, Path]) -> Dict:
+def parse_freesurfer_lta(filepath: str | Path) -> dict:
     """
     Parse a FreeSurfer .lta (Linear Transform Array) file.
 
@@ -6073,7 +6052,7 @@ def parse_freesurfer_lta(filepath: Union[str, Path]) -> Dict:
         Dictionary containing parsed information including cras coordinates
     """
 
-    def parse_cras_line(line: str) -> Tuple[float, float, float]:
+    def parse_cras_line(line: str) -> tuple[float, float, float]:
         """Parse a cras line and return x, y, z coordinates"""
         # Split by '=' and take the right side, then split by whitespace
         coords_str = line.split("=")[1].strip()
@@ -6098,7 +6077,7 @@ def parse_freesurfer_lta(filepath: Union[str, Path]) -> Dict:
     if isinstance(filepath, Path):
         filepath = str(filepath)
 
-    with open(filepath, "r") as file:
+    with open(filepath) as file:
         lines = file.readlines()
 
     i = 0
@@ -6152,8 +6131,8 @@ def parse_freesurfer_lta(filepath: Union[str, Path]) -> Dict:
 
 #########################################################################################################
 def get_cras_coordinates(
-    filepath: Union[str, Path], source: bool = True
-) -> Tuple[float, float, float]:
+    filepath: str | Path, source: bool = True
+) -> tuple[float, float, float]:
     """
     Simple function to extract just the cras coordinates.
 
@@ -6178,7 +6157,7 @@ def get_cras_coordinates(
 
 
 ############################################################################################################
-def load_lobes_json(lobes_json: Union[str, Path] = None):
+def load_lobes_json(lobes_json: str | Path = None):
     """
     Load JSON file containing anatomical lobe definitions.
 
@@ -6231,7 +6210,7 @@ def load_lobes_json(lobes_json: Union[str, Path] = None):
 
 
 ############################################################################################################
-def get_version(cont_tech: str = "local", cont_image: Union[str, Path] = None):
+def get_version(cont_tech: str = "local", cont_image: str | Path = None):
     """
     Get FreeSurfer version number from installation or container.
 
@@ -6269,7 +6248,7 @@ def get_version(cont_tech: str = "local", cont_image: Union[str, Path] = None):
     cmd_cont = cltmisc.generate_container_command(
         cmd_bashargs, cont_tech, cont_image
     )  # Generating container command
-    out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, universal_newlines=True)
+    out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
 
     for st_ver in out_cmd.stdout.split("-"):
         if "." in st_ver:

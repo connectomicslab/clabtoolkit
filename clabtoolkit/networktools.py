@@ -1,8 +1,7 @@
-import numpy as np
-from scipy.sparse import csr_matrix, csgraph
-from typing import Tuple, Union, Optional, List
 import warnings
-from collections import deque
+
+import numpy as np
+from scipy.sparse import csgraph, csr_matrix
 
 
 ####################################################################################################
@@ -80,7 +79,7 @@ def adjacency_matrix_to_csr(adj_matrix: np.ndarray) -> csr_matrix:
 
 ####################################################################################################
 def triangulated_mesh_to_csr(
-    faces: np.ndarray, n_vertices: Optional[int] = None
+    faces: np.ndarray, n_vertices: int | None = None
 ) -> csr_matrix:
     """
     Convert triangulated mesh faces to a CSR graph representation.
@@ -206,7 +205,7 @@ def triangulated_mesh_to_csr(
 def edges_to_csr(
     edges: np.ndarray,
     edge_values: np.ndarray = None,
-    n_vertices: Optional[int] = None,
+    n_vertices: int | None = None,
     symmetric: bool = True,
 ) -> csr_matrix:
     """
@@ -321,7 +320,7 @@ def edges_to_csr(
         raise ValueError("Vertex indices must be non-negative")
 
     if len(edges) == 0:
-        warnings.warn("Empty edge list provided", UserWarning)
+        warnings.warn("Empty edge list provided", UserWarning, stacklevel=2)
         if n_vertices is None:
             n_vertices = 0
         return csr_matrix((n_vertices, n_vertices))
@@ -402,7 +401,7 @@ def edges_to_components(edges: np.ndarray, verbose: bool = True):
 #####################################################################################################
 def connected_components(
     csr_graph: csr_matrix, verbose: bool = True
-) -> Tuple[int, np.ndarray, dict]:
+) -> tuple[int, np.ndarray, dict]:
     """
     Find connected components in a CSR graph representation.
 
@@ -512,6 +511,7 @@ def connected_components(
             "Graph appears to be directed (non-symmetric). "
             "Finding weakly connected components.",
             UserWarning,
+            stacklevel=2,
         )
 
     # Ensure we work with the full connectivity (treat as undirected)

@@ -1,10 +1,9 @@
-import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple, List
+import numpy as np
 
 
 #####################################################################################################
-def get_screen_size() -> Tuple[int, int]:
+def get_screen_size() -> tuple[int, int]:
     """
     Get the current screen size in pixels.
 
@@ -31,9 +30,10 @@ def get_screen_size() -> Tuple[int, int]:
 
 
 #####################################################################################################
-def get_current_monitor_size() -> Tuple[int, int]:
+def get_current_monitor_size() -> tuple[int, int]:
     """Get the size of the monitor where the mouse cursor is located."""
     import tkinter as tk
+
     import screeninfo
 
     # Get mouse position
@@ -164,7 +164,7 @@ def estimate_monitor_dpi(screen_width: int, screen_height: int) -> float:
 
 
 ###############################################################################################
-def calculate_optimal_subplots_grid(num_views: int) -> List[int]:
+def calculate_optimal_subplots_grid(num_views: int) -> list[int]:
     """
     Calculate optimal grid dimensions for a given number of views.
 

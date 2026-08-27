@@ -1,11 +1,12 @@
-import os
 import json
+import os
 import tempfile
-import unittest
 import time
+import unittest
 from functools import wraps
+from unittest.mock import mock_open, patch
+
 from tabulate import tabulate
-from unittest.mock import patch, mock_open
 
 # Import the module containing get_units
 from clabtoolkit.morphometrytools import get_units
@@ -84,11 +85,11 @@ class TestGetUnits(unittest.TestCase):
 
         # Print test summary
         print("\n" + "=" * 80)
-        print(f"TEST SUMMARY FOR get_units")
+        print("TEST SUMMARY FOR get_units")
         print("=" * 80)
         print(f"Total tests: {len(cls.test_timings)}")
         print(f"Passed tests: {len(cls.test_timings)}")
-        print(f"Success rate: 100.0%")
+        print("Success rate: 100.0%")
         print(f"Total execution time: {total_time:.2f} seconds")
 
         # Print category summary

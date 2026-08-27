@@ -1,27 +1,25 @@
-import os
-import glob
 import json
-from typing import List, Tuple, Optional, Union, Literal, Dict, Any
-import nibabel as nib
-import numpy as np
 import logging
-import matplotlib.pyplot as plt
+import os
+import queue
+import threading
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import threading
-import queue
-import time
+import matplotlib.pyplot as plt
+import nibabel as nib
+import numpy as np
 from rich.console import Console
 from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
-    BarColumn,
     TimeRemainingColumn,
-    MofNCompleteColumn,
 )
-import clabtoolkit.bidstools as cltbids
+
 import clabtoolkit.misctools as cltmisc
 
 
@@ -36,9 +34,9 @@ import clabtoolkit.misctools as cltmisc
 ####################################################################################################
 def get_valid_slices(
     data: np.ndarray,
-    ignore_value: Optional[int] = None,
-    slice_positions: List[float] = [0.3, 0.5, 0.7],
-) -> Tuple[List[int], List[int], List[int]]:
+    ignore_value: int | None = None,
+    slice_positions: list[float] = None,
+) -> tuple[list[int], list[int], list[int]]:
     """
     Get valid slice indices along each dimension by identifying regions with signal.
 
@@ -73,6 +71,8 @@ def get_valid_slices(
     """
 
     # Determine which values to consider as foreground
+    if slice_positions is None:
+        slice_positions = [0.3, 0.5, 0.7]
     if ignore_value is None:
         # Default: consider 0 as background, everything else as foreground
         valid_voxels = data != 0
@@ -100,7 +100,7 @@ def get_valid_slices(
     else:
         z_min, z_max = z_indices[[0, -1]]
 
-    def get_slices(min_val: int, max_val: int) -> List[int]:
+    def get_slices(min_val: int, max_val: int) -> list[int]:
         return [
             int(min_val + position * (max_val - min_val))
             for position in slice_positions
@@ -111,22 +111,22 @@ def get_valid_slices(
 
 ####################################################################################################
 def generate_slices(
-    nifti_path: Union[str, Path],
-    output_path: Optional[Union[str, Path]] = None,
-    slice_positions: List[float] = [0.3, 0.5, 0.7],
-    ignore_value: Optional[int] = None,
+    nifti_path: str | Path,
+    output_path: str | Path | None = None,
+    slice_positions: list[float] = None,
+    ignore_value: int | None = None,
     remove_invalid: bool = True,
-    fig_size: Optional[Tuple[int, int]] = None,
+    fig_size: tuple[int, int] | None = None,
     dpi: int = 300,
     bg_color: str = "black",
     text_color: str = "white",
     cmap: str = "gray",
-    intensity_percentiles: Tuple[float, float] = (1, 99),
+    intensity_percentiles: tuple[float, float] = (1, 99),
     show_colorbar: bool = True,
     colorbar_width_inches: float = 0.2,  # Fixed width in inches
     colorbar_height_fraction: float = 0.7,  # Control height
     overwrite: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """
     Generate composite visualization of brain image slices from neuroimaging file.
 
@@ -209,6 +209,8 @@ def generate_slices(
     """
 
     # Convert to Path object for easier path manipulation
+    if slice_positions is None:
+        slice_positions = [0.3, 0.5, 0.7]
     nifti_path = Path(nifti_path)
 
     # Check if file exists
@@ -217,9 +219,6 @@ def generate_slices(
 
     # Determine output path if not provided
     if output_path is None:
-        figures_dir = nifti_path.parent
-
-        file_name = nifti_path.stem
 
         tmp_name = str(nifti_path)
 
@@ -247,7 +246,7 @@ def generate_slices(
     try:
         img = nib.load(nifti_path)
     except Exception as e:
-        raise ValueError(f"Failed to load {nifti_path}: {str(e)}")
+        raise ValueError(f"Failed to load {nifti_path}: {str(e)}") from e
 
     try:
         data = img.get_fdata()
@@ -516,18 +515,18 @@ def _process_single_file(args):
 
 ####################################################################################################
 def recursively_generate_slices(
-    input_folder: Union[str, Path],
-    output_folder: Optional[Union[str, Path]] = None,
-    and_filter: Optional[Union[str, list, dict]] = None,
-    or_filter: Optional[Union[str, list, dict]] = None,
-    slice_positions: List[float] = [0.3, 0.5, 0.7],
-    ignore_value: Optional[int] = None,
+    input_folder: str | Path,
+    output_folder: str | Path | None = None,
+    and_filter: str | list | dict | None = None,
+    or_filter: str | list | dict | None = None,
+    slice_positions: list[float] = None,
+    ignore_value: int | None = None,
     recursive: bool = True,
     n_jobs: int = 1,
-    file_extensions: List[str] = [".nii", ".nii.gz", ".mgz", ".mnc"],
+    file_extensions: list[str] = None,
     overwrite: bool = False,
     verbose: bool = True,
-) -> List[str]:
+) -> list[str]:
     """
     Recursively process neuroimaging files in a folder to generate PNG visualizations.
 
@@ -603,6 +602,10 @@ def recursively_generate_slices(
     """
 
     # Initialize rich console
+    if file_extensions is None:
+        file_extensions = [".nii", ".nii.gz", ".mgz", ".mnc"]
+    if slice_positions is None:
+        slice_positions = [0.3, 0.5, 0.7]
     console = Console()
 
     # Set up logging
@@ -780,8 +783,8 @@ def recursively_generate_slices(
 
 ####################################################################################################
 def generate_image_selection_webpage(
-    root_directory: Union[str, Path],
-    output_html: Optional[Union[str, Path]] = None,
+    root_directory: str | Path,
+    output_html: str | Path | None = None,
     png_pattern: str = "**/*.png",
     title: str = "PNG Image Selection",
     recursive: bool = True,
@@ -935,14 +938,14 @@ def generate_image_selection_webpage(
                     for json_candidate in json_candidates:
                         if json_candidate.exists():
                             try:
-                                with open(json_candidate, "r") as f:
+                                with open(json_candidate) as f:
                                     json_data = json.load(f)
                                     description = json_data.get(
                                         "SeriesDescription",
                                         json_data.get("Description", None),
                                     )
                                 break
-                            except:
+                            except Exception:
                                 continue
 
                     # Check for original NIfTI files
@@ -955,13 +958,13 @@ def generate_image_selection_webpage(
                                 json_for_nii = nii_candidate.with_suffix(".json")
                                 if json_for_nii.exists():
                                     try:
-                                        with open(json_for_nii, "r") as f:
+                                        with open(json_for_nii) as f:
                                             json_data = json.load(f)
                                             description = json_data.get(
                                                 "SeriesDescription",
                                                 json_data.get("Description", None),
                                             )
-                                    except:
+                                    except Exception:
                                         pass
                             break
 
@@ -992,36 +995,36 @@ def generate_image_selection_webpage(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
   <style>
-    body {{ 
-      font-family: Arial, sans-serif; 
-      background-color: #121212; 
-      color: white; 
+    body {{
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: white;
       margin: 20px;
       line-height: 1.6;
     }}
-    
-    h1, h2, h3, h4, h5 {{ 
-      color: #ffcc00; 
+
+    h1, h2, h3, h4, h5 {{
+      color: #ffcc00;
       margin-top: 30px;
       margin-bottom: 15px;
     }}
-    
+
     h1 {{ font-size: 2.5em; text-align: center; }}
     h2 {{ font-size: 2em; border-bottom: 2px solid #ffcc00; padding-bottom: 10px; }}
     h3 {{ font-size: 1.5em; margin-left: 20px; }}
     h4 {{ font-size: 1.3em; margin-left: 40px; }}
     h5 {{ font-size: 1.1em; margin-left: 60px; }}
-    
-    .image-container {{ 
-      margin: 20px 0; 
+
+    .image-container {{
+      margin: 20px 0;
       padding: 15px;
       background-color: #1e1e1e;
       border-radius: 8px;
       border-left: 4px solid #ffcc00;
     }}
-    
-    .checkbox-label {{ 
-      font-size: 16px; 
+
+    .checkbox-label {{
+      font-size: 16px;
       margin-bottom: 10px;
       display: block;
       cursor: pointer;
@@ -1030,41 +1033,41 @@ def generate_image_selection_webpage(
       border-radius: 4px;
       transition: background-color 0.3s;
     }}
-    
+
     .checkbox-label:hover {{
       background-color: #3a3a3a;
     }}
-    
+
     .hierarchy-info {{
       font-size: 14px;
       color: #aaa;
       margin-bottom: 5px;
       font-style: italic;
     }}
-    
-    img {{ 
-      width: {image_width}; 
+
+    img {{
+      width: {image_width};
       max-width: 100%;
       height: auto;
-      border: 2px solid #ffcc00; 
-      border-radius: 5px; 
-      display: block; 
+      border: 2px solid #ffcc00;
+      border-radius: 5px;
+      display: block;
       margin: 10px 0;
       cursor: pointer;
       transition: transform 0.3s, border-color 0.3s;
     }}
-    
+
     img:hover {{
       transform: scale(1.02);
       border-color: #fff;
     }}
-    
-    input[type="checkbox"] {{ 
-      transform: scale(1.5); 
-      margin-right: 10px; 
+
+    input[type="checkbox"] {{
+      transform: scale(1.5);
+      margin-right: 10px;
       accent-color: #ffcc00;
     }}
-    
+
     .controls {{
       position: sticky;
       top: 20px;
@@ -1075,37 +1078,37 @@ def generate_image_selection_webpage(
       border: 2px solid #ffcc00;
       text-align: center;
     }}
-    
-    .download-btn, .select-btn {{ 
-      background: #ffcc00; 
-      color: black; 
-      padding: 12px 20px; 
-      border: none; 
-      font-size: 16px; 
-      cursor: pointer; 
+
+    .download-btn, .select-btn {{
+      background: #ffcc00;
+      color: black;
+      padding: 12px 20px;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
       border-radius: 5px;
       margin: 5px;
       font-weight: bold;
       transition: background-color 0.3s;
     }}
-    
+
     .download-btn:hover, .select-btn:hover {{
       background: #ffd700;
     }}
-    
+
     .stats {{
       margin-top: 15px;
       font-size: 14px;
       color: #aaa;
     }}
-    
+
     .description {{
       color: #ccc;
       font-style: italic;
       font-size: 14px;
       margin-top: 5px;
     }}
-    
+
     .folder-section {{
       margin-left: 20px;
       border-left: 2px solid #444;
@@ -1117,7 +1120,7 @@ def generate_image_selection_webpage(
     function downloadChecked() {{
       var checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
       var outputLines = [];
-      
+
       checkboxes.forEach(function(box) {{
         outputLines.push(box.value);
       }});
@@ -1138,10 +1141,10 @@ def generate_image_selection_webpage(
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       updateStats();
     }}
-    
+
     function selectAll() {{
       var checkboxes = document.querySelectorAll('input[type="checkbox"]');
       checkboxes.forEach(function(box) {{
@@ -1149,7 +1152,7 @@ def generate_image_selection_webpage(
       }});
       updateStats();
     }}
-    
+
     function selectNone() {{
       var checkboxes = document.querySelectorAll('input[type="checkbox"]');
       checkboxes.forEach(function(box) {{
@@ -1157,20 +1160,20 @@ def generate_image_selection_webpage(
       }});
       updateStats();
     }}
-    
+
     function updateStats() {{
       var total = document.querySelectorAll('input[type="checkbox"]').length;
       var selected = document.querySelectorAll('input[type="checkbox"]:checked').length;
       document.getElementById('stats').innerHTML = `Selected: ${{selected}} / ${{total}} images`;
     }}
-    
+
     // Update stats when checkboxes change
     document.addEventListener('change', function(e) {{
       if (e.target.type === 'checkbox') {{
         updateStats();
       }}
     }});
-    
+
     // Initialize stats on page load
     window.onload = function() {{
       updateStats();
@@ -1179,12 +1182,12 @@ def generate_image_selection_webpage(
 </head>
 <body>
   <h1>{title}</h1>
-  
+
   <div style="text-align: center; margin-bottom: 20px; padding: 15px; background-color: #2a2a2a; border-radius: 8px; border: 1px solid #555;">
     <h3 style="margin: 0; color: #ffcc00;">📁 Root Directory</h3>
     <p style="margin: 5px 0; font-family: monospace; color: #ccc; font-size: 16px; word-break: break-all;">{root_directory}</p>
   </div>
-  
+
   <div class="controls">
     <button class="select-btn" onclick="selectAll()">Select All</button>
     <button class="select-btn" onclick="selectNone()">Select None</button>
@@ -1216,7 +1219,7 @@ def generate_image_selection_webpage(
       <div class="image-container">
         <div class="hierarchy-info">📁 {hierarchy}</div>
         <label class="checkbox-label">
-          <input type="checkbox" id="{name}" value="{checkbox_value}"> 
+          <input type="checkbox" id="{name}" value="{checkbox_value}">
           <strong>{name}</strong>
         </label>"""
 
@@ -1260,8 +1263,8 @@ def generate_image_selection_webpage(
 
 ####################################################################################################
 def create_png_webpage_from_generated_slices(
-    root_directory: Union[str, Path],
-    output_html: Optional[Union[str, Path]] = None,
+    root_directory: str | Path,
+    output_html: str | Path | None = None,
     overwrite: bool = False,
 ) -> str:
     """

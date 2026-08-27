@@ -1,33 +1,32 @@
-import os
-import numpy as np
 import copy
-import nibabel as nb
-from nibabel.streamlines import ArraySequence
-from scipy.interpolate import RegularGridInterpolator
-
-from typing import Union, List, Dict, Optional, Tuple
+import os
 from pathlib import Path
+from typing import Union
+
+import nibabel as nb
+import numpy as np
 import pandas as pd
-
-# Importing local modules
-from . import misctools as cltmisc
-from . import colorstools as cltcol
-from . import pointstools as cltpts
-from . import parcellationtools as cltparc
-
-from dipy.segment.clustering import QuickBundlesX, QuickBundles
+from dipy.segment.clustering import QuickBundles, QuickBundlesX
 from dipy.tracking.streamline import set_number_of_points
-from dipy.io.stateful_tractogram import Space
+from nibabel.streamlines import ArraySequence
 
 # Utility function for interpolating streamline values
 from rich.progress import (
-    Progress,
     BarColumn,
-    TimeRemainingColumn,
-    TextColumn,
     MofNCompleteColumn,
+    Progress,
     SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
 )
+from scipy.interpolate import RegularGridInterpolator
+
+from . import colorstools as cltcol
+
+# Importing local modules
+from . import misctools as cltmisc
+from . import parcellationtools as cltparc
+from . import pointstools as cltpts
 
 
 ####################################################################################################
@@ -84,11 +83,11 @@ class Tractogram:
 
     def __init__(
         self,
-        tractogram_input: Union[nb.streamlines.Tractogram, str, Path] = None,
+        tractogram_input: nb.streamlines.Tractogram | str | Path = None,
         tracts: ArraySequence = None,
         affine: np.ndarray = None,
-        header: Dict = None,
-        color: Union[str, np.ndarray] = "#BFBDBD",
+        header: dict = None,
+        color: str | np.ndarray = "#BFBDBD",
         alpha: float = 1.0,
         name: str = "default",
     ) -> None:
@@ -108,7 +107,7 @@ class Tractogram:
         # Initialize attributes to None (empty instance)
         self.name = name
         self.tracts = None
-        self.colortables: Dict[str, Dict] = {}
+        self.colortables: dict[str, dict] = {}
 
         # Validate alpha value
         if isinstance(alpha, int):
@@ -221,7 +220,7 @@ class Tractogram:
     ###############################################################################################
     def load_tractogram_from_file(
         self, tractogram_input: str
-    ) -> Tuple[List[np.ndarray], np.ndarray, Dict]:
+    ) -> tuple[list[np.ndarray], np.ndarray, dict]:
         """
         Loads a tractogram file and extracts streamlines, affine transformation, and header information.
 
@@ -332,7 +331,7 @@ class Tractogram:
     ###############################################################################################
     def load_colortable(
         self,
-        lut_file: Union[str, Path, dict],
+        lut_file: str | Path | dict,
         map_name: str = "default",
         opacity: np.ndarray = 1.0,
     ) -> None:
@@ -462,7 +461,7 @@ class Tractogram:
         self,
         nb_points: int = 51,
         interp_method: str = "linear",
-    ) -> Union[List[np.ndarray], nb.streamlines.array_sequence.ArraySequence]:
+    ) -> list[np.ndarray] | nb.streamlines.array_sequence.ArraySequence:
         """
         Resample streamlines to a specified number of points.
 
@@ -883,7 +882,7 @@ class Tractogram:
         streamline_data = np.zeros(
             len(self.tracts), dtype=type(self.data_per_point[map_name][0][0])
         )
-        for i, streamline in enumerate(self.tracts):
+        for i, _streamline in enumerate(self.tracts):
             point_values = self.data_per_point[map_name][i]
 
             if metric == "median":
@@ -916,10 +915,10 @@ class Tractogram:
         self,
         tract2add: Union[
             "Tractogram",
-            List["Tractogram"],
+            list["Tractogram"],
             str,
             Path,
-            List[Union[str, Path, "Tractogram"]],
+            list[Union[str, Path, "Tractogram"]],
         ],
     ) -> "Tractogram":
         """
@@ -1081,7 +1080,7 @@ class Tractogram:
     def compute_centroids(
         self,
         method="qb",
-        thresholds=[10],
+        thresholds=None,
     ):
         """
         Extract bundle centroids from tractogram and save them as .trk files.
@@ -1133,6 +1132,8 @@ class Tractogram:
         """
 
         # === CLUSTERING ===
+        if thresholds is None:
+            thresholds = [10]
         if method == "qbx":
             if not isinstance(thresholds, list) or len(thresholds) == 0:
                 raise ValueError(
@@ -1230,7 +1231,7 @@ class Tractogram:
         return cluster_ids
 
     ###############################################################################################
-    def get_cluster_streamlines(self, cluster_id: int) -> List[np.ndarray]:
+    def get_cluster_streamlines(self, cluster_id: int) -> list[np.ndarray]:
         """
         Retrieve the streamlines belonging to a specific cluster.
 
@@ -1306,7 +1307,7 @@ class Tractogram:
     ##########################################################################################################
     def interpolate_on_tractogram(
         self,
-        scal_map: Union[str, Path, cltparc.Parcellation],
+        scal_map: str | Path | cltparc.Parcellation,
         interp_method: str = "linear",
         storage_mode: str = "data_per_point",
         map_name: str = "fa",
@@ -1428,7 +1429,7 @@ class Tractogram:
             try:
                 scalar_img = nb.load(str(scal_map))
             except Exception as e:
-                raise IOError(f"Failed to load scalar map '{scal_map}': {e}")
+                raise OSError(f"Failed to load scalar map '{scal_map}': {e}") from e
 
             scalar_data = scalar_img.get_fdata()
             inv_affine = np.linalg.inv(scalar_img.affine)
@@ -1497,7 +1498,7 @@ class Tractogram:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: Tuple = (128, 128, 128, 255),
+        range_color: tuple = (128, 128, 128, 255),
     ) -> ArraySequence:
         """
         Compute streamlines colors for visualization based on the specified overlay.
@@ -1692,7 +1693,7 @@ class Tractogram:
         self,
         condition: str,
         **kwargs,
-    ) -> Optional[List[np.ndarray]]:
+    ) -> list[np.ndarray] | None:
         """
         Filters streamlines based on their lengths.
 
@@ -1735,8 +1736,8 @@ class Tractogram:
         ):
             raise ValueError(
                 f"Map '{map_name}' not found in data_per_point or data_per_streamline. "
-                f"Available maps per point: {list(map_list_dict["maps_per_point"]) if map_list_dict["maps_per_point"] else 'None'}, "
-                f"Available maps per streamline: {list(map_list_dict["maps_per_streamline"]) if map_list_dict["maps_per_streamline"] else 'None'}"
+                f"Available maps per point: {list(map_list_dict['maps_per_point']) if map_list_dict['maps_per_point'] else 'None'}, "
+                f"Available maps per streamline: {list(map_list_dict['maps_per_streamline']) if map_list_dict['maps_per_streamline'] else 'None'}"
             )
         elif (map_name not in self.data_per_streamline) and (
             map_name in self.data_per_point
@@ -1808,7 +1809,7 @@ class Tractogram:
             return filtered_streamlines
 
     ###############################################################################################
-    def list_maps(self) -> Dict[str, List[str]]:
+    def list_maps(self) -> dict[str, list[str]]:
         """
         Lists all available scalar maps in the tractogram.
 
@@ -1923,7 +1924,7 @@ class Tractogram:
         return pd.DataFrame(maps_info)
 
     ##############################################################################################
-    def get_tractogram_info(self) -> Dict:
+    def get_tractogram_info(self) -> dict:
         """
         Retrieves basic information about the tractogram object.
 
@@ -1953,7 +1954,7 @@ class Tractogram:
     ##############################################################################################
     def apply_affine(
         self, affine: np.ndarray, inverse: bool = False, inplace: bool = True
-    ) -> Optional[ArraySequence]:
+    ) -> ArraySequence | None:
         """
         Applies an affine transformation to all streamlines in the tractogram.
 
@@ -2102,9 +2103,9 @@ class Tractogram:
     def save_tractogram(
         self,
         out_file: str,
-        tracts: Optional[List[np.ndarray]] = None,
-        affine: Optional[np.ndarray] = None,
-        header: Optional[Dict] = None,
+        tracts: list[np.ndarray] | None = None,
+        affine: np.ndarray | None = None,
+        header: dict | None = None,
         file_type: str = "trk",
         overwrite: bool = False,
     ):
@@ -2245,8 +2246,8 @@ class Tractogram:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: Tuple = (128, 128, 128, 255),
-        views: Union[str, List[str]] = ["lateral"],
+        range_color: tuple = (128, 128, 128, 255),
+        views: str | list[str] = None,
         hemi: str = "lh",
         use_opacity: bool = False,
         plot_style: str = "tube",
@@ -2334,6 +2335,8 @@ class Tractogram:
 
         # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
+        if views is None:
+            views = ["lateral"]
         dict_ctables = self.colortables
         if cmap is None:
             if overlay_name in dict_ctables.keys():
@@ -2383,11 +2386,9 @@ class Tractogram:
 
 ################################# Helper Functions ################################
 def resample_streamlines(
-    in_streamlines: Union[
-        List[np.ndarray], nb.streamlines.array_sequence.ArraySequence
-    ],
+    in_streamlines: list[np.ndarray] | nb.streamlines.array_sequence.ArraySequence,
     nb_points: int = 51,
-) -> Union[List[np.ndarray], nb.streamlines.array_sequence.ArraySequence]:
+) -> list[np.ndarray] | nb.streamlines.array_sequence.ArraySequence:
     """
     Resample streamlines to a specified number of points.
 
@@ -2548,10 +2549,10 @@ def interpolate_streamline_values(
 
 ###############################################################################################
 def merge_tractograms(
-    tractograms: List[Union[str, Path, Tractogram]],
+    tractograms: list[str | Path | Tractogram],
     color_table: dict = None,
     map_name: str = "tract_id",
-) -> Union[Tractogram, None]:
+) -> Tractogram | None:
     """
     Merges multiple tractograms into a single tractogram.
 
@@ -2706,7 +2707,7 @@ def merge_tractograms(
 ###############################################################################################
 def trk2tck(
     in_trk: Union[str, Path, "Tractogram"],
-    out_tck: Union[str, Path],
+    out_tck: str | Path,
     overwrite: bool = False,
 ) -> "Tractogram":
     """
@@ -2746,9 +2747,9 @@ def trk2tck(
 
 ###############################################################################################
 def tck2trk(
-    in_tck: Union[str, Path],
-    ref_image: Union[str, Path],
-    out_trk: Union[str, Path],
+    in_tck: str | Path,
+    ref_image: str | Path,
+    out_trk: str | Path,
     overwrite: bool = False,
 ) -> "Tractogram":
     """

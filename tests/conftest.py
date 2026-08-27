@@ -1,11 +1,12 @@
 """Pytest configuration and fixtures for clabtoolkit tests."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import pytest
 
 
 @pytest.fixture

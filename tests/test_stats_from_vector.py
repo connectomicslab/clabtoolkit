@@ -1,10 +1,10 @@
+import time
+from functools import wraps
+
 import numpy as np
 import pytest
-import time
-import inspect
-import re
-from functools import wraps
 from tabulate import tabulate
+
 from clabtoolkit.morphometrytools import stats_from_vector
 
 
@@ -84,13 +84,13 @@ class TestStatsFromVector:
 
         # Print test summary
         print("\n" + "=" * 80)
-        print(f"TEST SUMMARY FOR stats_from_vector")
+        print("TEST SUMMARY FOR stats_from_vector")
         print("=" * 80)
         print(f"Total tests: {len(cls.test_timings)}")  # Changed to more reliable count
         print(
             f"Passed tests: {len(cls.test_timings)}"
         )  # All tests that ran are considered passed
-        print(f"Success rate: 100.0%")
+        print("Success rate: 100.0%")
         print(f"Total execution time: {total_time:.2f} seconds")
 
         # Print category summary

@@ -1,13 +1,11 @@
 # misctools_utils.py
-import numpy as np
-from collections import defaultdict
-from typing import Any, Optional, Dict, List
-import sys
-import pandas as pd
-
-from pathlib import Path
-from typing import Union
 import os
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
 
 # Try to import required modules at module level
 try:
@@ -18,8 +16,8 @@ except ImportError:
     HAS_CLTCOLORS = False
 
 try:
-    from IPython.display import display, HTML
     from IPython import get_ipython
+    from IPython.display import HTML, display
 
     HAS_IPYTHON = True
 except ImportError:
@@ -45,7 +43,7 @@ class ExplorerDict(dict):
     """
 
     def __init__(
-        self, *args, name: str = "root", force_mode: Optional[str] = None, **kwargs
+        self, *args, name: str = "root", overwrite_mode: str | None = None, **kwargs
     ):
         """
         Initialize ExplorerDict.
@@ -56,14 +54,14 @@ class ExplorerDict(dict):
             Same as dict initialization
         name : str
             Name for the root object (for display)
-        force_mode : str, optional
+        overwrite_mode : str, optional
             Force display mode: 'notebook', 'terminal', or None (auto-detect)
         """
         super().__init__(*args, **kwargs)
         self._name = name
 
-        if force_mode is not None:
-            self._notebook_mode = force_mode == "notebook"
+        if overwrite_mode is not None:
+            self._notebook_mode = overwrite_mode == "notebook"
         else:
             self._notebook_mode = self._is_notebook()
 
@@ -84,8 +82,8 @@ class ExplorerDict(dict):
     ###########################################################################
     def to_dataframe(
         self,
-        exclude_keys: Optional[List[str]] = None,
-        include_keys: Optional[List[str]] = None,
+        exclude_keys: list[str] | None = None,
+        include_keys: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Convert dictionary to pandas DataFrame.
@@ -102,8 +100,8 @@ class ExplorerDict(dict):
         """
         try:
             import pandas as pd
-        except ImportError:
-            raise ImportError("pandas is required for to_dataframe method.")
+        except ImportError as err:
+            raise ImportError("pandas is required for to_dataframe method.") from err
 
         # Create a copy to avoid modifying the original
         # and filter based on include/exclude keys
@@ -120,7 +118,7 @@ class ExplorerDict(dict):
     ############################################################################
     def tree(
         self,
-        max_depth: Optional[int] = None,
+        max_depth: int | None = None,
         max_items: int = 10,
         max_str_len: int = 50,
         show_types: bool = True,
@@ -323,8 +321,8 @@ class ExplorerDict(dict):
             return
 
         html = f"""
-        <div style="font-family: 'Courier New', monospace; line-height: 1.4; 
-                    background: #1e1e1e; color: #d4d4d4; padding: 15px; 
+        <div style="font-family: 'Courier New', monospace; line-height: 1.4;
+                    background: #1e1e1e; color: #d4d4d4; padding: 15px;
                     border-radius: 5px; border: 1px solid #3c3c3c;">
             <h3 style="color: #c586c0; margin: 0 0 10px 0; font-weight: normal;">🌳 {self._name}</h3>
             <div style="border-top: 2px solid #3c3c3c; padding-top: 10px;">
@@ -499,7 +497,7 @@ class ExplorerDict(dict):
         return val_str
 
     ############################################################################
-    def summary(self, verbose: bool = False) -> Dict[str, Any]:
+    def summary(self, verbose: bool = False) -> dict[str, Any]:
         """
         Get comprehensive summary statistics.
 
@@ -607,21 +605,21 @@ class ExplorerDict(dict):
             print("=" * 60)
             print(f"Root type: {type(self).__name__}")
             print(f"Top-level keys: {len(self)}")
-            print(f"\nStructure:")
+            print("\nStructure:")
             print(f"  Total dictionaries: {stats['n_dicts']}")
             print(f"  Total lists/tuples: {stats['n_lists']}")
             print(f"  Total keys: {stats['n_keys']}")
             print(f"  Maximum depth: {stats['max_depth']}")
-            print(f"\nData types found:")
+            print("\nData types found:")
             for dtype, count in sorted(stats["types"].items(), key=lambda x: -x[1])[
                 :10
             ]:
                 print(f"  {dtype}: {count}")
             if stats["arrays"]:
-                print(f"\nNumPy arrays:")
+                print("\nNumPy arrays:")
                 print(f"  Count: {len(stats['arrays'])}")
                 print(f"  Total elements: {sum(a['size'] for a in stats['arrays'])}")
-            print(f"\nMemory:")
+            print("\nMemory:")
             print(f"  Estimated size: {self._format_bytes(stats['memory'])}")
             print("=" * 60 + "\n")
 
@@ -636,17 +634,17 @@ class ExplorerDict(dict):
         stats = self._collect_stats(self)
 
         html = f"""
-        <div style="font-family: 'Courier New', monospace; background: #1e1e1e; 
-                    color: #d4d4d4; padding: 20px; border-radius: 5px; 
+        <div style="font-family: 'Courier New', monospace; background: #1e1e1e;
+                    color: #d4d4d4; padding: 20px; border-radius: 5px;
                     border: 1px solid #3c3c3c;">
-            <h3 style="color: #c586c0; border-bottom: 2px solid #3c3c3c; 
+            <h3 style="color: #c586c0; border-bottom: 2px solid #3c3c3c;
                     padding-bottom: 10px; font-weight: normal;">
                 📊 Dictionary Summary: {self._name}
             </h3>
-            
+
             <p><strong style="color: #4fc1ff;">Root type:</strong> <span style="color: #d4d4d4;">{type(self).__name__}</span></p>
             <p><strong style="color: #4fc1ff;">Top-level keys:</strong> <span style="color: #d4d4d4;">{len(self)}</span></p>
-            
+
             <h4 style="color: #4ec9b0; margin-top: 20px; font-weight: normal;">Structure</h4>
             <ul style="list-style: none; padding-left: 0;">
                 <li><span style="color: #569cd6;">▪</span> <span style="color: #9cdcfe;">Total dictionaries:</span> <span style="color: #d4d4d4;">{stats['n_dicts']}</span></li>
@@ -654,7 +652,7 @@ class ExplorerDict(dict):
                 <li><span style="color: #569cd6;">▪</span> <span style="color: #9cdcfe;">Total keys:</span> <span style="color: #d4d4d4;">{stats['n_keys']}</span></li>
                 <li><span style="color: #569cd6;">▪</span> <span style="color: #9cdcfe;">Maximum depth:</span> <span style="color: #d4d4d4;">{stats['max_depth']}</span></li>
             </ul>
-            
+
             <h4 style="color: #4ec9b0; font-weight: normal;">Data types found</h4>
             <ul style="list-style: none; padding-left: 0;">
         """
@@ -736,7 +734,7 @@ class ExplorerDict(dict):
         return f"{bytes_size:.2f} TB"
 
     ############################################################################
-    def structure(self, max_depth: Optional[int] = 3) -> Dict:
+    def structure(self, max_depth: int | None = 3) -> dict:
         """
         Get simplified structure showing types and shapes.
 
@@ -793,7 +791,7 @@ class ExplorerDict(dict):
         return f"<{type(obj).__name__}>"
 
     ############################################################################
-    def search(self, pattern: str, case_sensitive: bool = False) -> List[str]:
+    def search(self, pattern: str, case_sensitive: bool = False) -> list[str]:
         """Search for keys matching a pattern."""
         matches = []
 
@@ -820,8 +818,8 @@ class ExplorerDict(dict):
 
         if self._notebook_mode and HAS_IPYTHON:
             if matches:
-                html = f"""<div style="font-family: monospace; background: #1e1e1e; 
-                        color: #d4d4d4; padding: 15px; border-radius: 5px; 
+                html = f"""<div style="font-family: monospace; background: #1e1e1e;
+                        color: #d4d4d4; padding: 15px; border-radius: 5px;
                         border: 1px solid #3c3c3c;">
                     <strong style="color: #4ec9b0;">Found {len(matches)} matches for '{pattern}':</strong>
                     <ul style="padding-left: 20px;">"""
@@ -897,7 +895,7 @@ class ExplorerDict(dict):
 
 ##############################################################################
 @staticmethod
-def exist_file(path: Union[str, Path]) -> str:
+def exist_file(path: str | Path) -> str:
     """
     Check if a file exists at the given path and return the path as a string if it does.
 
@@ -924,7 +922,7 @@ def exist_file(path: Union[str, Path]) -> str:
 
 ##############################################################################
 @staticmethod
-def exist_dir(path: Union[str, Path]) -> str:
+def exist_dir(path: str | Path) -> str:
     """
     Check if a directory exists at the given path and return the path as a string if it does.
 

@@ -2,26 +2,26 @@
 Module for visualization utilities in the clabtoolkit package.
 """
 
-import os
 import json
-import numpy as np
-from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
-import pyvista as pv
+import os
 import threading
 from pathlib import Path
-import copy
+from typing import Any
 
+import numpy as np
+import pyvista as pv
 from nibabel.streamlines import ArraySequence
+
+from . import colorstools as cltcolor
 
 # Importing local modules
 from . import misctools as cltmisc
 from . import plottools as cltplot
+from . import pointstools as cltpts
 
 # Use TYPE_CHECKING to avoid circular imports
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
-from . import pointstools as cltpts
-from . import colorstools as cltcolor
 
 
 ####################################################################################################
@@ -33,7 +33,7 @@ from . import colorstools as cltcolor
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def load_configs(config_file: Union[str, Path]) -> None:
+def load_configs(config_file: str | Path) -> None:
     """
     Load figure and view configurations from JSON file.
 
@@ -73,8 +73,8 @@ def load_configs(config_file: Union[str, Path]) -> None:
 
 ##################################################################################################
 def get_views_to_plot(
-    plotobj, views: Union[str, List[str]], hemi_id: Union[str, List[str]] = "lh"
-) -> List[str]:
+    plotobj, views: str | list[str], hemi_id: str | list[str] = "lh"
+) -> list[str]:
     """
     Get the list of views to plot based on user input and hemisphere.
     This method normalizes the input views, validates them against the available
@@ -188,7 +188,7 @@ def colorbar_needed(maps_names, plotsobj) -> bool:
 def finalize_plot(
     plotter: pv.Plotter,
     save_mode: bool,
-    save_path: Optional[str],
+    save_path: str | None,
     use_threading: bool = False,
 ) -> None:
     """
@@ -350,15 +350,15 @@ def link_brain_subplot_cameras(pv_plotter, brain_positions):
 
 #################################################################################################
 def prepare_list_obj_for_plotting(
-    obj2plot: Union[List[cltsurf.Surface], List[clttract.Tractogram]],
+    obj2plot: list[cltsurf.Surface] | list[clttract.Tractogram],
     map_name: str,
     colormap: str,
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
-    range_min: Optional[float] = None,
-    range_max: Optional[float] = None,
-    range_color: Tuple = (128, 128, 128, 255),
-) -> Union[cltsurf.Surface, clttract.Tractogram]:
+    vmin: float | None = None,
+    vmax: float | None = None,
+    range_min: float | None = None,
+    range_max: float | None = None,
+    range_color: tuple = (128, 128, 128, 255),
+) -> cltsurf.Surface | clttract.Tractogram:
     """
     Prepare a list of Surface or Tractogram objects for plotting with color mapping.
 
@@ -423,15 +423,15 @@ def prepare_list_obj_for_plotting(
 
 ################################################################################################
 def prepare_obj_for_plotting(
-    obj2plot: Union[cltsurf.Surface, clttract.Tractogram],
+    obj2plot: cltsurf.Surface | clttract.Tractogram,
     map_name: str,
     colormap: str,
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
-    range_min: Optional[float] = None,
-    range_max: Optional[float] = None,
-    range_color: Tuple = (128, 128, 128, 255),
-) -> Union[cltsurf.Surface, clttract.Tractogram]:
+    vmin: float | None = None,
+    vmax: float | None = None,
+    range_min: float | None = None,
+    range_max: float | None = None,
+    range_color: tuple = (128, 128, 128, 255),
+) -> cltsurf.Surface | clttract.Tractogram:
     """
     Prepare Surface or Tractogram object for plotting with color mapping.
 
@@ -524,8 +524,10 @@ def prepare_obj_for_plotting(
             )  # Handle NaNs and infinities
             obj2plot.mesh.point_data[map_name] = vertex_values
 
-        except KeyError:
-            raise ValueError(f"Data array '{map_name}' not found in surface point_data")
+        except KeyError as err:
+            raise ValueError(
+                f"Data array '{map_name}' not found in surface point_data"
+            ) from err
 
         # Apply colors to mesh data
         obj2plot.mesh.point_data["rgba"] = obj2plot.get_vertexwise_colors(
@@ -574,8 +576,10 @@ def prepare_obj_for_plotting(
             )  # Handle NaNs and infinities
             obj2plot.point_data[map_name] = point_values
 
-        except KeyError:
-            raise ValueError(f"Data array '{map_name}' not found in point cloud data")
+        except KeyError as err:
+            raise ValueError(
+                f"Data array '{map_name}' not found in point cloud data"
+            ) from err
 
         # Apply colors to point data
         obj2plot.point_data["rgba"] = obj2plot.get_pointwise_colors(
@@ -611,9 +615,9 @@ def prepare_obj_for_plotting(
 
 ################################################################################################
 def process_v_limits(
-    v_limits: Optional[Union[Tuple[float, float], List[Tuple[float, float]]]],
+    v_limits: tuple[float, float] | list[tuple[float, float]] | None,
     n_maps: int,
-) -> List[Tuple[Optional[float], Optional[float]]]:
+) -> list[tuple[float | None, float | None]]:
     """
     Process and validate the v_limits parameter.
 
@@ -710,7 +714,7 @@ def process_v_limits(
 def add_colorbar(
     plotobj,
     plotter: pv.Plotter,
-    colorbar_subplot: Tuple[int, int],
+    colorbar_subplot: tuple[int, int],
     vmin: Any,
     vmax: Any,
     map_name: str,
@@ -915,8 +919,8 @@ def create_threaded_plot(plotter: pv.Plotter) -> None:
 
 ###############################################################################################
 def determine_render_mode(
-    save_path: Optional[str], notebook: bool, non_blocking: bool = False
-) -> Tuple[bool, bool, bool, bool]:
+    save_path: str | None, notebook: bool, non_blocking: bool = False
+) -> tuple[bool, bool, bool, bool]:
     """
     Determine rendering parameters based on save path and environment.
 
@@ -977,7 +981,7 @@ def determine_render_mode(
 
 
 ###############################################################################################
-def list_available_view_names(plotobj) -> List[str]:
+def list_available_view_names(plotobj) -> list[str]:
     """
     List available view names for dynamic view selection.
 
@@ -1015,7 +1019,7 @@ def list_available_view_names(plotobj) -> List[str]:
 
 
 ###############################################################################################
-def list_available_layouts(plotobj) -> Dict[str, Dict[str, Any]]:
+def list_available_layouts(plotobj) -> dict[str, dict[str, Any]]:
     """
     Display available visualization layouts and their configurations.
 
@@ -1079,7 +1083,7 @@ def list_available_layouts(plotobj) -> Dict[str, Dict[str, Any]]:
 
 
 ###############################################################################################
-def get_layout_details(plotobj, views: str) -> Optional[Dict[str, Any]]:
+def get_layout_details(plotobj, views: str) -> dict[str, Any] | None:
     """
     Get detailed information about a specific layout configuration.
 
@@ -1109,7 +1113,7 @@ def get_layout_details(plotobj, views: str) -> Optional[Dict[str, Any]]:
 
     if views not in plotobj.layouts_conf:
         print(f"❌ Configuration '{views}' not found!")
-        print(f"Available configs: {list(self.layouts_conf.keys())}")
+        print(f"Available configs: {list(plotobj.layouts_conf.keys())}")
         return None
 
     config = plotobj.layouts_conf[views]
@@ -1172,6 +1176,8 @@ def reload_config(plotobj) -> None:
 
     print(f"Reloading configuration from: {plotobj.config_file}")
 
+    configs = cltmisc.load_json(plotobj.config_file)
+
     # Create attributes
     plotobj.figure_conf = configs["figure_conf"]
     plotobj.views_conf = configs["views_conf"]
@@ -1180,7 +1186,7 @@ def reload_config(plotobj) -> None:
 
 
 ###############################################################################################
-def get_figure_config(plotobj) -> Dict[str, Any]:
+def get_figure_config(plotobj) -> dict[str, Any]:
     """
     Get the current figure configuration settings.
 
@@ -1234,7 +1240,7 @@ def get_figure_config(plotobj) -> Dict[str, Any]:
 
 
 ###############################################################################################
-def list_all_views_and_layouts(plotobj) -> List[str]:
+def list_all_views_and_layouts(plotobj) -> list[str]:
     """
     List available layout configurations from the loaded JSON file.
 
@@ -1264,7 +1270,7 @@ def list_all_views_and_layouts(plotobj) -> List[str]:
 
 
 ###############################################################################################
-def list_multiviews_layouts(plotobj) -> List[str]:
+def list_multiviews_layouts(plotobj) -> list[str]:
     """
     List available multi-view configurations from the loaded JSON file.
 
@@ -1281,11 +1287,11 @@ def list_multiviews_layouts(plotobj) -> List[str]:
     ['8_views', '6_views', '4_views', '8_views_8x1', '6_views_6x1', '4_views_4x1', '8_views_1x8', '6_views_1x6', '4_views_1x4', '2_views']
     """
 
-    return [name for name in plotobj.layouts_conf.keys()]
+    return list(plotobj.layouts_conf.keys())
 
 
 ###############################################################################################
-def list_single_views(plotobj) -> List[str]:
+def list_single_views(plotobj) -> list[str]:
     """
     List available single view names.
 
@@ -1295,7 +1301,7 @@ def list_single_views(plotobj) -> List[str]:
 
     # Remove the hemisphere information from the view names
     single_views = []
-    for i, view in enumerate(all_single_views):
+    for _i, view in enumerate(all_single_views):
         # Remove the hemisphere information from the view names
         if view.startswith("lh-"):
             view = view.replace("lh-", "")
@@ -1306,7 +1312,7 @@ def list_single_views(plotobj) -> List[str]:
 
 
 ################################################################################################
-def get_valid_views(plotobj, views: Union[str, List[str]]) -> List[str]:
+def get_valid_views(plotobj, views: str | list[str]) -> list[str]:
     """
     Get valid view names from the provided views parameter.
 
@@ -1823,7 +1829,7 @@ def reset_figure_config(plotobj, auto_save: bool = True) -> None:
 
     if auto_save:
         plotobj.save_config()
-        print(f"💾 Default configuration saved to: {self.config_file}")
+        print(f"💾 Default configuration saved to: {plotobj.config_file}")
 
 
 ###############################################################################################
@@ -1857,7 +1863,7 @@ def save_config(plotobj) -> None:
         print(f"✅ Configuration saved successfully to: {plotobj.config_file}")
 
     except Exception as e:
-        raise IOError(f"Failed to save configuration: {e}")
+        raise OSError(f"Failed to save configuration: {e}") from e
 
 
 ################################################################################################
@@ -1915,11 +1921,11 @@ def preview_theme(plotobj, theme_name: str) -> None:
     print("Would change:")
 
     for param, new_value in theme.items():
-        current_value = self.figure_conf.get(param, "Not set")
+        current_value = plotobj.figure_conf.get(param, "Not set")
         if current_value != new_value:
             print(f"  {param:25s}: {current_value} → {new_value}")
 
-    print("\n💡 To apply: plotter.apply_theme('{}')".format(theme_name))
+    print(f"\n💡 To apply: plotter.apply_theme('{theme_name}')")
     print("=" * 50)
 
 
@@ -1988,7 +1994,7 @@ def get_plot_config_dimensions(limits: dict) -> tuple:
 
     #
     tuples_list = list(limits.keys())
-    result = tuple(max(values) for values in zip(*tuples_list))
+    result = tuple(max(values) for values in zip(*tuples_list, strict=False))
 
     n_map = result[0] + 1
     n_surf = result[1] + 1
@@ -2113,12 +2119,12 @@ def get_map_characteristics(objs2plot, maps_dict: dict):
 
 ################################################################################################
 def get_map_limits(
-    objs2plot: Union[
-        List[cltsurf.Surface], List[clttract.Tractogram], List[cltpts.PointCloud]
-    ],
+    objs2plot: (
+        list[cltsurf.Surface] | list[clttract.Tractogram] | list[cltpts.PointCloud]
+    ),
     map_name: str,
-    v_limits: Tuple[Optional[float], Optional[float]],
-) -> List[Tuple[float, float, str]]:
+    v_limits: tuple[float | None, float | None],
+) -> list[tuple[float, float, str]]:
     """
     Get real vmin and vmax from surfaces if not provided.
 
@@ -2297,7 +2303,9 @@ def create_default_object_config(obj2plot):
                 pt_maps = []
             all_maps = st_maps + pt_maps
 
-            def get_tract_data(map_name):
+            # pt_maps/sing_obj are bound as defaults so the closure captures
+            # this iteration's values rather than the loop variables.
+            def get_tract_data(map_name, pt_maps=pt_maps, sing_obj=sing_obj):
                 """Get data for a tractogram map."""
                 # Prioritize point data if available in both
                 if map_name in pt_maps:
@@ -2590,12 +2598,14 @@ def create_final_object_config(obj2plot, maps_config: dict):
             if invalid_indices:
                 warnings.warn(
                     f"Map '{map_name}': Ignoring invalid object indices {invalid_indices}. "
-                    f"Valid range is 0-{n_objects-1}."
+                    f"Valid range is 0-{n_objects-1}.",
+                    stacklevel=2,
                 )
 
             if not valid_indices:
                 warnings.warn(
-                    f"Map '{map_name}': No valid object indices specified. Skipping."
+                    f"Map '{map_name}': No valid object indices specified. Skipping.",
+                    stacklevel=2,
                 )
                 continue
 
@@ -2613,7 +2623,8 @@ def create_final_object_config(obj2plot, maps_config: dict):
                 if obj_config["colormap"] == "colortable":
                     warnings.warn(
                         f"Map '{map_name}': Object {idx} uses 'colortable' colormap. "
-                        "Skipping from global limits calculation."
+                        "Skipping from global limits calculation.",
+                        stacklevel=2,
                     )
                 else:
                     limits.append(obj_config["v_limits"])
@@ -2673,19 +2684,24 @@ def create_final_object_config(obj2plot, maps_config: dict):
             # Validate object index
             if not (0 <= idx < n_objects):
                 warnings.warn(
-                    f"Invalid object index {idx}. Valid range is 0-{n_objects-1}. Skipping."
+                    f"Invalid object index {idx}. Valid range is 0-{n_objects-1}. Skipping.",
+                    stacklevel=2,
                 )
                 continue
 
             map_name = obj_config.get("map_name")
             if not map_name:
-                warnings.warn(f"Object {idx}: 'map_name' not specified. Using default.")
+                warnings.warn(
+                    f"Object {idx}: 'map_name' not specified. Using default.",
+                    stacklevel=2,
+                )
                 continue
 
             # Check if map exists for this object
             if map_name not in default_objects_config[idx]:
                 warnings.warn(
-                    f"Object {idx}: Map '{map_name}' not available. Using 'default' map."
+                    f"Object {idx}: Map '{map_name}' not available. Using 'default' map.",
+                    stacklevel=2,
                 )
                 map_name = "default"
 
@@ -2746,7 +2762,7 @@ def find_common_map_names(obj2plot, map_names):
     fin_map_names = []
     no_ctab_maps = []
 
-    for i, map_name in enumerate(map_names):
+    for _i, map_name in enumerate(map_names):
         cont_map = 0
 
         # Check if the map_name is available in all objects
@@ -2799,18 +2815,16 @@ def find_common_map_names(obj2plot, map_names):
 
 ################################################################################################
 def prepare_map_plotting_params(
-    map_names: List[str],
-    colormaps: Union[str, List[str]],
-    v_limits: Union[
-        Tuple[Optional[float], Optional[float]],
-        List[Tuple[Optional[float], Optional[float]]],
-    ],
-    v_range: Union[
-        Tuple[Optional[float], Optional[float]],
-        List[Tuple[Optional[float], Optional[float]]],
-    ],
+    map_names: list[str],
+    colormaps: str | list[str],
+    v_limits: (
+        tuple[float | None, float | None] | list[tuple[float | None, float | None]]
+    ),
+    v_range: (
+        tuple[float | None, float | None] | list[tuple[float | None, float | None]]
+    ),
     range_color: tuple = (128, 128, 128, 255),
-    colorbar_titles: Optional[Union[str, List[str]]] = None,
+    colorbar_titles: str | list[str] | None = None,
 ) -> dict:
     """
     Prepare and validate parameters for plotting maps on surfaces or tractograms.

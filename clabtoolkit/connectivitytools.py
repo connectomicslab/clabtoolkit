@@ -1,10 +1,11 @@
-import numpy as np
-import pyvista as pv
+import warnings
+from pathlib import Path
+from typing import Literal
+
 import h5py
 import matplotlib.pyplot as plt
-from pathlib import Path
-from typing import Optional, Union, List, Tuple, Literal
-import warnings
+import numpy as np
+import pyvista as pv
 
 from . import colorstools as cltcol
 from . import misctools as cltmisc
@@ -39,14 +40,14 @@ class Connectome:
 
     def __init__(
         self,
-        data: Optional[Union[np.ndarray, str, Path]] = None,
-        name: Optional[str] = None,
-        region_coords: Optional[np.ndarray] = None,
-        region_names: Optional[List[str]] = None,
-        region_index: Optional[np.ndarray] = None,
-        region_colors: Optional[Union[np.ndarray, List]] = None,
+        data: np.ndarray | str | Path | None = None,
+        name: str | None = None,
+        region_coords: np.ndarray | None = None,
+        region_names: list[str] | None = None,
+        region_index: np.ndarray | None = None,
+        region_colors: np.ndarray | list | None = None,
         connectivity_type: str = "structural",
-        affine: Optional[np.ndarray] = None,
+        affine: np.ndarray | None = None,
     ):
         """
         Initialize a Connectome object.
@@ -179,9 +180,7 @@ class Connectome:
     # __init__.  n_regions is a plain instance attribute; no property is needed.
 
     @classmethod
-    def from_h5(
-        cls, filename: Union[str, Path], name: Optional[str] = None
-    ) -> "Connectome":
+    def from_h5(cls, filename: str | Path, name: str | None = None) -> "Connectome":
         """
         Create a Connectome object from an HDF5 file.
 
@@ -256,7 +255,8 @@ class Connectome:
                 return normalized * 10 * scale + base_size
             except ImportError:
                 warnings.warn(
-                    "NetworkX not available. Using strength instead of betweenness centrality."
+                    "NetworkX not available. Using strength instead of betweenness centrality.",
+                    stacklevel=2,
                 )
                 return self._calculate_node_sizes(
                     "strength", threshold, scale, base_size
@@ -277,14 +277,16 @@ class Connectome:
                     return normalized * 10 * scale + base_size
                 except nx.PowerIterationFailedConvergence:
                     warnings.warn(
-                        "Eigenvector centrality failed to converge. Using strength instead."
+                        "Eigenvector centrality failed to converge. Using strength instead.",
+                        stacklevel=2,
                     )
                     return self._calculate_node_sizes(
                         "strength", threshold, scale, base_size
                     )
             except ImportError:
                 warnings.warn(
-                    "NetworkX not available. Using strength instead of eigenvector centrality."
+                    "NetworkX not available. Using strength instead of eigenvector centrality.",
+                    stacklevel=2,
                 )
                 return self._calculate_node_sizes(
                     "strength", threshold, scale, base_size
@@ -296,7 +298,7 @@ class Connectome:
                 f"Available options: 'uniform', 'strength', 'degree', 'betweenness', 'eigenvector'"
             )
 
-    def load_h5(self, filename: Union[str, Path]) -> None:
+    def load_h5(self, filename: str | Path) -> None:
         """
         Load connectivity data from HDF5 file.
 
@@ -337,7 +339,8 @@ class Connectome:
                         break
                 else:
                     warnings.warn(
-                        "No coordinates found. 3D visualization will not be available."
+                        "No coordinates found. 3D visualization will not be available.",
+                        stacklevel=2,
                     )
 
                 # BUG FIX 2: Added "region_colors" (the key used by save_h5) to the
@@ -365,7 +368,8 @@ class Connectome:
                             self.region_colors = colors_data
                             if self.region_colors.shape[0] != self.n_regions:
                                 warnings.warn(
-                                    "Number of colors doesn't match matrix size"
+                                    "Number of colors doesn't match matrix size",
+                                    stacklevel=2,
                                 )
                             elif np.max(self.region_colors) > 1:
                                 self.region_colors = self.region_colors / 255.0
@@ -385,7 +389,8 @@ class Connectome:
 
                         if len(self.region_names) != self.n_regions:
                             warnings.warn(
-                                "Number of region names doesn't match matrix size"
+                                "Number of region names doesn't match matrix size",
+                                stacklevel=2,
                             )
                         break
 
@@ -410,9 +415,9 @@ class Connectome:
                         self.type = self.type.decode("utf-8")
 
         except Exception as e:
-            raise RuntimeError(f"Error loading HDF5 file: {e}")
+            raise RuntimeError(f"Error loading HDF5 file: {e}") from e
 
-    def save_h5(self, filename: Union[str, Path], compression: bool = True) -> None:
+    def save_h5(self, filename: str | Path, compression: bool = True) -> None:
         """
         Save Connectome to HDF5 file.
 
@@ -472,7 +477,7 @@ class Connectome:
 
         print(f"Connectome saved to: {filename}")
 
-    def get_region_names(self) -> List[str]:
+    def get_region_names(self) -> list[str]:
         """
         Get region of interest (ROI) names. If not available, generate default names.
 
@@ -498,7 +503,7 @@ class Connectome:
         else:
             return self.get_default_region_colors()
 
-    def get_region_coordinates(self) -> Optional[np.ndarray]:
+    def get_region_coordinates(self) -> np.ndarray | None:
         """
         Get region of interest (ROI) coordinates.
 
@@ -523,7 +528,7 @@ class Connectome:
             )
         self.region_coords = coordinates.copy()
 
-    def set_region_colors(self, colors: Union[List, np.ndarray]) -> None:
+    def set_region_colors(self, colors: list | np.ndarray) -> None:
         """
         Set colors for brain regions.
 
@@ -538,7 +543,7 @@ class Connectome:
             )
         self.region_colors = cltcol.harmonize_colors(colors)
 
-    def set_region_names(self, names: List[str]) -> None:
+    def set_region_names(self, names: list[str]) -> None:
         """
         Set names for brain regions.
 
@@ -564,7 +569,7 @@ class Connectome:
         colors = cltcol.create_distinguishable_colors(self.n_regions)
         return colors
 
-    def get_default_region_names(self) -> List[str]:
+    def get_default_region_names(self) -> list[str]:
         """
         Generate default region names if not available.
 
@@ -757,7 +762,7 @@ class Connectome:
             return self
 
     def get_subnetwork(
-        self, region_indices: Union[np.ndarray, List[int]], copy: bool = True
+        self, region_indices: np.ndarray | list[int], copy: bool = True
     ) -> "Connectome":
         """
         Extract a subnetwork with selected regions.
@@ -843,11 +848,11 @@ class Connectome:
 
     def plot_matrix(
         self,
-        figsize: Tuple[int, int] = (12, 10),
+        figsize: tuple[int, int] = (12, 10),
         log_scale: bool = False,
         show_labels: bool = True,
         cmap: str = "RdBu_r",
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
         threshold_mode: str = "absolute",
     ) -> None:
         """
@@ -886,7 +891,7 @@ class Connectome:
 
         # Create heatmap
         im = plt.imshow(matrix_to_plot, cmap=cmap, aspect="equal")
-        cbar = plt.colorbar(im, label="Connection Strength")
+        plt.colorbar(im, label="Connection Strength")
 
         # Add threshold info to title
         title = f"Connectivity Matrix - {self.name}"
@@ -916,8 +921,8 @@ class Connectome:
 
     def plot_circular_graph(
         self,
-        figsize: Tuple[int, int] = (12, 12),
-        threshold: Optional[float] = None,
+        figsize: tuple[int, int] = (12, 12),
+        threshold: float | None = None,
         node_size_property: str = "strength",
         node_size_scale: float = 1000,
         edge_width_scale: float = 5,
@@ -926,7 +931,7 @@ class Connectome:
         edge_alpha: float = 0.6,
         node_alpha: float = 0.8,
         edge_cmap: str = "plasma",
-        layout_seed: Optional[int] = 42,
+        layout_seed: int | None = 42,
     ) -> None:
         """
         Plot the connectivity matrix as a circular graph.
@@ -958,11 +963,11 @@ class Connectome:
         """
         try:
             import networkx as nx
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "NetworkX is required for circular graph visualization. "
                 "Install with: pip install networkx"
-            )
+            ) from err
 
         if self.matrix is None:
             raise ValueError("No connectivity matrix available")
@@ -1061,7 +1066,7 @@ class Connectome:
             label_pos = {}
             for node, (x, y) in pos.items():
                 # Move labels slightly outward from nodes
-                angle = np.arctan2(y, x)
+                np.arctan2(y, x)
                 label_x = x * label_distance
                 label_y = y * label_distance
                 label_pos[node] = (label_x, label_y)
@@ -1111,17 +1116,17 @@ class Connectome:
         cls,
         n_regions: int,
         method: str = "random",
-        value_range: Tuple[float, float] = (0.0, 1.0),
-        sparsity: Optional[float] = None,
-        region_names: Optional[List[str]] = None,
-        region_colors: Optional[Union[np.ndarray, List]] = None,
-        region_coords: Optional[np.ndarray] = None,
+        value_range: tuple[float, float] = (0.0, 1.0),
+        sparsity: float | None = None,
+        region_names: list[str] | None = None,
+        region_colors: np.ndarray | list | None = None,
+        region_coords: np.ndarray | None = None,
         connectivity_type: str = "structural",
-        name: Optional[str] = None,
+        name: str | None = None,
         symmetric: bool = True,
         n_modules: int = 4,
         distance_decay: float = 25.0,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ) -> "Connectome":
         """
         Generate a synthetic Connectome.
@@ -1312,7 +1317,7 @@ class Connectome:
         show_edges: bool = True,
         show_labels: bool = False,
         background_color: str = "black",
-        window_size: Tuple[int, int] = (1200, 800),
+        window_size: tuple[int, int] = (1200, 800),
         node_size_property: str = "strength",
         base_node_size: float = 0.5,
     ) -> pv.Plotter:

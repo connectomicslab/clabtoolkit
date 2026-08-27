@@ -1,26 +1,25 @@
+import copy
 import os
-import numpy as np
-import copy
-import nibabel as nb
-
-from typing import Union, List, Dict, Optional, Tuple
 from pathlib import Path
-import pandas as pd
-import copy
+from typing import Optional
 
-# Importing local modules
-from . import misctools as cltmisc
-from . import colorstools as cltcol
+import numpy as np
+import pandas as pd
 
 # Utility function for interpolating streamline values
 from rich.progress import (
-    Progress,
     BarColumn,
-    TimeRemainingColumn,
-    TextColumn,
     MofNCompleteColumn,
+    Progress,
     SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
 )
+
+from . import colorstools as cltcol
+
+# Importing local modules
+from . import misctools as cltmisc
 
 
 ####################################################################################################
@@ -46,9 +45,9 @@ class PointCloud:
 
     def __init__(
         self,
-        points: Union[np.ndarray, pd.DataFrame] = None,
+        points: np.ndarray | pd.DataFrame = None,
         affine: np.ndarray = None,
-        color: Union[str, np.ndarray] = "#BFBDBD",
+        color: str | np.ndarray = "#BFBDBD",
         alpha: float = 1.0,
         name: str = "default",
     ) -> None:
@@ -78,8 +77,8 @@ class PointCloud:
         # Initialize attributes
         self.name = name
         self.coords = None
-        self.colortables: Dict[str, Dict] = {}
-        self.point_data: Dict[str, np.ndarray] = {}
+        self.colortables: dict[str, dict] = {}
+        self.point_data: dict[str, np.ndarray] = {}
 
         # Set affine (always initialize, even if points is None)
         self.affine = affine if affine is not None else np.eye(4)
@@ -310,9 +309,9 @@ class PointCloud:
     ###############################################################################################
     def filter_by_bounds(
         self,
-        x_range: Optional[Tuple[float, float]] = None,
-        y_range: Optional[Tuple[float, float]] = None,
-        z_range: Optional[Tuple[float, float]] = None,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        z_range: tuple[float, float] | None = None,
         inplace: bool = True,
     ) -> Optional["PointCloud"]:
         """
@@ -376,7 +375,7 @@ class PointCloud:
             return new_pc
 
     ###############################################################################################
-    def get_bounds(self) -> Dict[str, Tuple[float, float]]:
+    def get_bounds(self) -> dict[str, tuple[float, float]]:
         """
         Computes the bounding box of the point cloud.
 
@@ -690,7 +689,7 @@ class PointCloud:
     ###############################################################################################
     def save(
         self,
-        filename: Union[str, Path],
+        filename: str | Path,
         format: str = "npy",
         include_colortable: bool = False,
         colortable_name: str = "default",
@@ -750,7 +749,7 @@ class PointCloud:
 
     ###############################################################################################
     @classmethod
-    def load(cls, filename: Union[str, Path], format: str = "npy") -> "PointCloud":
+    def load(cls, filename: str | Path, format: str = "npy") -> "PointCloud":
         """
         Loads a point cloud from a file.
 
@@ -819,9 +818,9 @@ class PointCloud:
     ###############################################################################################
     def load_colortable(
         self,
-        lut_file: Union[str, Path],
+        lut_file: str | Path,
         map_name: str = "default",
-        opacity: Union[float, int, np.ndarray] = 1.0,
+        opacity: float | int | np.ndarray = 1.0,
         lut_type: str = "lut",
     ) -> None:
         """
@@ -867,7 +866,7 @@ class PointCloud:
 
         # Load the colortable using the utility function
         if lut_type == "lut":
-            lut_dict = cltcol.ColorTableLoader.read_luttable(lut_dict)
+            lut_dict = cltcol.ColorTableLoader.read_luttable(lut_file)
         else:
             raise ValueError(
                 f"Unsupported lut_type: '{lut_type}'. Currently only 'lut' is supported."
@@ -998,6 +997,7 @@ class PointCloud:
                 "Affine matrices differ between point clouds. "
                 "Using affine from the first point cloud.",
                 UserWarning,
+                stacklevel=2,
             )
 
         # Start with a copy if not inplace
@@ -1035,6 +1035,7 @@ class PointCloud:
                         f"Colortable '{key}' exists in both point clouds. "
                         f"Keeping colortable from first point cloud.",
                         UserWarning,
+                        stacklevel=2,
                     )
                 elif handle_colortable_conflicts == "overwrite":
                     target.colortables[key] = copy.deepcopy(ctable_data)
@@ -1049,6 +1050,7 @@ class PointCloud:
                     warnings.warn(
                         f"Colortable '{key}' renamed to '{new_key}' to avoid conflict.",
                         UserWarning,
+                        stacklevel=2,
                     )
                 elif handle_colortable_conflicts == "skip":
                     pass  # Do nothing, skip silently
@@ -1231,7 +1233,7 @@ class PointCloud:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: Tuple = (128, 128, 128, 255),
+        range_color: tuple = (128, 128, 128, 255),
     ) -> np.ndarray:
         """
         Compute streamlines colors for visualization based on the specified overlay.
@@ -1348,7 +1350,7 @@ class PointCloud:
         return point_colors
 
     ###############################################################################################
-    def list_maps(self) -> List[str]:
+    def list_maps(self) -> list[str]:
         """
         Lists all available scalar maps in the point cloud.
 
@@ -1383,8 +1385,8 @@ class PointCloud:
         vmax: np.float64 = None,
         range_min: np.float64 = None,
         range_max: np.float64 = None,
-        range_color: Tuple = (128, 128, 128, 255),
-        views: Union[str, List[str]] = ["lateral"],
+        range_color: tuple = (128, 128, 128, 255),
+        views: str | list[str] = None,
         hemi: str = "lh",
         use_opacity: bool = True,
         notebook: bool = False,
@@ -1392,7 +1394,7 @@ class PointCloud:
         colorbar_title: str = None,
         colorbar_position: str = "bottom",
         save_path: str = None,
-        config: Union[str, Path, Dict] = None,
+        config: str | Path | dict = None,
     ):
         """
         Plot the point cloud with specified overlay and visualization parameters.
@@ -1473,6 +1475,8 @@ class PointCloud:
 
         # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
+        if views is None:
+            views = ["lateral"]
         dict_ctables = self.colortables
         if cmap is None:
             if overlay_name in dict_ctables.keys():
@@ -1510,10 +1514,10 @@ class PointCloud:
 
 ###############################################################################################
 def merge_pointclouds(
-    tractograms: List[Union[str, Path, PointCloud]],
+    tractograms: list[str | Path | PointCloud],
     color_table: dict = None,
     map_name: str = "point_id",
-) -> Union[PointCloud, None]:
+) -> PointCloud | None:
     """
     Merges multiple point clouds into a single tractogram.
 
@@ -1624,6 +1628,9 @@ def merge_pointclouds(
             )
 
             if isinstance(t, (str, Path)):
+                # Imported here because tracttools imports this module.
+                from .tracttools import Tractogram
+
                 t = Tractogram(t)
 
             if i == 0:

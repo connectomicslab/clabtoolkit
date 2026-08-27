@@ -1,17 +1,19 @@
 # pylint: disable=import-error
 import os
-import sys
 import subprocess
-from pathlib import Path
+import sys
 from glob import glob
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
+from . import bidstools as cltbids
+from . import colorstools as cltcol
+
 # Importing local modules
 from . import misctools as cltmisc
-from . import bidstools as cltbids
 from . import parcellationtools as cltparc
-from . import colorstools as cltcol
 
 
 ####################################################################################################
@@ -33,7 +35,7 @@ def abased_parcellation(
     interp: str = "Linear",
     cont_tech: str = "local",
     cont_image: str = None,
-    force: bool = False,
+    overwrite: bool = False,
 ):
     """
     Perform atlas-based parcellation using ANTs registration and transformation.
@@ -73,7 +75,7 @@ def abased_parcellation(
     cont_image : str, optional
         Container image specification. Default is None.
 
-    force : bool, optional
+    overwrite : bool, optional
         Whether to overwrite existing files. Default is False.
 
     Returns
@@ -170,7 +172,7 @@ def abased_parcellation(
     # Filename for the inverse of the Non-linear transformation
     xfm_invnl = os.path.join(stransf_dir, invnl_name + "_xfm.nii.gz")
 
-    if not os.path.isfile(xfm_invnl) or force:
+    if not os.path.isfile(xfm_invnl) or overwrite:
         # Registration to MNI template
 
         cmd_bashargs = [
@@ -191,7 +193,7 @@ def abased_parcellation(
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
         subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+            cmd_cont, stdout=subprocess.PIPE, text=True
         )  # Running container command
 
         # Changing the names
@@ -200,7 +202,7 @@ def abased_parcellation(
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
         subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+            cmd_cont, stdout=subprocess.PIPE, text=True
         )  # Running container command
 
         cmd_bashargs = ["mv", temp_xfm_nl, xfm_nl]
@@ -208,7 +210,7 @@ def abased_parcellation(
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
         subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+            cmd_cont, stdout=subprocess.PIPE, text=True
         )  # Running container command
 
         cmd_bashargs = ["mv", temp_xfm_invnl, xfm_invnl]
@@ -216,7 +218,7 @@ def abased_parcellation(
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
         subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+            cmd_cont, stdout=subprocess.PIPE, text=True
         )  # Running container command
 
         # Deleting the warped images
@@ -255,7 +257,7 @@ def abased_parcellation(
                 cmd_bashargs, cont_tech, cont_image
             )  # Generating container command
             subprocess.run(
-                cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+                cmd_cont, stdout=subprocess.PIPE, text=True
             )  # Running container command
 
         elif atlas_type == "maxprob":
@@ -282,7 +284,7 @@ def abased_parcellation(
                 cmd_bashargs, cont_tech, cont_image
             )  # Generating container command
             subprocess.run(
-                cmd_cont, stdout=subprocess.PIPE, universal_newlines=True
+                cmd_cont, stdout=subprocess.PIPE, text=True
             )  # Running container command
 
             tmp_parc = cltparc.Parcellation(parc_file=out_parc)

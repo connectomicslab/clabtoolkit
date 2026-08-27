@@ -1,38 +1,34 @@
-import os
-from datetime import datetime
 import copy
+import os
+import tempfile
 import warnings
-import h5py
+from datetime import datetime
+from pathlib import Path
 
+import h5py
+import nibabel as nib
 import numpy as np
 import pandas as pd
-import nibabel as nib
-import pyvista as pv
-from pathlib import Path
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 from scipy import stats
 from scipy.linalg import pinv
 
-
-from typing import Union, List, Optional, Tuple, Dict
-
-from rich.progress import (
-    Progress,
-    BarColumn,
-    TimeRemainingColumn,
-    TextColumn,
-    MofNCompleteColumn,
-    SpinnerColumn,
-)
-
-# Importing local modules
-from . import misctools as cltmisc
-from . import imagetools as cltimg
-from . import segmentationtools as cltseg
-from . import freesurfertools as cltfree
-from . import surfacetools as cltsurf
 from . import bidstools as cltbids
 from . import colorstools as cltcol
 from . import connectivitytools as cltcon
+from . import freesurfertools as cltfree
+from . import imagetools as cltimg
+
+# Importing local modules
+from . import misctools as cltmisc
+from . import surfacetools as cltsurf
 
 
 ####################################################################################################
@@ -56,11 +52,11 @@ class Parcellation:
     ####################################################################################################
     def __init__(
         self,
-        parc_file: Union[str, Path, np.ndarray] = None,
-        color_table: Optional[Union[str, Path, dict]] = None,
-        affine: Optional[np.ndarray] = None,
-        parc_id: Optional[str] = None,
-        space_id: Optional[str] = "unknown",
+        parc_file: str | Path | np.ndarray = None,
+        color_table: str | Path | dict | None = None,
+        affine: np.ndarray | None = None,
+        parc_id: str | None = None,
+        space_id: str | None = "unknown",
     ):
         """
         Initialize Parcellation object from file or array.
@@ -246,8 +242,8 @@ class Parcellation:
         self.parc_range()
 
     def _determine_color_table_file(
-        self, parc_file: str, color_table: Optional[Union[str, Path]]
-    ) -> Optional[str]:
+        self, parc_file: str, color_table: str | Path | None
+    ) -> str | None:
         """
         Determine which color table file to load.
 
@@ -508,7 +504,7 @@ class Parcellation:
         return "unknown"
 
     #####################################################################################################
-    def set_space_id(self, space_id: Optional[str] = None) -> str:
+    def set_space_id(self, space_id: str | None = None) -> str:
         """
         Set the space identifier for the parcellation.
 
@@ -784,14 +780,16 @@ class Parcellation:
             and hasattr(self, "index")
             and self.index is not None
         ):
-            data_codes = set(int(v) for v in np.unique(self.data) if v != 0)
-            table_codes = set(int(v) for v in self.index)
+            data_codes = {int(v) for v in np.unique(self.data) if v != 0}
+            table_codes = {int(v) for v in self.index}
 
             info["labels_not_in_table"] = sorted(data_codes - table_codes)
 
             missing_in_data = sorted(table_codes - data_codes)
             if hasattr(self, "name") and self.name is not None:
-                idx_to_name = {int(c): n for c, n in zip(self.index, self.name)}
+                idx_to_name = {
+                    int(c): n for c, n in zip(self.index, self.name, strict=False)
+                }
                 info["regions_not_in_data"] = [
                     idx_to_name.get(c, str(c)) for c in missing_in_data
                 ]
@@ -955,7 +953,7 @@ class Parcellation:
         return self.affine
 
     ####################################################################################################
-    def get_index(self) -> List[int]:
+    def get_index(self) -> list[int]:
         """
         Get the list of region indices (codes) defined in the parcellation.
 
@@ -988,7 +986,7 @@ class Parcellation:
         return self.index
 
     ####################################################################################################
-    def get_names(self) -> List[str]:
+    def get_names(self) -> list[str]:
         """
         Get the list of region names defined in the parcellation.
 
@@ -1021,7 +1019,7 @@ class Parcellation:
         return self.name
 
     ####################################################################################################
-    def get_colors(self) -> List[str]:
+    def get_colors(self) -> list[str]:
         """
         Get the list of region colors defined in the parcellation.
 
@@ -1121,7 +1119,7 @@ class Parcellation:
         self.affine = affine
 
     ####################################################################################################
-    def set_index(self, index: List[int]) -> None:
+    def set_index(self, index: list[int]) -> None:
         """
         Set the list of region indices (codes) defined in the parcellation.
 
@@ -1153,7 +1151,7 @@ class Parcellation:
         self.index = index
 
     ####################################################################################################
-    def set_names(self, names: List[str]) -> None:
+    def set_names(self, names: list[str]) -> None:
         """
         Set the list of region names defined in the parcellation.
 
@@ -1183,7 +1181,7 @@ class Parcellation:
         self.name = names
 
     ####################################################################################################
-    def set_colors(self, colors: List[str]) -> None:
+    def set_colors(self, colors: list[str]) -> None:
         """
         Set the list of region colors defined in the parcellation.
 
@@ -1407,7 +1405,7 @@ class Parcellation:
         self.adjust_values()
 
     ####################################################################################################
-    def keep_by_name(self, names2keep: Union[list, str], rearrange: bool = False):
+    def keep_by_name(self, names2keep: list | str, rearrange: bool = False):
         """
         Filter parcellation to keep only regions with specified names.
 
@@ -1448,7 +1446,7 @@ class Parcellation:
 
     #####################################################################################################
     def keep_by_code(
-        self, codes2keep: Union[str, list, np.ndarray], rearrange: bool = False
+        self, codes2keep: str | list | np.ndarray, rearrange: bool = False
     ):
         """
         Filter parcellation to keep only specified region codes.
@@ -1525,7 +1523,7 @@ class Parcellation:
 
     #####################################################################################################
     def remove_by_code(
-        self, codes2remove: Union[str, list, np.ndarray], rearrange: bool = False
+        self, codes2remove: str | list | np.ndarray, rearrange: bool = False
     ):
         """
         Remove regions with specified codes from parcellation.
@@ -1567,7 +1565,7 @@ class Parcellation:
         self.keep_by_code(codes2keep=remaining_codes, rearrange=rearrange)
 
     #####################################################################################################
-    def remove_by_name(self, names2remove: Union[list, str], rearrange: bool = False):
+    def remove_by_name(self, names2remove: list | str, rearrange: bool = False):
         """
         Remove regions with specified names from parcellation.
 
@@ -1617,8 +1615,8 @@ class Parcellation:
     #####################################################################################################
     def apply_mask(
         self,
-        image_mask: Union[str, Path, np.ndarray],
-        mask_codes: Union[str, list, np.ndarray] = None,
+        image_mask: str | Path | np.ndarray,
+        mask_codes: str | list | np.ndarray = None,
         invert: bool = False,
         fill: bool = False,
     ):
@@ -1724,12 +1722,12 @@ class Parcellation:
     ####################################################################################################
     def mask_image(
         self,
-        image_2mask: Union[str, Path, list, np.ndarray],
-        masked_image: Union[str, Path, list, None] = None,
-        roi_codes: Union[str, list, np.ndarray] = None,
-        roi_names: Union[str, list] = None,
+        image_2mask: str | Path | list | np.ndarray,
+        masked_image: str | Path | list | None = None,
+        roi_codes: str | list | np.ndarray = None,
+        roi_names: str | list = None,
         invert: bool = False,
-    ) -> Union[np.ndarray, list]:
+    ) -> np.ndarray | list:
         """
         Mask external images using parcellation as binary mask.
 
@@ -1866,7 +1864,7 @@ class Parcellation:
         if is_file_input:
             output_paths = []
 
-            for img_path, out_path in zip(image_2mask, masked_image):
+            for img_path, out_path in zip(image_2mask, masked_image, strict=False):
                 if not os.path.exists(img_path):
                     raise ValueError(f"Image file does not exist: {img_path}")
 
@@ -1914,10 +1912,10 @@ class Parcellation:
     #####################################################################################################
     def compute_region_adjacency(
         self,
-        roi_codes: Union[List[int], np.ndarray] = None,
-        roi_names: Union[List[str], str] = None,
+        roi_codes: list[int] | np.ndarray = None,
+        roi_names: list[str] | str = None,
         rearrange: bool = False,
-    ) -> Tuple[np.ndarray, dict, dict]:
+    ) -> tuple[np.ndarray, dict, dict]:
         """
         Computes the region adjacency (neighbor) matrix for the parcellation.
 
@@ -2042,12 +2040,12 @@ class Parcellation:
     ######################################################################################################
     def compute_centroids(
         self,
-        roi_codes: Union[List[int], np.ndarray] = None,
-        roi_names: Union[List[str], str] = None,
+        roi_codes: list[int] | np.ndarray = None,
+        roi_names: list[str] | str = None,
         gaussian_smooth: bool = True,
         sigma: float = 1.0,
         closing_iterations: int = 2,
-        centroid_table: Union[str, Path, None] = None,
+        centroid_table: str | Path | None = None,
     ) -> pd.DataFrame:
         """
         Compute region centroids, voxel counts, and volumes.
@@ -2122,7 +2120,7 @@ class Parcellation:
 
         # Get region information
         region_codes = np.array(temp_parc.index)
-        n_regions = len(region_codes)
+        len(region_codes)
 
         # Initialize result lists
         codes = []
@@ -2208,19 +2206,21 @@ class Parcellation:
             except Exception as e:
                 import warnings
 
-                warnings.warn(f"Failed to save centroid table: {e}", UserWarning)
+                warnings.warn(
+                    f"Failed to save centroid table: {e}", UserWarning, stacklevel=2
+                )
 
         return df
 
     ######################################################################################################
     def get_regionwise_timeseries(
         self,
-        time_series_data: Union[str, np.ndarray],
-        vols_to_delete: Union[List[int], np.ndarray] = None,
+        time_series_data: str | np.ndarray,
+        vols_to_delete: list[int] | np.ndarray = None,
         method: str = "nilearn",
         metric: str = "mean",
-        roi_codes: Union[List[int], np.ndarray] = None,
-        roi_names: Union[List[str], str] = None,
+        roi_codes: list[int] | np.ndarray = None,
+        roi_names: list[str] | str = None,
     ) -> np.ndarray:
         """
         Compute region-wise time series.
@@ -2289,11 +2289,10 @@ class Parcellation:
                 tmp_image = cltmisc.create_temporary_filename(
                     prefix="temp_timeseries",
                     extension=".nii.gz",
-                    tmp_dir="/tmp",
                 )
                 if method == "nilearn":
                     # Deleting the volumes from the 4D image
-                    del_img = cltimg.delete_volumes_from_4D_images(
+                    cltimg.delete_volumes_from_4D_images(
                         in_image=time_series_data,
                         out_image=tmp_image,
                         vols_to_delete=vols_to_delete,
@@ -2306,7 +2305,6 @@ class Parcellation:
                     img = nib.load(time_series_data)
 
                     # Get the dimensions of the image
-                    dim = img.shape
 
                     time_series_data_tmp, _ = cltimg.delete_volumes_from_4D_array(
                         in_array=img.get_fdata(), vols_to_delete=vols_to_delete
@@ -2326,24 +2324,24 @@ class Parcellation:
                 # Check if the file exists
                 try:
                     from nilearn.maskers import NiftiLabelsMasker
-                except:
+                except Exception as err:
                     raise ImportError(
                         "nilearn is not installed. Please install it to use this method."
-                    )
+                    ) from err
 
                 # Generating a temporary parcellation file
                 tmp_parc_image = cltmisc.create_temporary_filename(
-                    prefix="temp_parcellation", extension=".nii.gz", tmp_dir="/tmp"
+                    prefix="temp_parcellation", extension=".nii.gz"
                 )
                 tmp_basename = cltmisc.get_real_basename(tmp_parc_image)
                 tmp_parc_image_nilearnlut = os.path.join(
-                    "/tmp", f"{tmp_basename}_nilearnlut.txt"
+                    tempfile.gettempdir(), f"{tmp_basename}_nilearnlut.txt"
                 )
                 temp_parc.save_parcellation(
                     out_file=tmp_parc_image,
                     lut_file=tmp_parc_image_nilearnlut,
                     lut_type="nilearn",
-                    force=True,
+                    overwrite=True,
                 )
 
                 # Generating the masker
@@ -2438,8 +2436,8 @@ class Parcellation:
     ######################################################################################################
     def surface_extraction(
         self,
-        roi_codes: Union[List[int], np.ndarray] = None,
-        roi_names: Union[List[str], str] = None,
+        roi_codes: list[int] | np.ndarray = None,
+        roi_names: list[str] | str = None,
         gaussian_smooth: bool = True,
         smooth_iterations: int = 10,
         fill_holes: bool = True,
@@ -2705,7 +2703,7 @@ class Parcellation:
     ######################################################################################################
     def group_by_codes(
         self, group_dict: dict, keep_ungrouped: bool = False
-    ) -> Tuple[np.ndarray, dict]:
+    ) -> tuple[np.ndarray, dict]:
         """
         Group array values and create color table for new groups.
 
@@ -2751,7 +2749,7 @@ class Parcellation:
         >>> print(color_table['name'])   # ['group_1', 'Thalamus', 'LimbicSystem', 'Cerebellum', ...original names...]
         """
 
-        if keep_ungrouped == False:
+        if not keep_ungrouped:
             # Create a mask of all old IDs to be grouped
             all_old_ids = []
             for params in group_dict.values():
@@ -2799,7 +2797,7 @@ class Parcellation:
         unique_codes = unique_codes[unique_codes != 0]
 
         # Adding ungrouped codes to the color table
-        for i, code in enumerate(unique_codes):
+        for code in unique_codes:
             if code not in color_table["index"]:
                 color_table["index"].append(code)
                 try:
@@ -2827,7 +2825,7 @@ class Parcellation:
     ######################################################################################################
     def group_by_names(
         self, group_dict: dict, keep_ungrouped: bool = True
-    ) -> Tuple[np.ndarray, dict]:
+    ) -> tuple[np.ndarray, dict]:
         """
         Group array values and create color table for new groups using name-based dictionary.
 
@@ -2870,7 +2868,7 @@ class Parcellation:
         >>> print(color_table['name'])   # ['BasalGanglia', 'Thalamus', 'Limbic', 'Cerebellum', ...original names...]
         """
 
-        if keep_ungrouped == False:
+        if not keep_ungrouped:
             # Create a mask of all old IDs to be grouped
             all_old_names = []
             for params in group_dict.values():
@@ -3157,12 +3155,12 @@ class Parcellation:
     ######################################################################################################
     def save_parcellation(
         self,
-        out_file: Union[str, Path],
+        out_file: str | Path,
         affine: np.float64 = None,
-        headerlines: Union[list, str] = None,
-        lut_file: Union[str, Path, List[str], List[Path]] = None,
-        lut_type: Union[str, List[str]] = "lut",
-        force: bool = True,
+        headerlines: list | str = None,
+        lut_file: str | Path | list[str] | list[Path] = None,
+        lut_type: str | list[str] = "lut",
+        overwrite: bool = True,
     ):
         """
         Save parcellation to NIfTI file with optional lookup tables.
@@ -3188,7 +3186,7 @@ class Parcellation:
             Can be a list to export multiple formats simultaneously,
             e.g. ['lut', 'tsv']. Default is 'lut'.
 
-        force : bool, optional
+        overwrite : bool, optional
             Whether to overwrite existing files. Default is True.
 
         Raises
@@ -3243,9 +3241,9 @@ class Parcellation:
         if isinstance(out_file, Path):
             out_file = str(out_file)
 
-        if not force and os.path.exists(out_file):
+        if not overwrite and os.path.exists(out_file):
             raise FileExistsError(
-                f"File {out_file} already exists. Set force=True to overwrite."
+                f"File {out_file} already exists. Set overwrite=True to overwrite."
             )
 
         # Save NIfTI file with proper data type
@@ -3300,13 +3298,16 @@ class Parcellation:
             )
 
         # --- Export one colortable per (lut_file, lut_type) pair ---
-        for lf, lt in zip(lut_file, lut_type):
+        for lf, lt in zip(lut_file, lut_type, strict=False):
             self.export_colortable(
-                out_file=lf, lut_type=lt.lower(), force=force, headerlines=headerlines
+                out_file=lf,
+                lut_type=lt.lower(),
+                overwrite=overwrite,
+                headerlines=headerlines,
             )
 
     ######################################################################################################
-    def load_colortable(self, lut_file: Union[str, Path, dict] = None):
+    def load_colortable(self, lut_file: str | Path | dict = None):
         """
         Load lookup table to associate codes with names and colors.
 
@@ -3394,8 +3395,8 @@ class Parcellation:
         self,
         out_file: str,
         lut_type: str = "lut",
-        headerlines: Union[list, str] = None,
-        force: bool = True,
+        headerlines: list | str = None,
+        overwrite: bool = True,
     ):
         """
         Export lookup table to file.
@@ -3411,7 +3412,7 @@ class Parcellation:
         headerlines : list or str, optional
             Header lines for LUT format. Default is None.
 
-        force : bool, optional
+        overwrite : bool, optional
             Whether to overwrite existing files. Default is True.
 
         Examples
@@ -3471,12 +3472,10 @@ class Parcellation:
         date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
 
         if len(headerlines) == 0:
-            headerlines = ["# $Id: {} {} \n".format(out_file, date_time)]
+            headerlines = [f"# $Id: {out_file} {date_time} \n"]
 
             if os.path.isfile(self.parc_file):
-                headerlines.append(
-                    "# Corresponding parcellation: {} \n".format(self.parc_file)
-                )
+                headerlines.append(f"# Corresponding parcellation: {self.parc_file} \n")
 
         if lut_type == "lut":
 
@@ -3484,11 +3483,11 @@ class Parcellation:
             date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
 
             if len(headerlines) == 0:
-                headerlines = ["# $Id: {} {} \n".format(out_file, date_time)]
+                headerlines = [f"# $Id: {out_file} {date_time} \n"]
 
                 if os.path.isfile(self.parc_file):
                     headerlines.append(
-                        "# Corresponding parcellation: {} \n".format(self.parc_file)
+                        f"# Corresponding parcellation: {self.parc_file} \n"
                     )
 
         elif lut_type == "tsv":
@@ -3524,11 +3523,11 @@ class Parcellation:
 
         col_obj = cltcol.ColorTableLoader(col_dict)
         col_obj.export(
-            out_file, out_format=lut_type, overwrite=force, headerlines=headerlines
+            out_file, out_format=lut_type, overwrite=overwrite, headerlines=headerlines
         )
 
     #########################################################################################################
-    def merge_ctx_wm(self, output_file: Union[str, Path] = None):
+    def merge_ctx_wm(self, output_file: str | Path = None):
         """
         Merge cortical gray matter (GM) and adjacent white matter (WM) into a single tissue type.
 
@@ -3569,12 +3568,12 @@ class Parcellation:
                 raise FileNotFoundError(
                     f"Output directory does not exist: {output_file.parent}"
                 )
-            self.save_parcellation(out_file=output_file, force=True)
+            self.save_parcellation(out_file=output_file, overwrite=True)
             print(f"Saved merged parcellation to {output_file}")
 
     #########################################################################################################
     def create_5tt(
-        self, output_file: Union[str, Path] = None, mergectx: bool = False
+        self, output_file: str | Path = None, mergectx: bool = False
     ) -> np.ndarray:
         """
         Create a 5-tissue-type (5TT) image from a parcellation following the
@@ -3675,8 +3674,8 @@ class Parcellation:
     ######################################################################################################
     def replace_values(
         self,
-        codes2rep: Union[List[Union[int, List[int]]], np.ndarray, Dict],
-        new_codes: Union[int, List[int], np.ndarray] = None,
+        codes2rep: list[int | list[int]] | np.ndarray | dict,
+        new_codes: int | list[int] | np.ndarray = None,
     ) -> None:
         """
         Replace region codes with new values, supporting group replacements.
@@ -3687,13 +3686,23 @@ class Parcellation:
             raise AttributeError("Object must have 'data' attribute")
 
         # Handle Dictionary input
-        if isinstance(codes2rep, Dict):
-            old_codes_list = list(codes2rep.keys())
-            old_codes_list = cltmisc.build_indices(old_codes_list)
-            new_codes_list = list(codes2rep.values())
-            new_codes_list = cltmisc.build_indices(new_codes_list)
-            codes2rep = copy.deepcopy(old_codes_list)
-            new_codes = copy.deepcopy(new_codes_list)  # Don't process again later
+        if isinstance(codes2rep, dict):
+            # Expand every key on its own. build_indices() returns a sorted,
+            # de-duplicated list, so expanding all keys and all values as two
+            # flat lists would silently re-pair them: {1: 9, 2: 8} used to
+            # relabel 1 as 8 and 2 as 9.
+            old_groups = []
+            new_codes_list = []
+            for old_code, new_code in codes2rep.items():
+                old_groups.append(
+                    cltmisc.build_indices(
+                        old_code if isinstance(old_code, list) else [old_code],
+                        nonzeros=False,
+                    )
+                )
+                new_codes_list.append(new_code)
+            codes2rep = copy.deepcopy(old_groups)
+            new_codes = copy.deepcopy(new_codes_list)
 
         # Process codes2rep to determine structure and number of groups
         if isinstance(codes2rep, list):
@@ -3730,8 +3739,13 @@ class Parcellation:
         if isinstance(new_codes, (int, np.integer)):
             new_codes = np.array([new_codes], dtype=np.int32)
         elif isinstance(new_codes, list):
-            new_codes = cltmisc.build_indices(new_codes, nonzeros=False)
-            new_codes = np.array(new_codes, dtype=np.int32)
+            # Expand entry by entry: build_indices() sorts and de-duplicates its
+            # whole input, which would break the positional pairing with
+            # codes2rep (replace_values([1, 2], [20, 10]) relabelled 1 as 10).
+            expanded_new = []
+            for entry in new_codes:
+                expanded_new.extend(cltmisc.build_indices([entry], nonzeros=False))
+            new_codes = np.array(expanded_new, dtype=np.int32)
         else:
             new_codes = np.array(new_codes, dtype=np.int32)
 
@@ -3803,15 +3817,15 @@ class Parcellation:
     #######################################################################################################
     def compute_morphometry_table(
         self,
-        output_table: Union[str, Path] = None,
+        output_table: str | Path = None,
         add_bids_entities: bool = False,
-        map_files: Union[str, Path, list] = None,
-        map_ids: Union[str, list] = None,
-        units: Union[str, list] = "unknown",
-        exclude_by_code: Union[list, np.ndarray] = None,
-        exclude_by_name: Union[list, str] = None,
-        include_by_code: Union[list, np.ndarray] = None,
-        include_by_name: Union[list, str] = None,
+        map_files: str | Path | list = None,
+        map_ids: str | list = None,
+        units: str | list = "unknown",
+        exclude_by_code: list | np.ndarray = None,
+        exclude_by_name: list | str = None,
+        include_by_code: list | np.ndarray = None,
+        include_by_name: list | str = None,
         include_global: bool = True,
     ):
         """
@@ -3969,7 +3983,7 @@ class Parcellation:
             fin_map_ids = []
             fin_units = []
 
-            for map_file, map_id, unit in zip(map_files, map_ids, units):
+            for map_file, map_id, unit in zip(map_files, map_ids, units, strict=False):
                 if os.path.exists(map_file):
                     fin_maps.append(map_file)
                     fin_map_ids.append(map_id)
@@ -4024,7 +4038,7 @@ class Parcellation:
 
             # --- Step 2: Additional maps ---
             for i, (map_file, map_id, unit) in enumerate(
-                zip(fin_maps, fin_map_ids, fin_units), start=1
+                zip(fin_maps, fin_map_ids, fin_units, strict=False), start=1
             ):
 
                 progress.update(
@@ -4090,12 +4104,12 @@ class Parcellation:
     ######################################################################################################
     def compute_volume_table(
         self,
-        exclude_by_code: Union[list, np.ndarray] = None,
-        exclude_by_name: Union[list, str] = None,
-        include_by_code: Union[list, np.ndarray] = None,
-        include_by_name: Union[list, str] = None,
+        exclude_by_code: list | np.ndarray = None,
+        exclude_by_name: list | str = None,
+        include_by_code: list | np.ndarray = None,
+        include_by_name: list | str = None,
         include_global: bool = True,
-        output_table: Union[str, Path] = None,
+        output_table: str | Path = None,
     ):
         """
         Compute volume table for all regions in parcellation.
@@ -4191,17 +4205,17 @@ class Parcellation:
     #######################################################################################################
     def compute_fc_matrix(
         self,
-        data: Union[str, Path, np.ndarray],
+        data: str | Path | np.ndarray,
         method: str = "pearson",
         *,
         z_transform: bool = False,
         absolute: bool = False,
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
         normalize_rows: bool = False,
-        vols_to_delete: Union[str, list, np.ndarray] = None,
+        vols_to_delete: str | list | np.ndarray = None,
         ts_method: str = "nilearn",
-        roi_codes: Union[List[int], np.ndarray] = None,
-        roi_names: Union[List[str], str] = None,
+        roi_codes: list[int] | np.ndarray = None,
+        roi_names: list[str] | str = None,
     ) -> cltcon.Connectome:
         """Compute a functional connectivity (FC) matrix from a ROI × time series or 4-D NIfTI file.
 
@@ -4489,8 +4503,8 @@ class RegionTimeSeries:
     def __init__(
         self,
         data: np.ndarray,
-        region_names: List[str] = None,
-        region_colors: List[Union[Tuple[float, float, float], str]] = None,
+        region_names: list[str] = None,
+        region_colors: list[tuple[float, float, float] | str] = None,
         method: str = "clabtoolkit",
     ):
         """
@@ -4551,10 +4565,10 @@ class RegionTimeSeries:
         *,
         z_transform: bool = False,
         absolute: bool = False,
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
         normalize_rows: bool = False,
-        vols_to_delete: Union[str, list, np.ndarray] = None,
-        roi_names: Union[List[str], str] = None,
+        vols_to_delete: str | list | np.ndarray = None,
+        roi_names: list[str] | str = None,
     ) -> cltcon.Connectome:
         """Compute a functional connectivity (FC) matrix.
 

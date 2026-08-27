@@ -1,11 +1,9 @@
-from pathlib import Path
-from typing import Union
-from typing import Union, Optional, Dict, List
 import json
+from pathlib import Path
 
 
 ########################################################################################
-def get_sidecars_files(nifti_path: Union[str, Path]) -> Dict[str, Optional[Path]]:
+def get_sidecars_files(nifti_path: str | Path) -> dict[str, Path | None]:
     """
     Get the DWI sidecar files (bvec, bval, json) for a given NIfTI file.
 
@@ -42,7 +40,7 @@ def get_sidecars_files(nifti_path: Union[str, Path]) -> Dict[str, Optional[Path]
 
 
 ########################################################################################
-def merge_json_files(json_paths: List[Union[str, Path]]) -> Dict:
+def merge_json_files(json_paths: list[str | Path]) -> dict:
     """
     Merge multiple JSON sidecar dicts into one.
 
@@ -67,7 +65,7 @@ def merge_json_files(json_paths: List[Union[str, Path]]) -> Dict:
         if isinstance(p, str):
             p = Path(p)
 
-        with open(p, "r") as f:
+        with open(p) as f:
             loaded.append(json.load(f))
 
     all_keys = set().union(*loaded)

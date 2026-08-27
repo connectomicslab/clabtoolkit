@@ -1,15 +1,11 @@
-import pytest
-import os
 import time
-import tempfile
 import unittest
-import pandas as pd
 from functools import wraps
-from typing import Union, Dict, List, Optional
+
 from tabulate import tabulate
 
 # Import function to test
-from clabtoolkit.morphometrytools import entities_to_table
+from clabtoolkit.bidstools import entities_to_table
 
 
 def collect_info(category):
@@ -126,11 +122,11 @@ class TestExtractBidsEntities(unittest.TestCase):
 
         # Print test summary
         print("\n" + "=" * 80)
-        print(f"TEST SUMMARY FOR entities_to_table")
+        print("TEST SUMMARY FOR entities_to_table")
         print("=" * 80)
         print(f"Total tests: {len(cls.test_timings)}")
         print(f"Passed tests: {len(cls.test_timings)}")
-        print(f"Success rate: 100.0%")
+        print("Success rate: 100.0%")
         print(f"Total execution time: {total_time:.2f} seconds")
 
         # Print category summary
@@ -343,13 +339,15 @@ class TestExtractBidsEntities(unittest.TestCase):
     @collect_info("special entity handling")
     def test_atlas_handling(self):
         """Test special handling for atlas entities."""
-        filepath = "/data/atlas-chimera123_desc-parcellation.nii.gz"
+        # Needs a trailing BIDS suffix ("dseg"), otherwise the name is not a
+        # valid BIDS filename and the non-BIDS fallback kicks in.
+        filepath = "/data/sub-01_atlas-chimera123_desc-parcellation_dseg.nii.gz"
         entities = ["atlas", "desc"]
 
         result = entities_to_table(filepath, entities)
 
-        # Check atlas special handling
-        self.assertEqual(result.shape, (1, 4))
+        # "atlas-chimera123" expands into Atlas + ChimeraCode
+        self.assertEqual(result.shape, (1, 3))
         self.assertEqual(result["Atlas"].iloc[0], "chimera")
         self.assertEqual(result["ChimeraCode"].iloc[0], "123")
         self.assertEqual(result["Description"].iloc[0], "parcellation")
@@ -387,8 +385,10 @@ class TestExtractBidsEntities(unittest.TestCase):
 
         result = entities_to_table(filepath, entities)
 
-        # Should return empty DataFrame
-        self.assertTrue(result.empty)
+        # Non-BIDS names fall back to a single Participant column holding the
+        # bare filename, so that plain FreeSurfer subject IDs still tabulate.
+        self.assertEqual(result.shape, (1, 1))
+        self.assertEqual(result["Participant"].iloc[0], "non_bids_file")
 
     @collect_info("edge cases")
     def test_no_entities_specified(self):
@@ -397,9 +397,11 @@ class TestExtractBidsEntities(unittest.TestCase):
 
         result = entities_to_table(filepath)
 
-        # Should return DataFrame with one column for the full filename
-        self.assertEqual(result.shape, (1, 1))
-        self.assertEqual(result["Participant"].iloc[0], "sub-01_ses-pre_task-rest")
+        # With no selection, every entity present in the name is extracted.
+        self.assertEqual(result.shape, (1, 3))
+        self.assertEqual(result["Participant"].iloc[0], "01")
+        self.assertEqual(result["Session"].iloc[0], "pre")
+        self.assertEqual(result["Task"].iloc[0], "rest")
 
     @collect_info("input variations")
     def test_multiple_entities(self):
@@ -471,37 +473,11 @@ class TestExtractBidsEntities(unittest.TestCase):
         self.assertEqual(result["Task"].iloc[0], "rest")
 
     @collect_info("error handling")
-    def test_import_error_handling(self):
-        """Test handling of import errors with cltbids module."""
-        import sys
-
-        # Save original modules
-        original_modules = sys.modules.copy()
-
-        try:
-            # Remove cltbids from sys.modules to simulate import error
-            if "cltbids" in sys.modules:
-                del sys.modules["cltbids"]
-
-            # Define a mock import function that raises ImportError for cltbids
-            original_import = __import__
-
-            def mock_import(name, globals=None, locals=None, fromlist=(), level=0):
-                if name == "cltbids":
-                    raise ImportError("Mock import error for cltbids")
-                return original_import(name, globals, locals, fromlist, level)
-
-            # Replace the built-in import function
-            __builtins__["__import__"] = mock_import
-
-            # This should raise ImportError due to missing cltbids
-            with self.assertRaises(ImportError):
-                entities_to_table("/data/sub-01_bold.nii.gz", ["sub"])
-
-        finally:
-            # Restore the original import function and modules
-            __builtins__["__import__"] = original_import
-            sys.modules = original_modules
+    def test_rejects_non_string_filepath(self):
+        """A non-string filepath is rejected up front."""
+        for bad in (None, 42, ["/data/sub-01_bold.nii.gz"]):
+            with self.assertRaises(TypeError):
+                entities_to_table(bad, ["sub"])
 
     @collect_info("performance")
     def test_performance_large_dataset(self):
@@ -533,76 +509,33 @@ class TestExtractBidsEntities(unittest.TestCase):
         """Test with a realistic BIDS filename containing multiple entities."""
         filepath = "/data/bids_dataset/sub-01/ses-pre/func/sub-01_ses-pre_task-rest_acq-multiband_run-01_echo-1_bold.nii.gz"
 
-        # Mock the str2entity function to include all entities
-        import cltbids
+        result = entities_to_table(
+            filepath, ["sub", "ses", "task", "acq", "run", "echo"]
+        )
 
-        original_str2entity = cltbids.str2entity
-
-        def mock_str2entity_complete(filename):
-            return {
-                "sub": "01",
-                "ses": "pre",
-                "task": "rest",
-                "acq": "multiband",
-                "run": "01",
-                "echo": "1",
-                "suffix": "bold",
-                "extension": ".nii.gz",
-            }
-
-        cltbids.str2entity = mock_str2entity_complete
-
-        try:
-            # Extract all entities
-            result = entities_to_table(
-                filepath, ["sub", "ses", "task", "acq", "run", "echo"]
-            )
-
-            # Check all entities are extracted correctly
-            self.assertEqual(result.shape, (1, 6))
-            self.assertEqual(result["Participant"].iloc[0], "01")
-            self.assertEqual(result["Session"].iloc[0], "pre")
-            self.assertEqual(result["Task"].iloc[0], "rest")
-            self.assertEqual(result["Acq"].iloc[0], "multiband")
-            self.assertEqual(result["Run"].iloc[0], "01")
-            self.assertEqual(result["Echo"].iloc[0], "1")
-        finally:
-            # Restore the original function
-            cltbids.str2entity = original_str2entity
+        # Check all entities are extracted correctly
+        self.assertEqual(result.shape, (1, 6))
+        self.assertEqual(result["Participant"].iloc[0], "01")
+        self.assertEqual(result["Session"].iloc[0], "pre")
+        self.assertEqual(result["Task"].iloc[0], "rest")
+        self.assertEqual(result["Acquisition"].iloc[0], "multiband")
+        self.assertEqual(result["Run"].iloc[0], "01")
+        self.assertEqual(result["Echo"].iloc[0], "1")
 
     @collect_info("special entity handling")
     def test_combined_special_entities(self):
         """Test a file with multiple special entities that need custom handling."""
-        filepath = "/data/atlas-chimera123_desc-grow456_bold.nii.gz"
+        filepath = "/data/sub-01_atlas-chimera123_desc-grow456_dseg.nii.gz"
 
-        # Mock the str2entity function to include both special entities
-        import cltbids
+        result = entities_to_table(filepath, ["atlas", "desc"])
 
-        original_str2entity = cltbids.str2entity
-
-        def mock_str2entity_special(filename):
-            return {
-                "atlas": "chimera123",
-                "desc": "grow456",
-                "suffix": "bold",
-                "extension": ".nii.gz",
-            }
-
-        cltbids.str2entity = mock_str2entity_special
-
-        try:
-            # Extract both special entities
-            result = entities_to_table(filepath, ["atlas", "desc"])
-
-            # Check all special entity handling is applied correctly
-            self.assertEqual(result.shape, (1, 5))
-            self.assertEqual(result["Atlas"].iloc[0], "chimera")
-            self.assertEqual(result["ChimeraCode"].iloc[0], "123")
-            self.assertEqual(result["Description"].iloc[0], "grow456")
-            self.assertEqual(result["GrowIntoWM"].iloc[0], "456")
-        finally:
-            # Restore the original function
-            cltbids.str2entity = original_str2entity
+        # atlas-chimera123 -> Atlas + ChimeraCode, desc-grow456 -> Description
+        # + GrowIntoWM, so two requested entities yield four columns.
+        self.assertEqual(result.shape, (1, 4))
+        self.assertEqual(result["Atlas"].iloc[0], "chimera")
+        self.assertEqual(result["ChimeraCode"].iloc[0], "123")
+        self.assertEqual(result["Description"].iloc[0], "grow456")
+        self.assertEqual(result["GrowIntoWM"].iloc[0], "456")
 
 
 if __name__ == "__main__":

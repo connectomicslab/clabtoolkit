@@ -1,30 +1,24 @@
-import os
-import shutil
-import pandas as pd
-import time
-import queue
-import threading
-import numpy as np
-
-from typing import Union, Dict, Set, Tuple, List, Optional
-from pathlib import Path
-
-import re
-import json
-from glob import glob
-
-from rich.progress import (
-    Progress,
-    BarColumn,
-    TimeRemainingColumn,
-    TextColumn,
-    MofNCompleteColumn,
-    SpinnerColumn,
-)
-from rich.console import Console
-from rich.panel import Panel
 import concurrent.futures
+import json
+import os
+import re
+import shutil
+import time
+from glob import glob
+from pathlib import Path
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import pandas as pd
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 # Importing the clabtoolkit modules
 from . import misctools as cltmisc
@@ -135,9 +129,7 @@ def entity2str(entity: dict) -> str:
 
 
 ####################################################################################################
-def delete_entity(
-    entity: Union[dict, str], ent2rem: Union[List[str], str, dict]
-) -> Union[dict, str]:
+def delete_entity(entity: dict | str, ent2rem: list[str] | str | dict) -> dict | str:
     """
     Removes specified keys from an entity dictionary or string representation.
 
@@ -205,8 +197,8 @@ def delete_entity(
 
 ####################################################################################################
 def replace_entity_value(
-    entity: Union[dict, str], ent2replace: Union[dict, str], verbose: bool = False
-) -> Union[dict, str]:
+    entity: dict | str, ent2replace: dict | str, verbose: bool = False
+) -> dict | str:
     """
     Replaces values in an entity dictionary or string representation.
 
@@ -267,8 +259,8 @@ def replace_entity_value(
 
 ####################################################################################################
 def replace_entity_key(
-    entity: Union[dict, str], keys2replace: Dict[str, str], verbose: bool = False
-) -> Union[dict, str]:
+    entity: dict | str, keys2replace: dict[str, str], verbose: bool = False
+) -> dict | str:
     """
     Replaces specified keys in an entity dictionary or string representation.
 
@@ -328,8 +320,8 @@ def replace_entity_key(
 
 ####################################################################################################
 def insert_entity(
-    entity: Union[dict, str], entity2add: Dict[str, str], prev_entity: str = None
-) -> Union[dict, str]:
+    entity: dict | str, entity2add: dict[str, str], prev_entity: str = None
+) -> dict | str:
     """
     Adds entities to an existing entity dictionary or string representation.
 
@@ -432,7 +424,7 @@ def insert_entity(
 
 ####################################################################################################
 def recursively_replace_entity_value(
-    root_dir: str, dict2old: Union[dict, str], dict2new: Union[dict, str]
+    root_dir: str, dict2old: dict | str, dict2new: dict | str
 ):
     """
     This method replaces the values of certain entities in all the files and folders of a BIDs dataset.
@@ -473,7 +465,7 @@ def recursively_replace_entity_value(
     dict2old_list = [f"{key}-{value}" for key, value in dict2old.items()]
     dict2new_list = [f"{key}-{value}" for key, value in dict2new.items()]
 
-    replacements = dict(zip(dict2old_list, dict2new_list))
+    replacements = dict(zip(dict2old_list, dict2new_list, strict=False))
 
     #
     all_files = cltmisc.get_all_files(
@@ -573,7 +565,7 @@ def recursively_replace_entity_key(root_dir: str, replacements: dict):
 
 
 ####################################################################################################
-def recursively_delete_entity(root_dir: str, key2rem: Union[List[str], str, dict]):
+def recursively_delete_entity(root_dir: str, key2rem: list[str] | str | dict):
     """
     This method deletes entities in all the files and folders of a BIDs dataset.
 
@@ -635,13 +627,13 @@ def recursively_delete_entity(root_dir: str, key2rem: Union[List[str], str, dict
         all_dirs = set(all_dirs)  # Remove duplicates from the directory list
 
         # Renaming the directories
-        key2rem_dict = {key: "" for key in key2rem}  # Create a dict with empty values
+        key2rem_dict = dict.fromkeys(key2rem, "")  # Create a dict with empty values
         cltmisc.rename_folders(all_dirs, key2rem_dict)
 
 
 ####################################################################################################
 def recursively_insert_entity(
-    root_dir: str, entity2add: Dict[str, str], prev_entity: str = None
+    root_dir: str, entity2add: dict[str, str], prev_entity: str = None
 ) -> None:
     """
     This method inserts entities in all the files and folders of a BIDs dataset.
@@ -679,7 +671,7 @@ def recursively_insert_entity(
     entity2add = dict(sorted(entity2add.items()))
 
     # Creating the list of strings
-    entity2add_list = [f"{key}-{value}" for key, value in entity2add.items()]
+    [f"{key}-{value}" for key, value in entity2add.items()]
 
     if prev_entity is not None:
         all_files = cltmisc.get_all_files(root_dir, or_filter=prev_entity)
@@ -707,7 +699,7 @@ def recursively_insert_entity(
 
 
 ####################################################################################################
-def get_all_entities(root_dir: str) -> Tuple[Dict[str, Set[str]], List[str]]:
+def get_all_entities(root_dir: str) -> tuple[dict[str, set[str]], list[str]]:
     """
     Returns a set of all unique entities found in the BIDS dataset.
 
@@ -758,7 +750,7 @@ def get_all_entities(root_dir: str) -> Tuple[Dict[str, Set[str]], List[str]]:
             and "raw_entities" in config_data["bids_entities"]
             and "derivatives_entities" in config_data["bids_entities"]
         ):
-            entities = {
+            {
                 **config_data["bids_entities"]["raw_entities"],
                 **config_data["bids_entities"]["derivatives_entities"],
             }
@@ -766,10 +758,10 @@ def get_all_entities(root_dir: str) -> Tuple[Dict[str, Set[str]], List[str]]:
             raise ValueError(
                 "Default config JSON does not have the expected structure."
             )
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         raise FileNotFoundError(
             f"Default configuration file not found at: {os.path.join(cwd, 'config', 'bids.json')}"
-        )
+        ) from err
 
     # Get all the leaf directories in the BIDS dataset
     bids_folders = cltmisc.get_leaf_directories(root_dir)
@@ -826,8 +818,8 @@ def get_all_entities(root_dir: str) -> Tuple[Dict[str, Set[str]], List[str]]:
 
 ####################################################################################################
 def entities4table(
-    entities_json: str = None, selected_entities: Union[str, Dict, List] = None
-) -> Dict:
+    entities_json: str = None, selected_entities: str | dict | list = None
+) -> dict:
     """
     Returns the BIDS entities that will be included in the morphometric table.
 
@@ -880,9 +872,8 @@ def entities4table(
     >>> entities4table(selected_entities=['sub', 'ses'])
     {'sub': {'...'}, 'ses': {'...'}}
     """
-    import os
     import json
-    from typing import Dict, Union, List
+    import os
 
     # Load entities from JSON
     if entities_json is None:
@@ -907,10 +898,10 @@ def entities4table(
                 raise ValueError(
                     "Default config JSON does not have the expected structure."
                 )
-        except FileNotFoundError:
+        except FileNotFoundError as err:
             raise FileNotFoundError(
                 f"Default configuration file not found at: {default_config_path}"
-            )
+            ) from err
 
     elif isinstance(entities_json, str):
         # Load from provided JSON file path
@@ -920,8 +911,8 @@ def entities4table(
         try:
 
             ent_out_dict = cltmisc.extract_string_values(entities_json)
-        except json.JSONDecodeError:
-            raise ValueError(f"Error parsing the JSON file: {entities_json}")
+        except json.JSONDecodeError as err:
+            raise ValueError(f"Error parsing the JSON file: {entities_json}") from err
     else:
         raise TypeError("entities_json must be None or a string path to a JSON file.")
 
@@ -941,10 +932,10 @@ def entities4table(
                     selected_entities = str2entity(selected_entities)
                     selected_entity_keys = list(selected_entities.keys())
 
-            except (ImportError, AttributeError):
+            except (ImportError, AttributeError) as err:
                 raise ValueError(
                     "Cannot parse selected_entities string. Provide a comma-separated list or a BIDs-like string (e.g. sub-XXX_ses-SSS_run-01 )."
-                )
+                ) from err
 
         # Handle dictionary input
         elif isinstance(selected_entities, dict):
@@ -965,7 +956,7 @@ def entities4table(
 ####################################################################################################
 def entities_to_table(
     filepath: str,
-    entities_to_extract: Optional[Union[str, List[str], Dict[str, str]]] = None,
+    entities_to_extract: str | list[str] | dict[str, str] | None = None,
     include_suffix: bool = False,
 ) -> pd.DataFrame:
     """
@@ -982,8 +973,8 @@ def entities_to_table(
         - If str: A single entity name to extract
         - If list: Multiple entity names to extract
         - If dict: Keys are entity names, values are custom column names
-        - If None: Returns a single column with the full filename
-    include_suffix : bool, default=True
+        - If None: Extracts every entity present in the filename
+    include_suffix : bool, default=False
         If True, adds a 'Type' column containing the BIDS suffix
         (e.g., 'bold', 'T1w', 'dwi') extracted from the filename.
 
@@ -992,7 +983,12 @@ def entities_to_table(
     pd.DataFrame
         DataFrame containing the extracted entities as columns.
         If include_suffix is True, a 'Type' column is appended at the end.
-        If the file is not BIDS-compliant, returns an empty DataFrame.
+        Two entities expand into more than one column: 'atlas' yields
+        'Atlas' plus 'ChimeraCode', and a 'desc' value starting with 'grow'
+        yields 'Description' plus 'GrowIntoWM'.
+        If the filename is not BIDS-compliant, returns a single 'Participant'
+        column holding the bare filename, so that plain FreeSurfer subject
+        IDs can still be tabulated.
 
     Examples
     --------
@@ -1013,7 +1009,7 @@ def entities_to_table(
     cwd = os.path.dirname(os.path.abspath(__file__))
     default_config_path = os.path.join(cwd, "config", "bids.json")
     try:
-        with open(default_config_path, "r") as f:
+        with open(default_config_path) as f:
             config_data = json.load(f)
 
         if (
@@ -1029,14 +1025,14 @@ def entities_to_table(
             raise ValueError(
                 "Default config JSON does not have the expected structure."
             )
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         raise FileNotFoundError(
             f"Default configuration file not found at: {default_config_path}"
-        )
-    except json.JSONDecodeError:
+        ) from err
+    except json.JSONDecodeError as err:
         raise ValueError(
             f"Error parsing the default configuration file: {default_config_path}"
-        )
+        ) from err
 
     file_directory = os.path.dirname(filepath)
     filename = cltmisc.get_real_basename(filepath)
@@ -1064,9 +1060,9 @@ def entities_to_table(
                 entities_to_extract = [entities_to_extract]
 
             if isinstance(entities_to_extract, list):
-                entities_to_extract = {entity: "" for entity in entities_to_extract}
+                entities_to_extract = dict.fromkeys(entities_to_extract, "")
         else:
-            entities_to_extract = {entity: "" for entity in entities_dict.keys()}
+            entities_to_extract = dict.fromkeys(entities_dict.keys(), "")
 
         if result_df.empty:
             result_df = pd.DataFrame([{}])
@@ -1075,8 +1071,12 @@ def entities_to_table(
         for entity in reversed(entity_keys):
             value = entities_dict.get(entity, "")
 
+            # A dict passed as entities_to_extract maps entity -> custom column
+            # name; fall back to the default name from config/bids.json.
+            custom_name = entities_to_extract.get(entity) or None
+
             if entity in ent_out_dict.keys():
-                var_name = ent_out_dict[entity]
+                var_name = custom_name or ent_out_dict[entity]
                 if entity == "atlas":
                     if "chimera" in value:
                         result_df.insert(0, "ChimeraCode", value.replace("chimera", ""))
@@ -1093,7 +1093,7 @@ def entities_to_table(
                 else:
                     result_df.insert(0, var_name, value)
             else:
-                result_df.insert(0, entity.capitalize(), value)
+                result_df.insert(0, custom_name or entity.capitalize(), value)
 
         # Append Type column at the end if requested
         if "tmp_suffix" in locals() and include_suffix:
@@ -1162,10 +1162,10 @@ def get_subjects(bids_dir: str) -> list:
 def copy_bids_folder(
     bids_dir: str,
     out_dir: str,
-    subjects_to_copy: Union[list, str] = None,
-    folders_to_copy: Union[list, str] = "all",
+    subjects_to_copy: list | str = None,
+    folders_to_copy: list | str = "all",
     deriv_dir: str = None,
-    include_derivatives: Union[str, list] = None,
+    include_derivatives: str | list = None,
 ):
     """
     This function copies the BIDs folder and its derivatives for given subjects to a new location.
@@ -1379,7 +1379,7 @@ def copy_bids_folder(
                         dest_dir = file.replace(bids_dir, out_dir)
                         os.makedirs(os.path.dirname(dest_dir), exist_ok=True)
                         shutil.copy2(file, dest_dir)
-                    except:
+                    except Exception:
                         print(f"WARNING: The file {file} could not be copied.")
                         continue
 
@@ -1443,7 +1443,7 @@ def copy_bids_folder(
                                         shutil.copytree(
                                             fold, dest_dir, dirs_exist_ok=True
                                         )
-                                    except:
+                                    except Exception:
                                         print(
                                             f"WARNING: The folder or file {fold} could not be copied."
                                         )
@@ -1461,7 +1461,7 @@ def copy_bids_folder(
                                             os.path.dirname(dest_dir), exist_ok=True
                                         )
                                         shutil.copy2(file, dest_dir)
-                                    except:
+                                    except Exception:
                                         print(
                                             f"WARNING: The file {file} could not be copied."
                                         )
@@ -1473,7 +1473,10 @@ def copy_bids_folder(
 
 ####################################################################################################
 def get_bids_database_table(
-    root_dir: str, output_table: Optional[str] = None
+    root_dir: str,
+    output_table: str | None = None,
+    valid_extensions: str | list[str] | None = None,
+    n_jobs: int = 1,
 ) -> pd.DataFrame:
     """
     Generate a comprehensive summary table of all neuroimaging files in a BIDS dataset.
@@ -1481,7 +1484,10 @@ def get_bids_database_table(
     This function scans a BIDS dataset directory structure and creates a detailed table
     containing all BIDS entities (subject, session, acquisition, etc.) and file counts.
     The output table provides an overview of the dataset composition, making it easy to
-    identify data availability, missing files, and dataset structure.
+    identify data availability, missing files, and dataset structure. Only files located
+    within subject folders (sub-*) directly under root_dir are considered — each subject's
+    directory is scanned independently, so top-level folders such as derivatives/, code/,
+    or sourcedata/ are never picked up, even if they exist inside root_dir.
 
     Parameters
     ----------
@@ -1492,6 +1498,18 @@ def get_bids_database_table(
     output_table : str, optional
         Path where the resulting CSV table should be saved. If None, the table is not
         saved to disk but still returned as a DataFrame. Default is None.
+
+    valid_extensions : str or list of str, optional
+        File extension(s) to include when scanning for files (e.g. ".nii.gz"). If None,
+        the extensions are loaded from the default BIDS config file
+        (config/bids.json -> "extensions"). If an invalid type is provided, falls back
+        to the default config extensions as well.
+
+    n_jobs : int, optional
+        Number of worker threads to use when processing subjects. Use 1 (default) for
+        sequential processing. Values > 1 process subjects concurrently using a thread
+        pool, which can help when files live on slow or networked storage (e.g. HPC
+        mounts), since the bottleneck there is typically I/O wait rather than CPU.
 
     Returns
     -------
@@ -1508,22 +1526,23 @@ def get_bids_database_table(
     NotADirectoryError
         If root_dir exists but is not a directory.
     ValueError
-        If no subjects are found in the BIDS dataset (no sub-* folders).
+        If no subjects are found in the BIDS dataset (no sub-* folders), or if the
+        default BIDS config file fails to load.
 
     Examples
     --------
     Basic usage - analyze dataset and return summary table:
 
     >>> import pandas as pd
-    >>> bids_table = get_bids_table('/path/to/bids/dataset')
+    >>> bids_table = get_bids_database_table('/path/to/bids/dataset')
     >>> print(f"Dataset contains {len(bids_table)} unique file combinations")
     >>> print(f"Total files: {bids_table['N'].sum()}")
 
     Save summary table to CSV file:
 
-    >>> bids_table = get_bids_table(
+    >>> bids_table = get_bids_database_table(
     ...     root_dir='/data/my_study',
-    ...     output_table='/data/my_study/bids_summary.csv'
+    ...     output_table='/data/my_study/bids_summary.csv',
     ... )
 
     Analyze specific aspects of the dataset:
@@ -1554,12 +1573,14 @@ def get_bids_database_table(
 
     Notes
     -----
-    - Only processes .nii.gz files (NIfTI compressed format)
+    - Only processes files matching valid_extensions (default from BIDS config)
     - Automatically detects all BIDS entities present in the dataset
     - Groups identical combinations and sums file counts
     - Results are sorted by Subject, Session, and suffix for readability
     - Progress is displayed using Rich progress bar during processing
     - Column names are converted to human-readable format (e.g., 'sub' -> 'Subject')
+    - Each subject's directory (root_dir/sub-XX) is scanned independently, so
+      top-level folders like derivatives/, code/, or sourcedata/ are never included.
 
     See Also
     --------
@@ -1574,6 +1595,23 @@ def get_bids_database_table(
 
     if not os.path.isdir(root_dir):
         raise NotADirectoryError(f"Provided path is not a directory: {root_dir}")
+
+    # Validate extensions filter
+    # Loading the default valid extensions from the BIDS config if not provided
+    default_config_path = os.path.join(os.path.dirname(__file__), "config", "bids.json")
+    try:
+        config_data = load_bids_json(default_config_path)
+    except Exception as e:
+        raise ValueError(f"Failed to load default BIDS config: {e}")
+    default_valid_extensions = config_data.get("extensions", None)
+
+    if valid_extensions is not None:
+        if isinstance(valid_extensions, str):
+            valid_extensions = [valid_extensions]
+        elif not isinstance(valid_extensions, list):
+            valid_extensions = default_valid_extensions
+    else:
+        valid_extensions = default_valid_extensions
 
     # Initialize console
     console = Console()
@@ -1594,6 +1632,42 @@ def get_bids_database_table(
     # Create column names
     column_names = list(all_dataset_entities.keys())
     column_names.extend(["suffix", "N"])
+
+    # Walk each subject directory separately. This is inherently safe against
+    # picking up derivatives/, code/, sourcedata/, etc., since we only ever look
+    # inside root_dir/sub-XX, never at root_dir itself.
+    files_by_subject: dict[str, list[str]] = {}
+    for subj_id in subj_ids:
+        subj_dir = os.path.join(root_dir, subj_id)
+        files_by_subject[subj_id] = cltmisc.get_all_files(
+            subj_dir, recursive=True, or_filter=valid_extensions
+        )
+
+    def process_subject(subj_id: str) -> list[dict]:
+        rows = []
+        for file_path in files_by_subject.get(subj_id, []):
+            file_name = os.path.basename(file_path)
+
+            # Parse the BIDS filename to get entities
+            ent_dict = str2entity(file_name)
+
+            # Create a row dictionary with all possible entity columns initialized to None
+            row_dict = dict.fromkeys(column_names)
+
+            # Fill in the entities that are present in this file
+            for entity, value in ent_dict.items():
+                if entity in row_dict:
+                    row_dict[entity] = value
+
+            # Extract suffix from filename
+            row_dict["suffix"] = ent_dict["suffix"]
+
+            # Set N to 1 for individual files (we'll aggregate later)
+            row_dict["N"] = 1
+
+            rows.append(row_dict)
+
+        return rows
 
     # List to store all rows
     all_rows = []
@@ -1620,60 +1694,38 @@ def get_bids_database_table(
             description="Starting BIDS processing...", total=n_subj
         )
 
-        # Process each subject
-        for i, subj_id in enumerate(subj_ids):
-            # Update task description at the start of processing
-            progress.update(
-                task_id, description=f"Processing subject {subj_id}...", completed=i
-            )
+        if n_jobs and n_jobs > 1:
+            # Parallel path: useful when files live on slow/networked storage.
+            with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+                futures = {
+                    executor.submit(process_subject, subj_id): subj_id
+                    for subj_id in subj_ids
+                }
+                for future in as_completed(futures):
+                    subj_id = futures[future]
+                    rows = future.result()
+                    all_rows.extend(rows)
+                    progress.update(
+                        task_id,
+                        description=f"Completed {subj_id} ({len(rows)} files)",
+                        advance=1,
+                    )
+        else:
+            # Sequential path
+            for subj_id in subj_ids:
+                rows = process_subject(subj_id)
+                all_rows.extend(rows)
+                progress.update(
+                    task_id,
+                    description=f"Completed {subj_id} ({len(rows)} files)",
+                    advance=1,
+                )
 
-            subj_dir = os.path.join(root_dir, subj_id)
-            all_files = cltmisc.get_all_files(
-                subj_dir, recursive=True, or_filter=[".nii.gz"]
-            )
-
-            files_processed = 0
-            for file_path in all_files:
-                file_name = os.path.basename(file_path)
-
-                # Parse the BIDS filename to get entities
-                ent_dict = str2entity(file_name)
-
-                # Create a row dictionary with all possible entity columns initialized to None
-                row_dict = {col: None for col in column_names}
-
-                # Fill in the entities that are present in this file
-                for entity, value in ent_dict.items():
-                    if entity in row_dict:
-                        row_dict[entity] = value
-
-                # Extract suffix from filename
-                row_dict["suffix"] = ent_dict["suffix"]
-
-                # Set N to 1 for individual files (we'll aggregate later)
-                row_dict["N"] = 1
-
-                all_rows.append(row_dict)
-                files_processed += 1
-
-            # Update progress AFTER processing each subject (this is the key fix!)
-            progress.update(
-                task_id,
-                description=f"Completed {subj_id} ({files_processed} files)",
-                completed=i + 1,  # i+1 because we just finished this subject
-            )
-
-            # Force refresh to ensure display updates
-            progress.refresh()
-
-            # Small delay to see the progress update
-            time.sleep(0.1)
-
-        # Final update
+        # Final update, then force a refresh so the 100% frame actually renders
+        # before the Live display tears down (auto_refresh's timer may not fire
+        # again in time if the loop finishes very quickly).
         progress.update(task_id, description="Processing complete!", completed=n_subj)
-
-        # Brief pause to show completion
-        time.sleep(0.5)
+        progress.refresh()
 
     # Create DataFrame from all rows
     df_table = pd.DataFrame(all_rows)
@@ -1708,7 +1760,9 @@ def get_bids_database_table(
     new_colnames = list(entities4table(selected_entities=old_colnames).values())
 
     # Rename columns to match BIDS entities
-    df_grouped.rename(columns=dict(zip(old_colnames, new_colnames)), inplace=True)
+    df_grouped.rename(
+        columns=dict(zip(old_colnames, new_colnames, strict=False)), inplace=True
+    )
 
     # Save the table if output path is provided
     if output_table:
@@ -1802,31 +1856,44 @@ def is_bids_filename(filename: str, extensive: bool = False) -> bool:
     True
     >>> is_bids_filename("sub-01_ses-pre_task-rest")
     True
+    >>> is_bids_filename("sub-01_ses-M00_run-01")
+    True
     >>> is_bids_filename("sub-01_ses-pre_task-rest_bold_extra.nii.gz")
     False
-    >>> is_bids_filename("sub-01_ses-pre_task-rest_bold_extra")
-
     """
     # Remove extension if present
     filename = cltmisc.get_real_basename(filename)
     base_filename = filename.split(".")[0]
 
     parts = base_filename.split("_")
-    if len(parts) < 2:
-        # Need at least one entity-label pair + a suffix
+    if len(parts) < 1 or base_filename == "":
         return False
 
     entity_pattern = re.compile(r"^[a-zA-Z0-9]+-[a-zA-Z0-9]+$")
     suffix_pattern = re.compile(r"^[a-zA-Z0-9]+$")
 
-    # All parts except the last must be valid entity-label pairs (e.g. sub-01, ses-M00)
-    for part in parts[:-1]:
-        if not entity_pattern.match(part):
+    last_part = parts[-1]
+
+    # Decide whether the last part is a suffix or just another entity-label pair.
+    if entity_pattern.match(last_part):
+        # No suffix present — every part should be an entity-label pair
+        entity_parts = parts
+        suffix = None
+    else:
+        # Last part is assumed to be the suffix (must not contain a dash)
+        entity_parts = parts[:-1]
+        suffix = last_part
+        if not suffix_pattern.match(suffix):
             return False
 
-    # The last part is the suffix (e.g. T1w, bold) — no dash allowed
-    if not suffix_pattern.match(parts[-1]):
+    if len(entity_parts) < 1:
+        # Need at least one entity-label pair
         return False
+
+    # All entity parts must be valid entity-label pairs (e.g. sub-01, ses-M00)
+    for part in entity_parts:
+        if not entity_pattern.match(part):
+            return False
 
     # Check also that all the entities are on the json config file
     cwd = os.path.dirname(os.path.abspath(__file__))
@@ -1834,7 +1901,7 @@ def is_bids_filename(filename: str, extensive: bool = False) -> bool:
 
     if extensive:
         try:
-            with open(default_config_path, "r") as f:
+            with open(default_config_path) as f:
                 config_data = json.load(f)
 
             if (
@@ -1854,32 +1921,30 @@ def is_bids_filename(filename: str, extensive: bool = False) -> bool:
                 raise ValueError(
                     "Default config JSON does not have the expected structure."
                 )
-        except FileNotFoundError:
+        except FileNotFoundError as err:
             raise FileNotFoundError(
                 f"Default configuration file not found at: {default_config_path}"
-            )
-        except json.JSONDecodeError:
+            ) from err
+        except json.JSONDecodeError as err:
             raise ValueError(
                 f"Error parsing the default configuration file: {default_config_path}"
-            )
+            ) from err
 
         # Validate each entity key against the known BIDS entities
-        for part in parts[:-1]:
+        for part in entity_parts:
             entity_key = part.split("-")[0]
             if entity_key not in valid_entities:
                 return False
 
-        # Validate the suffix against the known BIDS suffixes
-        if parts[-1] not in valid_suffixes:
+        # Validate the suffix against the known BIDS suffixes (only if a suffix exists)
+        if suffix is not None and suffix not in valid_suffixes:
             return False
 
     return True
 
 
 ####################################################################################################
-def get_individual_files_and_folders(
-    input_folder: str, cad4query: Union[str, list, dict]
-):
+def get_individual_files_and_folders(input_folder: str, cad4query: str | list | dict):
     """
     This function detects all the files or folders inside a folder and its subfolders containing the strings supplied by the variable cad4query.
 
@@ -1958,10 +2023,10 @@ def get_individual_files_and_folders(
 ####################################################################################################
 def generate_bids_tree(
     bids_root: str,
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     show_hidden: bool = False,
-    exclude_patterns: Optional[Set[str]] = None,
-    save_to_file: Optional[str] = None,
+    exclude_patterns: set[str] | None = None,
+    save_to_file: str | None = None,
 ) -> str:
     """
     Generate an MS-DOS tree-style visualization of a BIDS folder structure.
@@ -2121,7 +2186,9 @@ def generate_bids_tree(
             with open(save_to_file, "w", encoding="utf-8") as f:
                 f.write(tree_output)
         except OSError as e:
-            raise OSError(f"Failed to save tree to file '{save_to_file}': {str(e)}")
+            raise OSError(
+                f"Failed to save tree to file '{save_to_file}': {str(e)}"
+            ) from e
 
     return tree_output
 
@@ -2202,7 +2269,7 @@ def generate_bids_tree_with_stats(bids_root: str, **kwargs) -> str:
 
 
 ####################################################################################################
-def validate_bids_structure(bids_root: str) -> List[str]:
+def validate_bids_structure(bids_root: str) -> list[str]:
     """
     Basic validation of BIDS structure and return warnings.
 
@@ -2260,7 +2327,6 @@ def validate_bids_structure(bids_root: str) -> List[str]:
             warnings.append(f"Missing required file: {req_file}")
 
     # Check for common BIDS directories
-    common_dirs = ["sub-*"]  # Using glob pattern
     subject_dirs = list(bids_path.glob("sub-*"))
     if not subject_dirs:
         warnings.append("No subject directories found (sub-*)")
@@ -2315,9 +2381,13 @@ def load_bids_json(bids_json: str = None):
     try:
         with open(bids_json) as f:
             config_dict = json.load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Default configuration file not found at: {bids_json}")
-    except json.JSONDecodeError:
-        raise ValueError(f"Error parsing the default configuration file: {bids_json}")
+    except FileNotFoundError as err:
+        raise FileNotFoundError(
+            f"Default configuration file not found at: {bids_json}"
+        ) from err
+    except json.JSONDecodeError as err:
+        raise ValueError(
+            f"Error parsing the default configuration file: {bids_json}"
+        ) from err
 
     return config_dict

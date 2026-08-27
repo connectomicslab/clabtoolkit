@@ -7,13 +7,14 @@ Enhanced with detailed test analytics and feedback.
 """
 
 import os
-import pandas as pd
-import numpy as np
-import warnings
-import unittest
 import time
+import unittest
+import warnings
 from functools import wraps
+
+import pandas as pd
 from tabulate import tabulate
+
 import clabtoolkit.morphometrytools as morpho
 
 # Set these paths to match your FreeSurfer installation
@@ -78,10 +79,12 @@ class TestFreeSurferParsing(unittest.TestCase):
         # Check if the bert directory exists
         if not os.path.isdir(BERT_DIR):
             warnings.warn(
-                f"\n⚠️  WARNING: Bert subject directory not found at {BERT_DIR}"
+                f"\n⚠️  WARNING: Bert subject directory not found at {BERT_DIR}",
+                stacklevel=2,
             )
             warnings.warn(
-                "Tests will likely fail. Please set FREESURFER_HOME environment variable correctly."
+                "Tests will likely fail. Please set FREESURFER_HOME environment variable correctly.",
+                stacklevel=2,
             )
         else:
             print("✅ Bert subject directory found")
@@ -120,11 +123,11 @@ class TestFreeSurferParsing(unittest.TestCase):
 
         # Print test summary
         print("\n" + "=" * 80)
-        print(f"TEST SUMMARY FOR FREESURFER PARSING")
+        print("TEST SUMMARY FOR FREESURFER PARSING")
         print("=" * 80)
         print(f"Total tests: {len(cls.test_timings)}")
         print(f"Passed tests: {len(cls.test_timings)}")
-        print(f"Success rate: 100.0%")
+        print("Success rate: 100.0%")
         print(f"Total execution time: {total_time:.2f} seconds")
 
         # Print file status
@@ -303,8 +306,8 @@ class TestFreeSurferParsing(unittest.TestCase):
         # Verify files exist
         for file_path in [self.aseg_stats, self.lh_aparc_stats, self.rh_aparc_stats]:
             if not os.path.isfile(file_path):
-                warnings.warn(f"Required file not found: {file_path}")
-                warnings.warn("Some tests will be skipped")
+                warnings.warn(f"Required file not found: {file_path}", stacklevel=2)
+                warnings.warn("Some tests will be skipped", stacklevel=2)
 
     @collect_info("global metrics")
     def test_global_aseg_basic(self):
@@ -620,13 +623,13 @@ class TestFreeSurferParsing(unittest.TestCase):
         nonexistent_file = os.path.join(BERT_DIR, "stats", "nonexistent.stats")
 
         # Test with all three functions
-        with self.assertRaises(Exception):
+        with self.assertRaises(FileNotFoundError):
             morpho.parse_freesurfer_global_fromaseg(nonexistent_file)
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(FileNotFoundError):
             morpho.parse_freesurfer_stats_fromaseg(nonexistent_file)
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(FileNotFoundError):
             morpho.parse_freesurfer_cortex_stats(nonexistent_file)
 
 

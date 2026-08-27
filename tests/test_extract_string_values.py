@@ -1,11 +1,10 @@
-import pytest
 import json
 import os
-import time
 import tempfile
+import time
 import unittest
 from functools import wraps
-from typing import Union
+
 from tabulate import tabulate
 
 
@@ -40,7 +39,7 @@ def collect_info(category):
 
 
 # The function being tested
-def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> dict:
+def extract_string_values(data_dict: str | dict, only_last_key=True) -> dict:
     """
     Recursively extracts all keys with string values from a nested dictionary. It will avoid keys
     Parameters:
@@ -78,7 +77,7 @@ def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> di
         # Check if the string is a valid JSON file path
         if os.path.isfile(data_dict):
             # Load the custom JSON file
-            with open(data_dict, "r") as file:
+            with open(data_dict) as file:
                 data_dict = json.load(file)
         else:
             # If the file does not exist, raise an error
@@ -149,11 +148,11 @@ class TestExtractStringValues(unittest.TestCase):
 
         # Print test summary
         print("\n" + "=" * 80)
-        print(f"TEST SUMMARY FOR extract_string_values")
+        print("TEST SUMMARY FOR extract_string_values")
         print("=" * 80)
         print(f"Total tests: {len(cls.test_timings)}")
         print(f"Passed tests: {len(cls.test_timings)}")
-        print(f"Success rate: 100.0%")
+        print("Success rate: 100.0%")
         print(f"Total execution time: {total_time:.2f} seconds")
 
         # Print category summary

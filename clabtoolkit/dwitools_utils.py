@@ -1,9 +1,9 @@
-import numpy as np
 from pathlib import Path
-from typing import Dict, Optional, Union
+
+import numpy as np
 
 
-def load_bvecs(path: Union[str, Path]) -> np.ndarray:
+def load_bvecs(path: str | Path) -> np.ndarray:
     """
     Load a .bvec file and return array of shape (3, N).
 
@@ -33,7 +33,7 @@ def load_bvecs(path: Union[str, Path]) -> np.ndarray:
 
 
 ########################################################################################
-def load_bvals(path: Union[str, Path]) -> np.ndarray:
+def load_bvals(path: str | Path) -> np.ndarray:
     """
     Load a .bval file and return a 1D array of shape (N,).
 
@@ -63,7 +63,7 @@ def load_bvals(path: Union[str, Path]) -> np.ndarray:
 
 
 ########################################################################################
-def save_bvecs(bvecs: np.ndarray, path: Union[str, Path]) -> None:
+def save_bvecs(bvecs: np.ndarray, path: str | Path) -> None:
     """
     Method to save bvecs to a file.
 
@@ -87,7 +87,7 @@ def save_bvecs(bvecs: np.ndarray, path: Union[str, Path]) -> None:
 
 
 ########################################################################################
-def save_bvals(bvals: np.ndarray, path: Union[str, Path]) -> None:
+def save_bvals(bvals: np.ndarray, path: str | Path) -> None:
     """
     Method to save bvals to a file.
 

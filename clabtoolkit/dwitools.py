@@ -1,18 +1,16 @@
 import os
-import numpy as np
 from pathlib import Path
-from typing import List, Union
 
 import nibabel as nib
-
+import numpy as np
+import pyvista as pv
 from skimage import measure
+
+from . import colorstools as cltcol
 
 # Importing the internal modules
 from . import misctools as cltmisc
 from . import plottools as cltplot
-from . import colorstools as cltcol
-
-import pyvista as pv
 
 ####################################################################################################
 ####################################################################################################
@@ -23,16 +21,15 @@ import pyvista as pv
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-from pathlib import Path
 
 
 def delete_dwi_volumes(
-    in_image: Union[str, Path],
-    bvec_file: Union[str, Path] = None,
-    bval_file: Union[str, Path] = None,
-    out_image: Union[str, Path] = None,
-    bvals_to_delete: Union[int, List[Union[int, tuple, list, str, np.ndarray]]] = None,
-    vols_to_delete: Union[int, List[Union[int, tuple, list, str, np.ndarray]]] = None,
+    in_image: str | Path,
+    bvec_file: str | Path = None,
+    bval_file: str | Path = None,
+    out_image: str | Path = None,
+    bvals_to_delete: int | list[int | tuple | list | str | np.ndarray] = None,
+    vols_to_delete: int | list[int | tuple | list | str | np.ndarray] = None,
 ) -> str:
     """
     ... (docstring unchanged) ...
@@ -124,7 +121,7 @@ def delete_dwi_volumes(
 
     if vols_to_delete is not None:
         if len(vols_to_delete) == 0:
-            print(f"No volumes to delete. The volumes to delete are empty.")
+            print("No volumes to delete. The volumes to delete are empty.")
             return in_image
 
     # Loading the DWI image
@@ -137,7 +134,7 @@ def delete_dwi_volumes(
         if vols_to_delete is not None:
             if len(vols_to_delete) == nvols:
                 print(
-                    f"Number of volumes to delete is equal to the number of volumes. No volumes will be deleted."
+                    "Number of volumes to delete is equal to the number of volumes. No volumes will be deleted."
                 )
                 return in_image
 
@@ -327,7 +324,7 @@ def get_b0s(
         b0_vols = np.setdiff1d(np.arange(bvals.shape[0]), vols2rem)
 
         if len(vols2rem) == 0:
-            print(f"No B0s to remove. The volumes to delete are empty.")
+            print("No B0s to remove. The volumes to delete are empty.")
             return dwi_img
         else:
 
@@ -347,9 +344,9 @@ def get_b0s(
 
 ############################################################################################################
 def maps_from_tensor_eigenvalues(
-    eigvals: Union[str, Path, list, tuple],
-    out_basename: Union[str, Path],
-    dtmaps: list = ["all"],
+    eigvals: str | Path | list | tuple,
+    out_basename: str | Path,
+    dtmaps: list = None,
     overwrite: bool = False,
 ) -> dict:
     """
@@ -431,6 +428,8 @@ def maps_from_tensor_eigenvalues(
     # Input validation and eigenvalue loading
     # ------------------------------------------------------------------ #
     # Normalize Path objects to strings
+    if dtmaps is None:
+        dtmaps = ["all"]
     if isinstance(out_basename, Path):
         out_basename = str(out_basename)
 
@@ -891,7 +890,7 @@ class DiffusionScheme:
             b_max = original_bvals.max()
             toroid_radius = b_max * 0.005 if b_max > 0 else 0.5
 
-        for bval, color in zip(unique_bvals, unique_colors):
+        for bval, color in zip(unique_bvals, unique_colors, strict=False):
             torus = pv.ParametricTorus(
                 ringradius=bval, crosssectionradius=toroid_radius
             )

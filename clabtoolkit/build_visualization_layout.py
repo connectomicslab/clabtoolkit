@@ -3,28 +3,12 @@ Module for building visualization layout configurations for brain surface plots.
 
 """
 
-import os
-import json
-import math
-import copy
-import numpy as np
-import nibabel as nib
-from typing import Union, List, Optional, Tuple, Dict, Any, TYPE_CHECKING
-from nilearn import plotting
-import pyvista as pv
-import threading
-
-
 # Importing external modules
-import matplotlib.pyplot as plt
 
 # Importing local modules
-from . import freesurfertools as cltfree
-from . import misctools as cltmisc
 from . import plottools as cltplot
 
 # Use TYPE_CHECKING to avoid circular imports
-from . import surfacetools as cltsurf
 from . import visualization_utils as visutils
 
 
@@ -178,9 +162,9 @@ def build_layout_config(
 
 ###############################################################################################
 def single_element_layout(
-    maps_dict: Dict,
-    colormap_limits: Dict,
-    charac_dict: Dict,
+    maps_dict: dict,
+    colormap_limits: dict,
+    charac_dict: dict,
     colorbar: bool,
     colorbar_position: str,
     colorbar_size: float,
@@ -295,7 +279,7 @@ def horizontal_multi_map_layout(
 
     brain_positions = {}
     dims = visutils.get_plot_config_dimensions(colormap_limits)
-    n_objs2plot = dims[1]
+    dims[1]
 
     maps_names = list(maps_dict.keys())
     n_maps = len(maps_names)
@@ -319,16 +303,26 @@ def horizontal_multi_map_layout(
                 shape = [1, n_maps * 2]
                 row_weights = [1]
                 col_weights = [1, colorbar_size] * n_maps
-                brain_pos_col = lambda idx: idx * 2
-                cb_pos = lambda idx: (0, idx * 2 + 1)
+
+                def brain_pos_col(idx):
+                    return idx * 2
+
+                def cb_pos(idx):
+                    return (0, idx * 2 + 1)
+
                 orientation = "vertical"
 
             else:  # bottom
                 shape = [2, n_maps]
                 row_weights = [1, colorbar_size]
                 col_weights = [1] * n_maps
-                brain_pos_col = lambda idx: idx
-                cb_pos = lambda idx: (1, idx)
+
+                def brain_pos_col(idx):
+                    return idx
+
+                def cb_pos(idx):
+                    return (1, idx)
+
                 orientation = "horizontal"
 
             groups = []
@@ -437,16 +431,26 @@ def vertical_multi_map_layout(
                 shape = [n_maps, 2]
                 row_weights = [1] * n_maps
                 col_weights = [1, colorbar_size]
-                brain_pos_col = lambda idx: idx
-                cb_pos = lambda idx: (idx, 1)
+
+                def brain_pos_col(idx):
+                    return idx
+
+                def cb_pos(idx):
+                    return (idx, 1)
+
                 orientation = "vertical"
 
             else:  # bottom
                 shape = [n_maps * 2, 1]
                 row_weights = [1, colorbar_size] * n_maps
                 col_weights = [1]
-                brain_pos_col = lambda idx: idx * 2
-                cb_pos = lambda idx: (idx * 2 + 1, 0)
+
+                def brain_pos_col(idx):
+                    return idx * 2
+
+                def cb_pos(idx):
+                    return (idx * 2 + 1, 0)
+
                 orientation = "horizontal"
 
             groups = []
@@ -566,7 +570,7 @@ def grid_multi_map_layout(
                     brain_positions[(map_idx, 0, 0)] = (pos[0], pos[1] * 2)
 
                     # Extract map properties
-                    map_data = maps_dict[maps_names[map_idx]]
+                    maps_dict[maps_names[map_idx]]
                     colormap = charac_dict[maps_names[map_idx]]["colormap"]
                     colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
 
@@ -592,7 +596,7 @@ def grid_multi_map_layout(
                     brain_positions[(map_idx, 0, 0)] = (pos[0] * 2, pos[1])
 
                     # Extract map properties
-                    map_data = maps_dict[maps_names[map_idx]]
+                    maps_dict[maps_names[map_idx]]
                     colormap = charac_dict[maps_names[map_idx]]["individual"][
                         "colormap"
                     ]

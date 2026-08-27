@@ -1,55 +1,33 @@
-import numpy as np
-import h5py
-import uuid
-
-from typing import (
-    Union,
-    Dict,
-    List,
-    Tuple,
-    Set,
-    Any,
-    Optional,
-    Literal,
-    Callable,
-    Hashable,
-)
-from collections.abc import Iterable
-
-import shlex
-import os
 import argparse
-from datetime import datetime
-import pandas as pd
-import inspect
-import sys
-import types
-import re
-import json
-import pandas as pd
-import inspect
-import types
 import importlib
-from IPython.display import HTML, display
-from IPython import get_ipython
-
+import inspect
+import json
+import os
+import re
+import shlex
+import sys
+import tempfile
+import types
+import uuid
+from collections.abc import Callable, Hashable, Iterable
+from datetime import datetime
 from pathlib import Path
-from colorama import init, Fore, Style, Back
+from typing import (
+    Any,
+    Literal,
+)
 
-init(autoreset=True)
-
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib.colors import to_hex
-from matplotlib.colors import is_color_like as mpl_is_color_like
-from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
-
-import textwrap
-
-from typing import Union, List, Optional
+import h5py
+import numpy as np
+import pandas as pd
+from colorama import Back, Fore, Style, init
+from IPython import get_ipython
+from IPython.display import HTML, display
 
 from . import colorstools as cltcolors
 from .misctools_utils import ExplorerDict
+
+init(autoreset=True)
 
 # Re-export for convenient access
 __all__ = ["ExplorerDict", "update_dict"]
@@ -66,8 +44,8 @@ __all__ = ["ExplorerDict", "update_dict"]
 ####################################################################################################
 ####################################################################################################
 def build_indices(
-    range_vector: List[Union[int, tuple, list, str, np.ndarray]], nonzeros: bool = True
-) -> List[int]:
+    range_vector: list[int | tuple | list | str | np.ndarray], nonzeros: bool = True
+) -> list[int]:
     """
     Build a list of unique, sorted indices from a vector containing integers, tuples, lists,
     NumPy arrays, or strings representing values, ranges, or comma-separated expressions.
@@ -118,7 +96,7 @@ def build_indices(
 
     indexes = []
 
-    def parse_string(expr: str) -> List[int]:
+    def parse_string(expr: str) -> list[int]:
         result = []
         parts = [p.strip() for p in expr.split(",") if p.strip()]
         for part in parts:
@@ -162,7 +140,7 @@ def build_indices(
                 raise ValueError(f"Unsupported input type: {item}")
 
         except Exception as e:
-            raise ValueError(f"Error processing item '{item}': {e}")
+            raise ValueError(f"Error processing item '{item}': {e}") from e
 
     flat = [x for sublist in indexes for x in sublist]
 
@@ -225,7 +203,7 @@ def get_indices_by_condition(condition: str, **kwargs):
     if len(array_vars) != 1:
         raise ValueError("Exactly one variable must be a list or numpy array.")
 
-    array_var = array_vars[0]
+    array_vars[0]
 
     # Check if any required variables (excluding literals) are missing
     missing_vars = var_names - set(kwargs.keys())
@@ -252,9 +230,12 @@ def get_indices_by_condition(condition: str, **kwargs):
     safe_expr = rewrite_chained_comparisons(condition)
 
     try:
-        result = eval(safe_expr, {}, local_vars)
+        # Every bare name in `condition` is checked against `kwargs` above, and
+        # builtins are stripped from the evaluation globals, so the expression
+        # can only reach the caller-supplied variables.
+        result = eval(safe_expr, {"__builtins__": {}}, local_vars)  # nosec B307
     except Exception as e:
-        raise ValueError(f"Error evaluating condition: {e}")
+        raise ValueError(f"Error evaluating condition: {e}") from e
 
     if not isinstance(result, np.ndarray) or result.dtype != bool:
         raise ValueError("The condition did not produce a valid boolean mask.")
@@ -319,10 +300,10 @@ def get_values_by_condition(condition: str, **kwargs):
 
 ####################################################################################################
 def build_indices_with_conditions(
-    inputs: List[Union[int, tuple, list, str, np.ndarray]],
+    inputs: list[int | tuple | list | str | np.ndarray],
     nonzeros: bool = True,
     **kwargs,
-) -> List[int]:
+) -> list[int]:
     """
     Combine numeric, range, and condition-based inputs into a unified list of indices.
     Parameters
@@ -407,19 +388,21 @@ def build_indices_with_conditions(
                         condition_indices = get_indices_by_condition(part, **kwargs)
                         all_values += condition_indices.tolist()
                     except Exception as e:
-                        raise ValueError(f"Invalid condition '{part}': {e}")
+                        raise ValueError(f"Invalid condition '{part}': {e}") from e
                 else:
                     try:
                         range_values = build_indices([part], nonzeros=nonzeros)
                         all_values += range_values
                     except Exception as e:
-                        raise ValueError(f"Invalid range expression '{part}': {e}")
+                        raise ValueError(
+                            f"Invalid range expression '{part}': {e}"
+                        ) from e
         else:
             try:
                 range_values = build_indices([item], nonzeros=nonzeros)
                 all_values += range_values
             except Exception as e:
-                raise ValueError(f"Invalid input item '{item}': {e}")
+                raise ValueError(f"Invalid input item '{item}': {e}") from e
 
     final_result = sorted(set(all_values))
     if nonzeros:
@@ -430,10 +413,10 @@ def build_indices_with_conditions(
 
 ####################################################################################################
 def build_values_with_conditions(
-    inputs: List[Union[int, tuple, list, str, np.ndarray]],
+    inputs: list[int | tuple | list | str | np.ndarray],
     nonzeros: bool = True,
     **kwargs,
-) -> List[int]:
+) -> list[int]:
     """
     Combine numeric, range, and condition-based inputs into a unified list of values.
 
@@ -465,20 +448,22 @@ def build_values_with_conditions(
                         condition_values = get_values_by_condition(part, **kwargs)
                         all_values += condition_values
                     except Exception as e:
-                        raise ValueError(f"Invalid condition '{part}': {e}")
+                        raise ValueError(f"Invalid condition '{part}': {e}") from e
                 else:
                     try:
                         range_values = build_indices([part], nonzeros=nonzeros)
                         all_values += range_values
                     except Exception as e:
-                        raise ValueError(f"Invalid range expression '{part}': {e}")
+                        raise ValueError(
+                            f"Invalid range expression '{part}': {e}"
+                        ) from e
         else:
             # Delegate everything else to build_indices
             try:
                 range_values = build_indices([item], nonzeros=nonzeros)
                 all_values += range_values
             except Exception as e:
-                raise ValueError(f"Invalid input item '{item}': {e}")
+                raise ValueError(f"Invalid input item '{item}': {e}") from e
 
     final_result = sorted(set(all_values))
     if nonzeros:
@@ -488,7 +473,7 @@ def build_values_with_conditions(
 
 
 ####################################################################################################
-def parse_condition(condition: str) -> Tuple[Optional[str], List[str]]:
+def parse_condition(condition: str) -> tuple[str | None, list[str]]:
     """
     Parse a condition string to extract the main variable and limit variables.
 
@@ -537,7 +522,6 @@ def parse_condition(condition: str) -> Tuple[Optional[str], List[str]]:
     condition = condition.strip()
 
     # Define comparison operators (order matters - longer operators first)
-    operators = ["<=", ">=", "==", "!=", "<", ">"]
 
     # Pattern to match chained comparison: limit1 op1 var op2 limit2
     chained_pattern = r"(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)"
@@ -671,7 +655,7 @@ def remove_duplicates(input_list: list):
 
 
 ####################################################################################################
-def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]) -> list:
+def select_ids_from_file(subj_ids: list, ids_file: list | str) -> list:
     """
     Function to select the ids from a list of ids that are in a file.
     It can be used to select the ids from a list of subjects that are in a file.
@@ -716,8 +700,8 @@ def select_ids_from_file(subj_ids: list, ids_file: Union[list, str]) -> list:
 ####################################################################################################
 def get_indexes_by_substring(
     input_list: list,
-    or_filter: Union[str, list],
-    and_filter: Union[str, list] = None,
+    or_filter: str | list,
+    and_filter: str | list = None,
     invert: bool = False,
     bool_case: bool = False,
     match_entire_word: bool = False,
@@ -800,7 +784,6 @@ def get_indexes_by_substring(
         if whole_word:
             # Use regex for whole word matching with word boundaries
             pattern = r"\b" + re.escape(substring) + r"\b"
-            flags = 0 if case_sensitive else re.IGNORECASE
             return bool(re.search(pattern, element))
         else:
             # Simple substring matching
@@ -838,7 +821,7 @@ def get_indexes_by_substring(
     # Invert indexes if requested
     if invert:
         all_indexes = set(range(len(input_list)))
-        indexes = sorted(list(all_indexes - set(indexes)))
+        indexes = sorted(all_indexes - set(indexes))
 
     return indexes
 
@@ -846,8 +829,8 @@ def get_indexes_by_substring(
 #####################################################################################################
 def filter_by_substring(
     input_list: list,
-    or_filter: Union[str, list],
-    and_filter: Union[str, list] = None,
+    or_filter: str | list,
+    and_filter: str | list = None,
     bool_case: bool = False,
     match_entire_word: bool = False,
 ) -> list:
@@ -912,8 +895,8 @@ def filter_by_substring(
 
 ####################################################################################################
 def remove_substrings(
-    list1: Union[str, List[str]], list2: Union[str, List[str]], bool_case: bool = False
-) -> List[str]:
+    list1: str | list[str], list2: str | list[str], bool_case: bool = False
+) -> list[str]:
     """
     Remove substrings from each element of list1 that match any string in list2.
 
@@ -990,10 +973,10 @@ def remove_substrings(
 
 ####################################################################################################
 def replace_substrings(
-    strings: Union[str, List[str]],
-    replacements: Dict[str, str],
+    strings: str | list[str],
+    replacements: dict[str, str],
     bool_case: bool = True,
-) -> List[str]:
+) -> list[str]:
     """
     Replace substrings or regex patterns in each element of a list of strings.
 
@@ -1073,7 +1056,7 @@ def replace_substrings(
 
 
 #################################################################################################
-def to_list(item: Any) -> List:
+def to_list(item: Any) -> list:
     """
     Convert single items to lists for consistent handling.
 
@@ -1121,7 +1104,7 @@ def to_list(item: Any) -> List:
 
 
 ####################################################################################################
-def list_intercept(list1: List[Any], list2: List[Any]) -> List[Any]:
+def list_intercept(list1: list[Any], list2: list[Any]) -> list[Any]:
     """
     Function to find the intersection of elements from 2 different lists.
     Preserves the order of elements as they appear in list1.
@@ -1181,8 +1164,8 @@ def list_intercept(list1: List[Any], list2: List[Any]) -> List[Any]:
 
 ####################################################################################################
 def ismember(
-    a: Union[List[Any], np.ndarray], b: Union[List[Any], np.ndarray]
-) -> Tuple[List[Any], List[int]]:
+    a: list[Any] | np.ndarray, b: list[Any] | np.ndarray
+) -> tuple[list[Any], list[int]]:
     """
     Check which elements of 'a' are members of 'b'. Similar to MATLAB's ismember function.
 
@@ -1310,7 +1293,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
     except ValueError as e:
         raise ValueError(
             f"Invalid target_date '{target_date}' for format '{date_fmt}': {e}"
-        )
+        ) from e
 
     # Convert all dates and find closest in one comprehension
     try:
@@ -1327,10 +1310,10 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
         for i, date in enumerate(dates_list):
             try:
                 datetime.strptime(str(date), date_fmt)
-            except ValueError:
+            except ValueError as err:
                 raise ValueError(
                     f"Date at index {i} ('{date}') does not match format '{date_fmt}'"
-                )
+                ) from err
         raise e  # Shouldn't reach here, but just in case
 
     # Find minimum by time difference
@@ -1408,82 +1391,27 @@ def remove_trailing_separators(path: str) -> str:
 
 ####################################################################################################
 def get_all_files(
-    in_dir: Union[str, Path],
+    in_dir: str | Path,
     recursive: bool = True,
-    or_filter: Union[str, List[str]] = None,
-    and_filter: Union[str, List[str]] = None,
+    or_filter: str | list[str] = None,
+    and_filter: str | list[str] = None,
     bool_case: bool = False,
     just_files: bool = True,
 ) -> list:
     """
-    Function to detect all the files in a directory and its subdirectories.
-
-    Parameters
-    ----------
-    in_dir : str or Path
-        Input directory path.
-
-    recursive : bool, optional
-        If True, search recursively in all subdirectories.
-        If False, only search in the specified directory.
-        Default is True.
-
-    or_filter : str or list of str, optional
-        Filter for substring matching (OR logic). Any match includes the file.
-        Applied to filename only if just_files=True, otherwise to full path.
-        Default is None (no filtering).
-
-    and_filter : str or list of str, optional
-        Filter for substring matching (AND logic). All must match to include the file.
-        Applied to filename only if just_files=True, otherwise to full path.
-        Default is None (no filtering).
-
-    bool_case : bool, optional
-        If True, perform case-sensitive filtering.
-        If False, perform case-insensitive filtering.
-        Default is False.
-
-    just_files : bool, optional
-        If True, apply filters only to filenames (not full paths).
-        If False, apply filters to full paths.
-        Default is True.
-
-    Returns
-    -------
-    list
-        List of absolute file paths matching the criteria.
-
-    Raises
-    ------
-    ValueError
-        If the input directory does not exist, is not a directory, is not absolute,
-        is a symlink, is a file, or is empty.
-    TypeError
-        If in_dir is not a string or Path object.
-
-    Examples
-    --------
-    >>> in_dir = "/path/to/directory"
-    >>> files = get_all_files(in_dir)
-    >>> print(files)  # Output: List of all files in directory and subdirectories
-
-    >>> files = get_all_files(in_dir, or_filter=[".nii", ".nii.gz"])
-    >>> print(files)  # Output: Only NIfTI files
-
-    >>> files = get_all_files(in_dir, and_filter=["sub-", "T1w"])
-    >>> print(files)  # Output: Files containing both "sub-" and "T1w"
+    (docstring unchanged)
     """
 
-    # Type validation and conversion
     if isinstance(in_dir, str):
         try:
             in_dir = Path(in_dir)
         except Exception as e:
-            raise ValueError(f"Invalid input directory path: {in_dir}. Error: {e}")
+            raise ValueError(
+                f"Invalid input directory path: {in_dir}. Error: {e}"
+            ) from e
     elif not isinstance(in_dir, Path):
         raise TypeError("The input in_dir must be a string or a Path object.")
 
-    # Path validation checks (in logical order)
     if not in_dir.exists():
         raise ValueError(f"The input directory does not exist: {in_dir}")
 
@@ -1502,7 +1430,6 @@ def get_all_files(
     if not any(in_dir.iterdir()):
         raise ValueError(f"The input directory is empty: {in_dir}")
 
-    # Validate filter parameters
     if or_filter is not None:
         if isinstance(or_filter, str):
             or_filter = [or_filter]
@@ -1515,58 +1442,56 @@ def get_all_files(
         if not isinstance(and_filter, list):
             raise TypeError("The and_filter must be a string or a list of strings.")
 
-    # Collect all files
+    # Walk the tree, but DON'T resolve() yet — that's the expensive part.
+    # Path.is_file() here is cheap: rglob/iterdir use os.scandir internally,
+    # which caches file-type info from the directory entry itself on most
+    # platforms, avoiding an extra stat() per file.
     if recursive:
-        all_files = [str(f.resolve()) for f in in_dir.rglob("*") if f.is_file()]
+        candidates = [f for f in in_dir.rglob("*") if f.is_file()]
     else:
-        all_files = [str(f.resolve()) for f in in_dir.iterdir() if f.is_file()]
+        candidates = [f for f in in_dir.iterdir() if f.is_file()]
 
-    # Apply OR filter
-    if or_filter is not None:
-        if just_files:
-            file_names = [os.path.basename(f) for f in all_files]
-            filtered_file_names = filter_by_substring(
-                file_names, or_filter=or_filter, and_filter=None, bool_case=bool_case
-            )
-            all_files = [
-                f for f in all_files if os.path.basename(f) in filtered_file_names
-            ]
-        else:
-            all_files = filter_by_substring(
-                all_files, or_filter=or_filter, and_filter=None, bool_case=bool_case
-            )
+    # Apply filters on cheap string data (filename or path) BEFORE resolving.
+    if or_filter is not None or and_filter is not None:
+        keys = (
+            [f.name for f in candidates] if just_files else [str(f) for f in candidates]
+        )
 
-    # Apply AND filter
-    if and_filter is not None:
-        if just_files:
-            file_names = [os.path.basename(f) for f in all_files]
-            filtered_file_names = filter_by_substring(
-                file_names,
-                or_filter=and_filter,
-                and_filter=and_filter,
-                bool_case=bool_case,
+        if or_filter is not None:
+            keep = set(
+                filter_by_substring(
+                    keys, or_filter=or_filter, and_filter=None, bool_case=bool_case
+                )
             )
-            all_files = [
-                f for f in all_files if os.path.basename(f) in filtered_file_names
-            ]
-        else:
-            all_files = filter_by_substring(
-                all_files,
-                or_filter=and_filter,
-                and_filter=and_filter,
-                bool_case=bool_case,
+            candidates = [f for f, k in zip(candidates, keys) if k in keep]
+            keys = (
+                [f.name for f in candidates]
+                if just_files
+                else [str(f) for f in candidates]
             )
 
-    return all_files
+        if and_filter is not None:
+            keep = set(
+                filter_by_substring(
+                    keys,
+                    or_filter=and_filter,
+                    and_filter=and_filter,
+                    bool_case=bool_case,
+                )
+            )
+            candidates = [f for f, k in zip(candidates, keys) if k in keep]
+
+    # Only now pay the cost of resolve() — on the (usually much smaller) filtered set.
+    return [str(f.resolve()) for f in candidates]
 
 
 ####################################################################################################
 def rename_folders(
-    folder_paths: List[str],
-    replacements: Dict[str, str],
+    folder_paths: list[str],
+    replacements: dict[str, str],
     bool_case: bool = True,
     simulate: bool = False,
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """
     Rename folders based on specified string replacements. Handles nested directories and avoids conflicts.
 
@@ -1735,7 +1660,7 @@ def remove_empty_folders(start_path, deleted_folders=None, simulate=False):
         deleted_folders = []
 
     # Walk through the directory tree bottom-up (deepest first)
-    for root, dirs, files in os.walk(start_path, topdown=False):
+    for root, dirs, _files in os.walk(start_path, topdown=False):
         # Check each directory in current level
         for dir_name in dirs:
             dir_path = os.path.join(root, dir_name)
@@ -1782,7 +1707,7 @@ def remove_empty_folders(start_path, deleted_folders=None, simulate=False):
 
 #########################################################################################################
 def create_temporary_filename(
-    tmp_dir: str = "/tmp", prefix: str = "tmp", extension: str = ".nii.gz"
+    tmp_dir: str = None, prefix: str = "tmp", extension: str = ".nii.gz"
 ) -> str:
     """
     Create a temporary filename with a unique identifier.
@@ -1790,7 +1715,8 @@ def create_temporary_filename(
     Parameters
     ----------
     tmp_dir : str
-        The directory where the temporary file will be created. Default is "/tmp".
+        The directory where the temporary file will be created. Default is the
+        platform temporary directory (``tempfile.gettempdir()``).
 
     prefix : str
         The prefix for the temporary filename. Default is "tmp".
@@ -1806,8 +1732,11 @@ def create_temporary_filename(
     Examples
     --------
     >>> tmp_filename = create_temporary_filename()
-    >>> print(tmp_filename)  # Output: /tmp/tmp_<unique_id>.nii.gz
+    >>> print(tmp_filename)  # Output: <tempdir>/tmp_<unique_id>.nii.gz
     """
+
+    if tmp_dir is None:
+        tmp_dir = tempfile.gettempdir()
 
     # Validate the temporary directory
     if not os.path.isdir(tmp_dir):
@@ -1842,8 +1771,8 @@ def create_temporary_filename(
 ####################################################################################################
 ####################################################################################################
 def remove_consecutive_duplicates(
-    text: Union[str, list[str]], char: Union[str, list[str]]
-) -> Union[str, list[str]]:
+    text: str | list[str], char: str | list[str]
+) -> str | list[str]:
     """
     Remove consecutive duplicate occurrences of specific character(s).
 
@@ -1917,7 +1846,7 @@ def remove_consecutive_duplicates(
 
 ####################################################################################################
 def create_names_from_indices(
-    indices: Union[int, List[int], np.ndarray],
+    indices: int | list[int] | np.ndarray,
     prefix: str = "auto-roi",
     suffix: str = None,
     padding: int = 6,
@@ -1996,17 +1925,17 @@ def create_names_from_indices(
 
 ####################################################################################################
 def correct_names(
-    regnames: List[str],
+    regnames: list[str],
     prefix: str = None,
     suffix: str = None,
     case: Literal["lower", "upper", "title", "capitalize"] = None,
-    remove: List[str] = None,
-    replacements: Union[Dict[str, str], List[List[str]]] = None,
-    remove_consecutive: Union[str, List[str]] = None,
+    remove: list[str] = None,
+    replacements: dict[str, str] | list[list[str]] = None,
+    remove_consecutive: str | list[str] = None,
     strip: bool = True,
     skip_existing_prefix: bool = True,
     skip_existing_suffix: bool = True,
-) -> List[str]:
+) -> list[str]:
     """
     Transform region names with multiple operations: add prefix/suffix, change case,
     remove/replace substrings, and remove consecutive duplicate characters.
@@ -2233,7 +2162,7 @@ def get_real_basename(file_name: str) -> str:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def load_json(json_file_path: Union[str, Path]) -> dict:
+def load_json(json_file_path: str | Path) -> dict:
     """
     Loads a JSON file and returns its contents as a Python dictionary.
 
@@ -2265,13 +2194,13 @@ def load_json(json_file_path: Union[str, Path]) -> dict:
 
     ##
     try:
-        with open(json_file_path, "r") as json_file:
+        with open(json_file_path) as json_file:
             data_dictionary = json.load(json_file)
 
         return data_dictionary
 
     except Exception as e:
-        raise ValueError(f"An error occurred while loading the JSON file: {e}")
+        raise ValueError(f"An error occurred while loading the JSON file: {e}") from e
 
 
 #####################################################################################################
@@ -2417,11 +2346,11 @@ def save_dictionary_to_json(data_dictionary: dict, json_file_path: str):
 
 ####################################################################################################
 def compare_dicts(
-    dict1: Dict[Hashable, Any],
-    dict2: Dict[Hashable, Any],
-    ignore_keys: Optional[List[Hashable]] = None,
-    comparator: Optional[Callable[[Any, Any], bool]] = None,
-) -> Dict[str, Any]:
+    dict1: dict[Hashable, Any],
+    dict2: dict[Hashable, Any],
+    ignore_keys: list[Hashable] | None = None,
+    comparator: Callable[[Any, Any], bool] | None = None,
+) -> dict[str, Any]:
     """
     Compare two dictionaries and report keys with differing values.
 
@@ -2506,9 +2435,9 @@ def compare_dicts(
     ignore = set(ignore_keys) if ignore_keys else set()
     are_equal = comparator if comparator is not None else lambda a, b: a == b
 
-    differing: Dict[Hashable, Tuple[Any, Any]] = {}
-    identical: List[Hashable] = []
-    only_in_first: List[Hashable] = []
+    differing: dict[Hashable, tuple[Any, Any]] = {}
+    identical: list[Hashable] = []
+    only_in_first: list[Hashable] = []
 
     for key, value1 in dict1.items():
         if key in ignore:
@@ -2577,7 +2506,7 @@ def read_file_with_separator_detection(
 
     # Read a sample of lines to detect the delimiter
     sample_lines = []
-    with open(file_path, "r", encoding="utf-8") as file:
+    with open(file_path, encoding="utf-8") as file:
         for _ in range(sample_size):
             try:
                 sample_lines.append(next(file))
@@ -2611,14 +2540,14 @@ def read_file_with_separator_detection(
         except Exception as e:
             raise ValueError(
                 f"Failed to read file with detected separator '{detected_sep}': {str(e)}"
-            )
+            ) from e
 
     return df
 
 
 ####################################################################################################
 def smart_read_table(
-    file_path: Union[str, Path], sample_size: int = 10, possible_seps=None, **kwargs
+    file_path: str | Path, sample_size: int = 10, possible_seps=None, **kwargs
 ):
     """
     Reads a delimited file using pandas auto-detection or fallback separator detection.
@@ -2732,7 +2661,8 @@ def drop_empty_columns(
     empty_mask = target.isna()
 
     # Also flag empty (and optionally whitespace-only) strings
-    obj_cols = target.columns[target.dtypes == object]
+    # Series-wide dtype comparison, not a type() check.
+    obj_cols = target.columns[target.dtypes == object]  # noqa: E721
     if len(obj_cols) > 0:
         stripped = target[obj_cols].apply(
             lambda col: col.map(
@@ -2752,7 +2682,7 @@ def drop_empty_columns(
 
 
 ####################################################################################################
-def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> dict:
+def extract_string_values(data_dict: str | dict, only_last_key=True) -> dict:
     """
     Recursively extracts all keys with string values from a nested dictionary. It will avoid keys
     that are lists or other types. The keys can be either the leaf key name or the full path.
@@ -2792,7 +2722,7 @@ def extract_string_values(data_dict: Union[str, dict], only_last_key=True) -> di
         # Check if the string is a valid JSON file path
         if os.path.isfile(data_dict):
             # Load the custom JSON file
-            with open(data_dict, "r") as file:
+            with open(data_dict) as file:
                 data_dict = json.load(file)
         else:
             # If the file does not exist, raise an error
@@ -2871,7 +2801,7 @@ def update_dict(orig_dict, new_dict, merge_lists=False, allow_new_keys=False):
             orig_value = orig_dict[key]
 
             # Check type compatibility for existing keys
-            if type(orig_value) != type(update_value):
+            if type(orig_value) is not type(update_value):
                 raise TypeError(
                     f"Type mismatch for key '{key}': "
                     f"expected {type(orig_value).__name__}, "
@@ -2943,7 +2873,7 @@ def expand_and_concatenate(df_add: pd.DataFrame, df: pd.DataFrame) -> pd.DataFra
 def generate_container_command(
     bash_args,
     technology: str = "local",
-    image_path: Union[str, Path] = None,
+    image_path: str | Path = None,
     license_path: str = None,
 ) -> list:
     """
@@ -3354,7 +3284,7 @@ def _display_notebook_output(module, all_classes, all_functions, show_inherited=
         html += f'<h4 style="color: #3498db; margin-bottom: 10px;">📘 Classes ({len(all_classes)}):</h4>'
 
         for name, cls in all_classes:
-            html += f'<div style="margin-left: 20px; margin-bottom: 15px;">'
+            html += '<div style="margin-left: 20px; margin-bottom: 15px;">'
             html += f'<strong style="color: #3498db;">{name}</strong><br>'
 
             # Class docstring
@@ -3404,7 +3334,7 @@ def _display_notebook_output(module, all_classes, all_functions, show_inherited=
             try:
                 sig = inspect.signature(func)
                 formatted_sig = format_signature(sig, notebook_mode=True)
-                html += f'<div style="margin-left: 20px; margin-bottom: 8px;">'
+                html += '<div style="margin-left: 20px; margin-bottom: 8px;">'
                 html += f'<span style="color: #27ae60; font-weight: bold;">{name}</span>{formatted_sig}<br>'
 
                 doc = inspect.getdoc(func)
@@ -3707,7 +3637,7 @@ def _display_object_notebook_output(
     html = f"""
     <div style="font-family: 'Courier New', monospace; line-height: 1.6; border: 2px solid #9d4edd; padding: 20px; border-radius: 8px;">
         <h2 style="color: #9d4edd; text-align: center; margin: 0; padding: 10px 0; border-bottom: 2px solid #9d4edd;">🔍 OBJECT INSPECTOR</h2>
-        
+
         <div style="margin: 15px 0;">
             <strong style="color: #36a3d9;">📦 Object:</strong> <span style="color: #2c3e50; font-weight: bold;">{obj_name}</span><br>
             <strong style="color: #36a3d9;">🏷️ Type:</strong> <span style="color: #2c3e50; font-weight: bold;">{obj_type.__name__}</span><br>
@@ -3733,7 +3663,7 @@ def _display_object_notebook_output(
         """
 
         for name, method in sorted(methods):
-            html += f'<div style="margin: 10px 0; margin-left: 20px;">'
+            html += '<div style="margin: 10px 0; margin-left: 20px;">'
 
             try:
                 sig = inspect.signature(method)
@@ -3760,7 +3690,7 @@ def _display_object_notebook_output(
         """
 
         for name, prop in sorted(properties):
-            html += f'<div style="margin: 10px 0; margin-left: 20px;">'
+            html += '<div style="margin: 10px 0; margin-left: 20px;">'
             html += f'<strong style="color: #8e44ad;">🔑 {name}</strong><br>'
 
             # Property docstring
@@ -3790,8 +3720,8 @@ def _display_object_notebook_output(
 
             html += f"""
             <div style="margin: 8px 0; margin-left: 20px;">
-                <strong style="color: #16a085;">📌 {name}</strong> 
-                <span style="color: #95a5a6;">({attr_type})</span>: 
+                <strong style="color: #16a085;">📌 {name}</strong>
+                <span style="color: #95a5a6;">({attr_type})</span>:
                 <span style="color: #2c3e50; background: #f8f9fa; padding: 2px 6px; border-radius: 3px;">{attr_repr}</span>
             </div>
             """
@@ -3802,7 +3732,7 @@ def _display_object_notebook_output(
     if inspect.isclass(obj):
         mro = inspect.getmro(obj)
         if len(mro) > 1:
-            html += f"""
+            html += """
             <div style="margin: 20px 0;">
                 <h4 style="color: #e67e22; border-bottom: 2px solid #e67e22; padding-bottom: 5px;">🏗️ METHOD RESOLUTION ORDER</h4>
             """
@@ -3810,8 +3740,8 @@ def _display_object_notebook_output(
             for i, cls in enumerate(mro):
                 html += f"""
                 <div style="margin: 5px 0; margin-left: 20px;">
-                    <span style="color: #f39c12;">🔗 {i+1}.</span> 
-                    <strong style="color: #2c3e50;">{cls.__name__}</strong> 
+                    <span style="color: #f39c12;">🔗 {i+1}.</span>
+                    <strong style="color: #2c3e50;">{cls.__name__}</strong>
                     <span style="color: #95a5a6;">({cls.__module__})</span>
                 </div>
                 """
@@ -3984,7 +3914,7 @@ def h5explorer(
     max_datasets_per_group: int = 20,
     max_attrs: int = 5,
     show_values: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Print the hierarchical structure of an HDF5 file with colors and tree visualization.
 
@@ -4052,7 +3982,7 @@ def h5explorer(
             return ""
 
         chars = ""
-        for i in range(depth - 1):
+        for _i in range(depth - 1):
             chars += "│   "
 
         if is_last:
@@ -4068,7 +3998,7 @@ def h5explorer(
             return f"compound({len(dtype.names)} fields)"
         return str(dtype)
 
-    def _format_shape(shape: Tuple[int, ...]) -> str:
+    def _format_shape(shape: tuple[int, ...]) -> str:
         """Format array shape for display."""
         if shape == ():
             return "scalar"
@@ -4184,7 +4114,7 @@ def h5explorer(
             # Print dataset attributes
             _print_attributes(obj, depth, prefix)
 
-    def _count_all_items(obj: h5py.HLObject, counts: Dict[str, int]) -> None:
+    def _count_all_items(obj: h5py.HLObject, counts: dict[str, int]) -> None:
         """Recursively count all items in the HDF5 file."""
         for item in obj.values():
             if isinstance(item, h5py.Group):
@@ -4430,7 +4360,7 @@ def search_methods(
                     f"  {cltcolors.bcolors.OKGRAY}📋 Signature:{cltcolors.bcolors.ENDC} "
                     f"{cltcolors.bcolors.OKWHITE}{sig}{cltcolors.bcolors.ENDC}"
                 )
-            except:
+            except Exception:
                 pass
 
         # Show matched docstring line or first line

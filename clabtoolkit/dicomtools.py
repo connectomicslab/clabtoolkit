@@ -1,29 +1,26 @@
 # Standard library
 import os
-import sys
-import time
-import tarfile
 import shutil
-from glob import glob
+import sys
+import tarfile
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from shutil import copyfile
-from functools import partial
 from threading import Lock
-from typing import List, Optional, Union
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
 # Third-party
 import numpy as np
 import pandas as pd
 import pydicom
 from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
-    BarColumn,
     TextColumn,
     TimeElapsedColumn,
-    MofNCompleteColumn,
 )
 
 # Local
@@ -70,7 +67,7 @@ def org_conv_dicoms(
     nosub: bool = False,
     booldic: bool = True,
     boolcomp: bool = False,
-    force: bool = False,
+    overwrite: bool = False,
     nthreads: int = 0,
 ):
     """
@@ -106,8 +103,8 @@ def org_conv_dicoms(
     boolcomp : bool, optional, default=False
         Boolean variable to compress the sessions containing the organized DICOM files. If True it will compress the sessions.
 
-    force : bool, optional, default=False
-        Boolean variable to force the copy of the DICOM file if the file already exists.
+    overwrite : bool, optional, default=False
+        Boolean variable to overwrite the copy of the DICOM file if the file already exists.
 
     nthreds : int, optional, default=0
         Number of threads to be used in the process. Default is 0 that means automatic selection of the number of cores.
@@ -167,7 +164,7 @@ def org_conv_dicoms(
     my_list = os.listdir(in_dic_dir)
     subj_ids = []
     for it in my_list:
-        if nosub == False:
+        if not nosub:
             if "sub-" in it:
                 subj_ids.append(it)
         else:
@@ -180,14 +177,14 @@ def org_conv_dicoms(
         print("No subjects found in the input directory")
         sys.exit()
 
-    if ids_file != None:
+    if ids_file is not None:
         if os.path.isfile(ids_file):
             subj_ids = cltmisc.select_ids_from_file(subj_ids, ids_file)
 
         else:
             s_ids = ids_file.split(",")
 
-            if nosub == False:
+            if not nosub:
                 temp_ids = [s.strip("sub-") for s in subj_ids]
                 s_ids = cltmisc.list_intercept(s_ids, temp_ids)
 
@@ -199,7 +196,7 @@ def org_conv_dicoms(
 
     # Reading demographics
     demobool = False  # Boolean variable to use the demographics table for the session id definition
-    if demog_file != None:
+    if demog_file is not None:
         if os.path.isfile(demog_file):
             demobool = True  # Boolean variable to use the demographics table for the session id definition
             demoDB = pd.read_csv(demog_file)
@@ -218,7 +215,6 @@ def org_conv_dicoms(
             lock = Lock()
 
             n_comp = 0
-            failed = []
 
             pb.update(
                 task_id=pb2,
@@ -229,9 +225,6 @@ def org_conv_dicoms(
             subj_dir = os.path.join(in_dic_dir, subj_id)
             if os.path.isdir(subj_dir):
                 # Default value for these variables for each subject
-                gendVar = "Unknown"
-                groupVar = "Unknown"
-                AgeatScan = "Unknown"
                 subTB = None
                 date_times = []
 
@@ -255,8 +248,6 @@ def org_conv_dicoms(
                 try:
                     if booldic:
                         dicom_files = cltmisc.get_all_files(subj_dir)
-                        ses_idprev = []
-                        ser_idprev = []
 
                         n_dics = len(dicom_files)
                         if nthreads == 1:
@@ -274,7 +265,7 @@ def org_conv_dicoms(
                                     date_times,
                                     demobool,
                                     subTB,
-                                    force,
+                                    overwrite,
                                 )
                                 all_ser_dirs.append(ser_dir)
                                 pb.update(
@@ -311,7 +302,7 @@ def org_conv_dicoms(
                                         date_times,
                                         demobool,
                                         subTB,
-                                        force,
+                                        overwrite,
                                     )
                                     for i in range(n_dics)
                                 ]
@@ -352,7 +343,7 @@ def org_conv_dicoms(
 
                                     if os.path.isdir(serDir):
                                         all_ser_dirs.append(serDir)
-                except:
+                except Exception:
                     failed_ids.append(subj_id)
                     print("Error at subject: " + subj_id)
             else:
@@ -379,7 +370,7 @@ def organize_dicom_files(
     nosub: bool = False,
     booldic: bool = True,
     boolcomp: bool = False,
-    force: bool = False,
+    overwrite: bool = False,
     nthreads: int = 0,
 ):
     """
@@ -391,7 +382,7 @@ def organize_dicom_files(
             in_dic_dir=in_dic_dir,
             out_dic_dir=out_dic_dir,
             boolcomp=boolcomp,
-            force=force,
+            overwrite=overwrite,
             nthreads=nthreads,
         )
     else:
@@ -405,14 +396,14 @@ def organize_dicom_files(
             nosub=nosub,
             booldic=booldic,
             boolcomp=boolcomp,
-            force=force,
+            overwrite=overwrite,
             nthreads=nthreads,
         )
 
 
 ##########################################################################################################
 def _copy_dicomfile_noid(
-    dic_file: str, out_dic_dir: str, force: bool = False
+    dic_file: str, out_dic_dir: str, overwrite: bool = False
 ) -> tuple[str, str | None, str | None]:
     """
     Module-level worker: read one DICOM file, derive its destination path and copy it.
@@ -424,7 +415,7 @@ def _copy_dicomfile_noid(
         Full path to the source DICOM file.
     out_dic_dir : str
         Root output directory where the organised hierarchy will be written.
-    force : bool, optional
+    overwrite : bool, optional
         If True, overwrite an existing file at the destination. Default is False.
 
     Returns
@@ -452,7 +443,7 @@ def _copy_dicomfile_noid(
         Path(dest_dic_dir).mkdir(parents=True, exist_ok=True)
 
         dest_dic = os.path.join(dest_dic_dir, dic_name)
-        if force:
+        if overwrite:
             if os.path.isfile(dest_dic):
                 os.remove(dest_dic)
             copyfile(dic_file, dest_dic)
@@ -475,7 +466,7 @@ def org_dicom_folder(
     in_dic_dir: str,
     out_dic_dir: str,
     boolcomp: bool = False,
-    force: bool = False,
+    overwrite: bool = False,
     nthreads: int = 0,
 ):
     """
@@ -493,7 +484,7 @@ def org_dicom_folder(
     boolcomp : bool, optional
         If True, compress the organised sessions into tar.gz archives after copying. Default is False.
 
-    force : bool, optional
+    overwrite : bool, optional
         If True, overwrite existing files at the destination. Default is False.
 
     nthreads : int, optional
@@ -516,7 +507,7 @@ def org_dicom_folder(
     Examples
     --------
     >>> org_dicom_folder('/path/to/raw/dicoms', '/path/to/organised')
-    >>> org_dicom_folder('/path/to/raw/dicoms', '/path/to/organised', force=True, nthreads=8)
+    >>> org_dicom_folder('/path/to/raw/dicoms', '/path/to/organised', overwrite=True, nthreads=8)
     """
     if not os.path.isdir(in_dic_dir):
         raise FileNotFoundError(f"Input directory not found: {in_dic_dir}")
@@ -553,7 +544,9 @@ def org_dicom_folder(
         if nthreads == 1:
             for dic_file in dicom_files:
                 try:
-                    _, dest, reason = _copy_dicomfile_noid(dic_file, out_dic_dir, force)
+                    _, dest, reason = _copy_dicomfile_noid(
+                        dic_file, out_dic_dir, overwrite
+                    )
                 except Exception as exc:
                     dest, reason = None, f"Unexpected: {exc}"
                 finally:
@@ -561,7 +554,9 @@ def org_dicom_folder(
                 if dest is None:
                     failed_files.append((dic_file, reason))
         else:
-            worker = partial(_copy_dicomfile_noid, out_dic_dir=out_dic_dir, force=force)
+            worker = partial(
+                _copy_dicomfile_noid, out_dic_dir=out_dic_dir, overwrite=overwrite
+            )
             with ProcessPoolExecutor(max_workers=nthreads) as executor:
                 futures = {executor.submit(worker, f): f for f in dicom_files}
                 for future in as_completed(futures):
@@ -606,7 +601,7 @@ def copy_dicom_file(
     date_times: list = None,
     demogbool: bool = False,
     demog_tab: pd.DataFrame = None,
-    force: bool = False,
+    overwrite: bool = False,
 ):
     """
     Function to copy the DICOM files to the output directory.
@@ -635,8 +630,8 @@ def copy_dicom_file(
     demog_tab: pd.DataFrame
         Demographics table containing the information about the subjects.
 
-    force: bool
-        Boolean variable to force the copy of the DICOM file.
+    overwrite: bool
+        Boolean variable to overwrite the copy of the DICOM file.
 
     Returns
     --------
@@ -648,7 +643,7 @@ def copy_dicom_file(
 
     try:
         dataset = pydicom.dcmread(dic_file)
-        dic_path = os.path.dirname(dic_file)
+        os.path.dirname(dic_file)
         dic_name = os.path.basename(dic_file)
 
         # Extracting the study date from DICOM file
@@ -656,7 +651,6 @@ def copy_dicom_file(
 
         if attributes:
             sdate = dataset.data_element("StudyDate").value
-            stime = dataset.data_element("StudyTime").value
             year = int(sdate[:4])
             month = int(sdate[4:6])
             day = int(sdate[6:8])
@@ -667,17 +661,16 @@ def copy_dicom_file(
             # Creating default current Session ID
             ses_id, ser_id = create_session_series_names(dataset)
 
-            if not ses_id == None:
+            if ses_id is not None:
                 ses_id = "ses-" + ses_id
 
-            if "000000" in ses_id and ser_id in ser_idprev:
-                ses_id = ses_idprev
-
-            # visitId = dfiles.split('/')[8].split('-')[1]
-            # ses_id = 'ses-'+ visitId
-
-            ses_idprev = ses_id
-            ser_idprev = ser_id
+            # NOTE: a DICOM whose StudyTime is missing gets the session id
+            # "000000". This used to try to inherit the session id of the
+            # previously copied file of the same series, reading ses_idprev /
+            # ser_idprev — but copy_dicom_file() is called once per file and
+            # keeps no state between calls, so those names were never bound and
+            # the lookup raised NameError. Restoring that fallback needs the
+            # previous ids to be threaded in by the caller.
 
             # Changing the session Id in case we have access to the demographics file
             if demogbool:
@@ -694,7 +687,7 @@ def copy_dicom_file(
                 path.mkdir(parents=True, exist_ok=True)
             #                     print(newPath)
             dest_dic = os.path.join(dest_dic_dir, dic_name)
-            if force:
+            if overwrite:
                 if os.path.isfile(dest_dic):
                     os.remove(dest_dic)
                 else:
@@ -747,20 +740,20 @@ def create_session_series_names(dataset):
     ########### ========== Creating current Series ID
     if any("SeriesDescription" in s for s in attributes):
         ser_id = dataset.data_element("SeriesDescription").value
-    elif any("SeriesDescription" in s for s in attributes) == False and any(
+    elif not any("SeriesDescription" in s for s in attributes) and any(
         "SequenceName" in s for s in attributes
     ):
         ser_id = dataset.data_element("SequenceName").value
     elif (
-        any("SeriesDescription" in s for s in attributes) == False
-        and any("SequenceName" in s for s in attributes) == False
+        not any("SeriesDescription" in s for s in attributes)
+        and not any("SequenceName" in s for s in attributes)
         and any("ProtocolName" in s for s in attributes)
     ):
         ser_id = dataset.data_element("ProtocolName").value
     elif (
-        any("SeriesDescription" in s for s in attributes) == False
-        and any("SequenceName" in s for s in attributes) == False
-        and any("ProtocolName" in s for s in attributes) == False
+        not any("SeriesDescription" in s for s in attributes)
+        and not any("SequenceName" in s for s in attributes)
+        and not any("ProtocolName" in s for s in attributes)
         and any("ScanningSequence" in s for s in attributes)
         and any("SequenceVariant" in s for s in attributes)
     ):
@@ -821,8 +814,8 @@ def create_session_series_names(dataset):
 def uncompress_dicom_session(
     dic_dir: str,
     boolrmtar: bool = False,
-    subj_ids: Optional[Union[str, List[str]]] = None,
-) -> List[str]:
+    subj_ids: str | list[str] | None = None,
+) -> list[str]:
     """
     Uncompress session folders containing the DICOM files for all the series.
 
@@ -906,12 +899,12 @@ def uncompress_dicom_session(
     elif isinstance(subj_ids, str):
         # Read subject IDs from file
         try:
-            with open(subj_ids, "r", encoding="utf-8") as file:
+            with open(subj_ids, encoding="utf-8") as file:
                 subj_ids = [line.strip() for line in file if line.strip()]
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Subject IDs file {subj_ids} not found")
+        except FileNotFoundError as err:
+            raise FileNotFoundError(f"Subject IDs file {subj_ids} not found") from err
         except Exception as e:
-            raise ValueError(f"Error reading subject IDs file: {e}")
+            raise ValueError(f"Error reading subject IDs file: {e}") from e
     elif isinstance(subj_ids, list):
         # Validate list elements
         if not all(isinstance(subj_id, str) for subj_id in subj_ids):
@@ -950,8 +943,10 @@ def uncompress_dicom_session(
                 try:
                     # Use Python's tarfile module for better error handling
                     with tarfile.open(tar_file, "r:gz") as tar:
-                        # Extract to subject directory
-                        tar.extractall(path=subj_dir)
+                        # Extract to subject directory. filter="data" rejects
+                        # absolute paths, ".." traversal, links pointing outside
+                        # the destination and other unsafe members.
+                        tar.extractall(path=subj_dir, filter="data")
 
                     # Remove tar file if requested
                     if boolrmtar:
@@ -969,7 +964,7 @@ def uncompress_dicom_session(
 
         pb.update(
             task_id=task,
-            description=f"[green]Completed uncompression",
+            description="[green]Completed uncompression",
             completed=n_subj,
         )
 
@@ -988,9 +983,9 @@ def uncompress_dicom_session(
 ####################################################################################################
 def compress_dicom_session(
     dic_dir: str,
-    subj_ids: Optional[Union[str, List[str]]] = None,
+    subj_ids: str | list[str] | None = None,
     remove_original: bool = True,
-) -> List[str]:
+) -> list[str]:
     """
     Compress session folders containing DICOM files into tar.gz archives.
 
@@ -1078,10 +1073,10 @@ def compress_dicom_session(
         if os.path.isfile(subj_ids):
             # Read one subject ID per line from the file
             try:
-                with open(subj_ids, "r", encoding="utf-8") as fh:
+                with open(subj_ids, encoding="utf-8") as fh:
                     subj_ids = [line.strip() for line in fh if line.strip()]
             except Exception as e:
-                raise ValueError(f"Error reading subject IDs file: {e}")
+                raise ValueError(f"Error reading subject IDs file: {e}") from e
         else:
             # Treat the string as a comma-separated list of IDs
             subj_ids = [s.strip() for s in subj_ids.split(",") if s.strip()]
@@ -1105,7 +1100,7 @@ def compress_dicom_session(
         return []
 
     n_subj = len(subj_ids)
-    failed_sessions: List[str] = []
+    failed_sessions: list[str] = []
     total_sessions = 0
     compressed_sessions = 0
 
@@ -1206,7 +1201,7 @@ def _safe_unlink(path: Path) -> None:
 #####################################################################################################
 def get_dicom_info(
     dicom_file: str,
-    tags: Optional[Union[str, List[str]]] = None,
+    tags: str | list[str] | None = None,
     missing_tag_behavior: str = "warn",
 ) -> dict:
     """
@@ -1294,12 +1289,12 @@ def get_dicom_info(
     # Read DICOM file
     try:
         dataset = pydicom.dcmread(dicom_file)
-    except pydicom.errors.InvalidDicomError:
+    except pydicom.errors.InvalidDicomError as err:
         raise pydicom.errors.InvalidDicomError(
             f"File is not a valid DICOM file: {dicom_file}"
-        )
+        ) from err
     except Exception as e:
-        raise Exception(f"Error reading DICOM file {dicom_file}: {e}")
+        raise Exception(f"Error reading DICOM file {dicom_file}: {e}") from e
 
     # If no tags specified, return all metadata
     if tags is None:
