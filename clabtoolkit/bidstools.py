@@ -1148,10 +1148,10 @@ def get_subjects(bids_dir: str) -> list:
     """
     subjects = []
 
-    for root, dirs, files in os.walk(bids_dir):
-        for dir_name in dirs:
-            if dir_name.startswith("sub-"):
-                subjects.append(dir_name)
+    dirnames = os.listdir(bids_dir)
+    for dir_name in dirnames:
+        if dir_name.startswith("sub-"):
+            subjects.append(dir_name)
 
     # Optional: Remove duplicates and sort the list
     subjects = sorted(list(set(subjects)))
