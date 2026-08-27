@@ -1153,6 +1153,8 @@ def get_subjects(bids_dir: str) -> list:
             if dir_name.startswith("sub-"):
                 subjects.append(dir_name)
 
+    # Optional: Remove duplicates and sort the list
+    subjects = sorted(list(set(subjects)))
     return subjects
 
 
