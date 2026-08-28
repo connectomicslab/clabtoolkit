@@ -2,6 +2,29 @@
 History
 =======
 
+0.4.5 (2026-08-28)
+------------------
+
+* Added create_5tt to parcellationtools to generate MRtrix3 5TT images
+* Added a method to merge the cortical gray matter with the white matter adjacent to the cortex, and used the merged image to build the 5TT image
+* Added the apply_affine method to the Surface, PointCloud and Tractogram classes, with an inplace option
+* Added connected components detection for binary images
+* Added the option to interpolate on Parcellation objects
+* Added a method to compare dictionaries
+* Added the process_subject function to bidstools
+* Added the brain_pos_col and cb_pos functions to build_visualization_layout
+* Added the ventral DC to the list of subcortical regions
+* Added examples for create_5tt, merge_ctx_wm, apply_cras and apply_affine
+* Refactored the visualizationtools module and fixed several plotting errors
+* Renamed the force parameter to overwrite in all the functions and methods writing files
+* Renamed the transform method of the PointCloud class to apply_affine
+* Fixed the apply_cras method of the Surface class
+* Fixed a bug in the subject selection of bidstools
+* Fixed the line spacing, the append handling and the header lines of export_to_lutctab in colorstools
+* Fixed the anchors, the links and the FreeSurfer paths of the notebooks
+* Silenced the tight_layout warning of create_carpet_plot
+* Raised the minimum Python version to 3.11 and adopted the built-in generics and the union operator in the type hints
+
 0.4.4 (2026-07-17)
 ------------------
 
