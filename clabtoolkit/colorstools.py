@@ -225,29 +225,25 @@ def is_color_like(color) -> bool:
 #####################################################################################################
 def detect_rgb_range(rgb: Any) -> str:
     """
-    Detect if an RGB array uses 0-255 or 0-1 range.
+    Detect if an RGB(A) array uses 0-255 or 0-1 range.
 
-    This function analyzes RGB color values to determine whether they follow
-    the 0-255 integer format (8-bit) or the 0-1 float format (normalized).
+    Mirrors the validation logic of `is_color_like`, supporting numpy arrays,
+    Python lists/tuples, RGB (3 components) and RGBA (4 components) colors.
 
     Parameters
     ----------
     rgb : Any
-        RGB color array/list containing 3 numeric values [R, G, B].
-        Expected formats: [255, 128, 0] or [1.0, 0.5, 0.0]
+        Color array/list containing 3 (RGB) or 4 (RGBA) numeric values.
+        Can be a numpy array (int or float dtype) or a Python list/tuple.
+        Expected formats: [255, 128, 0], [1.0, 0.5, 0.0], np.array([255, 87, 51, 255]), etc.
 
     Returns
     -------
     str
-        - "0-255" if any value is greater than 1
-        - "0-1" if all values are between 0 and 1 (inclusive)
-        - "invalid" if input is malformed or values are outside valid ranges
-
-    Raises
-    ------
-    None
-        This function does not raise any exceptions. Invalid inputs
-        return "invalid" instead of raising errors.
+        - "0-255" if values are integers (or whole-number floats) in [0, 255]
+        - "0-1" if all values are floats/numbers in [0, 1]
+        - "invalid" if input is malformed, wrong length/type, or values are
+          outside valid ranges (e.g. mixed ranges like [255, 0.5, 128])
 
     Examples
     --------
@@ -261,73 +257,90 @@ def detect_rgb_range(rgb: Any) -> str:
     'invalid'
     >>> detect_rgb_range([300, 200, 100])
     'invalid'
-    >>> detect_rgb_range([0.0, 0.0, 0.0])
+    >>> detect_rgb_range((255, 128, 0, 128))  # RGBA tuple
+    '0-255'
+    >>> detect_rgb_range(np.array([255, 87, 51], dtype=int))
+    '0-255'
+    >>> detect_rgb_range(np.array([1.0, 0.34, 0.2]))
     '0-1'
-    >>> detect_rgb_range([255, 255, 255])
+    >>> detect_rgb_range(np.array([70., 130., 180.]))  # whole-number floats
     '0-255'
-    >>> detect_rgb_range([2, 1, 0])
-    '0-255'
+    >>> detect_rgb_range(np.array([70.5, 130., 180.]))  # non-whole float, out of 0-1
+    'invalid'
     >>> detect_rgb_range("not_a_list")
     'invalid'
-    >>> detect_rgb_range([255, 128])
+    >>> detect_rgb_range([255, 128])  # wrong length
     'invalid'
 
     Notes
     -----
-    - Expects exactly 3 numeric values (R, G, B)
-    - Any value greater than 1 classifies the array as "0-255" range
-    - All values between 0-1 (inclusive) classify the array as "0-1" range
-    - Combinations like [0, 1, 0] are treated as "0-1" range
-    - The 0-255 validator only accepts whole numbers (integers or floats like 128.0)
-    - The 0-1 validator accepts any numeric values in the 0-1 range
-    - Mixed ranges (e.g., [255, 0.5, 128]) are considered invalid
-    - Out-of-range values (negative or > 255) result in "invalid" classification
+    - Accepts both RGB (3) and RGBA (4) components, matching `is_color_like`.
+    - Numpy integer arrays: valid only in [0, 255] -> "0-255".
+    - Numpy float arrays: [0, 1] takes priority -> "0-1"; otherwise must be
+      whole-number values in [0, 255] -> "0-255".
+    - Python lists/tuples follow the same precedence: checked against [0, 1]
+      first, then against [0, 255] with a whole-number requirement.
+    - Any dtype other than integer/floating (numpy), or non-numeric list
+      entries, is "invalid".
     """
-    # Validate input format
-    if not isinstance(rgb, (list, tuple)) or len(rgb) != 3:
+    # Handle numpy arrays
+    if isinstance(rgb, np.ndarray):
+        if rgb.shape not in [(3,), (4,)]:
+            return "invalid"
+
+        if np.issubdtype(rgb.dtype, np.integer):
+            if (rgb >= 0).all() and (rgb <= 255).all():
+                return "0-255"
+            return "invalid"
+
+        if np.issubdtype(rgb.dtype, np.floating):
+            if (rgb >= 0).all() and (rgb <= 1).all():
+                return "0-1"
+            if (rgb >= 0).all() and (rgb <= 255).all() and np.all(rgb == np.floor(rgb)):
+                return "0-255"
+            return "invalid"
+
         return "invalid"
 
-    # Check if all values are numeric
-    try:
-        values = [float(val) for val in rgb]
-    except (ValueError, TypeError):
+    # Handle Python lists and tuples
+    if isinstance(rgb, (list, tuple)):
+        if len(rgb) not in [3, 4]:
+            return "invalid"
+
+        try:
+            values = [float(v) for v in rgb]
+        except (ValueError, TypeError):
+            return "invalid"
+
+        # 0-1 range takes priority (matches is_color_like's precedence)
+        if all(0.0 <= v <= 1.0 for v in values):
+            return "0-1"
+
+        # 0-255 range requires whole-number values
+        if all(0 <= v <= 255 for v in values) and all(v == int(v) for v in values):
+            return "0-255"
+
         return "invalid"
 
-    # Check if all values are in 0-1 range
-    in_zero_one = all(0.0 <= val <= 1.0 for val in values)
-
-    # Check if all values are in 0-255 range
-    in_zero_255 = all(0 <= val <= 255 for val in values)
-
-    # Determine range based on values
-    if not in_zero_one and not in_zero_255:
-        return "invalid"
-
-    # If any value > 1, it's definitely 0-255 range
-    if any(val > 1 for val in values):
-        return "0-255"
-
-    # If all values <= 1, treat as 0-1 range
-    # (This includes combinations of 0 and 1)
-    return "0-1"
+    return "invalid"
 
 
 #####################################################################################################
 def is_valid_rgb_255(rgb: Any) -> bool:
     """
-    Check if RGB array contains valid 0-255 range values.
+    Check if RGB(A) array contains valid 0-255 range values.
 
-    This function validates RGB color values in the 0-255 range. It accepts
-    integers and integer-valued floats (e.g., 255.0), but rejects fractional
-    values or values outside the valid range.
+    This function validates RGB or RGBA color values in the 0-255 range. It
+    accepts integers and integer-valued floats (e.g., 255.0), but rejects
+    fractional values or values outside the valid range.
 
     Parameters
     ----------
     rgb : Any
-        RGB color array/list to validate. Can be:
-        - Numpy array with 3 elements
-        - Python list with 3 elements
-        - Python tuple with 3 elements
+        RGB(A) color array/list to validate. Can be:
+        - Numpy array with 3 (RGB) or 4 (RGBA) elements
+        - Python list with 3 or 4 elements
+        - Python tuple with 3 or 4 elements
 
     Returns
     -------
@@ -347,7 +360,11 @@ def is_valid_rgb_255(rgb: Any) -> bool:
     True
     >>> is_valid_rgb_255((255, 128, 0))
     True
+    >>> is_valid_rgb_255((255, 128, 0, 128))  # RGBA
+    True
     >>> is_valid_rgb_255(np.array([255, 128, 0]))
+    True
+    >>> is_valid_rgb_255(np.array([255, 128, 0, 255]))  # RGBA
     True
     >>> is_valid_rgb_255(np.array([70., 130., 180.]))
     True
@@ -367,14 +384,15 @@ def is_valid_rgb_255(rgb: Any) -> bool:
     Notes
     -----
     - Accepts both Python native types and numpy types
+    - Accepts both RGB (3) and RGBA (4) components
     - Integer-valued floats (e.g., 255.0) are considered valid
     - Fractional floats (e.g., 128.5) are rejected
     - Values must be in the inclusive range [0, 255]
     """
     # Handle numpy arrays
     if isinstance(rgb, np.ndarray):
-        # Must have exactly 3 elements
-        if rgb.shape != (3,):
+        # Must have exactly 3 (RGB) or 4 (RGBA) elements
+        if rgb.shape not in [(3,), (4,)]:
             return False
 
         # Integer arrays: check range
@@ -392,8 +410,8 @@ def is_valid_rgb_255(rgb: Any) -> bool:
 
     # Handle lists and tuples
     if isinstance(rgb, (list, tuple)):
-        # Must have exactly 3 elements
-        if len(rgb) != 3:
+        # Must have exactly 3 (RGB) or 4 (RGBA) elements
+        if len(rgb) not in [3, 4]:
             return False
 
         try:
@@ -420,18 +438,18 @@ def is_valid_rgb_255(rgb: Any) -> bool:
 #####################################################################################################
 def is_valid_rgb_01(rgb: Any) -> bool:
     """
-    Check if RGB array contains valid 0-1 range values.
+    Check if RGB(A) array contains valid 0-1 range values.
 
-    This function validates RGB color values in the 0-1 normalized range.
-    It accepts floats and integers (0 or 1 only) in the valid range.
+    This function validates RGB or RGBA color values in the 0-1 normalized
+    range. It accepts floats and integers (0 or 1 only) in the valid range.
 
     Parameters
     ----------
     rgb : Any
-        RGB color array/list to validate. Can be:
-        - Numpy array with 3 elements
-        - Python list with 3 elements
-        - Python tuple with 3 elements
+        RGB(A) color array/list to validate. Can be:
+        - Numpy array with 3 (RGB) or 4 (RGBA) elements
+        - Python list with 3 or 4 elements
+        - Python tuple with 3 or 4 elements
 
     Returns
     -------
@@ -454,7 +472,11 @@ def is_valid_rgb_01(rgb: Any) -> bool:
     True
     >>> is_valid_rgb_01((1.0, 0.5, 0.0))
     True
+    >>> is_valid_rgb_01((1.0, 0.5, 0.0, 1.0))  # RGBA
+    True
     >>> is_valid_rgb_01(np.array([1.0, 0.5, 0.0]))
+    True
+    >>> is_valid_rgb_01(np.array([1.0, 0.5, 0.0, 0.5]))  # RGBA
     True
     >>> is_valid_rgb_01(np.array([0, 1, 0]))
     True
@@ -472,14 +494,15 @@ def is_valid_rgb_01(rgb: Any) -> bool:
     Notes
     -----
     - Accepts both Python native types and numpy types
+    - Accepts both RGB (3) and RGBA (4) components
     - Integer values must be 0 or 1 only
     - Float values can be any value in the range [0.0, 1.0]
     - Values must be in the inclusive range [0, 1]
     """
     # Handle numpy arrays
     if isinstance(rgb, np.ndarray):
-        # Must have exactly 3 elements
-        if rgb.shape != (3,):
+        # Must have exactly 3 (RGB) or 4 (RGBA) elements
+        if rgb.shape not in [(3,), (4,)]:
             return False
 
         # Integer arrays: only 0 and 1 are valid
@@ -494,8 +517,8 @@ def is_valid_rgb_01(rgb: Any) -> bool:
 
     # Handle lists and tuples
     if isinstance(rgb, (list, tuple)):
-        # Must have exactly 3 elements
-        if len(rgb) != 3:
+        # Must have exactly 3 (RGB) or 4 (RGBA) elements
+        if len(rgb) not in [3, 4]:
             return False
 
         try:
