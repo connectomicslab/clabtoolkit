@@ -1463,7 +1463,7 @@ def get_all_files(
                     keys, or_filter=or_filter, and_filter=None, bool_case=bool_case
                 )
             )
-            candidates = [f for f, k in zip(candidates, keys) if k in keep]
+            candidates = [f for f, k in zip(candidates, keys, strict=True) if k in keep]
             keys = (
                 [f.name for f in candidates]
                 if just_files
@@ -1479,7 +1479,7 @@ def get_all_files(
                     bool_case=bool_case,
                 )
             )
-            candidates = [f for f, k in zip(candidates, keys) if k in keep]
+            candidates = [f for f, k in zip(candidates, keys, strict=True) if k in keep]
 
     # Only now pay the cost of resolve() — on the (usually much smaller) filtered set.
     return [str(f.resolve()) for f in candidates]
