@@ -1152,7 +1152,7 @@ def get_subjects(bids_dir: str) -> list:
             subjects.append(dir_name)
 
     # Optional: Remove duplicates and sort the list
-    subjects = sorted(list(set(subjects)))
+    subjects = sorted(set(subjects))
     return subjects
 
 
