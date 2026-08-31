@@ -3,11 +3,9 @@ import json
 import os
 import re
 import shutil
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import glob
 from pathlib import Path
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 from rich.console import Console
