@@ -1636,23 +1636,29 @@ def list_available_themes(plotobj) -> None:
     >>> plotter.list_available_themes()
     """
 
-    themes = {
-        "dark": "Dark background with white text (default)",
-        "light": "Light background with dark text",
-        "high_contrast": "Maximum contrast for presentations",
-        "minimal": "Clean, minimal styling",
-        "publication": "Optimized for academic publications",
-        "colorful": "Vibrant colors for engaging visuals",
-    }
+    themes = getattr(plotobj, "themes_conf", None) or {}
 
     print("🎨 Available Themes:")
     print("=" * 50)
-    for i, (theme_name, description) in enumerate(themes.items(), 1):
-        print(f"{i:2d}. {theme_name:12s} - {description}")
+
+    if not themes:
+        print("   No themes defined in the configuration file.")
+        print(f"   Configuration: {getattr(plotobj, 'config_file', 'unknown')}")
+        print("=" * 50)
+        return
+
+    width = max(len(name) for name in themes)
+    for i, (theme_name, settings) in enumerate(themes.items(), 1):
+        description = (settings or {}).get("description", "No description provided")
+        print(f"{i:2d}. {theme_name:{width}s} - {description}")
+
+    names = list(themes)
+    example = names[0]
+    example_no_save = names[1] if len(names) > 1 else example
 
     print("\n💡 Usage:")
-    print("   plotter.apply_theme('light')     # Apply light theme")
-    print("   plotter.apply_theme('publication', auto_save=False)  # Don't save")
+    print(f"   plotter.apply_theme('{example}')")
+    print(f"   plotter.apply_theme('{example_no_save}', auto_save=False)  # Don't save")
     print("=" * 50)
 
 
@@ -1881,31 +1887,11 @@ def preview_theme(plotobj, theme_name: str) -> None:
 
     Examples
     --------
-    >>> plotter = BrainPlotter("configs.json")
+    >>> plotter = BrainPlotter()
     >>> plotter.preview_theme("light")  # See what light theme would change
     """
 
-    themes = {
-        "dark": {
-            "background_color": "black",
-            "title_font_color": "white",
-            "colorbar_font_color": "white",
-            "title_shadow": True,
-            "colorbar_outline": False,
-            "mesh_ambient": 0.2,
-            "description": "Dark background with white text (default)",
-        },
-        "light": {
-            "background_color": "white",
-            "title_font_color": "black",
-            "colorbar_font_color": "black",
-            "title_shadow": False,
-            "colorbar_outline": True,
-            "mesh_ambient": 0.3,
-            "description": "Light background with dark text",
-        },
-        # ... (other themes would be included here)
-    }
+    themes = getattr(plotobj, "themes_conf", None) or {}
 
     if theme_name not in themes:
         available_themes = list(themes.keys())
@@ -1914,7 +1900,7 @@ def preview_theme(plotobj, theme_name: str) -> None:
         )
 
     theme = themes[theme_name].copy()
-    description = theme.pop("description")
+    description = theme.pop("description", "No description provided")
 
     print(f"👀 Preview of '{theme_name}' theme: {description}")
     print("=" * 50)
