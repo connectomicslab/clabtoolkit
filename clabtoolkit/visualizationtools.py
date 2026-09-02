@@ -1764,22 +1764,47 @@ class BrainPlotter:
         """
         Reset figure configuration to default values.
 
+        The baseline is read from the ``default`` theme of the ``themes_conf``
+        section of the configuration file, so it stays in sync with the
+        packaged configuration instead of being duplicated in the source code.
+
         Parameters
         ----------
         auto_save : bool, default True
             Whether to automatically save reset configuration to file.
 
+        Raises
+        ------
+        KeyError
+            If the configuration does not define a theme named ``default``.
+
         Examples
         --------
-        >>> plotter = BrainPlotter("configs.json")
+        >>> plotter = BrainPlotter()
         >>> plotter.reset_figure_config()  # Reset to defaults
         """
 
         visutils.reset_figure_config(self, auto_save)
 
-    def save_config(self) -> None:
+    def save_config(self, config_file: str | Path = None) -> None:
         """
-        Save current configuration (both figure_conf and views_conf) to JSON file.
+        Save the current configuration to a JSON file.
+
+        Every configuration section is written out, not just ``figure_conf``
+        and ``views_conf``, so saving never strips ``objs_conf``,
+        ``layouts_conf`` or ``themes_conf`` from the file.
+
+        Writing into the installed package is refused: if ``config_file`` still
+        points at the configuration shipped with clabtoolkit, the write is
+        redirected to the user configuration directory so a stock installation
+        cannot be damaged. ``self.config_file`` is updated to whichever file was
+        written.
+
+        Parameters
+        ----------
+        config_file : str or Path, optional
+            Destination file. Defaults to ``self.config_file``. An explicit path
+            is used as given and is never redirected.
 
         Raises
         ------
@@ -1791,9 +1816,10 @@ class BrainPlotter:
         >>> plotter = BrainPlotter("configs.json")
         >>> plotter.update_figure_config(background_color="white", auto_save=False)
         >>> plotter.save_config()  # Manually save changes
+        >>> plotter.save_config("other_configs.json")  # Save to a different file
         """
 
-        visutils.save_config(self)
+        visutils.save_config(self, config_file)
 
     def preview_theme(self, theme_name: str) -> None:
         """

@@ -1782,6 +1782,10 @@ def reset_figure_config(plotobj, auto_save: bool = True) -> None:
     """
     Reset figure configuration to default values.
 
+    The baseline is read from the ``default`` theme of the ``themes_conf``
+    section of the configuration file, so it stays in sync with the packaged
+    configuration instead of being duplicated in the source code.
+
     Parameters
     ----------
     plotobj : BrainPlotter
@@ -1790,29 +1794,30 @@ def reset_figure_config(plotobj, auto_save: bool = True) -> None:
     auto_save : bool, default True
         Whether to automatically save reset configuration to file.
 
+    Raises
+    ------
+    KeyError
+        If the configuration does not define a theme named ``default``.
+
     Examples
     --------
-    >>> plotter = BrainPlotter("configs.json")
+    >>> plotter = BrainPlotter()
     >>> plotter.reset_figure_config()  # Reset to defaults
     """
 
+    themes = getattr(plotobj, "themes_conf", None) or {}
+
+    if "default" not in themes:
+        raise KeyError(
+            "No 'default' theme found in the configuration "
+            f"({getattr(plotobj, 'config_file', 'unknown')}). "
+            f"Available themes: {list(themes.keys())}"
+        )
+
     default_config = {
-        "background_color": "black",
-        "title_font_type": "arial",
-        "title_font_size": 10,
-        "title_font_color": "white",
-        "title_shadow": True,
-        "colorbar_font_type": "arial",
-        "colorbar_font_size": 10,
-        "colorbar_title_font_size": 15,
-        "colorbar_font_color": "white",
-        "colorbar_outline": False,
-        "colorbar_n_labels": 11,
-        "mesh_ambient": 0.2,
-        "mesh_diffuse": 0.5,
-        "mesh_specular": 0.5,
-        "mesh_specular_power": 50,
-        "mesh_smooth_shading": True,
+        param: value
+        for param, value in themes["default"].items()
+        if param != "description"
     }
 
     print("🔄 Resetting figure configuration to defaults...")
@@ -1839,9 +1844,96 @@ def reset_figure_config(plotobj, auto_save: bool = True) -> None:
 
 
 ###############################################################################################
-def save_config(plotobj) -> None:
+# Configuration sections persisted by save_config, in the order used by the
+# packaged viz_views.json. Any other section already present in the target file
+# is preserved as well.
+CONFIG_SECTIONS = (
+    "figure_conf",
+    "objs_conf",
+    "views_conf",
+    "layouts_conf",
+    "themes_conf",
+)
+
+
+###############################################################################################
+def is_packaged_config(config_file: str | Path) -> bool:
     """
-    Save current configuration (both figure_conf and views_conf) to JSON file.
+    Check whether a configuration path lives inside the installed package.
+
+    Parameters
+    ----------
+    config_file : str or Path
+        Path to the configuration file.
+
+    Returns
+    -------
+    bool
+        True if the path is inside the clabtoolkit installation directory.
+
+    Examples
+    --------
+    >>> is_packaged_config("my_views.json")
+    False
+    """
+
+    package_dir = Path(__file__).resolve().parent
+
+    try:
+        Path(config_file).resolve().relative_to(package_dir)
+
+    except ValueError:
+        return False
+
+    return True
+
+
+###############################################################################################
+def get_user_config_file() -> Path:
+    """
+    Get the per-user configuration path used instead of the packaged one.
+
+    Honours ``XDG_CONFIG_HOME`` and falls back to ``~/.config``.
+
+    Returns
+    -------
+    Path
+        Path to the user-level configuration file.
+
+    Examples
+    --------
+    >>> get_user_config_file()  # doctest: +SKIP
+    PosixPath('/home/user/.config/clabtoolkit/viz_views.json')
+    """
+
+    base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+
+    return Path(base) / "clabtoolkit" / "viz_views.json"
+
+
+###############################################################################################
+def save_config(plotobj, config_file: str | Path = None) -> None:
+    """
+    Save the current configuration to a JSON file.
+
+    Every configuration section carried by ``plotobj`` is written out, not just
+    ``figure_conf`` and ``views_conf``, so saving never strips ``objs_conf``,
+    ``layouts_conf`` or ``themes_conf`` from the file. Sections already present
+    in the target file but unknown to ``plotobj`` are preserved.
+
+    Writing into the installed package is refused: if ``plotobj.config_file``
+    still points at the configuration shipped with clabtoolkit, the write is
+    redirected to :func:`get_user_config_file` so a stock installation cannot be
+    damaged. ``plotobj.config_file`` is updated to whichever file was written.
+
+    Parameters
+    ----------
+    plotobj : BrainPlotter
+        Instance of the plotting class containing the configurations.
+
+    config_file : str or Path, optional
+        Destination file. Defaults to ``plotobj.config_file``. An explicit path
+        is used as given and is never redirected.
 
     Raises
     ------
@@ -1853,23 +1945,52 @@ def save_config(plotobj) -> None:
     >>> plotter = BrainPlotter("configs.json")
     >>> plotter.update_figure_config(background_color="white", auto_save=False)
     >>> plotter.save_config()  # Manually save changes
+    >>> plotter.save_config("other_configs.json")  # Save to a different file
     """
 
+    if config_file is not None:
+        target = Path(config_file)
+
+    else:
+        target = Path(plotobj.config_file)
+
+        # Never overwrite the configuration shipped inside the package.
+        if is_packaged_config(target):
+            target = get_user_config_file()
+            print(
+                "⚠️  Refusing to overwrite the packaged configuration at: "
+                f"{plotobj.config_file}"
+            )
+            print(f"   Saving to the user configuration instead: {target}")
+
+    # Start from what is already on disk so sections this object does not carry
+    # survive the write.
+    complete_config = {}
+    if target.is_file():
+        try:
+            complete_config = cltmisc.load_json(target)
+
+        except Exception:
+            complete_config = {}
+
+    sections = list(dict.fromkeys(list(complete_config.keys()) + list(CONFIG_SECTIONS)))
+
+    for section in sections:
+        if hasattr(plotobj, section):
+            complete_config[section] = getattr(plotobj, section)
+
     try:
-        # Combine both configurations
-        complete_config = {
-            "figure_conf": plotobj.figure_conf,
-            "views_conf": plotobj.views_conf,
-        }
-
         # Write to file with proper formatting
-        with open(plotobj.config_file, "w") as f:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w") as f:
             json.dump(complete_config, f, indent=4, sort_keys=False)
-
-        print(f"✅ Configuration saved successfully to: {plotobj.config_file}")
 
     except Exception as e:
         raise OSError(f"Failed to save configuration: {e}") from e
+
+    plotobj.config_file = str(target)
+
+    print(f"✅ Configuration saved successfully to: {target}")
 
 
 ################################################################################################
