@@ -205,6 +205,63 @@ class Connectome:
         connectome.load_h5(filename)
         return connectome
 
+    @classmethod
+    def from_csv(
+        cls,
+        filename: str | Path,
+        name: str | None = None,
+        region_coords: np.ndarray | None = None,
+        region_names: list[str] | None = None,
+        region_index: np.ndarray | list | tuple | None = None,
+        region_colors: np.ndarray | list | None = None,
+        connectivity_type: str = "unknown",
+        affine: np.ndarray | None = None,
+    ) -> "Connectome":
+        """
+        Create a Connectome object from a CSV file.
+
+        Parameters:
+        -----------
+        filename : str or Path
+            Path to the CSV file containing connectivity data
+        name : str, optional
+            Name for the connectome. If None, uses filename stem.
+        region_coords : np.ndarray, optional
+            3D region_coords for each region (n_regions x 3)
+        region_names : List[str], optional
+            Names/labels for each brain region
+        region_index : list[int] or np.ndarray, optional
+            Index codes for each region. Coerced to list[int] internally.
+        region_colors : np.ndarray or List, optional
+            RGB color values or hex strings for each region
+        connectivity_type : str, optional
+            Type of connectivity (default: 'unknown')
+        affine : np.ndarray, optional
+            4x4 affine transformation matrix
+
+        Returns:
+        --------
+        Connectome : New Connectome object with loaded data
+        """
+        filename = Path(filename)
+
+        # Set default name from filename if not provided
+        if name is None:
+            name = filename.stem
+
+        connectome = cls()
+        connectome.load_csv(
+            filename,
+            name,
+            region_coords,
+            region_names,
+            region_index,
+            region_colors,
+            connectivity_type,
+            affine,
+        )
+        return connectome
+
     def _calculate_node_sizes(
         self, property_type: str, threshold: float, scale: float, base_size: float
     ) -> np.ndarray:
@@ -297,6 +354,110 @@ class Connectome:
                 f"Unknown node size property: {property_type}. "
                 f"Available options: 'uniform', 'strength', 'degree', 'betweenness', 'eigenvector'"
             )
+
+    def load_csv(
+        self,
+        filename: str | Path,
+        name: str | None = None,
+        region_coords: np.ndarray | None = None,
+        region_names: list[str] | None = None,
+        region_index: np.ndarray | list | tuple | None = None,
+        region_colors: np.ndarray | list | None = None,
+        connectivity_type: str = "unknown",
+        affine: np.ndarray | None = None,
+    ) -> None:
+        """
+        Load connectivity data from a CSV file.
+
+        Parameters:
+        -----------
+        filename : str or Path
+            Path to the CSV file containing connectivity data
+        name : str, optional
+            Name for the connectome.
+        region_coords : np.ndarray, optional
+            3D region_coords for each region (n_regions x 3)
+        region_names : List[str], optional
+            Names/labels for each brain region
+        region_index : list[int] or np.ndarray, optional
+            Index codes for each region. Coerced to list[int] internally.
+        region_colors : np.ndarray or List, optional
+            RGB color values or hex strings for each region
+        connectivity_type : str, optional
+            Type of connectivity (default: 'unknown')
+        affine : np.ndarray, optional
+            4x4 affine transformation matrix
+        """
+        filename = Path(filename)
+
+        if not filename.exists():
+            raise FileNotFoundError(f"File not found: {filename}")
+
+        matrix = np.loadtxt(filename, delimiter=",")
+
+        # BUG FIX 6: validate squareness, matching __init__'s behavior for
+        # matrices supplied directly as np.ndarray.
+        if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+            raise ValueError(
+                f"CSV must contain a square connectivity matrix, got shape {matrix.shape}"
+            )
+
+        self.matrix = matrix
+        self.n_regions = self.matrix.shape[0]
+
+        # Set region_coords
+        if region_coords is not None:
+            self.set_region_coordinates(region_coords)
+        else:
+            self.region_coords = None
+
+        # Set colors
+        if region_colors is not None:
+            region_colors = cltcol.harmonize_colors(region_colors, "hex")
+            self.set_region_colors(region_colors)
+        elif self.n_regions > 0:
+            # Only generate default colors if we have regions
+            self.region_colors = cltcol.create_distinguishable_colors(self.n_regions)
+        else:
+            self.region_colors = None
+
+        # Set region names
+        if region_names is not None:
+            self.set_region_names(region_names)
+        elif self.n_regions > 0:
+            # Only generate default names if we have regions
+            self.region_names = cltmisc.create_names_from_indices(
+                np.arange(self.n_regions) + 1
+            )
+        else:
+            self.region_names = None
+
+        # Set region index (always normalized to list[int])
+        if region_index is not None:
+            self.region_index = self._normalize_region_index(
+                region_index, self.n_regions
+            )
+        else:
+            self.region_index = list(range(self.n_regions))
+
+        # Set affine
+        if affine is not None:
+            if affine.shape != (4, 4):
+                raise ValueError(f"Affine must be 4x4 array, got {affine.shape}")
+            self.affine = affine.astype(np.float64)
+        else:
+            self.affine = np.eye(4)
+
+        if name is not None:
+            self.name = name
+        else:
+            self.name = filename.stem
+
+        # BUG FIX 2: this used to write to a separate `self.connectivity_type`
+        # attribute that nothing else in the class reads. The rest of the class
+        # (get_info, __repr__, threshold, copy, load_h5, save_h5, ...) all use
+        # `self.type`, so that's what must be set here too.
+        self.type = connectivity_type if connectivity_type is not None else "unknown"
 
     def load_h5(self, filename: str | Path) -> None:
         """
