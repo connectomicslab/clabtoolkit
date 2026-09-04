@@ -28,25 +28,27 @@ class Connectome:
         RGB color values for each region (n_regions x 3)
     region_names : List[str]
         Names/labels for each brain region
-    region_index : np.ndarray
-        Index codes for each region
+    region_index : list[int]
+        Index codes for each region. Always stored as a plain list of ints,
+        regardless of whether a list, tuple, or numpy array was supplied.
     connectivity_type : str
-        Type of connectivity ('structural', 'functional', 'effective', etc.)
+        Type of connectivity ('unknown', 'structural', 'functional', 'effective', etc.)
     affine : np.ndarray
         4x4 affine transformation matrix
     n_regions : int
         Number of brain regions
     """
 
+    #################################################################################
     def __init__(
         self,
         data: np.ndarray | str | Path | None = None,
         name: str | None = None,
         region_coords: np.ndarray | None = None,
         region_names: list[str] | None = None,
-        region_index: np.ndarray | None = None,
+        region_index: np.ndarray | list | tuple | None = None,
         region_colors: np.ndarray | list | None = None,
-        connectivity_type: str = "structural",
+        connectivity_type: str = "unknown",
         affine: np.ndarray | None = None,
     ):
         """
@@ -65,12 +67,12 @@ class Connectome:
             3D region_coords for each region (n_regions x 3)
         region_names : List[str], optional
             Names/labels for each brain region
-        region_index : np.ndarray, optional
-            Index codes for each region
+        region_index : list[int] or np.ndarray, optional
+            Index codes for each region. Coerced to list[int] internally.
         region_colors : np.ndarray or List, optional
             RGB color values or hex strings for each region
         connectivity_type : str, optional
-            Type of connectivity (default: 'structural')
+            Type of connectivity (default: 'unknown')
         affine : np.ndarray, optional
             4x4 affine transformation matrix
 
@@ -150,16 +152,14 @@ class Connectome:
         else:
             self.region_names = None
 
-        # Set region index
+        # Set region index (always normalized to list[int])
         if region_index is not None:
-            if self.matrix is not None and len(region_index) != self.n_regions:
-                raise ValueError(
-                    f"Region index length ({len(region_index)}) must match matrix size ({self.n_regions})"
-                )
-            self.region_index = np.array(region_index)
+            self.region_index = self._normalize_region_index(
+                region_index, self.n_regions if self.matrix is not None else None
+            )
         else:
             self.region_index = (
-                np.arange(self.n_regions) if self.matrix is not None else None
+                list(range(self.n_regions)) if self.matrix is not None else None
             )
 
         # Set affine
@@ -179,6 +179,7 @@ class Connectome:
     # infinite recursion because the property shadowed the instance attribute set in
     # __init__.  n_regions is a plain instance attribute; no property is needed.
 
+    #################################################################################
     @staticmethod
     def _normalize_region_index(
         indices: list | np.ndarray | tuple | None,
@@ -210,6 +211,7 @@ class Connectome:
 
         return [int(i) for i in arr.tolist()]
 
+    #################################################################################
     @classmethod
     def from_h5(cls, filename: str | Path, name: str | None = None) -> "Connectome":
         """
@@ -236,6 +238,7 @@ class Connectome:
         connectome.load_h5(filename)
         return connectome
 
+    #################################################################################
     @classmethod
     def from_csv(
         cls,
@@ -293,6 +296,7 @@ class Connectome:
         )
         return connectome
 
+    #################################################################################
     def _calculate_node_sizes(
         self, property_type: str, threshold: float, scale: float, base_size: float
     ) -> np.ndarray:
@@ -386,6 +390,7 @@ class Connectome:
                 f"Available options: 'uniform', 'strength', 'degree', 'betweenness', 'eigenvector'"
             )
 
+    #################################################################################
     def load_csv(
         self,
         filename: str | Path,
@@ -490,6 +495,7 @@ class Connectome:
         # `self.type`, so that's what must be set here too.
         self.type = connectivity_type if connectivity_type is not None else "unknown"
 
+    #################################################################################
     def load_h5(self, filename: str | Path) -> None:
         """
         Load connectivity data from HDF5 file.
@@ -535,7 +541,7 @@ class Connectome:
                         stacklevel=2,
                     )
 
-                # BUG FIX 2: Added "region_colors" (the key used by save_h5) to the
+                # BUG FIX 2 (h5): Added "region_colors" (the key used by save_h5) to the
                 # search tuple, and grouped it with "gmcolors" since both store hex
                 # strings.  The original code only looked for "gmcolors" and "colors",
                 # so connectomes saved by save_h5 could never reload their colors.
@@ -586,13 +592,15 @@ class Connectome:
                             )
                         break
 
-                # Load region index (optional)
+                # Load region index (optional) — normalized to list[int]
                 for key in ("gmindex", "index", "region_index"):
                     if key in data_group:
-                        self.region_index = data_group[key][:]
+                        self.region_index = self._normalize_region_index(
+                            data_group[key][:]
+                        )
                         break
                 else:
-                    self.region_index = np.arange(self.n_regions)
+                    self.region_index = list(range(self.n_regions))
 
                 # Load affine (optional)
                 if "affine" in data_group:
@@ -609,6 +617,7 @@ class Connectome:
         except Exception as e:
             raise RuntimeError(f"Error loading HDF5 file: {e}") from e
 
+    #################################################################################
     def save_h5(self, filename: str | Path, compression: bool = True) -> None:
         """
         Save Connectome to HDF5 file.
@@ -669,6 +678,7 @@ class Connectome:
 
         print(f"Connectome saved to: {filename}")
 
+    #################################################################################
     def get_region_names(self) -> list[str]:
         """
         Get region of interest (ROI) names. If not available, generate default names.
@@ -682,6 +692,7 @@ class Connectome:
         else:
             return self.get_default_region_names()
 
+    #################################################################################
     def get_region_colors(self) -> np.ndarray:
         """
         Get region of interest (ROI) colors. If not available, generate default colors.
@@ -695,6 +706,7 @@ class Connectome:
         else:
             return self.get_default_region_colors()
 
+    #################################################################################
     def get_region_coordinates(self) -> np.ndarray | None:
         """
         Get region of interest (ROI) coordinates.
@@ -720,6 +732,7 @@ class Connectome:
         # the same attribute the rest of the class relies on.
         return self.region_index
 
+    #################################################################################
     def set_region_coordinates(self, coordinates: np.ndarray) -> None:
         """
         Set 3D coordinates for brain regions.
@@ -735,6 +748,7 @@ class Connectome:
             )
         self.region_coords = coordinates.copy()
 
+    #################################################################################
     def set_region_colors(self, colors: list | np.ndarray) -> None:
         """
         Set colors for brain regions.
@@ -766,6 +780,7 @@ class Connectome:
         n = self.n_regions if self.matrix is not None else None
         self.region_index = self._normalize_region_index(indices, n)
 
+    #################################################################################
     def set_region_names(self, names: list[str]) -> None:
         """
         Set names for brain regions.
@@ -781,6 +796,7 @@ class Connectome:
             )
         self.region_names = names.copy()
 
+    #################################################################################
     def get_default_region_colors(self) -> np.ndarray:
         """
         Generate default colors for regions if not available.
@@ -803,6 +819,7 @@ class Connectome:
         names = cltmisc.create_names_from_indices(np.arange(self.n_regions) + 1)
         return names
 
+    #################################################################################
     def load_colortable(
         self, filename: str | Path | dict | cltcol.ColorTableLoader
     ) -> None:
@@ -852,6 +869,7 @@ class Connectome:
         if index is not None:
             self.set_region_indices(index)
 
+    #################################################################################
     def get_density(self) -> float:
         """
         Calculate the density of the connectivity matrix.
@@ -913,6 +931,7 @@ class Connectome:
 
         return stats
 
+    #################################################################################
     def set_diagonal_to_zero(self):
         """
         Set the diagonal elements of the connectivity matrix to zero.
@@ -931,6 +950,7 @@ class Connectome:
 
         self.matrix = (self.matrix + self.matrix.T) / 2
 
+    #################################################################################
     def threshold(
         self,
         method: Literal["value", "sparsity"] = "value",
@@ -1021,7 +1041,7 @@ class Connectome:
         np.fill_diagonal(matrix_thresh, 0)
 
         if copy:
-            # BUG FIX 3: was passing `colors=` which is not a valid __init__ parameter;
+            # BUG FIX 3 (orig): was passing `colors=` which is not a valid __init__ parameter;
             # corrected to `region_colors=` throughout threshold(), get_subnetwork(),
             # and copy().
             return Connectome(
@@ -1041,7 +1061,7 @@ class Connectome:
                     self.region_names.copy() if self.region_names is not None else None
                 ),
                 region_index=(
-                    self.region_index.copy() if self.region_index is not None else None
+                    list(self.region_index) if self.region_index is not None else None
                 ),
                 connectivity_type=self.type,
                 affine=self.affine.copy(),
@@ -1051,6 +1071,7 @@ class Connectome:
             self.matrix = matrix_thresh
             return self
 
+    #################################################################################
     def get_subnetwork(
         self, region_indices: np.ndarray | list[int], copy: bool = True
     ) -> "Connectome":
@@ -1060,7 +1081,7 @@ class Connectome:
         Parameters:
         ----------
         region_indices : np.ndarray or List[int]
-            Indices of regions to include
+            Positions (row/column indices) of regions to include
         copy : bool, optional
             If True, return new Connectome object; if False, modify in place (default: True)
 
@@ -1083,10 +1104,17 @@ class Connectome:
             if self.region_names is not None
             else None
         )
-        sub_index = self.region_index[idx] if self.region_index is not None else None
+        # BUG FIX 5: self.region_index is now a plain list[int], which doesn't
+        # support fancy/array indexing (self.region_index[idx] would raise
+        # TypeError). Index it with a comprehension instead.
+        sub_index = (
+            [self.region_index[i] for i in idx]
+            if self.region_index is not None
+            else None
+        )
 
         if copy:
-            # BUG FIX 3 (continued): corrected `colors=` → `region_colors=`
+            # BUG FIX 3 (orig, continued): corrected `colors=` -> `region_colors=`
             return Connectome(
                 data=sub_matrix,
                 name=f"{self.name}_subnetwork" if self.name else "subnetwork",
@@ -1107,6 +1135,7 @@ class Connectome:
             self.n_regions = len(idx)
             return self
 
+    #################################################################################
     def copy(self) -> "Connectome":
         """
         Create a deep copy of the Connectome.
@@ -1116,7 +1145,7 @@ class Connectome:
         Connectome
             Deep copy of the Connectome
         """
-        # BUG FIX 3 (continued): corrected `colors=` → `region_colors=`
+        # BUG FIX 3 (orig, continued): corrected `colors=` -> `region_colors=`
         return Connectome(
             data=self.matrix.copy() if self.matrix is not None else None,
             name=self.name,
@@ -1130,12 +1159,13 @@ class Connectome:
                 self.region_names.copy() if self.region_names is not None else None
             ),
             region_index=(
-                self.region_index.copy() if self.region_index is not None else None
+                list(self.region_index) if self.region_index is not None else None
             ),
             connectivity_type=self.type,
             affine=self.affine.copy(),
         )
 
+    #################################################################################
     def plot_matrix(
         self,
         figsize: tuple[int, int] = (12, 10),
@@ -1209,6 +1239,7 @@ class Connectome:
         plt.tight_layout()
         plt.show()
 
+    #################################################################################
     def plot_circular_graph(
         self,
         figsize: tuple[int, int] = (12, 12),
@@ -1401,6 +1432,7 @@ class Connectome:
 
         plt.show()
 
+    #################################################################################
     @classmethod
     def generate_connectome(
         cls,
@@ -1411,7 +1443,7 @@ class Connectome:
         region_names: list[str] | None = None,
         region_colors: np.ndarray | list | None = None,
         region_coords: np.ndarray | None = None,
-        connectivity_type: str = "structural",
+        connectivity_type: str = "unknown",
         name: str | None = None,
         symmetric: bool = True,
         n_modules: int = 4,
@@ -1454,7 +1486,7 @@ class Connectome:
             (n_regions, 3) coordinates. Auto-generated on a sphere when None.
             Required by (and drives) the 'distance' method.
         connectivity_type : str
-            Stored connectivity type. Default 'structural'.
+            Stored connectivity type. Default 'unknown'.
         name : str, optional
             Name for the connectome. Defaults to 'synthetic_<method>_<n_regions>'.
         symmetric : bool
@@ -1599,6 +1631,7 @@ class Connectome:
             connectivity_type=connectivity_type,
         )
 
+    #################################################################################
     def visualize_3d(
         self,
         connectivity_threshold: float = 0.1,
@@ -1733,6 +1766,7 @@ class Connectome:
 
         return plotter
 
+    #################################################################################
     def save_visualization(self, filename: str, **kwargs) -> None:
         """
         Save a 3D visualization to file.
@@ -1748,6 +1782,7 @@ class Connectome:
         plotter.screenshot(filename)
         plotter.close()
 
+    #################################################################################
     def get_info(self) -> None:
         """
         Display comprehensive information about the connectome.
