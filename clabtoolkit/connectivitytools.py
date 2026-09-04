@@ -670,6 +670,24 @@ class Connectome:
 
         return stats
 
+    def set_diagonal_to_zero(self):
+        """
+        Set the diagonal elements of the connectivity matrix to zero.
+        """
+        if self.matrix is None:
+            raise ValueError("No connectivity matrix available")
+
+        np.fill_diagonal(self.matrix, 0)
+
+    def set_symmetric(self):
+        """
+        Make the connectivity matrix symmetric by averaging with its transpose.
+        """
+        if self.matrix is None:
+            raise ValueError("No connectivity matrix available")
+
+        self.matrix = (self.matrix + self.matrix.T) / 2
+
     def threshold(
         self,
         method: Literal["value", "sparsity"] = "value",
