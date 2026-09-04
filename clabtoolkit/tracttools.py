@@ -1423,6 +1423,7 @@ class Tractogram:
         if isinstance(scal_map, cltparc.Parcellation):
             scalar_data = scal_map.get_data()
             inv_affine = np.linalg.inv(scal_map.get_affine())
+            interp_method = "nearest"
 
         else:
             # --- Load scalar image ---
