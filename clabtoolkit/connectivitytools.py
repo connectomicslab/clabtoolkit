@@ -580,21 +580,38 @@ class Connectome:
         names = cltmisc.create_names_from_indices(np.arange(self.n_regions) + 1)
         return names
 
-    def load_colortable(self, filename: str | Path | dict) -> None:
+    def load_colortable(
+        self, filename: str | Path | dict | cltcol.ColorTableLoader
+    ) -> None:
         """
         Load color table for brain regions.
 
         Parameters:
         -----------
-        filename : str | Path | dict
-            Path to the LUT or TSV file containing region colors or a dictionary of colors
+        filename : str | Path | dict | cltcol.ColorTableLoader
+            Path to the LUT or TSV file containing region colors, a dictionary
+            of colors/names/index, or an already-loaded ColorTableLoader.
         """
         if isinstance(filename, dict):
+            # BUG FIX 1: this referenced an undefined `col_dict` (NameError).
+            # It must read from `filename`, the dict actually passed in.
             colors = filename["color"]
             names = filename["name"]
+            index = filename.get("index")
             self.set_region_colors(colors)
             self.set_region_names(names)
+            if index is not None:
+                self.set_region_indices(index)
+            return
 
+        if isinstance(filename, cltcol.ColorTableLoader):
+            colors = filename.color
+            names = filename.name
+            index = getattr(filename, "index", None)
+            self.set_region_colors(colors)
+            self.set_region_names(names)
+            if index is not None:
+                self.set_region_indices(index)
             return
 
         filename = Path(filename)
@@ -603,11 +620,14 @@ class Connectome:
             raise FileNotFoundError(f"File not found: {filename}")
 
         col_dict = cltcol.ColorTableLoader(filename)
-        colors = col_dict["color"]
-        names = col_dict["name"]
+        colors = col_dict.color
+        names = col_dict.name
+        index = getattr(col_dict, "index", None)
 
         self.set_region_colors(colors)
         self.set_region_names(names)
+        if index is not None:
+            self.set_region_indices(index)
 
     def get_density(self) -> float:
         """
