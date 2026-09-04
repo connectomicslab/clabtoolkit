@@ -705,6 +705,21 @@ class Connectome:
         """
         return self.region_coords
 
+    #################################################################################
+    def get_region_indices(self) -> list[int] | None:
+        """
+        Get indices for brain regions.
+
+        Returns:
+        --------
+        Optional[list[int]] : List of region indices or None
+        """
+        # BUG FIX 3: previously returned self.region_indices (plural), an
+        # attribute that was never set anywhere else in the class (it's
+        # self.region_index, singular, everywhere else). This now reads/writes
+        # the same attribute the rest of the class relies on.
+        return self.region_index
+
     def set_region_coordinates(self, coordinates: np.ndarray) -> None:
         """
         Set 3D coordinates for brain regions.
@@ -734,6 +749,22 @@ class Connectome:
                 f"Colors length {len(colors)} doesn't match expected ({self.n_regions})"
             )
         self.region_colors = cltcol.harmonize_colors(colors)
+
+    #################################################################################
+    def set_region_indices(self, indices: list[int] | np.ndarray) -> None:
+        """
+        Set indices for brain regions. Always stored internally as list[int],
+        regardless of whether a list, tuple, or numpy array is supplied.
+
+        Parameters:
+        -----------
+        indices : list[int] | np.ndarray
+            List or array of region indices
+        """
+        # BUG FIX 3 (continued): unified with self.region_index and normalized
+        # via _normalize_region_index so the stored type is always list[int].
+        n = self.n_regions if self.matrix is not None else None
+        self.region_index = self._normalize_region_index(indices, n)
 
     def set_region_names(self, names: list[str]) -> None:
         """
