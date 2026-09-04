@@ -179,6 +179,37 @@ class Connectome:
     # infinite recursion because the property shadowed the instance attribute set in
     # __init__.  n_regions is a plain instance attribute; no property is needed.
 
+    @staticmethod
+    def _normalize_region_index(
+        indices: list | np.ndarray | tuple | None,
+        n_regions: int | None = None,
+    ) -> list[int] | None:
+        """
+        Coerce any array-like of region indices into a plain list[int].
+
+        Parameters:
+        -----------
+        indices : list, np.ndarray, tuple, or None
+            Region indices in any array-like form.
+        n_regions : int, optional
+            If given, validates that len(indices) matches n_regions.
+
+        Returns:
+        --------
+        list[int] or None
+        """
+        if indices is None:
+            return None
+
+        arr = np.asarray(indices)
+
+        if n_regions is not None and len(arr) != n_regions:
+            raise ValueError(
+                f"Region index length ({len(arr)}) must match matrix size ({n_regions})"
+            )
+
+        return [int(i) for i in arr.tolist()]
+
     @classmethod
     def from_h5(cls, filename: str | Path, name: str | None = None) -> "Connectome":
         """
