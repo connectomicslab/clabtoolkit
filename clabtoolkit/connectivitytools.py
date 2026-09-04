@@ -580,6 +580,35 @@ class Connectome:
         names = cltmisc.create_names_from_indices(np.arange(self.n_regions) + 1)
         return names
 
+    def load_colortable(self, filename: str | Path | dict) -> None:
+        """
+        Load color table for brain regions.
+
+        Parameters:
+        -----------
+        filename : str | Path | dict
+            Path to the LUT or TSV file containing region colors or a dictionary of colors
+        """
+        if isinstance(filename, dict):
+            colors = filename["color"]
+            names = filename["name"]
+            self.set_region_colors(colors)
+            self.set_region_names(names)
+
+            return
+
+        filename = Path(filename)
+
+        if not filename.exists():
+            raise FileNotFoundError(f"File not found: {filename}")
+
+        col_dict = cltcol.ColorTableLoader(filename)
+        colors = col_dict["color"]
+        names = col_dict["name"]
+
+        self.set_region_colors(colors)
+        self.set_region_names(names)
+
     def get_density(self) -> float:
         """
         Calculate the density of the connectivity matrix.
