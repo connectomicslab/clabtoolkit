@@ -1426,6 +1426,20 @@ class Tractogram:
             inv_affine = np.linalg.inv(scal_map.get_affine())
             interp_method = "nearest"
 
+            # Handle color input
+            color = cltcol.harmonize_colors(scal_map.color, output_format="rgb")
+
+            tmp_ctable = cltcol.colors_to_table(
+                colors=color, alpha_values=1, values=scal_map.index
+            )
+
+            # Store parcellation information in organized structure
+            self.colortables[map_name] = {
+                "names": scal_map.name,
+                "color_table": tmp_ctable,
+                "lookup_table": None,
+            }
+
         else:
             # --- Load scalar image ---
             try:
