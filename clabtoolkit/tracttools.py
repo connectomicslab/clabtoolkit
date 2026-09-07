@@ -2612,6 +2612,54 @@ class Tractogram:
         return filtered, bundles, registry
 
     ##############################################################################################
+    def split(self, map_name: str = "tract_id"):
+        """
+        Split the tractogram into one Tractogram per unique value in a per-streamline map.
+
+        Parameters
+        ----------
+        map_name : str, default "tract_id"
+            Key into `self.data_per_streamline` whose unique values define the split.
+            If `self.colortables[map_name]` exists, each resulting Tractogram is
+            also given the matching single-row colortable (name + color) for its value.
+
+        Returns
+        -------
+        tractograms : list[Tractogram]
+            One Tractogram per unique value, in ascending order of that value.
+        """
+        if map_name not in self.data_per_streamline:
+            raise KeyError(f"'{map_name}' not found in data_per_streamline.")
+
+        values = np.asarray(self.data_per_streamline[map_name]).ravel()
+        unique_values = np.unique(values)
+
+        has_colortable = map_name in getattr(self, "colortables", {})
+        if has_colortable:
+            color_table = self.colortables[map_name]["color_table"]
+            names = self.colortables[map_name]["names"]
+
+        tractograms = []
+        for val in unique_values:
+            indexes = np.where(values == val)[0].tolist()
+
+            tract = copy.deepcopy(self)
+            tract._select_indexes(indexes)
+
+            if has_colortable:
+                pos = np.where(color_table[:, 4] == val)[0]
+                if pos.size > 0:
+                    tract.colortables[map_name] = {
+                        "names": [names[pos[0]]],
+                        "color_table": color_table[pos[0] : pos[0] + 1],
+                        "lookup_table": None,
+                    }
+
+            tractograms.append(tract)
+
+        return tractograms
+
+    ##############################################################################################
     def save_tractogram(
         self,
         out_file: str,
