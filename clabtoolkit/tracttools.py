@@ -681,9 +681,17 @@ class Tractogram:
                 return f"{num:,}"
             return str(num)
 
-        # Helper function to print a properly padded line
+        # Helper to safely compute min/max, avoiding all-NaN warnings
+        def safe_min_max(values):
+            values = np.asarray(values).ravel()
+            if values.size == 0 or np.all(np.isnan(values)):
+                return float("nan"), float("nan")
+            return np.nanmin(values), np.nanmax(values)
+
+        # Helper function to print a properly padded line (truncates if too long)
         def print_line(content, width=64):
-            # Ensure content is exactly width characters, then add borders
+            if len(content) > width:
+                content = content[: width - 1] + "…"
             padded = content.ljust(width)
             print(f"║{padded}║")
 
