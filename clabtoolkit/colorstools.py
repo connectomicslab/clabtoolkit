@@ -2193,7 +2193,7 @@ def colors_to_table(
         or numpy array of RGB values. It can be also a list of mixture of
         hexadecimal strings and RGB arrays.
 
-    alpha_values : np.ndarray
+    alpha_values : np.ndarray or list
         Array of alpha values for each color. If a single value is provided,
         it will be applied to all colors.
 
