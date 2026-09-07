@@ -2171,7 +2171,7 @@ def values2colors(
 def colors_to_table(
     colors: list | np.ndarray,
     alpha_values: np.ndarray = 0,
-    values: np.ndarray = None,
+    values: np.ndarray | list | None = None,
 ) -> np.ndarray:
     """
     Convert color list to a color table.
