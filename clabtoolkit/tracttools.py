@@ -615,7 +615,7 @@ class Tractogram:
             return resampled_streamlines
 
     ####################################################################################################
-    def explore_tractogram(self):
+    def get_info(self):
         """
         Display comprehensive information about the tractogram.
 
@@ -702,7 +702,8 @@ class Tractogram:
         print("╠" + "═" * width + "╣")
 
         # Basic information
-        print_line(f" Name: {self.name}", width)
+        name = getattr(self, "name", "unnamed")
+        print_line(f" Name: {name}", width)
         streamline_count = len(self.tracts) if self.tracts is not None else 0
         print_line(f" Streamlines: {format_number(streamline_count)}", width)
 
@@ -737,7 +738,7 @@ class Tractogram:
         else:
             print_line("   Not available", width)
 
-        # Scalar data per point
+        # Scalar data per point (list of per-streamline arrays -> concatenate is correct here)
         print("╠" + "═" * width + "╣")
         if hasattr(self, "data_per_point") and self.data_per_point:
             count = len(self.data_per_point)
@@ -748,8 +749,7 @@ class Tractogram:
 
             for map_name, values in self.data_per_point.items():
                 all_values = np.concatenate(values)
-                min_val = np.nanmin(all_values)
-                max_val = np.nanmax(all_values)
+                min_val, max_val = safe_min_max(all_values)
                 print_line(
                     f"   {map_name:<12}  Min: {min_val:>8.4f}    Max: {max_val:>8.4f}",
                     width,
@@ -768,9 +768,7 @@ class Tractogram:
             )
 
             for map_name, values in self.data_per_streamline.items():
-                all_values = np.concatenate(values)
-                min_val = np.nanmin(all_values)
-                max_val = np.nanmax(all_values)
+                min_val, max_val = safe_min_max(values)
                 print_line(
                     f"   {map_name:<12}  Min: {min_val:>8.2f}     Max: {max_val:>8.2f}",
                     width,
