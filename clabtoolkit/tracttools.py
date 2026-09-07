@@ -2,6 +2,7 @@ import copy
 import os
 from pathlib import Path
 from typing import Union
+from collections import defaultdict
 
 import nibabel as nb
 import numpy as np
@@ -27,6 +28,7 @@ from . import colorstools as cltcol
 from . import misctools as cltmisc
 from . import parcellationtools as cltparc
 from . import pointstools as cltpts
+from . import freesurfertools as cltfree
 
 
 ####################################################################################################
@@ -304,7 +306,10 @@ class Tractogram:
 
         self.tracts = copy.deepcopy(tractogram.streamlines)
         self.affine = copy.deepcopy(tractogram.affine_to_rasmm)
-        self.header = copy.deepcopy(tractogram.header)
+
+        # The header belongs to the file object (TrkFile, TckFile), not to the
+        # Tractogram object, so it is only available if it was attached to it
+        self.header = copy.deepcopy(getattr(tractogram, "header", {}))
 
         # Handle data_per_point consistently
         data_per_point = {}
@@ -758,7 +763,7 @@ class Tractogram:
             print_line(" SCALAR DATA PER POINT (0 maps)", width)
             print_line("   No scalar data available", width)
 
-        # Scalar data per streamline
+        # Scalar data per streamline (already flat, one value per streamline -> no concatenate)
         print("╠" + "═" * width + "╣")
         if hasattr(self, "data_per_streamline") and self.data_per_streamline:
             count = len(self.data_per_streamline)
@@ -1310,7 +1315,7 @@ class Tractogram:
 
         return lengths
 
-    ##########################################################################################################
+    #########################################################################
     def interpolate_on_tractogram(
         self,
         scal_map: str | Path | cltparc.Parcellation,
@@ -2857,13 +2862,15 @@ class Tractogram:
 
         from . import visualizationtools as cltvis
 
+        obj2plot = copy.deepcopy(self)
+
         # Initialize the BrainPlotter
         plotter = cltvis.BrainPlotter()
 
         # Reduce streamlines if needed for visualization
-        n_streamlines = len(self.tracts)
+        n_streamlines = len(obj2plot.tracts)
         if vis_percentage < 100:
-            self.reduce_streamlines(percentage=vis_percentage)
+            obj2plot.reduce_streamlines(percentage=vis_percentage)
 
         if n_streamlines > 100000 and force_reduction:
             # Reduce to 100k streamlines
@@ -2874,7 +2881,7 @@ class Tractogram:
             self.reduce_streamlines(percentage=reduction_percentage)
 
         plotter.plot(
-            self,
+            obj2plot,
             hemi_id=hemi,
             views=views,
             map_names=overlay_name,
@@ -3210,7 +3217,6 @@ def merge_tractograms(
     return merged_tractogram
 
 
-###############################################################################################
 ###############################################################################################
 def trk2tck(
     in_trk: Union[str, Path, "Tractogram"],
