@@ -1505,6 +1505,211 @@ class Tractogram:
                 values
             ).reshape(-1, 1)
 
+    # ##########################################################################################################
+    # def interpolate_on_tractogram(
+    #     self,
+    #     scal_map: str | Path | cltparc.Parcellation,
+    #     interp_method: str = "linear",
+    #     storage_mode: str = "data_per_point",
+    #     map_name: str = "fa",
+    #     reduction: str = "mean",
+    # ) -> None:
+    #     """
+    #     Interpolate scalar values (e.g., FA) from a NIfTI image onto this tractogram.
+
+    #     Loads a scalar map and interpolates its values at each streamline point
+    #     (or aggregates them per streamline), storing the result on this
+    #     Tractogram instance under `map_name`.
+
+    #     Parameters
+    #     ----------
+    #     scal_map : str or Path
+    #         Path to the scalar image (e.g., FA map in NIfTI format). Must exist
+    #         and be readable.
+
+    #     interp_method : {'linear', 'nearest'}, default='linear'
+    #         Interpolation method used for RegularGridInterpolator.
+    #         - 'linear': Trilinear interpolation
+    #         - 'nearest': Nearest neighbor interpolation
+
+    #     storage_mode : {'data_per_point', 'data_per_streamline'}, default='data_per_point'
+    #         Where to store the interpolated values:
+    #         - 'data_per_point': one value per streamline point, stored in
+    #         `self.data_per_point[map_name]`
+    #         - 'data_per_streamline': one aggregated value per streamline, stored
+    #         in `self.data_per_streamline[f"{map_name}_{reduction}"]`
+
+    #     map_name : str, default='fa'
+    #         Key under which to store the scalar map.
+
+    #     reduction : {'mean', 'median', 'min', 'max'}, default='mean'
+    #         Aggregation method used when storage_mode='data_per_streamline'.
+    #         Applied to all scalar values along each streamline to produce a
+    #         single value.
+
+    #     Returns
+    #     -------
+    #     None
+    #         This method mutates the Tractogram in place: it populates either
+    #         `self.data_per_point[map_name]` or
+    #         `self.data_per_streamline[f"{map_name}_{reduction}"]`, depending
+    #         on `storage_mode`.
+
+    #     Raises
+    #     ------
+    #     FileNotFoundError
+    #         If the scalar map file does not exist.
+    #     ValueError
+    #         If interp_method is not 'linear' or 'nearest', if storage_mode is not
+    #         'data_per_point' or 'data_per_streamline', or if reduction is not one
+    #         of 'mean', 'median', 'min', 'max'.
+    #     IOError
+    #         If there are issues loading the scalar map.
+
+    #     Notes
+    #     -----
+    #     - Points outside the scalar map boundaries are assigned NaN.
+    #     - Empty streamlines are handled gracefully with empty arrays.
+    #     - When using 'data_per_streamline' mode, the stored key is suffixed with
+    #     the reduction method (e.g., 'fa_mean').
+    #     - This method only populates the requested `storage_mode` and does not
+    #     touch the other one; if you need the same scalar in both storage
+    #     modes, call this method twice with different `storage_mode` values
+    #     (e.g. once with 'data_per_point' and once with 'data_per_streamline').
+
+    #     Examples
+    #     --------
+    #     >>> tractogram = Tractogram('input.trk')
+    #     >>> tractogram.interpolate_on_tractogram('fa_map.nii.gz', map_name='fractional_anisotropy')
+    #     >>> print(tractogram.data_per_point['fractional_anisotropy'])
+
+    #     >>> tractogram.interpolate_on_tractogram(
+    #     ...     'md_map.nii.gz', storage_mode='data_per_streamline',
+    #     ...     reduction='median', map_name='mean_diffusivity'
+    #     ... )
+    #     >>> print(tractogram.data_per_streamline['mean_diffusivity_median'])
+    #     """
+
+    #     # --- Input validation ---
+    #     if isinstance(scal_map, str):
+    #         scal_map = Path(scal_map)
+
+    #     # Check if input files exist
+    #     if isinstance(scal_map, Path):
+    #         if not scal_map.exists():
+    #             raise FileNotFoundError(f"Scalar map file not found: {scal_map}")
+
+    #     # Validate parameters
+    #     valid_interp_methods = ["linear", "nearest"]
+    #     if interp_method not in valid_interp_methods:
+    #         raise ValueError(
+    #             f"Invalid interpolation method '{interp_method}'. "
+    #             f"Choose from {valid_interp_methods}"
+    #         )
+
+    #     valid_storage_modes = ["data_per_point", "data_per_streamline"]
+    #     if storage_mode not in valid_storage_modes:
+    #         raise ValueError(
+    #             f"Invalid storage mode '{storage_mode}'. "
+    #             f"Choose from {valid_storage_modes}"
+    #         )
+
+    #     valid_reductions = ["mean", "median", "min", "max"]
+    #     if reduction not in valid_reductions:
+    #         raise ValueError(
+    #             f"Invalid reduction method '{reduction}'. "
+    #             f"Choose from {valid_reductions}"
+    #         )
+
+    #     streamlines = self.tracts
+    #     if isinstance(scal_map, cltparc.Parcellation):
+    #         scalar_data = scal_map.get_data()
+    #         inv_affine = np.linalg.inv(scal_map.get_affine())
+    #         interp_method = "nearest"
+
+    #         # Handle color input
+    #         color = cltcol.harmonize_colors(scal_map.color, output_format="rgb")
+
+    #         tmp_ctable = cltcol.colors_to_table(
+    #             colors=color, alpha_values=1, values=scal_map.index
+    #         )
+
+    #         # Store parcellation information in organized structure
+    #         self.colortables[map_name] = {
+    #             "names": scal_map.name,
+    #             "color_table": tmp_ctable,
+    #             "lookup_table": None,
+    #         }
+
+    #     else:
+    #         # --- Load scalar image ---
+    #         try:
+    #             scalar_img = nb.load(str(scal_map))
+    #         except Exception as e:
+    #             raise OSError(f"Failed to load scalar map '{scal_map}': {e}") from e
+
+    #         scalar_data = scalar_img.get_fdata()
+    #         inv_affine = np.linalg.inv(scalar_img.affine)
+
+    #     # Creating interpolation function
+    #     x = np.arange(scalar_data.shape[0])
+    #     y = np.arange(scalar_data.shape[1])
+    #     z = np.arange(scalar_data.shape[2])
+    #     my_interpolating_scalmap = RegularGridInterpolator(
+    #         (x, y, z), scalar_data, method=interp_method
+    #     )
+
+    #     # Concatenate all arrays into a single array for color mapping
+    #     all_data = np.concatenate(streamlines)
+
+    #     ones = np.ones((len(all_data), 1))
+    #     coords_hom = np.hstack([all_data, ones])
+    #     voxel_coords = (inv_affine @ coords_hom.T).T[:, :3].T
+
+    #     mask = (
+    #         (voxel_coords[0] >= 0)
+    #         & (voxel_coords[0] < scalar_data.shape[0])
+    #         & (voxel_coords[1] >= 0)
+    #         & (voxel_coords[1] < scalar_data.shape[1])
+    #         & (voxel_coords[2] >= 0)
+    #         & (voxel_coords[2] < scalar_data.shape[2])
+    #     )
+    #     scalar_values_per_point = np.full(voxel_coords.shape[1], np.nan)
+    #     if np.any(mask):
+    #         scalar_values_per_point[mask] = my_interpolating_scalmap(
+    #             voxel_coords[:, mask].T
+    #         )
+
+    #     # Split the voxel coordinates back into individual streamlines
+    #     lengths = [len(arr) for arr in streamlines]
+
+    #     # Calculate split indices (cumulative sum of lengths, excluding the last one)
+    #     split_indices = np.cumsum(lengths)[:-1]
+
+    #     # Split array_all back into a list of arrays
+    #     scalar_values_per_point = np.split(scalar_values_per_point, split_indices)
+
+    #     # --- Store scalar values ---
+    #     # Handle storage mode conflicts - clear the other mode unless user explicitly wants both
+    #     if storage_mode == "data_per_point":
+    #         self.data_per_point[map_name] = scalar_values_per_point
+
+    #     elif storage_mode == "data_per_streamline":
+    #         reducer = {
+    #             "mean": np.nanmean,
+    #             "median": np.nanmedian,
+    #             "min": np.nanmin,
+    #             "max": np.nanmax,
+    #         }[reduction]
+
+    #         values = [
+    #             reducer(v) if len(v) > 0 and not np.all(np.isnan(v)) else np.nan
+    #             for v in scalar_values_per_point
+    #         ]
+    #         self.data_per_streamline[f"{map_name}_{reduction}"] = np.array(
+    #             values
+    #         ).reshape(-1, 1)
+
     ###################################################################################################
     def get_pointwise_colors(
         self,
