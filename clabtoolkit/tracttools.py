@@ -1394,8 +1394,9 @@ class Tractogram:
             scal_map = Path(scal_map)
 
         # Check if input files exist
-        if not scal_map.exists():
-            raise FileNotFoundError(f"Scalar map file not found: {scal_map}")
+        if isinstance(scal_map, Path):
+            if not scal_map.exists():
+                raise FileNotFoundError(f"Scalar map file not found: {scal_map}")
 
         # Validate parameters
         valid_interp_methods = ["linear", "nearest"]
