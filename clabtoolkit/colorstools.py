@@ -2229,6 +2229,9 @@ def colors_to_table(
         values = np.zeros(np.shape(colors)[0], dtype=int)
         for i, color in enumerate(colors):
             values[i] = int(color[0]) + int(color[1]) * 2**8 + int(color[2]) * 2**16
+    else:
+        if isinstance(values, list):
+            values = np.array(values)
 
     if hasattr(values, "__len__"):
         values_len = len(values)
