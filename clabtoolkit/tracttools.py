@@ -2480,7 +2480,7 @@ class Tractogram:
 
         # Cache check must reference the SAME key interpolation actually writes to.
         if INTERP_KEY not in self.data_per_point:
-            self.interpolate_on_tractogram2(parcellation, map_name=INTERP_KEY)
+            self.interpolate_on_tractogram(parcellation, map_name=INTERP_KEY)
 
         has_colortable = INTERP_KEY in getattr(self, "colortables", {})
 
