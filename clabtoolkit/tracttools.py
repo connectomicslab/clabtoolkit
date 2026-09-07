@@ -2101,6 +2101,286 @@ class Tractogram:
         return centroids_tractogram
 
     ##############################################################################################
+    def _select_indexes(self, indexes):
+        """In-place: keep only the streamlines at `indexes` (tracts + per-point + per-streamline data)."""
+        indexes = list(indexes)
+        self.tracts = [self.tracts[i] for i in indexes]
+
+        if getattr(self, "data_per_point", None):
+            for key in self.data_per_point:
+                self.data_per_point[key] = [
+                    self.data_per_point[key][i] for i in indexes
+                ]
+
+        if getattr(self, "data_per_streamline", None):
+            for key in self.data_per_streamline:
+                self.data_per_streamline[key] = np.asarray(
+                    self.data_per_streamline[key]
+                )[indexes]
+
+        if getattr(self, "header", None):
+            self.header["nb_streamlines"] = len(self.tracts)
+
+        return self
+
+    ##############################################################################################
+    def _roi_color_and_name(self, roi_ids, map_name):
+        """Average RGB color and joined name string for a set of ROI ids."""
+        # ASSUMPTION: self.colortables[map_name] exists with "color_table" (n_rois x >=5,
+        # col 4 = label id) and "names" (matching list). This is populated by
+        # interpolate_on_tractogram2 when given a Parcellation. If `mask` was a raw
+        # ndarray with no accompanying names/colors, this dict may not exist —
+        # see the has_colortable fallback in filter_by_mask below.
+        color_table = self.colortables[map_name]["color_table"]
+        names = self.colortables[map_name]["names"]
+
+        colors, found_names = [], []
+        for roi_id in sorted(roi_ids):
+            pos = np.where(color_table[:, 4] == roi_id)[0]
+            if pos.size == 0:
+                print(f"Warning: ROI {roi_id} not found in colortable '{map_name}'")
+                continue
+            colors.append(color_table[pos[0], 0:3])
+            found_names.append(str(names[pos[0]]))
+
+        if not colors:
+            return np.array([128, 128, 128]), "unknown"  # fallback gray
+
+        avg_color = np.round(np.mean(np.vstack(colors), axis=0)).astype(
+            color_table.dtype
+        )
+        joined_name = "-".join(found_names)
+        return avg_color, joined_name
+
+    ##############################################################################################
+    def _pair_label(self, source_set, target_set, map_name):
+        """Color + name for a (source_set, target_set) pair. target_set=None -> source only."""
+        source_color, source_name = self._roi_color_and_name(source_set, map_name)
+        if target_set is None:
+            return source_color, source_name
+        target_color, target_name = self._roi_color_and_name(target_set, map_name)
+        pair_color = np.round(
+            np.mean(np.vstack((source_color, target_color)), axis=0)
+        ).astype(source_color.dtype)
+        return pair_color, f"{source_name}_to_{target_name}"
+
+    ##############################################################################################
+    def filter_by_mask(
+        self,
+        mask,
+        pairs: dict = None,
+        map_name: str = "tract_id",
+        split_bundles: bool = False,
+        min_streamlines: int = 1,
+        inplace: bool = False,
+    ):
+        """
+        Select streamlines touching a mask, or touching specific region pairs of a Parcellation.
+
+        Parameters
+        ----------
+        mask : Parcellation, str, Path, or np.ndarray
+            Region(s) of interest.
+            - Parcellation instance: used directly.
+            - str/Path: loaded via `clabtoolkit.parcellationtools.Parcellation`.
+            - np.ndarray: assumed already in the tractogram's reference space and
+              accepted as-is by `interpolate_on_tractogram2` (NOT resampled here).
+              With a raw ndarray there is generally no name/color table available,
+              so pair names fall back to numeric ids and colors fall back to gray
+              (see `_roi_color_and_name`).
+
+        pairs : dict, optional
+            {source: target, ...}
+            - `source` / `target` can be a single int or a list/tuple/set of ints.
+            - `target=None` means "any streamline touching `source`", with no
+              target constraint.
+            - If `pairs` is None (default), every nonzero label present in
+              `mask` is treated as one source group with `target=None` — i.e.
+              select any streamline that touches the mask anywhere.
+
+        map_name : str, default "tract_id"
+            Key under which the resulting pair-id array is stored in
+            `self.data_per_streamline` and its colortable in `self.colortables`.
+            NOTE: this is distinct from the internal per-point interpolation map,
+            which is always cached under the fixed key "interp_mask" regardless
+            of `map_name` — this lets repeated calls with the same `mask` but
+            different `pairs`/`map_name` reuse the same interpolation.
+
+        split_bundles : bool, default False
+            If True, also return one Tractogram per pair (like the old
+            `build_pair_bundles`) plus a registry describing each.
+
+        min_streamlines : int, default 1
+            Drop pairs (only relevant if `split_bundles=True`) with fewer
+            matching streamlines than this.
+
+        inplace : bool, default False
+            Mutate and return `self` instead of a deep copy.
+
+        Returns
+        -------
+        filtered : Tractogram
+            Union of all streamlines matching any pair. `data_per_streamline[map_name]`
+            records which pair each streamline matched first (1-indexed), and
+            `colortables[map_name]` gives the name/color for each pair id.
+        bundles, registry : only if split_bundles=True
+            Per-pair Tractogram list and a dict of pair_id -> {"source", "target", "name", "n_streamlines"}.
+        """
+        INTERP_KEY = "interp_mask"  # fixed internal key, independent of map_name
+
+        # ---- 1. Resolve `mask` into something interpolate_on_tractogram2 accepts ----
+        if cltparc is not None and isinstance(mask, cltparc.Parcellation):
+            parcellation = mask
+        elif isinstance(mask, (str, Path)):
+            if cltparc is None:
+                raise ImportError(
+                    "clabtoolkit.parcellationtools is required to load a mask path."
+                )
+            parcellation = cltparc.Parcellation(mask)
+        elif isinstance(mask, np.ndarray):
+            # ASSUMPTION: Parcellation / interpolate_on_tractogram2 can accept a bare
+            # labeled array directly. If it actually needs an affine too, this will
+            # need a wrapper — flag if it errors here.
+            parcellation = mask
+        else:
+            raise TypeError(
+                f"Unsupported mask type: {type(mask)}. Expected Parcellation, str, Path, or np.ndarray."
+            )
+
+        # Cache check must reference the SAME key interpolation actually writes to.
+        if INTERP_KEY not in self.data_per_point:
+            self.interpolate_on_tractogram2(parcellation, map_name=INTERP_KEY)
+
+        has_colortable = INTERP_KEY in getattr(self, "colortables", {})
+
+        # ---- 2. Normalize `pairs` into (source_set, target_set_or_None) groups ----
+        def _as_set(x):
+            if x is None:
+                return None
+            if isinstance(x, (list, tuple, set, np.ndarray)):
+                return set(np.atleast_1d(x).tolist())
+            return {x}
+
+        if pairs is None:
+            all_labels = set()
+            for values in self.data_per_point[INTERP_KEY]:
+                all_labels.update(np.unique(values).tolist())
+            all_labels.discard(0)
+            groups = [(all_labels, None)]
+        else:
+            groups = [(_as_set(src), _as_set(tgt)) for src, tgt in pairs.items()]
+
+        # ---- 3. Match streamlines against each group -----------------------------
+        streamlines_per_group = defaultdict(list)
+        for i, values in enumerate(self.data_per_point[INTERP_KEY]):
+            touched = set(np.unique(values).tolist()) - {0}
+            if not touched:
+                continue
+            for source_set, target_set in groups:
+                if not (touched & source_set):
+                    continue
+                if target_set is not None and not (touched & target_set):
+                    continue
+                key = (
+                    frozenset(source_set),
+                    frozenset(target_set) if target_set else None,
+                )
+                streamlines_per_group[key].append(i)
+
+        if not streamlines_per_group:
+            print("No streamlines matched any of the requested pairs/mask.")
+            empty = self if inplace else copy.deepcopy(self)
+            empty._select_indexes([])
+            return (empty, [], {}) if split_bundles else empty
+
+        # ---- 4. Build the union filtered Tractogram -------------------------------
+        pair_id_lookup = {key: gi + 1 for gi, key in enumerate(streamlines_per_group)}
+        per_index_pair_id = {}
+        for key, idxs in streamlines_per_group.items():
+            for idx in idxs:
+                per_index_pair_id.setdefault(
+                    idx, pair_id_lookup[key]
+                )  # first match wins
+
+        all_indexes = sorted(per_index_pair_id.keys())
+
+        filtered = self if inplace else copy.deepcopy(self)
+        filtered._select_indexes(all_indexes)
+        filtered.data_per_streamline[map_name] = np.array(
+            [per_index_pair_id[idx] for idx in all_indexes]
+        )
+
+        # ---- 4b. Build the colortable for pair_id ---------------------------------
+        pair_names, pair_colors = [], []
+        for key, pair_id in sorted(pair_id_lookup.items(), key=lambda kv: kv[1]):
+            source_set, target_set = key
+            if has_colortable:
+                color, name = self._pair_label(source_set, target_set, INTERP_KEY)
+            else:
+                color = np.array([128, 128, 128])
+                src_str = "-".join(str(s) for s in sorted(source_set))
+                name = (
+                    src_str
+                    if target_set is None
+                    else f"{src_str}_to_" + "-".join(str(t) for t in sorted(target_set))
+                )
+            pair_names.append(name)
+            pair_colors.append(color)
+
+        pair_color_table = cltfree.colors2colortable(np.vstack(pair_colors))
+        pair_color_table[:, 4] = np.array(sorted(pair_id_lookup.values()))
+        filtered.colortables[map_name] = {
+            "names": pair_names,
+            "color_table": pair_color_table,
+            "lookup_table": None,
+        }
+
+        if not split_bundles:
+            return filtered
+
+        # ---- 5. Optional: also split into one Tractogram per pair -----------------
+        bundles = []
+        registry = {}
+        for key, idxs in streamlines_per_group.items():
+            if len(idxs) < min_streamlines:
+                continue
+            source_set, target_set = key
+            pair_id = pair_id_lookup[key]
+
+            bundle = copy.deepcopy(self)
+            bundle._select_indexes(idxs)
+            bundle.data_per_streamline[map_name] = np.full(len(idxs), pair_id)
+
+            if has_colortable:
+                color, name = self._pair_label(source_set, target_set, INTERP_KEY)
+            else:
+                color = np.array([128, 128, 128])
+                src_str = "-".join(str(s) for s in sorted(source_set))
+                name = (
+                    src_str
+                    if target_set is None
+                    else f"{src_str}_to_" + "-".join(str(t) for t in sorted(target_set))
+                )
+
+            ctab = cltfree.colors2colortable(color)
+            ctab[:, 4] = pair_id
+            bundle.colortables[map_name] = {
+                "names": [name],
+                "color_table": ctab,
+                "lookup_table": None,
+            }
+
+            registry[pair_id] = {
+                "source": sorted(source_set),
+                "target": sorted(target_set) if target_set else None,
+                "name": name,
+                "n_streamlines": len(idxs),
+            }
+            bundles.append(bundle)
+
+        return filtered, bundles, registry
+
+    ##############################################################################################
     def save_tractogram(
         self,
         out_file: str,
