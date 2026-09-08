@@ -20,6 +20,7 @@ from rich.progress import (
 
 # Importing the clabtoolkit modules
 from . import misctools as cltmisc
+from .bidstools_utils import create_a_simulated_bids_dataset  # noqa: F401
 
 
 ####################################################################################################
