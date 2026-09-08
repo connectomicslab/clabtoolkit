@@ -2920,9 +2920,9 @@ class Tractogram:
         if vis_percentage < 100:
             obj2plot.reduce_streamlines(percentage=vis_percentage)
 
-        if n_streamlines > 100000 and force_reduction:
-            # Reduce to 100k streamlines
-            reduction_percentage = (100000 / n_streamlines) * 100
+        if n_streamlines > 20000 and force_reduction:
+            # Reduce to 20k streamlines
+            reduction_percentage = (20000 / n_streamlines) * 100
             print(
                 f"Number of streamlines is {n_streamlines}, reducing to {int(reduction_percentage)}% for faster visualization."
             )
