@@ -874,6 +874,9 @@ def filter_by_substring(
         >>> print(filtered_list)  # Output: ['Apple Pie']
     """
 
+    if isinstance(input_list, str):
+        input_list = [input_list]
+
     # Get indexes using the get_indexes_by_substring function
     indexes = get_indexes_by_substring(
         input_list=input_list,
