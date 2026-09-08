@@ -2359,7 +2359,7 @@ class Tractogram:
         """Average RGB color and joined name string for a set of ROI ids."""
         # ASSUMPTION: self.colortables[map_name] exists with "color_table" (n_rois x >=5,
         # col 4 = label id) and "names" (matching list). This is populated by
-        # interpolate_on_tractogram2 when given a Parcellation. If `mask` was a raw
+        # interpolate_on_tractogram when given a Parcellation. If `mask` was a raw
         # ndarray with no accompanying names/colors, this dict may not exist —
         # see the has_colortable fallback in filter_by_mask below.
         color_table = self.colortables[map_name]["color_table"]
@@ -2415,7 +2415,7 @@ class Tractogram:
             - Parcellation instance: used directly.
             - str/Path: loaded via `clabtoolkit.parcellationtools.Parcellation`.
             - np.ndarray: assumed already in the tractogram's reference space and
-              accepted as-is by `interpolate_on_tractogram2` (NOT resampled here).
+              accepted as-is by `interpolate_on_tractogram` (NOT resampled here).
               With a raw ndarray there is generally no name/color table available,
               so pair names fall back to numeric ids and colors fall back to gray
               (see `_roi_color_and_name`).
@@ -2459,7 +2459,7 @@ class Tractogram:
         """
         INTERP_KEY = "interp_mask"  # fixed internal key, independent of map_name
 
-        # ---- 1. Resolve `mask` into something interpolate_on_tractogram2 accepts ----
+        # ---- 1. Resolve `mask` into something interpolate_on_tractogram accepts ----
         if cltparc is not None and isinstance(mask, cltparc.Parcellation):
             parcellation = mask
         elif isinstance(mask, (str, Path)):
@@ -2469,7 +2469,7 @@ class Tractogram:
                 )
             parcellation = cltparc.Parcellation(mask)
         elif isinstance(mask, np.ndarray):
-            # ASSUMPTION: Parcellation / interpolate_on_tractogram2 can accept a bare
+            # ASSUMPTION: Parcellation / interpolate_on_tractogram can accept a bare
             # labeled array directly. If it actually needs an affine too, this will
             # need a wrapper — flag if it errors here.
             parcellation = mask
