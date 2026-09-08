@@ -2468,11 +2468,11 @@ class Tractogram:
                     "clabtoolkit.parcellationtools is required to load a mask path."
                 )
             parcellation = cltparc.Parcellation(mask)
+
         elif isinstance(mask, np.ndarray):
-            # ASSUMPTION: Parcellation / interpolate_on_tractogram can accept a bare
-            # labeled array directly. If it actually needs an affine too, this will
-            # need a wrapper — flag if it errors here.
-            parcellation = mask
+            # If a raw numpy array is provided, wrap it in a Parcellation object.
+            parcellation = cltparc.Parcellation(mask)
+
         else:
             raise TypeError(
                 f"Unsupported mask type: {type(mask)}. Expected Parcellation, str, Path, or np.ndarray."
