@@ -2926,7 +2926,7 @@ class Tractogram:
             print(
                 f"Number of streamlines is {n_streamlines}, reducing to {int(reduction_percentage)}% for faster visualization."
             )
-            self.reduce_streamlines(percentage=reduction_percentage)
+            obj2plot.reduce_streamlines(percentage=reduction_percentage)
 
         plotter.plot(
             obj2plot,
