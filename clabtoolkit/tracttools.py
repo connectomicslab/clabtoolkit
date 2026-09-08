@@ -2489,7 +2489,7 @@ class Tractogram:
             if x is None:
                 return None
             if isinstance(x, (list, tuple, set, np.ndarray)):
-                return set(np.atleast_1d(x).tolist())
+                return set(np.asarray(list(x)).ravel().tolist())
             return {x}
 
         if pairs is None:
