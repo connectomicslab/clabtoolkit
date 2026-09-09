@@ -52,6 +52,7 @@ def create_a_simulated_bids_dataset(
     n_directions_dwi: int = 15,
     dataset_name: str = "SimulatedBIDSDataset",
     add_events_tsv: bool = True,
+    include_derivatives: str | Sequence[str] | None = None,
     random_seed: int | None = 42,
     overwrite: bool = False,
     show_progress: bool = True,
@@ -106,6 +107,16 @@ def create_a_simulated_bids_dataset(
     add_events_tsv : bool, default True
         If True, write a dummy ``*_events.tsv`` alongside each
         functional run.
+    include_derivatives : str, sequence of str, or None, default None
+        Name(s) of derivative pipeline(s) to simulate, e.g.
+        ``"fmriprep"`` or ``["fmriprep", "freesurfer"]``. For each
+        name, a ``derivatives/<pipeline>/`` folder is created at the
+        dataset root with its own ``dataset_description.json``
+        (``DatasetType: "derivative"``) and a
+        ``sub-XX[/ses-YY]/<modality>/`` tree that mirrors the raw
+        dataset's subject/session/modality organization, per the
+        BIDS-Derivatives convention. If None (default), no
+        ``derivatives/`` folder is created.
     random_seed : int or None, default 42
         Seed for reproducible dummy image data and participant
         metadata. Use ``None`` for non-deterministic output.
@@ -153,6 +164,7 @@ def create_a_simulated_bids_dataset(
         raise ValueError(
             "n_subjects, n_visits, and runs_per_modality must all be >= 1."
         )
+    derivative_names = _normalize_derivatives(include_derivatives)
 
     output_dir = Path(output_dir).expanduser().resolve()
     if output_dir.exists() and any(output_dir.iterdir()) and not overwrite:
@@ -177,55 +189,64 @@ def create_a_simulated_bids_dataset(
     _write_changes(output_dir)
     _write_participants_tsv(output_dir, subject_labels, rng)
 
-    # ---- per-subject/session/modality generation --------------------------
-    iterator = subject_labels
-    if show_progress and _HAS_TQDM:
-        iterator = tqdm(subject_labels, desc="Simulating BIDS subjects")
+    # ---- raw per-subject/session/modality generation -----------------------
+    _generate_imaging_tree(
+        root=output_dir,
+        subject_labels=subject_labels,
+        session_labels=session_labels,
+        modalities=modalities,
+        tasks=tasks,
+        runs_per_modality=runs_per_modality,
+        anat_suffixes=anat_suffixes,
+        image_shape=image_shape,
+        n_volumes_func=n_volumes_func,
+        repetition_time=repetition_time,
+        n_directions_dwi=n_directions_dwi,
+        affine=affine,
+        rng=rng,
+        add_events_tsv=add_events_tsv,
+        show_progress=show_progress,
+        progress_desc="Simulating BIDS subjects",
+    )
 
-    for sub in iterator:
-        for ses in session_labels:
-            entity_prefix = f"{sub}_{ses}" if ses else sub
-            base_dir = output_dir / sub / ses if ses else output_dir / sub
+    # ---- derivatives ---------------------------------------------------------
+    for pipeline in derivative_names:
+        deriv_root = output_dir / "derivatives" / pipeline
+        deriv_root.mkdir(parents=True, exist_ok=True)
+        _write_dataset_description(
+            deriv_root,
+            name=f"{dataset_name} ({pipeline})",
+            dataset_type="derivative",
+            generated_by_name=pipeline,
+            source_dataset_name=dataset_name,
+        )
+        _generate_imaging_tree(
+            root=deriv_root,
+            subject_labels=subject_labels,
+            session_labels=session_labels,
+            modalities=modalities,
+            tasks=tasks,
+            runs_per_modality=runs_per_modality,
+            anat_suffixes=anat_suffixes,
+            image_shape=image_shape,
+            n_volumes_func=n_volumes_func,
+            repetition_time=repetition_time,
+            n_directions_dwi=n_directions_dwi,
+            affine=affine,
+            rng=rng,
+            add_events_tsv=add_events_tsv,
+            show_progress=show_progress,
+            progress_desc=f"Simulating '{pipeline}' derivatives",
+        )
 
-            for modality in modalities:
-                mod_dir = base_dir / modality
-                mod_dir.mkdir(parents=True, exist_ok=True)
-
-                if modality == "anat":
-                    _simulate_anat(
-                        mod_dir, entity_prefix, anat_suffixes, image_shape, affine, rng
-                    )
-                elif modality == "func":
-                    _simulate_func(
-                        mod_dir,
-                        entity_prefix,
-                        tasks,
-                        runs_per_modality,
-                        image_shape,
-                        n_volumes_func,
-                        repetition_time,
-                        affine,
-                        rng,
-                        add_events_tsv,
-                    )
-                elif modality == "dwi":
-                    _simulate_dwi(
-                        mod_dir,
-                        entity_prefix,
-                        runs_per_modality,
-                        image_shape,
-                        n_directions_dwi,
-                        affine,
-                        rng,
-                    )
-                elif modality == "fmap":
-                    _simulate_fmap(mod_dir, entity_prefix, image_shape, affine, rng)
-
-    print(
+    summary = (
         f"Simulated BIDS dataset created at: {output_dir}\n"
         f"  Subjects: {n_subjects} | Sessions/subject: {n_visits} | "
         f"Modalities: {list(modalities)}"
     )
+    if derivative_names:
+        summary += f"\n  Derivatives: {derivative_names}"
+    print(summary)
     return output_dir
 
 
@@ -283,30 +304,218 @@ def _write_text(path: Path, text: str) -> None:
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############             Section 3: Top-level BIDS metadata generators                  ############
+############         Section 3: Derivatives support (normalization + tree)             ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def _write_dataset_description(root: Path, name: str) -> None:
+def _normalize_derivatives(
+    include_derivatives: str | Sequence[str] | None,
+) -> list[str]:
     """
-    Write the dataset-level ``dataset_description.json`` file.
+    Normalize ``include_derivatives`` into a de-duplicated list of names.
+
+    Parameters
+    ----------
+    include_derivatives : str, sequence of str, or None
+        A single pipeline name, a sequence of names, or None.
+
+    Returns
+    -------
+    list of str
+        Cleaned, order-preserving, de-duplicated pipeline names. Empty
+        if ``include_derivatives`` is None.
+
+    Raises
+    ------
+    ValueError
+        If any entry is not a non-empty string.
+    """
+    if include_derivatives is None:
+        return []
+
+    names = (
+        [include_derivatives]
+        if isinstance(include_derivatives, str)
+        else list(include_derivatives)
+    )
+
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw_name in names:
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise ValueError(
+                "Each entry in include_derivatives must be a non-empty string "
+                f"(got {raw_name!r})."
+            )
+        cleaned = raw_name.strip()
+        if cleaned not in seen:
+            seen.add(cleaned)
+            normalized.append(cleaned)
+    return normalized
+
+
+####################################################################################################
+def _generate_imaging_tree(
+    root: Path,
+    subject_labels: Sequence[str],
+    session_labels: Sequence[str | None],
+    modalities: Sequence[str],
+    tasks: Sequence[str],
+    runs_per_modality: int,
+    anat_suffixes: Sequence[str],
+    image_shape: tuple[int, int, int],
+    n_volumes_func: int,
+    repetition_time: float,
+    n_directions_dwi: int,
+    affine: np.ndarray,
+    rng: np.random.Generator,
+    add_events_tsv: bool,
+    show_progress: bool,
+    progress_desc: str,
+) -> None:
+    """
+    Populate a ``sub-XX[/ses-YY]/<modality>/`` imaging tree under ``root``.
+
+    Shared by the raw dataset and every requested derivatives pipeline,
+    since BIDS-Derivatives datasets mirror the same subject/session/
+    modality organization as the raw data they were generated from.
 
     Parameters
     ----------
     root : pathlib.Path
-        Root of the simulated BIDS dataset.
+        Dataset root to populate (either the raw dataset root, or a
+        ``derivatives/<pipeline>/`` root).
+    subject_labels : sequence of str
+        Subject identifiers, e.g. ``["sub-01", "sub-02"]``.
+    session_labels : sequence of (str or None)
+        Session identifiers, e.g. ``["ses-01", "ses-02"]``, or
+        ``[None]`` for a flat, session-less layout.
+    modalities : sequence of str
+        Modalities to generate per subject/session.
+    tasks : sequence of str
+        Task labels for functional data.
+    runs_per_modality : int
+        Number of runs generated per modality/task combination.
+    anat_suffixes : sequence of str
+        Anatomical suffixes to generate.
+    image_shape : tuple of int
+        Spatial (x, y, z) shape used for all generated volumes.
+    n_volumes_func : int
+        Number of timepoints in simulated ``bold`` runs.
+    repetition_time : float
+        Repetition time (seconds) for ``bold`` sidecars.
+    n_directions_dwi : int
+        Number of diffusion-weighted directions for ``dwi`` runs.
+    affine : numpy.ndarray
+        4x4 affine matrix stored in every generated image header.
+    rng : numpy.random.Generator
+        Random generator used to draw voxel intensities and metadata.
+    add_events_tsv : bool
+        If True, write a dummy ``*_events.tsv`` alongside each
+        functional run.
+    show_progress : bool
+        Display a per-subject progress bar (requires ``tqdm``).
+    progress_desc : str
+        Label shown on the progress bar, distinguishing the raw pass
+        from each derivatives pipeline pass.
+    """
+    iterator = subject_labels
+    if show_progress and _HAS_TQDM:
+        iterator = tqdm(subject_labels, desc=progress_desc)
+
+    for sub in iterator:
+        for ses in session_labels:
+            entity_prefix = f"{sub}_{ses}" if ses else sub
+            base_dir = root / sub / ses if ses else root / sub
+
+            for modality in modalities:
+                mod_dir = base_dir / modality
+                mod_dir.mkdir(parents=True, exist_ok=True)
+
+                if modality == "anat":
+                    _simulate_anat(
+                        mod_dir, entity_prefix, anat_suffixes, image_shape, affine, rng
+                    )
+                elif modality == "func":
+                    _simulate_func(
+                        mod_dir,
+                        entity_prefix,
+                        tasks,
+                        runs_per_modality,
+                        image_shape,
+                        n_volumes_func,
+                        repetition_time,
+                        affine,
+                        rng,
+                        add_events_tsv,
+                    )
+                elif modality == "dwi":
+                    _simulate_dwi(
+                        mod_dir,
+                        entity_prefix,
+                        runs_per_modality,
+                        image_shape,
+                        n_directions_dwi,
+                        affine,
+                        rng,
+                    )
+                elif modality == "fmap":
+                    _simulate_fmap(mod_dir, entity_prefix, image_shape, affine, rng)
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############             Section 4: Top-level BIDS metadata generators                  ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def _write_dataset_description(
+    root: Path,
+    name: str,
+    dataset_type: str = "raw",
+    generated_by_name: str | None = None,
+    source_dataset_name: str | None = None,
+) -> None:
+    """
+    Write the dataset-level ``dataset_description.json`` file.
+
+    Used for both the raw dataset and every ``derivatives/<pipeline>/``
+    sub-dataset, which per the BIDS-Derivatives convention must carry
+    its own ``dataset_description.json``.
+
+    Parameters
+    ----------
+    root : pathlib.Path
+        Root of the dataset (raw root, or a derivatives pipeline root).
     name : str
         Value stored in the ``"Name"`` field.
+    dataset_type : str, default "raw"
+        Either ``"raw"`` or ``"derivative"``.
+    generated_by_name : str or None, default None
+        Name recorded under ``"GeneratedBy"``. Defaults to this
+        function's own fully-qualified name when None.
+    source_dataset_name : str or None, default None
+        When ``dataset_type == "derivative"``, the name of the raw
+        dataset this derivative was generated from, recorded under
+        ``"SourceDatasets"``.
     """
     description = {
         "Name": name,
         "BIDSVersion": "1.9.0",
-        "DatasetType": "raw",
+        "DatasetType": dataset_type,
         "GeneratedBy": [
-            {"Name": "clabtoolkit.bidstools_utils.create_a_simulated_bids_dataset"}
+            {
+                "Name": generated_by_name
+                or "clabtoolkit.bidstools_utils.create_a_simulated_bids_dataset"
+            }
         ],
     }
+    if dataset_type == "derivative" and source_dataset_name is not None:
+        description["SourceDatasets"] = [{"Name": source_dataset_name}]
     _write_json(root / "dataset_description.json", description)
 
 
@@ -381,7 +590,7 @@ def _write_participants_tsv(
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
-############                Section 4: Per-modality data simulators                     ############
+############                Section 5: Per-modality data simulators                     ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
