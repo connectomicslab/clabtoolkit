@@ -1098,7 +1098,21 @@ class Connectome:
         # Extract subnetwork data
         sub_matrix = self.matrix[np.ix_(idx, idx)]
         sub_coords = self.region_coords[idx] if self.region_coords is not None else None
-        sub_colors = self.region_colors[idx] if self.region_colors is not None else None
+        # BUG FIX 7: self.region_colors can be a plain list of hex strings
+        # (harmonize_colors' output whenever colors were explicitly set/loaded)
+        # rather than an ndarray, and a plain list doesn't support fancy/array
+        # indexing (self.region_colors[idx] raises TypeError). Same class of bug
+        # as BUG FIX 5 for region_index — index with a comprehension when it's a
+        # list, and fall back to array indexing when it's already an ndarray.
+        sub_colors = (
+            None
+            if self.region_colors is None
+            else (
+                [self.region_colors[i] for i in idx]
+                if isinstance(self.region_colors, list)
+                else self.region_colors[idx]
+            )
+        )
         sub_names = (
             [self.region_names[i] for i in idx]
             if self.region_names is not None
@@ -1359,7 +1373,7 @@ class Connectome:
                 pos,
                 width=edge_weights,
                 edge_color=edge_colors,
-                edge_cmap=plt.cm.get_cmap(edge_cmap),
+                edge_cmap=plt.get_cmap(edge_cmap),
                 alpha=edge_alpha,
                 ax=ax,
             )
@@ -1387,7 +1401,6 @@ class Connectome:
             label_pos = {}
             for node, (x, y) in pos.items():
                 # Move labels slightly outward from nodes
-                np.arctan2(y, x)
                 label_x = x * label_distance
                 label_y = y * label_distance
                 label_pos[node] = (label_x, label_y)
@@ -1416,7 +1429,7 @@ class Connectome:
         if edges and len(edge_colors) > 0:
             # Create a dummy plot for colorbar
             sm = plt.cm.ScalarMappable(
-                cmap=plt.cm.get_cmap(edge_cmap),
+                cmap=plt.get_cmap(edge_cmap),
                 norm=plt.Normalize(
                     vmin=(
                         np.min(np.abs(adj_matrix)[adj_matrix != 0])
@@ -1508,12 +1521,12 @@ class Connectome:
 
         Examples
         --------
-        >>> conn = Connectome.generate_connectomes(84, seed=0)
-        >>> conn = Connectome.generate_connectomes(
+        >>> conn = Connectome.generate_connectome(84, seed=0)
+        >>> conn = Connectome.generate_connectome(
         ...     100, method="modular", value_range=(-1, 1),
         ...     n_modules=6, sparsity=0.7, seed=1,
         ... )
-        >>> conn = Connectome.generate_connectomes(
+        >>> conn = Connectome.generate_connectome(
         ...     coords.shape[0], method="distance", region_coords=coords,
         ... )
         """
