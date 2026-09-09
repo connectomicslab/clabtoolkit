@@ -1656,6 +1656,8 @@ class Connectome:
         window_size: tuple[int, int] = (1200, 800),
         node_size_property: str = "strength",
         base_node_size: float = 0.5,
+        notebook: bool | None = None,
+        off_screen: bool | None = None,
     ) -> pv.Plotter:
         """
         Create a 3D visualization of the connectome using PyVista.
@@ -1685,6 +1687,22 @@ class Connectome:
             - 'eigenvector': Eigenvector centrality (requires networkx)
         base_node_size : float
             Base size for nodes when using 'uniform' or as minimum size for other properties
+        notebook : bool, optional
+            Whether to render inline for a Jupyter notebook (True) or in a
+            separate interactive window (False). If None (default), PyVista
+            auto-detects based on the current environment — this is what was
+            happening implicitly before and is often wrong (e.g. it can try
+            to pop a window from inside a headless notebook kernel, or fail
+            to embed inline when it should). Pass explicitly to override.
+        off_screen : bool, optional
+            Render without opening any window/display at all — useful for
+            headless environments (CI, remote servers) or when you only want
+            to call ``plotter.screenshot(...)`` / use ``save_visualization``
+            without ever displaying anything. If None (default), PyVista's
+            own default is used (generally tied to a ``DISPLAY`` being
+            available). Note that ``save_visualization`` does not need
+            ``plotter.show()`` to produce a screenshot, so setting
+            ``off_screen=True`` there is safe even outside a notebook.
 
         Returns:
         --------
@@ -1695,8 +1713,16 @@ class Connectome:
         if self.region_coords is None:
             raise ValueError("No coordinates available for 3D visualization")
 
-        # Create plotter
-        plotter = pv.Plotter(window_size=window_size)
+        # Create plotter. `notebook`/`off_screen` are only passed through when
+        # explicitly set, so leaving both at None preserves PyVista's own
+        # default auto-detection behavior exactly as before.
+        plotter_kwargs = {"window_size": window_size}
+        if notebook is not None:
+            plotter_kwargs["notebook"] = notebook
+        if off_screen is not None:
+            plotter_kwargs["off_screen"] = off_screen
+
+        plotter = pv.Plotter(**plotter_kwargs)
         plotter.set_background(background_color)
 
         # Center coordinates around origin
@@ -1789,8 +1815,12 @@ class Connectome:
         filename : str
             Output filename for the visualization
         **kwargs : dict
-            Additional arguments passed to visualize_3d()
+            Additional arguments passed to visualize_3d(). Since this method
+            only takes a screenshot and never calls plotter.show(), it
+            defaults to off_screen=True (no window is ever displayed) unless
+            you explicitly pass off_screen=False in kwargs.
         """
+        kwargs.setdefault("off_screen", True)
         plotter = self.visualize_3d(**kwargs)
         plotter.screenshot(filename)
         plotter.close()
