@@ -2424,19 +2424,19 @@ def visualize_colors(
 
 
 ######################################################################################################
-def simulate_colortable(n_regions: int = 10) -> dict:
+def generate_colortable(n_regions: int = 10) -> dict:
     """
-    Simulate a color table with random colors for testing purposes.
+    Generate a color table with random colors for testing purposes.
 
     Parameters
     ----------
     n_regions : int, optional
-        Number of colors to generate in the simulated color table. Default is 10.
+        Number of colors to generate in the color table. Default is 10.
 
     Returns
     -------
     dict
-        A dictionary representing a simulated color table with the following keys:
+        A dictionary representing a color table with the following keys:
         - 'index': List of integer region codes (1 to n_regions)
         - 'name': List of region name strings (e.g., "Region_1", "Region_2", ...)
         - 'color': List of random hexadecimal color codes
