@@ -828,7 +828,7 @@ def get_indexes_by_substring(
 
 #####################################################################################################
 def filter_by_substring(
-    input_list: list,
+    input_list: str | list,
     or_filter: str | list,
     and_filter: str | list = None,
     bool_case: bool = False,
