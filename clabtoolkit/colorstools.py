@@ -1615,9 +1615,57 @@ def get_predefined_distinguishable_colors(
         return rgb_array / 255.0
 
 
+#####################################################################################################
+def _colortable_dict_to_array(ctab_dict: dict, region_names=None):
+    """
+    Convert a colortable dict (or the dict returned by a LUT/TSV loader)
+    into a (N, 4) or (N, 5) numeric array of [R, G, B, Alpha, (Index)]
+    plus a list of region names.
+
+    Parameters
+    ----------
+    ctab_dict : dict
+        Must contain a "color" key. May optionally contain "name",
+        "opacity", and "index" keys.
+    region_names : str or list of str, optional
+        If provided, overrides ctab_dict["name"].
+
+    Returns
+    -------
+    colortable_array : np.ndarray
+    region_names : list of str
+    """
+    if region_names is None:
+        if "name" not in ctab_dict or ctab_dict["name"] is None:
+            raise ValueError(
+                "colortable dict/file must contain a 'name' key if "
+                "region_names is not provided"
+            )
+        region_names = list(ctab_dict["name"])
+
+    if "color" not in ctab_dict or ctab_dict["color"] is None:
+        raise ValueError("colortable dict/file must contain a 'color' key")
+
+    colors = harmonize_colors(ctab_dict["color"], output_format="rgb")
+
+    if ctab_dict.get("opacity") is not None:
+        # Opacity is assumed to be in the 0-1 range; convert to 0-255
+        opacities = (np.array(ctab_dict["opacity"], dtype=float) * 255).astype(int)
+    else:
+        opacities = np.full(len(colors), 255, dtype=int)
+
+    colortable_array = np.column_stack([colors, opacities])
+
+    if ctab_dict.get("index") is not None:
+        indices = np.array(ctab_dict["index"]).reshape(-1, 1)
+        colortable_array = np.column_stack([colortable_array, indices])
+
+    return colortable_array, region_names
+
+
 ###################################################################################################
 def colortable_visualization(
-    colortable: np.ndarray | str | Path,
+    colortable: "np.ndarray | str | Path | dict | ColorTableLoader",
     region_names: str | list[str] = None,
     columns: int = 2,
     export_path: str = None,
@@ -1629,14 +1677,17 @@ def colortable_visualization(
 
     Parameters
     ----------
-    colortable : array-like, str, or Path
+    colortable : array-like, str, Path, dict, or ColorTableLoader
         Can be one of:
         - Array-like with shape (N, 3), (N, 4), or (N, 5): [R, G, B] or [R, G, B, Alpha] or [R, G, B, Alpha, Value]
         - String or Path to a LUT file (.txt, .lut) or TSV file (.tsv)
+        - Dictionary with keys "index", "name", and "color" (hex or RGB)
+        - A ColorTableLoader instance (its .index/.name/.color/.opacity
+          attributes are used directly)
 
     region_names : str or list of str, optional
-        Region names corresponding to each row. If None and loading from file,
-        uses the names from the file. Default is None.
+        Region names corresponding to each row. If None and loading from a
+        file or dict, uses the names contained in it. Default is None.
 
     columns : int, default=2
         Number of columns in layout.
@@ -1683,59 +1734,69 @@ def colortable_visualization(
     >>> fig = colortable_visualization('regions.tsv',
     ...     region_names=custom_names, columns=1)
     >>> plt.show()
+
+    >>> # Example 4: Using a dict
+    >>> ctab = {"index": [1, 2], "name": ["Region 1", "Region 2"], "color": ["#ff0000", "#00ff00"]}
+    >>> fig = colortable_visualization(ctab, columns=1)
+    >>> plt.show()
+
+    >>> # Example 5: Using a ColorTableLoader instance
+    >>> loader = ColorTableLoader('FreeSurferColorLUT.txt')
+    >>> fig = colortable_visualization(loader, columns=2)
+    >>> plt.show()
     """
 
-    # Handle file path input
+    # ---------------------------------------------------------------
+    # Step 1: Resolve `colortable` + `region_names` based on input type
+    # ---------------------------------------------------------------
     if isinstance(colortable, (str, Path)):
         file_path = Path(colortable)
 
-        # Check if file exists
         if not file_path.exists():
             raise FileNotFoundError(f"Color table file not found: {file_path}")
 
-        # Load the color table from file
         ctab_dict = ColorTableLoader.load_colortable(str(file_path))
+        colortable, region_names = _colortable_dict_to_array(ctab_dict, region_names)
 
-        # Extract region names from file if not provided
+    elif isinstance(colortable, dict):
+        colortable, region_names = _colortable_dict_to_array(colortable, region_names)
+
+    elif isinstance(colortable, ColorTableLoader):
+        ctab_dict = {
+            "index": colortable.index,
+            "name": colortable.name,
+            "color": colortable.color,
+            "opacity": colortable.opacity,
+        }
+        colortable, region_names = _colortable_dict_to_array(ctab_dict, region_names)
+
+    else:
         if region_names is None:
-            region_names = ctab_dict["name"]
+            raise ValueError(
+                "region_names must be provided when colortable is an array-like input. "
+                "To auto-extract names, provide a file path or a dict instead."
+            )
 
-        # Extract colors and convert to RGB format
-        colors = ctab_dict["color"]
-        colors = harmonize_colors(colors, output_format="rgb")
+    # ---------------------------------------------------------------
+    # Step 2: Validate/normalize region_names BEFORE using its length
+    # ---------------------------------------------------------------
+    if not isinstance(region_names, (str, list)):
+        raise TypeError("region_names must be a string or a list of strings")
 
-        # Extract opacity if available
-        if "opacity" in ctab_dict and ctab_dict["opacity"] is not None:
-            opacities = np.array(ctab_dict["opacity"])
-            # Convert opacity from 0-1 to 0-255 range
-            opacities = (opacities * 255).astype(int)
-        else:
-            opacities = np.full(len(colors), 255, dtype=int)
-
-        # Build colortable array with RGB and opacity
-        colortable_array = np.column_stack([colors, opacities])
-
-        # Add index column if available
-        if "index" in ctab_dict:
-            indices = np.array(ctab_dict["index"]).reshape(-1, 1)
-            colortable_array = np.column_stack([colortable_array, indices])
-
-        colortable = colortable_array
-
-    # Now process as array
-    colortable = np.array(colortable, dtype=float)
-
-    # Validate region_names is provided for array input
-    if region_names is None:
-        raise ValueError(
-            "region_names must be provided when colortable is an array. "
-            "To auto-extract names, provide a file path instead."
-        )
+    if isinstance(region_names, str):
+        region_names = [region_names]
+    else:
+        if not all(isinstance(name, str) for name in region_names):
+            raise TypeError("All elements in region_names list must be strings")
 
     n_regions = len(region_names)
 
-    # Validate colortable shape
-    if colortable.ndim != 2 or colortable.shape[1] not in [3, 4, 5]:
+    # ---------------------------------------------------------------
+    # Step 3: Validate colortable shape
+    # ---------------------------------------------------------------
+    colortable = np.array(colortable, dtype=float)
+
+    if colortable.ndim != 2 or colortable.shape[1] not in (3, 4, 5):
         raise ValueError("colortable must be a 2D array with 3, 4, or 5 columns")
 
     if colortable.shape[0] != n_regions:
@@ -1743,29 +1804,26 @@ def colortable_visualization(
             f"Length of region_names ({n_regions}) must match number of rows in colortable ({colortable.shape[0]})"
         )
 
-    if not isinstance(region_names, (str, list)):
-        raise TypeError("region_names must be a string or a list of strings")
-
-    if isinstance(region_names, str):
-        region_names = [region_names]
-
-    elif isinstance(region_names, list):  # Validate all elements are strings
-        if not all(isinstance(name, str) for name in region_names):
-            raise TypeError("All elements in region_names list must be strings")
-
     colors = colortable[:, 0:3]
     colors = harmonize_colors(colors, output_format="rgb")
     colortable[:, 0:3] = colors
 
-    # Layout
+    # ---------------------------------------------------------------
+    # Step 4: Layout
+    # ---------------------------------------------------------------
+    columns = max(1, min(columns, n_regions))
     rows_per_col = int(np.ceil(n_regions / columns))
+    n_cols_used = int(
+        np.ceil(n_regions / rows_per_col)
+    )  # avoid reserving empty columns
+
     rect_width = 0.5
     rect_height = 0.35
     row_spacing = 0.5
     col_spacing = 5.5
 
     margin_left, margin_right, margin_top, margin_bottom = 0.5, 1.0, 1.2, 0.6
-    fig_width = margin_left + columns * col_spacing + margin_right
+    fig_width = margin_left + n_cols_used * col_spacing + margin_right
     fig_height = margin_bottom + rows_per_col * (rect_height + row_spacing) + margin_top
 
     # Create figure
@@ -1861,6 +1919,8 @@ def colortable_visualization(
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     if export_path:
+        export_path = Path(export_path)
+        export_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(
             export_path,
             dpi=300,
