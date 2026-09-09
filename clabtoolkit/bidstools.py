@@ -1994,6 +1994,9 @@ def get_individual_files_and_folders(input_folder: str, cad4query: str | list | 
     elif isinstance(cad4query, dict):
         clean_id_dict = cad4query.copy()
 
+        # cad4query should be converted to a list of strings for filtering
+        cad4query = [f"{k}-{v}" for k, v in clean_id_dict.items()]
+
     # Detecting the all the files for the reference subject
     ind_der_dir = glob(os.path.join(input_folder, "sub-" + clean_id_dict["sub"] + "*"))
 
