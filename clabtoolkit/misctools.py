@@ -52,7 +52,11 @@ def build_indices(
 
     Supports:
         - Integers: added as-is.
-        - Tuples of 2 integers: expanded into range(start, end+1).
+        - Tuples of exactly 2 integers: treated as a range, expanded into
+        range(start, end+1) — e.g. (2, 5) -> [2, 3, 4, 5].
+        - Tuples of any other length: treated as an explicit list of
+        indices, same as a `list` input — e.g. (1, 2, 3, 4, 5) ->
+        [1, 2, 3, 4, 5].
         - Lists or np.ndarray: flattened and added as integers.
         - Strings:
             - "8-10"       → [8, 9, 10]
@@ -123,6 +127,9 @@ def build_indices(
             elif isinstance(item, tuple) and len(item) == 2:
                 start, end = item
                 indexes.append(list(range(int(start), int(end) + 1)))
+
+            elif isinstance(item, tuple):
+                indexes.append([int(x) for x in item])
 
             elif isinstance(item, list):
                 indexes.append([int(x) for x in item])
