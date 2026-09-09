@@ -1355,54 +1355,96 @@ class Parcellation:
             )
 
     ####################################################################################################
-    def prepare_for_tracking(self):
+    def prepare_for_connectomics(
+        self,
+        mergectx: bool = True,
+        output_file: str | Path | None = None,
+        overwrite: bool = True,
+    ) -> "Parcellation":
         """
-        Prepare parcellation for fiber tracking by merging cortical white matter labels
-        to their corresponding cortical gray matter values.
+        Prepare parcellation for connectomics analysis by merging cortical white matter
+        labels to their corresponding cortical gray matter values.
 
         Converts white matter labels (>=3000) to corresponding gray matter labels
-        by subtracting 3000, and removes other structures labels (>=5000).
-        This method is useful for tractography applications where the parcellation was generated
-        using Chimera (https://github.com/connectomicslab/chimera). It can also be applied to other
-        parcellations following the same labeling scheme.
+        by subtracting 3000, and removes other structures labels (>=5000). Useful for
+        tractography/connectomics applications where the parcellation was generated
+        using Chimera (https://github.com/connectomicslab/chimera), or any parcellation
+        following the same labeling scheme:
+
         - Gray matter regions: 1-2999
-        - White matter regions: 3000-4999 (to be merged with gray matter)
-            - 3000 for white matter label
-            - For FreeSurfer cortical white matter labels, the value is 3000 + corresponding gray matter label
-            - Other structures: 5000-5008 (to be removed)
-            - Corporus Callosum: 5009-5013 (to be merged with white matter)
+        - White matter regions: 3000-4999
+            - 3000: generic white matter label
+            - 3000 + X: FreeSurfer cortical WM label corresponding to gray matter label X
+        - Other structures: 5000-5008 (removed)
+        - Corpus callosum: 5009-5013 (merged into the generic WM label, 3000)
+
+        Parameters
+        ----------
+        mergectx : bool, default True
+            If True, cortical WM labels are merged into their corresponding cortical
+            GM labels via `merge_ctx_wm`. If False, WM voxels (>=3000) are zeroed out
+            instead of merged.
+
+        output_file : str or Path, optional
+            If provided, saves the modified parcellation to this file. Must be a valid
+            path to a writable location. If the file already exists, it will be overwritten.
+
+        overwrite : bool, default True
+            If True, allows overwriting the output file if it already exists. Ignored if
+            `output_file` is None.
+
+        Returns
+        -------
+        Parcellation
+            self, to allow method chaining.
 
         Examples
         --------
-        >>> parc.prepare_for_tracking()
+        >>> parc.prepare_for_connectomics()
         >>> print(f"Max label after prep: {parc.data.max()}")
         """
 
-        # Get the Corpus Callosum and add them to the white matter label
-        ind = np.argwhere(self.data >= 5009)
-        self.data[ind[:, 0], ind[:, 1], ind[:, 2]] = 3000
+        # Merge corpus callosum labels (5009-5013) into the generic WM label
+        self.data[self.data >= 5009] = 3000
 
-        # Unique of non-zero values
-        sts_vals = np.unique(self.data)
-
-        # sts_vals as integers
-        sts_vals = sts_vals.astype(int)
-
-        # get the values of sts_vals that are bigger or equaal to 5000 and create a list with them
-        indexes = [x for x in sts_vals if x >= 5000]
-
-        self.remove_by_code(codes2remove=indexes)
-
-        # Get the labeled wm values
-        ind = np.argwhere(self.data >= 3000)
-
-        # Add the wm voxels to the gm label
-        self.data[ind[:, 0], ind[:, 1], ind[:, 2]] = (
-            self.data[ind[:, 0], ind[:, 1], ind[:, 2]] - 3000
+        # Remove any remaining "other structures" labels (5000-5008) through the
+        # official API so color tables / name lookups stay in sync with self.data
+        other_codes = (
+            np.unique(self.data[(self.data >= 5000) & (self.data < 5009)])
+            .astype(int)
+            .tolist()
         )
+        if other_codes:
+            self.remove_by_code(codes2remove=other_codes)
 
-        # Adjust the values
+        if mergectx:
+            self.merge_ctx_wm()
+            self.data[self.data == 3000] = 0
+        else:
+            self.data[self.data >= 3000] = 0
+
         self.adjust_values()
+
+        if self.data.max() == 0:
+            warnings.warn(
+                "prepare_for_connectomics produced an empty parcellation — "
+                "check that the input follows the expected Chimera labeling scheme.",
+                stacklevel=2,
+            )
+
+        if output_file is not None:
+            if not isinstance(output_file, (str, Path)):
+                raise TypeError(
+                    f"output_file must be a string or Path, got {type(output_file)}"
+                )
+            output_file = Path(output_file)
+            if not output_file.parent.exists():
+                raise FileNotFoundError(
+                    f"Output directory does not exist: {output_file.parent}"
+                )
+            self.save_parcellation(out_file=output_file, overwrite=overwrite)
+
+        return self
 
     ####################################################################################################
     def keep_by_name(self, names2keep: list | str, rearrange: bool = False):
@@ -3527,14 +3569,35 @@ class Parcellation:
         )
 
     #########################################################################################################
-    def merge_ctx_wm(self, output_file: str | Path = None):
+    def merge_ctx_wm(
+        self,
+        ctx_wm_offset: int = 3000,
+        output_file: str | Path | None = None,
+        overwrite: bool = True,
+    ) -> "Parcellation":
         """
         Merge cortical gray matter (GM) and adjacent white matter (WM) into a single tissue type.
 
         This method modifies the parcellation in place, combining cortical GM parcels with their
-        corresponding WM parcels. The WM parcels are identified by adding 3000 to the cortical GM
-        parcel codes. After merging, the parcellation's index, name, color, and opacity attributes
-        are updated accordingly.
+        corresponding WM parcels. The WM parcels are identified by adding CTX_WM_OFFSET (3000) to
+        the cortical GM parcel codes. After merging, the parcellation's index, name, color, and
+        opacity attributes are updated accordingly.
+
+        Parameters
+        ----------
+        ctx_wm_offset : int, optional
+            The offset used to identify WM parcels corresponding to cortical GM parcels. Default is 3000
+
+        output_file : str or Path, optional
+            Path to save the modified parcellation. If None, the parcellation is not saved to disk.
+
+        overwrite : bool, optional
+            Whether to overwrite the output file if it already exists. Default is True.
+
+        Returns
+        -------
+        Parcellation
+            self, to allow method chaining.
 
         Examples
         --------
@@ -3542,19 +3605,23 @@ class Parcellation:
         >>> parc.merge_ctx_wm()
         """
 
-        ind_codes = cltmisc.get_indexes_by_substring(self.name, ["wm-lh", "wm-rh"])
+        ind_codes = cltmisc.get_indexes_by_substring(
+            [n.lower() for n in self.name], ["wm-lh", "wm-rh"]
+        )
         ctx_wm_codes = [self.index[i] for i in ind_codes]
 
         if not ctx_wm_codes:
             warnings.warn(
-                "No WM parcel has a matching cortical code (WM code = cortical code + 2000). No merging was performed.",
+                f"No WM parcel has a matching cortical code "
+                f"(WM code = cortical code + {ctx_wm_offset}). No merging was performed.",
                 stacklevel=2,
             )
+            return self
 
         ind_wm_ctx_vox = np.isin(self.data, ctx_wm_codes)
         self.data[ind_wm_ctx_vox] = (
-            self.data[ind_wm_ctx_vox] - 3000
-        )  # Assign to GM tissue
+            self.data[ind_wm_ctx_vox] - ctx_wm_offset
+        )  # Reassign WM voxels to their corresponding GM tissue code
 
         self.adjust_values()  # Update index, name, color, opacity after modification
 
@@ -3568,8 +3635,10 @@ class Parcellation:
                 raise FileNotFoundError(
                     f"Output directory does not exist: {output_file.parent}"
                 )
-            self.save_parcellation(out_file=output_file, overwrite=True)
-            print(f"Saved merged parcellation to {output_file}")
+            self.save_parcellation(out_file=output_file, overwrite=overwrite)
+            warnings.warn(f"Saved merged parcellation to {output_file}", stacklevel=2)
+
+        return self
 
     #########################################################################################################
     def create_5tt(
