@@ -2080,7 +2080,10 @@ def generate_bids_tree(
     Notes
     -----
     - Directories are displayed with a trailing '/' to distinguish from files
-    - Items are sorted with directories first, then files, both alphabetically
+    - At every level, subject (``sub-*``) directories are listed first
+      (alphabetically), followed by any other directories (e.g.
+      ``derivatives``, ``code``, ``sourcedata``, also alphabetically),
+      followed by files (alphabetically)
     - Hidden files/folders (starting with '.') are excluded by default
     - Permission errors for individual subdirectories are handled gracefully
     - The tree uses standard MS-DOS tree symbols for proper visualization
@@ -2093,17 +2096,17 @@ def generate_bids_tree(
     >>> tree = generate_bids_tree('/path/to/bids/dataset')
     >>> print(tree)
     my-bids-dataset/
-    ├── dataset_description.json
-    ├── participants.tsv
     ├── sub-01/
     │   ├── anat/
     │   │   └── sub-01_T1w.nii.gz
     │   └── func/
     │       ├── sub-01_task-rest_bold.nii.gz
     │       └── sub-01_task-rest_events.tsv
-    └── derivatives/
-        └── preprocessing/
-            └── sub-01/
+    ├── derivatives/
+    │   └── preprocessing/
+    │       └── sub-01/
+    ├── dataset_description.json
+    └── participants.tsv
 
     Limited depth with file saving:
 
@@ -2132,6 +2135,23 @@ def generate_bids_tree(
 
     tree_lines = [f"{bids_path.name}/"]
 
+    def _sort_key(item: Path) -> tuple[int, str]:
+        """
+        Sort key placing subject folders first, other folders next, files last.
+
+        Rank 0: directories whose name starts with 'sub-' (e.g. 'sub-01')
+        Rank 1: any other directory (e.g. 'derivatives', 'code', 'sourcedata')
+        Rank 2: files (e.g. 'dataset_description.json', 'participants.tsv')
+
+        Within each rank, items are ordered alphabetically (case-insensitive).
+        """
+        name_lower = item.name.lower()
+        if item.is_dir():
+            rank = 0 if name_lower.startswith("sub-") else 1
+        else:
+            rank = 2
+        return (rank, name_lower)
+
     def _build_tree(current_path: Path, prefix: str = "", depth: int = 0) -> None:
         """Recursively build the tree structure."""
 
@@ -2150,8 +2170,9 @@ def generate_bids_tree(
                     continue
                 items.append(item)
 
-            # Sort items: directories first, then files, both alphabetically
-            items.sort(key=lambda x: (x.is_file(), x.name.lower()))
+            # Sort items: sub-* directories first, then other directories,
+            # then files, each group alphabetically
+            items.sort(key=_sort_key)
 
             for i, item in enumerate(items):
                 is_last = i == len(items) - 1
