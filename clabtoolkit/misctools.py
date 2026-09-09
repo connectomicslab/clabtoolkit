@@ -203,8 +203,6 @@ def get_indices_by_condition(condition: str, **kwargs):
     if len(array_vars) != 1:
         raise ValueError("Exactly one variable must be a list or numpy array.")
 
-    array_vars[0]
-
     # Check if any required variables (excluding literals) are missing
     missing_vars = var_names - set(kwargs.keys())
     if missing_vars:
@@ -293,7 +291,12 @@ def get_values_by_condition(condition: str, **kwargs):
     # Extract the array variable from kwargs
     array_var = next(k for k, v in kwargs.items() if isinstance(v, (list, np.ndarray)))
 
-    tmp = np.array(remove_duplicates(kwargs[array_var][indices]))
+    # BUG FIX: kwargs[array_var] may be a plain list (explicitly allowed per the
+    # docstring), and a plain list cannot be fancy-indexed with the numpy array
+    # `indices` returned by get_indices_by_condition (raises TypeError). Coerce
+    # to an ndarray first so both list and ndarray inputs work.
+    array_values = np.asarray(kwargs[array_var])
+    tmp = np.array(remove_duplicates(array_values[indices]))
 
     return tmp.tolist()
 
@@ -1192,14 +1195,14 @@ def ismember(
     --------
         >>> a = [1, 2, 3, 4, 5]
         >>> b = [3, 4, 5, 6, 7]
-        >>> values, positions = ismember_simple(a, b)
+        >>> values, positions = ismember(a, b)
         >>> print(values)      # Output: [3, 4, 5]
         >>> print(positions)   # Output: [2, 3, 4]
 
         >>> # With duplicates
         >>> a = [1, 3, 2, 3, 5]
         >>> b = [3, 5, 7]
-        >>> values, positions = ismember_simple(a, b)
+        >>> values, positions = ismember(a, b)
         >>> print(values)      # Output: [3, 3, 5]
         >>> print(positions)   # Output: [1, 3, 4]
     """
@@ -1402,7 +1405,61 @@ def get_all_files(
     just_files: bool = True,
 ) -> list:
     """
-    (docstring unchanged)
+    List absolute paths to files inside a directory, with optional substring filtering.
+
+    Parameters
+    ----------
+    in_dir : str or Path
+        Path to the directory to search. Must be an existing, absolute directory
+        path (not a file and not a symlink).
+
+    recursive : bool, optional
+        If True (default), search all subdirectories recursively. If False,
+        only look at the immediate contents of `in_dir`.
+
+    or_filter : str or list of str, optional
+        Substring(s) to filter by. A file is kept if ANY of these substrings
+        is found in its name (or full path, see `just_files`). Default is None
+        (no OR filtering).
+
+    and_filter : str or list of str, optional
+        Substring(s) to filter by. A file is kept only if ALL of these
+        substrings are found in its name (or full path). Default is None
+        (no AND filtering).
+
+    bool_case : bool, optional
+        Whether substring matching is case-sensitive. Default is False
+        (case-insensitive).
+
+    just_files : bool, optional
+        If True (default), filters are matched against just the filename.
+        If False, filters are matched against the full path string.
+
+    Returns
+    -------
+    list of str
+        Absolute, resolved paths to the files that matched the filters
+        (or all files found, if no filters were given).
+
+    Raises
+    ------
+    TypeError
+        If `in_dir` is not a string or Path, or if `or_filter`/`and_filter`
+        are not a string or list of strings.
+    ValueError
+        If `in_dir` does not exist, is not a directory, is not absolute,
+        is a symlink, or is empty.
+
+    Examples
+    --------
+    >>> get_all_files("/data/project")
+    ['/data/project/sub-01/file1.nii.gz', '/data/project/sub-02/file2.nii.gz']
+
+    >>> get_all_files("/data/project", or_filter="T1w")
+    ['/data/project/sub-01/sub-01_T1w.nii.gz']
+
+    >>> get_all_files("/data/project", or_filter=["T1w", "T2w"], and_filter="preproc")
+    ['/data/project/sub-01/sub-01_T1w_preproc.nii.gz']
     """
 
     if isinstance(in_dir, str):
@@ -1759,7 +1816,7 @@ def create_temporary_filename(
     # Ensure the filename is unique
     while os.path.exists(tmp_filename):
         unique_id = str(uuid.uuid4())
-        tmp_filename = os.path.join(tmp_dir, f"{prefix}{unique_id}{extension}")
+        tmp_filename = os.path.join(tmp_dir, f"{prefix}_{unique_id}{extension}")
 
     return tmp_filename
 
@@ -2181,7 +2238,7 @@ def load_json(json_file_path: str | Path) -> dict:
 
     Examples
     --------
-    >>> data_dict = load_json_to_dictionary("data.json")
+    >>> data_dict = load_json("data.json")
     >>> print(data_dict)  # Output: Contents of the JSON file as a dictionary
     """
 
@@ -2313,7 +2370,7 @@ def save_dictionary_to_json(data_dictionary: dict, json_file_path: str):
     data_dictionary : dict
         The dictionary to be saved.
 
-    file_path : str
+    json_file_path : str
         The path to the JSON file where the dictionary will be saved.
 
     Returns
@@ -2325,9 +2382,6 @@ def save_dictionary_to_json(data_dictionary: dict, json_file_path: str):
     -------
     >>> data = {'key': 'value'}
     >>> save_dictionary_to_json(data, 'data.json')
-    ----------
-        data_dictionary (dict): The dictionary to be saved.
-        file_path (str): The path to the JSON file where the dictionary will be saved.
     """
 
     # Check if the file path is valid
@@ -2580,7 +2634,7 @@ def smart_read_table(
 
     Examples
     --------
-    >>> df = read_file_with_fallback_detection("data.txt")
+    >>> df = smart_read_table("data.txt")
     >>> df.shape
     """
 
@@ -2602,12 +2656,12 @@ def smart_read_table(
         df_tmp = pd.read_csv(file_path, sep=None, engine="python", **kwargs)
         cols = df_tmp.columns.tolist()
 
+        dtype_overrides = {"Run": str}
         if any(col in bids_entities for col in cols):
-            kwargs["dtype"] = {col: str for col in cols if col in bids_entities}
+            dtype_overrides.update({col: str for col in cols if col in bids_entities})
+        kwargs["dtype"] = {**kwargs.get("dtype", {}), **dtype_overrides}
 
-        df = pd.read_csv(
-            file_path, sep=None, dtype={"Run": str}, engine="python", **kwargs
-        )
+        df = pd.read_csv(file_path, sep=None, engine="python", **kwargs)
 
         return df
     except Exception:
@@ -2655,7 +2709,7 @@ def drop_empty_columns(
     ...     'c': ['', '', ''],
     ...     'd': ['x', '', None],
     ... })
-    >>> remove_empty_columns(df).columns.tolist()
+    >>> drop_empty_columns(df).columns.tolist()
     ['a', 'd']
     """
     target = df if inplace else df.copy()
@@ -2796,7 +2850,7 @@ def update_dict(orig_dict, new_dict, merge_lists=False, allow_new_keys=False):
     >>> # With allow_new_keys=True
     >>> original = {'name': 'John', 'items': [1, 2]}
     >>> updates = {'name': 'Jane', 'age': 30, 'items': [3, 4]}
-    >>> deep_update_flexible(original, updates, merge_lists=True, allow_new_keys=True)
+    >>> update_dict(original, updates, merge_lists=True, allow_new_keys=True)
     {'name': 'Jane', 'items': [1, 2, 3, 4], 'age': 30}
     """
     for key, update_value in new_dict.items():
@@ -2921,8 +2975,11 @@ def generate_container_command(
             if not os.path.exists(image_path):
                 raise ValueError(f"The container image {image_path} does not exist.")
         else:
+            # BUG FIX: this error message previously said "Singularity"
+            # unconditionally, even when technology == "docker". Reference the
+            # actual requested technology instead.
             raise ValueError(
-                "The image path is required for Singularity containerization."
+                f"The image path is required for {technology.capitalize()} containerization."
             )
 
         # Checking if the arguments are files or directories
@@ -3958,7 +4015,7 @@ def h5explorer(
 
     Example
     -------
-    >>> stats = print_h5_structure("/path/to/data.h5", max_datasets_per_group=10)
+    >>> stats = h5explorer("/path/to/data.h5", max_datasets_per_group=10)
     📁 data/ (group)
     ├── 📊 measurements [1000 × 256] float64 (2.0 MB)
     │   └── 🏷️ @units = 'volts'
@@ -4206,7 +4263,7 @@ def h5explorer_simple(file_path: str, max_datasets_per_group: int = 20) -> None:
 
     Example
     -------
-    >>> print_h5_structure_simple("data.h5", max_datasets_per_group=10)
+    >>> h5explorer_simple("data.h5", max_datasets_per_group=10)
     HDF5 Structure: data.h5
     --------------------------------------------------
     📁 data/ (group)
