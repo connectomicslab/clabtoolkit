@@ -2517,7 +2517,9 @@ class ColorTableLoader:
         self.headerlines = col_dict["headerlines"]
 
     @staticmethod
-    def load_colortable(in_file: str, filter_by_name: str | list[str] = None) -> dict:
+    def load_colortable(
+        in_file: str | Path, filter_by_name: str | list[str] = None
+    ) -> dict:
         """
         Automatically detect and load a color lookup table from either LUT or TSV format.
 
@@ -2527,7 +2529,7 @@ class ColorTableLoader:
 
         Parameters
         ----------
-        in_file : str
+        in_file : str or Path
             Path to the color lookup table file (.txt, .lut, or .tsv)
 
         filter_by_name : str or list of str, optional
@@ -2577,6 +2579,10 @@ class ColorTableLoader:
         - LUT format is identified by comment lines starting with '#'
         - TSV format is identified by tab-separated columns with headers
         """
+
+        if isinstance(in_file, Path):
+            in_file = str(in_file)
+
         # Check if file exists
         if not os.path.exists(in_file):
             raise FileNotFoundError(f"Color table file not found: {in_file}")
