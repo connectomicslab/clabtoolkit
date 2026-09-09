@@ -2424,6 +2424,46 @@ def visualize_colors(
 
 
 ######################################################################################################
+def simulate_colortable(n_regions: int = 10) -> dict:
+    """
+    Simulate a color table with random colors for testing purposes.
+
+    Parameters
+    ----------
+    n_regions : int, optional
+        Number of colors to generate in the simulated color table. Default is 10.
+
+    Returns
+    -------
+    dict
+        A dictionary representing a simulated color table with the following keys:
+        - 'index': List of integer region codes (1 to n_regions)
+        - 'name': List of region name strings (e.g., "Region_1", "Region_2", ...)
+        - 'color': List of random hexadecimal color codes
+        - 'opacity': List of opacity values (default is 1.0 for all regions)
+        - 'headerlines': List of header lines (empty in this simulation)
+    """
+    if n_regions <= 0:
+        raise ValueError("n_regions must be a positive integer")
+
+    # Generate random colors
+    index = list(range(1, n_regions + 1))
+    random_colors = create_distinguishable_colors(n=n_regions, output_format="hex")
+    random_names = cltmisc.create_names_from_indices(index)
+
+    # Create the simulated color table dictionary
+    simulated_ctab = {
+        "index": index,
+        "name": random_names,
+        "color": random_colors,
+        "opacity": [1.0] * n_regions,
+        "headerlines": [],
+    }
+
+    return simulated_ctab
+
+
+######################################################################################################
 class ColorTableLoader:
     """Class for loading and managing color lookup tables."""
 
