@@ -3154,7 +3154,9 @@ def region_growing(
             x, y, z = coord
 
             # Detecting the neighbors
-            neighbors = get_vox_neighbors(coord=coord, neighborhood="26", dims="3")
+            neighbors = get_vox_neighbors(
+                coord=coord, neighborhood=neighborhood, dims="3"
+            )
             # Remove from motion the coordinates out of the bounding box
             neighbors = neighbors[
                 (neighbors[:, 0] >= 0)
