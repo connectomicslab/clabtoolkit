@@ -1955,6 +1955,7 @@ def create_names_from_indices(
     prefix: str = "auto-roi",
     suffix: str = None,
     padding: int = 6,
+    sep: str = "-",
 ) -> list[str]:
     """
     Generates a list of region names with customizable zero-padding
@@ -1970,6 +1971,8 @@ def create_names_from_indices(
         Suffix to add to the region names. Default is None.
     padding : int, optional
         Number of digits for zero-padding the index. Default is 6.
+    sep : str, optional
+        Separator used between prefix, index, and suffix. Default is "-".
 
     Returns
     -------
@@ -1998,6 +2001,11 @@ def create_names_from_indices(
     >>> create_names_from_indices(indices, prefix="ctx", padding=2)
     ['ctx-01', 'ctx-02', 'ctx-03']
 
+    Custom separator:
+    >>> indices = [1, 2, 3]
+    >>> create_names_from_indices(indices, prefix="ctx", padding=2, sep="_")
+    ['ctx_01', 'ctx_02', 'ctx_03']
+
     Single index:
     >>> create_names_from_indices(5, padding=8)
     ['auto-roi-00000005']
@@ -2006,6 +2014,10 @@ def create_names_from_indices(
     # Validate padding
     if not isinstance(padding, int) or padding < 1:
         raise ValueError("Padding must be a positive integer.")
+
+    # Validate sep
+    if not isinstance(sep, str):
+        raise ValueError("Sep must be a string.")
 
     # Normalize indices to list
     if isinstance(indices, int):
@@ -2021,9 +2033,9 @@ def create_names_from_indices(
 
     # Generate names with customizable padding
     if suffix is not None:
-        names = [f"{prefix}-{index:0{padding}d}-{suffix}" for index in indices]
+        names = [f"{prefix}{sep}{index:0{padding}d}{sep}{suffix}" for index in indices]
     else:
-        names = [f"{prefix}-{index:0{padding}d}" for index in indices]
+        names = [f"{prefix}{sep}{index:0{padding}d}" for index in indices]
 
     return names
 
