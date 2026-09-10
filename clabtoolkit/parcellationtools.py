@@ -1564,6 +1564,64 @@ class Parcellation:
         self.parc_range()
 
     #####################################################################################################
+    def names_to_labels(self, names: str | list[str]) -> list[int]:
+        """
+        Convert region names to their corresponding labels.
+
+        Parameters
+        ----------
+        names : str or list of str
+            Region names to convert to labels.
+
+        Returns
+        -------
+        list of int
+            Corresponding labels for the given region names.
+
+        Examples
+        --------
+        >>> parc.names_to_label('ctx-lh-bankssts')
+        [1]
+        >>> parc.names_to_label(['ctx-lh-bankssts', 'ctx-rh-bankssts'])
+        [1, 2]
+        """
+        if isinstance(names, str):
+            names = [names]
+
+        indexes = cltmisc.get_indexes_by_substring(self.name, names)
+
+        return [self.index[i] for i in indexes]
+
+    #####################################################################################################
+    def labels_to_names(self, labels: int | list[int]) -> list[str]:
+        """
+        Convert region labels to their corresponding names.
+
+        Parameters
+        ----------
+        labels : int or list of int
+            Region labels to convert to names.
+
+        Returns
+        -------
+        list of str
+            Corresponding names for the given region labels.
+
+        Examples
+        --------
+        >>> parc.labels_to_names(1)
+        ['ctx-lh-bankssts']
+        >>> parc.labels_to_names([1, 2])
+        ['ctx-lh-bankssts', 'ctx-rh-bankssts']
+        """
+        if isinstance(labels, int):
+            labels = [labels]
+
+        indexes = [self.index.index(label) for label in labels]
+
+        return [self.name[i] for i in indexes]
+
+    #####################################################################################################
     def remove_by_code(
         self, codes2remove: str | list | np.ndarray, rearrange: bool = False
     ):
