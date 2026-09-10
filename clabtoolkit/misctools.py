@@ -2804,7 +2804,10 @@ def extract_string_values(data_dict: str | dict, only_last_key=True) -> dict:
     Parameters
     -----------
         data_dict: A nested dictionary to search through
-        only_last_key: If True, uses only the leaf key name; if False, uses the full path
+        only_last_key: If True, uses only the leaf key name; if False, uses the full path.
+            If two leaf keys share the same name, the full path is used for the
+            second (and any subsequent) occurrence to avoid silently overwriting
+            values.
 
     Returns
     --------
@@ -2830,6 +2833,11 @@ def extract_string_values(data_dict: str | dict, only_last_key=True) -> dict:
         >>> # With only_last_key=False
         >>> extract_string_values(data, only_last_key=False)
         {'a.b': 'value1', 'a.c.d': 'value2', 'f': 'value3'}
+        >>>
+        >>> # Colliding leaf keys fall back to full path
+        >>> data2 = {"a": {"name": "value1"}, "b": {"name": "value2"}}
+        >>> extract_string_values(data2)
+        {'name': 'value1', 'b.name': 'value2'}
     """
 
     if isinstance(data_dict, str):
@@ -2841,6 +2849,12 @@ def extract_string_values(data_dict: str | dict, only_last_key=True) -> dict:
         else:
             # If the file does not exist, raise an error
             raise ValueError(f"Invalid file path: {data_dict}")
+
+    if not isinstance(data_dict, dict):
+        raise TypeError(
+            f"Expected a dict (or a path to a JSON file containing one), "
+            f"got {type(data_dict).__name__}."
+        )
 
     result = {}
 
@@ -2854,6 +2868,12 @@ def extract_string_values(data_dict: str | dict, only_last_key=True) -> dict:
             if isinstance(value, str):
                 # Use either just the key or the full path based on the parameter
                 result_key = key if only_last_key else current_path
+
+                # Avoid silently overwriting a previously seen leaf key: if it
+                # already exists, fall back to the full path for this entry.
+                if result_key in result:
+                    result_key = current_path
+
                 result[result_key] = value
             elif isinstance(value, dict):
                 explore_dict(value, current_path)
