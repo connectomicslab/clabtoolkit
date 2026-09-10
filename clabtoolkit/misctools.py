@@ -1864,21 +1864,23 @@ def create_temporary_filename(
 ####################################################################################################
 ####################################################################################################
 def remove_consecutive_duplicates(
-    text: str | list[str], char: str | list[str]
+    text: str | list[str], char: str | list[str] | None = None
 ) -> str | list[str]:
     """
     Remove consecutive duplicate occurrences of specific character(s).
 
     Keeps the first occurrence when multiple consecutive instances of the
     specified character(s) are found. Supports both single strings and lists
-    of strings for both parameters.
+    of strings for both parameters. If `char` is None, consecutive duplicates
+    of *any* character are collapsed.
 
     Parameters
     ----------
     text : str or list of str
         Input string(s) to process
-    char : str or list of str
-        Character(s) whose consecutive duplicates should be removed
+    char : str, list of str, or None
+        Character(s) whose consecutive duplicates should be removed. If None
+        (default), consecutive duplicates of any character are removed.
 
     Returns
     -------
@@ -1904,9 +1906,13 @@ def remove_consecutive_duplicates(
     >>> remove_consecutive_duplicates(["a__b", "c//d"], ["_", "/"])
     ['a_b', 'c/d']
 
+    Default (char=None), removes duplicates of any character:
+    >>> remove_consecutive_duplicates("aabbccdd__ee")
+    'abcd_e'
+
     """
 
-    def _remove_consecutive(s: str, chars: set[str]) -> str:
+    def _remove_consecutive(s: str, chars: set[str] | None) -> str:
         """Helper function to remove consecutive duplicates from a single string."""
         if not s:
             return s
@@ -1915,8 +1921,11 @@ def remove_consecutive_duplicates(
         prev_char = None
 
         for c in s:
+            # chars is None -> target ALL characters (collapse any run)
+            is_target = chars is None or c in chars
+
             # Add character if it's not a target char, or if it's different from previous
-            if c not in chars:
+            if not is_target:
                 result.append(c)
             elif c != prev_char:
                 result.append(c)
@@ -1926,8 +1935,11 @@ def remove_consecutive_duplicates(
 
         return "".join(result)
 
-    # Normalize char to a set for efficient lookup
-    chars_set = set(char) if isinstance(char, list) else {char}
+    # Normalize char to a set for efficient lookup, or keep None to mean "any char"
+    if char is None:
+        chars_set = None
+    else:
+        chars_set = set(char) if isinstance(char, list) else {char}
 
     # Handle single string
     if isinstance(text, str):
