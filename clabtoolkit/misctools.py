@@ -1774,7 +1774,10 @@ def remove_empty_folders(start_path, deleted_folders=None, simulate=False):
 
 #########################################################################################################
 def create_temporary_filename(
-    tmp_dir: str = None, prefix: str = "tmp", extension: str = ".nii.gz"
+    tmp_dir: str = None,
+    prefix: str = None,
+    suffix: str = None,
+    extension: str = ".nii.gz",
 ) -> str:
     """
     Create a temporary filename with a unique identifier.
@@ -1786,7 +1789,13 @@ def create_temporary_filename(
         platform temporary directory (``tempfile.gettempdir()``).
 
     prefix : str
-        The prefix for the temporary filename. Default is "tmp".
+        Optional prefix for the temporary filename. If None or not a valid
+        (non-empty) string, no prefix is added. Default is None.
+
+    suffix : str
+        Optional suffix for the temporary filename, inserted before the
+        extension. If None or not a valid (non-empty) string, no suffix is
+        added. Default is None.
 
     extension : str
         The file extension for the temporary file. Default is ".nii.gz".
@@ -1794,12 +1803,19 @@ def create_temporary_filename(
     Returns
     -------
     str
-        A unique temporary filename with the specified prefix and extension.
+        A unique temporary filename with the specified prefix, suffix and
+        extension.
 
     Examples
     --------
     >>> tmp_filename = create_temporary_filename()
+    >>> print(tmp_filename)  # Output: <tempdir>/<unique_id>.nii.gz
+
+    >>> tmp_filename = create_temporary_filename(prefix="tmp")
     >>> print(tmp_filename)  # Output: <tempdir>/tmp_<unique_id>.nii.gz
+
+    >>> tmp_filename = create_temporary_filename(prefix="tmp", suffix="corr")
+    >>> print(tmp_filename)  # Output: <tempdir>/tmp_<unique_id>_corr.nii.gz
     """
 
     if tmp_dir is None:
@@ -1814,16 +1830,26 @@ def create_temporary_filename(
             f"The specified temporary directory is not writable: {tmp_dir}"
         )
 
+    # Only use prefix/suffix if they are valid, non-empty strings
+    valid_prefix = isinstance(prefix, str) and len(prefix) > 0
+    valid_suffix = isinstance(suffix, str) and len(suffix) > 0
+
+    def _build_filename(unique_id: str) -> str:
+        name = unique_id
+        if valid_prefix:
+            name = f"{prefix}_{name}"
+        if valid_suffix:
+            name = f"{name}_{suffix}"
+        return os.path.join(tmp_dir, f"{name}{extension}")
+
     # Generate a unique identifier
     unique_id = str(uuid.uuid4())
-
-    # Create the temporary filename
-    tmp_filename = os.path.join(tmp_dir, f"{prefix}_{unique_id}{extension}")
+    tmp_filename = _build_filename(unique_id)
 
     # Ensure the filename is unique
     while os.path.exists(tmp_filename):
         unique_id = str(uuid.uuid4())
-        tmp_filename = os.path.join(tmp_dir, f"{prefix}_{unique_id}{extension}")
+        tmp_filename = _build_filename(unique_id)
 
     return tmp_filename
 
