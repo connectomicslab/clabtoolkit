@@ -1622,6 +1622,47 @@ class Parcellation:
         return [self.name[i] for i in indexes]
 
     #####################################################################################################
+    def get_voxels_by_code(self, code: int | list[int]) -> np.ndarray:
+        """
+        Get voxels corresponding to the specified region code(s).
+
+        Parameters
+        ----------
+        code : int or list of int
+            Region code(s) to retrieve voxels for.
+
+        Returns
+        -------
+        np.ndarray
+            Array of voxels corresponding to the specified code(s).
+        """
+        if isinstance(code, int):
+            code = [code]
+
+        return self.data[np.isin(self.data, code)]
+
+    #####################################################################################################
+    def get_voxels_by_name(self, names: str | list[str]) -> np.ndarray:
+        """
+        Get voxels corresponding to the specified region name(s).
+
+        Parameters
+        ----------
+        names : str or list of str
+            Region name(s) to retrieve voxels for.
+
+        Returns
+        -------
+        np.ndarray
+            Array of voxels corresponding to the specified name(s).
+        """
+        if isinstance(names, str):
+            names = [names]
+
+        codes = self.names_to_labels(names)
+        return self.get_voxels_by_code(codes)
+
+    #####################################################################################################
     def remove_by_code(
         self, codes2remove: str | list | np.ndarray, rearrange: bool = False
     ):
