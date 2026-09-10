@@ -3074,7 +3074,10 @@ def interpolate(
 
 #####################################################################################################
 def region_growing(
-    iparc: np.ndarray, mask: np.ndarray | np.bool_, neighborhood="26"
+    iparc: np.ndarray,
+    mask: np.ndarray | np.bool_,
+    neighborhood: str = "26",
+    min_neighbors: int = 6,
 ) -> np.ndarray:
     """
     Fill gaps in parcellation using region growing algorithm.
@@ -3094,18 +3097,34 @@ def region_growing(
     neighborhood : str, optional
         Neighborhood connectivity: '6', '18', or '26' for 3D. Default is '26'.
 
+    min_neighbors : int, optional
+        Minimum number of labeled neighbors required for a voxel to be
+        assigned a label. Voxels that never reach this threshold (e.g.
+        thin spurs poking into a neighboring region, or corners with
+        sparse support) are left unlabeled (0) instead of being grown.
+        Raise this value to make growing more conservative and prevent
+        thin "fingers" from leaking into adjacent structures. Default is 6.
+
     Returns
     -------
     np.ndarray
         Updated parcellation array with gaps filled, masked to input mask.
+        Voxels inside the mask that never reached `min_neighbors` labeled
+        neighbors remain 0.
 
     Notes
     -----
     The algorithm works iteratively:
-    1. Identifies unlabeled voxels with at least one labeled neighbor
-    2. For each candidate voxel, finds most frequent label among neighbors
-    3. In case of ties, selects label from spatially closest neighbor
-    4. Repeats until no more voxels can be labeled or convergence
+    1. Identifies unlabeled voxels with at least `min_neighbors` labeled
+       neighbors.
+    2. For each candidate voxel, finds most frequent label among neighbors.
+    3. In case of ties, selects label from spatially closest neighbor.
+    4. Repeats until no more voxels can be labeled or convergence.
+
+    Because the candidate-selection criterion and the assignment criterion
+    both use `min_neighbors`, the algorithm is guaranteed to terminate:
+    once no remaining candidate meets the threshold, the loop stops and
+    those voxels stay at 0.
 
     Particularly useful for:
     - Filling gaps in atlas-based parcellations
@@ -3114,15 +3133,16 @@ def region_growing(
 
     Examples
     --------
-    >>> # Fill gaps in parcellation
-    >>> filled_parc = region_growing(parcellation_array, brain_mask)
+    >>> # Fill gaps in parcellation, conservative (avoids thin leaks)
+    >>> filled_parc = region_growing(parcellation_array, brain_mask, min_neighbors=9)
     >>> print(f"Filled {np.sum(filled_parc > 0) - np.sum(parcellation_array > 0)} voxels")
     >>>
     >>> # Use 6-connectivity for more conservative growing
     >>> conservative_fill = region_growing(
     ...     incomplete_labels,
     ...     region_mask,
-    ...     neighborhood='6'
+    ...     neighborhood='6',
+    ...     min_neighbors=4,
     ... )
     """
 
@@ -3139,8 +3159,13 @@ def region_growing(
     )
     labeled_neighbor_count = convolve(binary_labels, kernel, mode="constant", cval=0)
 
-    # Mask for voxels that have at least one labeled neighbor
-    mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
+    # Candidate voxels must have at least `min_neighbors` labeled neighbors.
+    # Using the same threshold here and at assignment time guarantees the
+    # while-loop below actually converges instead of stalling on voxels
+    # that can never be assigned.
+    mask_with_labeled_neighbors = (labeled_neighbor_count >= min_neighbors) & (
+        iparc == 0
+    )
     ind = np.argwhere(
         (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
     )
@@ -3170,7 +3195,12 @@ def region_growing(
             # Labels of the neighbors
             neigh_lab = iparc[neighbors[:, 0], neighbors[:, 1], neighbors[:, 2]]
 
-            if len(np.argwhere(neigh_lab > 0)) > 2:
+            # Require at least `min_neighbors` labeled neighbors to assign
+            # a label. This is the same threshold used to build `ind`
+            # above, so voxels that fail here will also be excluded from
+            # the next iteration's candidate list (their neighbor count
+            # only increases if a nearby voxel gets labeled elsewhere).
+            if len(np.argwhere(neigh_lab > 0)) >= min_neighbors:
 
                 # Remove the neighbors that are not labeled
                 neighbors = neighbors[neigh_lab > 0]
@@ -3202,11 +3232,20 @@ def region_growing(
             binary_labels, kernel, mode="constant", cval=0
         )
 
-        # Mask for voxels that have at least one labeled neighbor
-        mask_with_labeled_neighbors = (labeled_neighbor_count > 0) & (iparc == 0)
+        # Mask for voxels that have at least `min_neighbors` labeled neighbors
+        mask_with_labeled_neighbors = (labeled_neighbor_count >= min_neighbors) & (
+            iparc == 0
+        )
         ind = np.argwhere(
             (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
         )
+
+    # Voxels inside `mask` that never reached `min_neighbors` are left
+    # unlabeled. Made explicit here (rather than relying only on the
+    # multiplication below) so the intent is clear and safe even if
+    # `iparc` had stray nonzero values outside of proper labeling.
+    still_unlabeled = (iparc == 0) & mask.astype(bool)
+    iparc[still_unlabeled] = 0
 
     return iparc * mask
 
