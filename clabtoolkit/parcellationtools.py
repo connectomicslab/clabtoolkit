@@ -447,6 +447,146 @@ class Parcellation:
         self.parc_range()
 
     #####################################################################################################
+    @classmethod
+    def simulate_parcellation(
+        cls,
+        n_regions: int,
+        dimensions: tuple[int, int, int] = (128, 128, 100),
+        voxel_size: tuple[float, float, float] = (1.0, 1.0, 1.0),
+        affine: np.ndarray | None = None,
+        seed: int | None = None,
+    ) -> "Parcellation":
+        """
+        Simulate a random, brain-like parcellation using Voronoi tessellation.
+
+        Scatters `n_regions` seed voxels across a volume of the requested
+        `dimensions` and assigns every other voxel to the label of its nearest
+        seed, producing contiguous, space-filling regions (no background/zero
+        voxels). Useful for generating quick test data for methods that need a
+        labeled volume with a known number of regions.
+
+        Parameters
+        ----------
+        n_regions : int
+            Number of regions to simulate. Must be a positive integer. The
+            resulting labels are 1, 2, ..., n_regions.
+
+        dimensions : tuple of int, optional
+            Volume dimensions (dimx, dimy, dimz) in voxels. A single integer
+            is broadcast to all three axes. Default is (128, 128, 100).
+
+        voxel_size : tuple of float, optional
+            Voxel size (vx, vy, vz) in mm. A single number is broadcast to
+            all three axes. Default is (1.0, 1.0, 1.0). Used to build the
+            default affine (when affine is None) and to compute voxel_volume.
+
+        affine : np.ndarray, optional
+            4x4 affine matrix. If None (default), a diagonal affine is built
+            from voxel_size, with the translation set so the geometric center
+            of the volume sits at the world-space origin.
+
+        seed : int, optional
+            Seed for the random number generator, for reproducible simulations.
+
+        Returns
+        -------
+        Parcellation
+            A new Parcellation with `n_regions` contiguous regions, an
+            auto-generated color table, and space_id='simulated'.
+
+        Raises
+        ------
+        ValueError
+            If n_regions, dimensions, voxel_size, or affine are invalid.
+
+        Examples
+        --------
+        >>> parc = Parcellation.simulate_parcellation(n_regions=10)
+        >>> parc = Parcellation.simulate_parcellation(
+        ...     n_regions=50, dimensions=(64, 64, 64), voxel_size=2.0, seed=42
+        ... )
+        """
+        # --- Validate n_regions ---
+        if not isinstance(n_regions, (int, np.integer)) or n_regions < 1:
+            raise ValueError(
+                f"n_regions must be a positive integer, got {n_regions!r}."
+            )
+        n_regions = int(n_regions)
+
+        # --- Validate/normalize dimensions ---
+        if isinstance(dimensions, (int, np.integer)):
+            dimensions = (int(dimensions),) * 3
+        dimensions = tuple(dimensions)
+        if len(dimensions) != 3 or not all(
+            isinstance(d, (int, np.integer)) and d > 0 for d in dimensions
+        ):
+            raise ValueError(
+                f"dimensions must be a tuple of 3 positive integers (or a single "
+                f"integer), got {dimensions!r}."
+            )
+        dimensions = tuple(int(d) for d in dimensions)
+
+        # --- Validate/normalize voxel_size ---
+        if isinstance(voxel_size, (int, float, np.integer, np.floating)):
+            voxel_size = (float(voxel_size),) * 3
+        voxel_size = tuple(voxel_size)
+        if len(voxel_size) != 3 or not all(
+            isinstance(v, (int, float, np.integer, np.floating)) and v > 0
+            for v in voxel_size
+        ):
+            raise ValueError(
+                f"voxel_size must be a tuple of 3 positive numbers (or a single "
+                f"number), got {voxel_size!r}."
+            )
+        voxel_size = tuple(float(v) for v in voxel_size)
+
+        # --- Validate/build affine ---
+        if affine is None:
+            affine = np.eye(4)
+            affine[0, 0], affine[1, 1], affine[2, 2] = voxel_size
+            center_vox = np.array(dimensions, dtype=float) / 2.0
+            center_mm = center_vox * np.array(voxel_size)
+            affine[:3, 3] = -center_mm
+        else:
+            affine = np.asarray(affine, dtype=float)
+            if affine.shape != (4, 4):
+                raise ValueError(
+                    f"affine must be a 4x4 numpy array, got shape {affine.shape}."
+                )
+
+            # Voxel size implied by the affine's column norms (robust to rotated affines)
+            affine_voxel_size = tuple(np.linalg.norm(affine[:3, :3], axis=0))
+            if voxel_size != (1.0, 1.0, 1.0) and not np.allclose(
+                affine_voxel_size, voxel_size, atol=1e-6
+            ):
+                warnings.warn(
+                    f"voxel_size={voxel_size} was provided together with an explicit "
+                    f"affine matrix (whose implied voxel size is "
+                    f"{tuple(round(v, 3) for v in affine_voxel_size)}). Voxel size is "
+                    f"always derived from the affine, not set independently — the "
+                    f"provided voxel_size is ignored.",
+                    stacklevel=2,
+                )
+        # --- Simulate a Voronoi-style parcellation ---
+        from scipy.spatial import cKDTree
+
+        rng = np.random.default_rng(seed)
+        seed_coords = rng.integers(low=[0, 0, 0], high=dimensions, size=(n_regions, 3))
+
+        grid = np.indices(dimensions).reshape(3, -1).T  # (n_voxels, 3)
+        tree = cKDTree(seed_coords)
+        _, nearest_seed = tree.query(grid)
+
+        data = (nearest_seed + 1).reshape(dimensions).astype(np.int32)
+
+        return cls(
+            data,
+            affine=affine,
+            parc_id=f"simulated_{n_regions}regions",
+            space_id="simulated",
+        )
+
+    #####################################################################################################
     def get_space_id(self) -> str:
         """
         Infer the space identifier from the parcellation filename if space is not yet set.
