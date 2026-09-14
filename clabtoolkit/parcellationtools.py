@@ -20,15 +20,15 @@ from rich.progress import (
 from scipy import stats
 from scipy.linalg import pinv
 
+# Importing local modules
 from . import bidstools as cltbids
 from . import colorstools as cltcol
 from . import connectivitytools as cltcon
 from . import freesurfertools as cltfree
 from . import imagetools as cltimg
-
-# Importing local modules
 from . import misctools as cltmisc
 from . import surfacetools as cltsurf
+from .pointstools import PointCloud
 
 
 ####################################################################################################
@@ -2583,7 +2583,8 @@ class Parcellation:
         sigma: float = 1.0,
         closing_iterations: int = 2,
         centroid_table: str | Path | None = None,
-    ) -> pd.DataFrame:
+        output_format: str = "dataframe",  # Options: "dataframe", "pointcloud", "none"
+    ) -> pd.DataFrame | PointCloud | None:
         """
         Compute region centroids, voxel counts, and volumes.
 
@@ -2609,9 +2610,10 @@ class Parcellation:
 
         Returns
         -------
-        pd.DataFrame
+        pd.DataFrame or PointCloud or None
             DataFrame with columns: index, name, color, x_vox, y_vox, z_vox,
             x_mm, y_mm, z_mm, nvoxels, volume.
+            If output_format is "pointcloud", returns a PointCloud object instead.
 
         Raises
         ------
@@ -2746,8 +2748,16 @@ class Parcellation:
                 warnings.warn(
                     f"Failed to save centroid table: {e}", UserWarning, stacklevel=2
                 )
-
-        return df
+        if output_format == "dataframe":
+            return df
+        elif output_format == "pointcloud":
+            return PointCloud(
+                points=coords_mm,
+                region_colors=colors,
+                region_names=names,
+                name="centroids",
+                affine=self.affine,
+            )
 
     ######################################################################################################
     def get_regionwise_timeseries(
