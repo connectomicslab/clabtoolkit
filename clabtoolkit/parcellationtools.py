@@ -3280,7 +3280,7 @@ class Parcellation:
         return self
 
     ######################################################################################################
-    def rename_regions(self, rename_dict: dict, rearrange: bool = False):
+    def rename_regions(self, rename_dict: dict):
         """
         Rename regions in the parcellation.
 
@@ -3289,10 +3289,6 @@ class Parcellation:
         rename_dict : dict
             Mapping {old_name: new_name}. Only names present as keys are
             changed; everything else is left untouched.
-
-        rearrange : bool, optional
-            If True, rearrange the parcellation after renaming.
-            Default is False.
 
         Returns
         -------
@@ -3327,9 +3323,6 @@ class Parcellation:
         # Adjust values and update parcellation range after renaming
         self.adjust_values()
         self.parc_range()
-
-        if rearrange:
-            self.rearrange()
 
         return self
 
