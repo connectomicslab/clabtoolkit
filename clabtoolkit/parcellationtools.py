@@ -1736,26 +1736,17 @@ class Parcellation:
     def labels_to_names(self, labels: int | list[int]) -> list[str]:
         """
         Convert region labels to their corresponding names.
-
-        Parameters
-        ----------
-        labels : int or list of int
-            Region labels to convert to names.
-
-        Returns
-        -------
-        list of str
-            Corresponding names for the given region labels.
-
-        Examples
-        --------
-        >>> parc.labels_to_names(1)
-        ['ctx-lh-bankssts']
-        >>> parc.labels_to_names([1, 2])
-        ['ctx-lh-bankssts', 'ctx-rh-bankssts']
+        ...
         """
-        if isinstance(labels, int):
+        if isinstance(labels, (int, np.integer)):
             labels = [labels]
+
+        missing = [label for label in labels if label not in self.index]
+        if missing:
+            raise ValueError(
+                f"The following labels are not present in the parcellation: {missing}. "
+                f"Available labels range from {self.minlab} to {self.maxlab}."
+            )
 
         indexes = [self.index.index(label) for label in labels]
 
@@ -3223,6 +3214,124 @@ class Parcellation:
         self.parc_range()
 
         return array, color_table
+
+    ######################################################################################################
+    def relabel_regions(self, relabel_dict: dict, rearrange: bool = False):
+        """
+        Relabel regions in the parcellation.
+
+        Parameters
+        ----------
+        relabel_dict : dict
+            Mapping {old_label: new_label}. Only labels present as keys are
+            changed; everything else is left untouched.
+        rearrange : bool, optional
+            If True, after relabeling, renumber all labels present in the
+            parcellation into a contiguous sequence (1, 2, 3, ...), ordered
+            by the sorted value of the (already relabeled) labels.
+            Default is False.
+
+        Returns
+        -------
+        self
+            Updates self.data and self.index in place, and returns self so
+            calls can be chained.
+        """
+        if not isinstance(relabel_dict, dict):
+            raise TypeError("relabel_dict must be a dict of {old_label: new_label}")
+
+        # Warn if a label appears both as a key and as a value (e.g. a swap
+        # like {1: 2, 2: 1}, or a chain like {1: 2, 2: 3}). This is not an
+        # error - the mapping still resolves correctly since we always read
+        # from the original data - but it's worth flagging since it's an
+        # easy source of unintended results.
+        overlap = set(relabel_dict.keys()) & set(relabel_dict.values())
+        if overlap:
+            warnings.warn(
+                f"relabel_dict has label(s) that are both an old_label and "
+                f"a new_label: {sorted(overlap)}. This is handled correctly "
+                f"(all lookups use the original labels), but double-check "
+                f"this is intentional.",
+                UserWarning,
+            )
+
+        # Work from the ORIGINAL data so simultaneous/overlapping mappings
+        # (e.g. swapping 1 <-> 2) don't cascade into each other.
+        old_data = self.data
+        new_data = old_data.copy()
+        for old_val, new_val in relabel_dict.items():
+            new_data[old_data == old_val] = new_val
+        self.data = new_data
+
+        # Mirror the same mapping onto the index (labels not in the dict
+        # pass through unchanged).
+        if self.index is not None:
+            old_index = np.asarray(self.index)
+            new_index = np.array([relabel_dict.get(val, val) for val in old_index])
+            self.index = new_index
+
+        # Adjust values and update parcellation range after relabeling
+        self.adjust_values()
+        self.parc_range()
+
+        if rearrange:
+            self.rearrange()
+
+        return self
+
+    ######################################################################################################
+    def rename_regions(self, rename_dict: dict, rearrange: bool = False):
+        """
+        Rename regions in the parcellation.
+
+        Parameters
+        ----------
+        rename_dict : dict
+            Mapping {old_name: new_name}. Only names present as keys are
+            changed; everything else is left untouched.
+
+        rearrange : bool, optional
+            If True, rearrange the parcellation after renaming.
+            Default is False.
+
+        Returns
+        -------
+        self
+            Updates self.name in place, and returns self so calls can be
+            chained.
+        """
+        if not isinstance(rename_dict, dict):
+            raise TypeError("rename_dict must be a dict of {old_name: new_name}")
+
+        # Warn if a name appears both as a key and as a value (e.g. a swap
+        # like {"A": "B", "B": "A"}, or a chain like {"A": "B", "B": "C"}).
+        # This is not an error - the mapping still resolves correctly since
+        # we always read from the original names - but it's worth flagging
+        # since it's an easy source of unintended results.
+        overlap = set(rename_dict.keys()) & set(rename_dict.values())
+        if overlap:
+            warnings.warn(
+                f"rename_dict has name(s) that are both an old_name and a "
+                f"new_name: {sorted(overlap)}. This is handled correctly "
+                f"(all lookups use the original names), but double-check "
+                f"this is intentional.",
+                UserWarning,
+            )
+
+        # Work from the ORIGINAL names so simultaneous/overlapping mappings
+        # (e.g. swapping name A <-> name B) don't cascade into each other.
+        old_names = list(self.name)
+        new_names = [rename_dict.get(name, name) for name in old_names]
+        self.name = new_names
+
+        # Adjust values and update parcellation range after renaming
+        self.adjust_values()
+        self.parc_range()
+
+        if rearrange:
+            self.rearrange()
+
+        return self
 
     ######################################################################################################
     def rearrange(self, offset: int = 0):
