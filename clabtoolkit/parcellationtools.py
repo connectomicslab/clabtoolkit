@@ -1960,7 +1960,7 @@ class Parcellation:
     #####################################################################################################
     def apply_mask(
         self,
-        image_mask: str | Path | np.ndarray,
+        image_mask: "str | Path | np.ndarray | Parcellation",
         mask_codes: str | list | np.ndarray = None,
         invert: bool = False,
         fill: bool = False,
@@ -2047,16 +2047,20 @@ class Parcellation:
 
         # Apply masking
         if invert:
-            # Remove voxels where mask contains specified codes
+            # Remove voxels where mask contains specified codes. If filling, the
+            # area that was just excised is exactly what needs new labels grown
+            # into it, so keep it (not its complement) as the fill target.
+            fill_target = bool_mask.copy()
             self.data[bool_mask] = 0
-            bool_mask = ~bool_mask  # Invert for region growing
         else:
-            # Keep only voxels where mask contains specified codes
+            # Keep only voxels where mask contains specified codes. If filling,
+            # any label-less gaps inside that ROI are what needs growing.
             self.data[~bool_mask] = 0
+            fill_target = bool_mask
 
         # Optional region growing to fill the mask
         if fill:
-            self.data = cltimg.region_growing(self.data, bool_mask)
+            self.data = cltimg.region_growing(self.data, fill_target)
 
         # Adjust parcellation values
         self.adjust_values()
