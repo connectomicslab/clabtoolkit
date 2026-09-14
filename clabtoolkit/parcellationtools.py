@@ -1879,13 +1879,35 @@ class Parcellation:
         return [self.index[i] for i in indexes]
 
     #####################################################################################################
-    def labels_to_names(self, labels: int | list[int]) -> list[str]:
+    def labels_to_names(
+        self, labels: int | list[int] | np.ndarray | str | list[str]
+    ) -> list[str]:
         """
         Convert region labels to their corresponding names.
-        ...
+        The input labels can be integers, lists of integers, numpy arrays, strings, or lists of strings.
+        Strings will be converted to their corresponding labels using the parcellation's name-to-label mapping.
+
+        Parameters
+        ----------
+        labels : int, list of int, np.ndarray, str, or list of str
+            Region labels or names to convert to names. Strings will be converted
+            to their corresponding labels using the parcellation's name-to-label mapping.
+
+        Returns
+        -------
+        list of str
+            Corresponding region names for the given labels or names.
+
+        Examples
+        --------
+        >>> parc.labels_to_names(1)
+        ['ctx-lh-bankssts']
+        >>> parc.labels_to_names([1, 2])
+        ['ctx-lh-bankssts', 'ctx-rh-bankssts']
         """
-        if isinstance(labels, (int, np.integer)):
-            labels = [labels]
+
+        # Ensure code is a list of indices
+        labels = cltmisc.build_indices(labels)
 
         missing = [label for label in labels if label not in self.index]
         if missing:
@@ -1901,7 +1923,7 @@ class Parcellation:
     #####################################################################################################
     def get_voxels_by_code(
         self,
-        code: int | list[int] | np.ndarray,
+        code: int | list[int] | np.ndarray | str | list[str],
         all_voxels: bool = True,
     ) -> np.ndarray | dict[int, np.ndarray]:
         """
@@ -1909,8 +1931,8 @@ class Parcellation:
 
         Parameters
         ----------
-        code : int, list of int, or np.ndarray
-            Region code(s) to retrieve voxels for.
+        code : int | list[int] | np.ndarray | str | list[str]
+            Region code(s) or name(s) to retrieve voxels for.
 
         all_voxels : bool, optional
             If True (default), return a single flat array containing the label
@@ -1939,11 +1961,9 @@ class Parcellation:
         >>> parc.get_voxels_by_code([1, 2, 999], all_voxels=False)
         {1: array([[10, 20, 15], ...]), 2: array([[30, 40, 25], ...])}
         """
-        if isinstance(code, (int, np.integer)):
-            code = [code]
 
-        if isinstance(code, np.ndarray):
-            code = code.tolist()
+        # Ensure code is a list of indices
+        labels = cltmisc.build_indices(labels)
 
         if all_voxels:
             return self.data[np.isin(self.data, code)]
@@ -5511,6 +5531,7 @@ class RegionTimeSeries:
         # ------------------------------------------------------------------ #
         _border("╚", "═", "╝")
 
+    ###########################################################################################
     def show_content(
         self,
         show_private=False,
