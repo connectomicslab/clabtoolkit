@@ -40,6 +40,8 @@ class PointCloud:
         name (str): Name of the point cloud.
         affine (np.ndarray): Affine transformation matrix for the points.
         colortables (Dict): A dictionary to store colortable information for visualization.
+            The region names and region colors supplied at construction time are stored
+            in its "default" entry.
         point_data (Dict): A dictionary to store scalar data associated with each point.
     """
 
@@ -47,7 +49,8 @@ class PointCloud:
         self,
         points: np.ndarray | pd.DataFrame = None,
         affine: np.ndarray = None,
-        color: str | np.ndarray = "#BFBDBD",
+        region_colors: str | list | np.ndarray = "#BFBDBD",
+        region_names: str | list[str] = None,
         alpha: float = 1.0,
         name: str = "default",
     ) -> None:
@@ -63,15 +66,41 @@ class PointCloud:
             affine (np.ndarray, optional):
                 Affine transformation matrix for the points. Default is identity matrix.
 
-            color (str or np.ndarray, optional):
-                Color for the point cloud. Can be a hex string or RGB array.
-                Default is "#BFBDBD".
+            region_colors (str, list or np.ndarray, optional):
+                Color(s) for the regions of the point cloud. It can be a single color
+                (hex string or RGB array), or a list/array of colors. If more than one
+                color is supplied, the number of colors must match the number of points
+                (one region per point). Default is "#BFBDBD".
+
+            region_names (str or list of str, optional):
+                Name(s) of the regions. Its length must match the number of colors
+                supplied in region_colors. If None, the names are created automatically
+                as "region_1", "region_2", ... Default is None.
 
             alpha (float, optional):
                 Opacity value for the point cloud (0-1). Default is 1.0.
 
             name (str, optional):
                 Name of the point cloud. Default is "default".
+
+        Raises:
+        -------
+            ValueError:
+                If alpha is outside the range [0, 1], if the number of region names
+                does not match the number of region colors, or if the number of region
+                colors is neither 1 nor equal to the number of points.
+
+        Examples:
+        --------
+        >>> # Single color for the whole point cloud
+        >>> pc = PointCloud(points=np.random.rand(100, 3), region_colors="#FF0000")
+        >>>
+        >>> # One color and one name per point (e.g. region centroids)
+        >>> pc = PointCloud(
+        ...     points=centroids,
+        ...     region_colors=["#FF0000", "#00FF00"],
+        ...     region_names=["thalamus", "putamen"],
+        ... )
         """
 
         # Initialize attributes
@@ -91,15 +120,38 @@ class PointCloud:
         if not (0 <= alpha <= 1):
             raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
 
-        # Handle color input
-        color = cltcol.harmonize_colors(color, output_format="rgb") / 255
+        # Handle color input. Multiple colors mean multiple regions.
+        region_colors = (
+            cltcol.harmonize_colors(region_colors, output_format="rgb") / 255
+        )
+        n_regions = region_colors.shape[0]
 
-        tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
+        # Handle the region names. They are created automatically if not supplied.
+        if region_names is None:
+            region_names = [f"region_{i + 1}" for i in range(n_regions)]
+
+        elif isinstance(region_names, str):
+            region_names = [region_names]
+
+        else:
+            region_names = [str(reg_name) for reg_name in region_names]
+
+        if len(region_names) != n_regions:
+            raise ValueError(
+                f"The number of region names ({len(region_names)}) must match the "
+                f"number of region colors ({n_regions})"
+            )
+
+        tmp_ctable = cltcol.colors_to_table(
+            colors=region_colors,
+            alpha_values=alpha,
+            values=np.arange(1, n_regions + 1),
+        )
         tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
         self.colortables["default"] = {
-            "names": ["default"],
+            "names": region_names,
             "color_table": tmp_ctable,
             "lookup_table": None,  # Will be populated by _create_parcellation_colortable if needed
         }
@@ -127,8 +179,21 @@ class PointCloud:
             else:
                 raise ValueError("points must be a numpy array or pandas DataFrame")
 
-            # Initialize default point data
-            default = np.array(np.ones(len(self.coords)) * tmp_ctable[0, 4], dtype=int)
+            # Initialize default point data. A single region is assigned to all the
+            # points, otherwise each point belongs to its own region.
+            n_points = len(self.coords)
+            if n_regions == 1:
+                default = np.full(n_points, int(tmp_ctable[0, 4]), dtype=int)
+
+            elif n_regions == n_points:
+                default = np.array(tmp_ctable[:, 4], dtype=int)
+
+            else:
+                raise ValueError(
+                    f"The number of region colors ({n_regions}) must be 1 or equal to "
+                    f"the number of points ({n_points})"
+                )
+
             self.point_data["default"] = default
 
     ###############################################################################################
