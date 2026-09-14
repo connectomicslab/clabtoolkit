@@ -2,7 +2,6 @@ import copy
 import json
 import os
 import subprocess
-import sys
 import warnings
 from pathlib import Path
 
@@ -615,33 +614,7 @@ def get_voxel_size(affine: np.ndarray):
 ####################################################################################################
 def get_voxel_volume(affine: np.ndarray) -> float:
     """
-    Compute voxel dimensions from an affine matrix.
-
-    Parameters
-    ----------
-    affine : np.ndarray
-        4x4 affine transformation matrix from NIfTI header.
-
-    Returns
-    -------
-    tuple
-        Voxel sizes (voxel_x, voxel_y, voxel_z) in mm.
-
-    Examples
-    --------
-    >>> img = nib.load('image.nii.gz')
-    >>> vox_x, vox_y, vox_z = get_voxel_size(img.affine)
-    >>> print(f"Voxel size: {vox_x:.2f} x {vox_y:.2f} x {vox_z:.2f} mm")
-    """
-
-    voxel_x, voxel_y, voxel_z = get_voxel_size(affine)
-    return voxel_x * voxel_y * voxel_z
-
-
-####################################################################################################
-def get_center(affine: np.ndarray) -> tuple:
-    """
-    Compute voxel volume from NIfTI affine matrix.
+    Compute voxel volume from an affine matrix.
 
     Parameters
     ----------
@@ -651,13 +624,40 @@ def get_center(affine: np.ndarray) -> tuple:
     Returns
     -------
     float
-        Voxel volume in mm³.
+        Voxel volume in mm³ (the product of the three voxel dimensions).
 
     Examples
     --------
     >>> img = nib.load('image.nii.gz')
     >>> volume = get_voxel_volume(img.affine)
     >>> print(f"Voxel volume: {volume:.3f} mm³")
+    """
+
+    voxel_x, voxel_y, voxel_z = get_voxel_size(affine)
+    return voxel_x * voxel_y * voxel_z
+
+
+####################################################################################################
+def get_center(affine: np.ndarray) -> tuple:
+    """
+    Get the world-space origin (translation component) from a NIfTI affine matrix.
+
+    Parameters
+    ----------
+    affine : np.ndarray
+        4x4 affine transformation matrix from NIfTI header.
+
+    Returns
+    -------
+    tuple
+        (x, y, z) coordinates in mm of the world-space origin encoded in the
+        affine's translation column (i.e. the mm location of voxel (0, 0, 0)).
+
+    Examples
+    --------
+    >>> img = nib.load('image.nii.gz')
+    >>> origin = get_center(img.affine)
+    >>> print(f"Origin: {origin}")
     """
     return (affine[0, 3], affine[1, 3], affine[2, 3])
 
@@ -704,7 +704,7 @@ def get_vox_neighbors(
         Coordinates of the center voxel.
 
     neighborhood : str, optional
-        Neighborhood type: '6', '18', '26' for 3D or '4', '8' for 2D. Default is '26'.
+        Neighborhood type: '6', '12', '18', '26' for 3D or '4', '8' for 2D. Default is '26'.
 
     dims : str, optional
         Number of dimensions: '2' or '3'. Default is '3'.
@@ -740,7 +740,7 @@ def get_vox_neighbors(
     if dims == "3":
 
         # Check if it is a valid neighborhood
-        if neighborhood not in ["6", "18", "26"]:
+        if neighborhood not in ["6", "12", "18", "26"]:
             raise ValueError("The neighborhood type is not supported.")
 
         # Constructing the neighborhood
@@ -883,7 +883,8 @@ def crop_image_from_mask(
     Raises
     ------
     ValueError
-        If input parameters are invalid or files don't exist.
+        If input parameters are invalid, files don't exist, or the mask's
+        spatial shape doesn't match the input image's shape.
 
     Examples
     --------
@@ -904,7 +905,7 @@ def crop_image_from_mask(
 
     if isinstance(mask, str):
         if not os.path.exists(mask):
-            raise ValueError("The 'mask' parameter must be a string.")
+            raise ValueError(f"The mask file does not exist: {mask}")
         else:
             mask = nib.load(mask)
             mask_data = mask.get_fdata()
@@ -933,6 +934,16 @@ def crop_image_from_mask(
 
     # Get the destination shape
     img1_data = img1.get_fdata()
+
+    # The mask's spatial dimensions must match the image's - otherwise the
+    # multiplication below either raises an opaque broadcasting error or,
+    # worse, silently produces a wrong-sized/garbage result if the shapes
+    # happen to be broadcastable.
+    if mask_data.shape[:3] != img1_data.shape[:3]:
+        raise ValueError(
+            f"Mask spatial shape {mask_data.shape[:3]} does not match "
+            f"image spatial shape {img1_data.shape[:3]}."
+        )
 
     # Finding the minimum and maximum indexes for the mask
     tmask = np.isin(mask_data, st_codes)
@@ -1055,9 +1066,36 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str) -> str:
                 @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
             ).astype(int)
 
+            # Guard against transformed coordinates that fall outside img1's
+            # bounds - without this, mismatched affines/FOVs either raise a
+            # raw IndexError or, with negative indices, silently wrap around
+            # and corrupt the output.
+            in_bounds = (
+                (new_coords[0] >= 0)
+                & (new_coords[0] < img1_shape[0])
+                & (new_coords[1] >= 0)
+                & (new_coords[1] < img1_shape[1])
+                & (new_coords[2] >= 0)
+                & (new_coords[2] < img1_shape[2])
+            )
+            n_dropped = int(np.size(in_bounds) - np.sum(in_bounds))
+            if n_dropped > 0:
+                warnings.warn(
+                    f"{n_dropped} voxel(s) in volume {vol} mapped outside the "
+                    f"native image bounds and were dropped. Check that "
+                    f"'{in_image}' and '{native_image}' share a consistent "
+                    f"field of view.",
+                    stacklevel=2,
+                )
+
             # Fill the new image with the values of the voxels different from 0 on img2
-            new_data[new_coords[0], new_coords[1], new_coords[2], vol] = img2_data[
-                indices[:, 0], indices[:, 1], indices[:, 2], vol
+            new_data[
+                new_coords[0, in_bounds],
+                new_coords[1, in_bounds],
+                new_coords[2, in_bounds],
+                vol,
+            ] = img2_data[
+                indices[in_bounds, 0], indices[in_bounds, 1], indices[in_bounds, 2], vol
             ]
 
     elif len(img2_shape) == 3:
@@ -1073,10 +1111,35 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str) -> str:
             @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
         ).astype(int)
 
+        # Guard against transformed coordinates that fall outside img1's bounds
+        in_bounds = (
+            (new_coords[0] >= 0)
+            & (new_coords[0] < img1_shape[0])
+            & (new_coords[1] >= 0)
+            & (new_coords[1] < img1_shape[1])
+            & (new_coords[2] >= 0)
+            & (new_coords[2] < img1_shape[2])
+        )
+        n_dropped = int(np.size(in_bounds) - np.sum(in_bounds))
+        if n_dropped > 0:
+            warnings.warn(
+                f"{n_dropped} voxel(s) mapped outside the native image bounds "
+                f"and were dropped. Check that '{in_image}' and "
+                f"'{native_image}' share a consistent field of view.",
+                stacklevel=2,
+            )
+
         # Fill the new image with the values of the voxels different from 0 on img2
-        new_data[new_coords[0], new_coords[1], new_coords[2]] = img2_data[
-            indices[:, 0], indices[:, 1], indices[:, 2]
+        new_data[
+            new_coords[0, in_bounds], new_coords[1, in_bounds], new_coords[2, in_bounds]
+        ] = img2_data[
+            indices[in_bounds, 0], indices[in_bounds, 1], indices[in_bounds, 2]
         ]
+
+    else:
+        raise ValueError(
+            f"'{in_image}' must be a 3D or 4D image, got {len(img2_shape)}D."
+        )
 
     # Create a new Nifti image with the same affine and header as IM1
     new_img2 = nib.Nifti1Image(new_data, affine=img1_affine, header=img1.header)
@@ -1125,7 +1188,8 @@ def apply_multi_transf(
         Path to transformation files (supports affine and nonlinear).
 
     interp_order : int, optional
-        Interpolation method: 0=NearestNeighbor, 1=Linear, 2=BSpline, etc.
+        Interpolation method: 0=NearestNeighbor, 1=Linear, 2=BSpline, 3=CosineWindowedSinc,
+        4=WelchWindowedSinc, 5=HammingWindowedSinc, 6=LanczosWindowedSinc, 7=Welch.
         Default is 0.
 
     invert : bool, optional
@@ -1140,6 +1204,14 @@ def apply_multi_transf(
     overwrite : bool, optional
         overwrite recomputation if output exists. Default is False.
 
+    Raises
+    ------
+    ValueError
+        If interp_order is not one of the supported values (0-7).
+
+    FileNotFoundError
+        If the required spatial transformation file does not exist.
+
     Examples
     --------
     >>> # Apply transformation with nearest neighbor interpolation
@@ -1149,27 +1221,29 @@ def apply_multi_transf(
     ... )
     """
 
-    # Check if the path of out_basename exists
-    out_path = os.path.dirname(out_image)
+    interp_map = {
+        0: "NearestNeighbor",
+        1: "Linear",
+        2: "BSpline[3]",
+        3: "CosineWindowedSinc",
+        4: "WelchWindowedSinc",
+        5: "HammingWindowedSinc",
+        6: "LanczosWindowedSinc",
+        7: "Welch",
+    }
+    if interp_order not in interp_map:
+        raise ValueError(
+            f"interp_order must be one of {sorted(interp_map)}, got {interp_order}."
+        )
+    interp_cad = interp_map[interp_order]
+
+    # Check if the path of out_basename exists. os.path.dirname('') happens
+    # when out_image is a bare filename with no directory component, and
+    # os.makedirs('') raises FileNotFoundError - resolve to an absolute path
+    # first so out_path is never empty.
+    out_path = os.path.dirname(os.path.abspath(out_image))
     if not os.path.isdir(out_path):
         os.makedirs(out_path)
-
-    if interp_order == 0:
-        interp_cad = "NearestNeighbor"
-    elif interp_order == 1:
-        interp_cad = "Linear"
-    elif interp_order == 2:
-        interp_cad = "BSpline[3]"
-    elif interp_order == 3:
-        interp_cad = "CosineWindowedSinc"
-    elif interp_order == 4:
-        interp_cad = "WelchWindowedSinc"
-    elif interp_order == 5:
-        interp_cad = "HammingWindowedSinc"
-    elif interp_order == 6:
-        interp_cad = "LanczosWindowedSinc"
-    elif interp_order == 7:
-        interp_cad = "Welch"
 
     ######## -- Registration to the template space  ------------ #
     # Creating spatial transformation folder
@@ -1201,8 +1275,12 @@ def apply_multi_transf(
     if not os.path.isfile(out_image) or overwrite:
 
         if not os.path.isfile(affine_transf):
-            print("The spatial transformation file does not exist.")
-            sys.exit()
+            # A bare sys.exit() here would kill the whole process/kernel and
+            # can't be caught by a caller's try/except - raise instead so
+            # this behaves like a normal library function.
+            raise FileNotFoundError(
+                f"The spatial transformation file does not exist: {affine_transf}"
+            )
 
         if os.path.isfile(invnl_transf) and os.path.isfile(nl_transf):
             if invert:
@@ -1388,7 +1466,8 @@ def merge_to_4d(
     -------
     merged_img : nibabel.Nifti1Image
         A 4D NIfTI image where the 4th dimension is the concatenation of all
-        input volumes in the order provided.
+        input volumes in the order provided. Returned in both cases,
+        regardless of whether output_path was given.
 
     metadata : dict or None
         Populated whenever any sidecar is detected; None otherwise. May
@@ -1646,10 +1725,11 @@ def merge_to_4d(
                     json.dump(metadata["json"], f, indent=2)
                 print(f"Saved merged JSON sidecar:\n  {json_out}")
 
-        return output_path, metadata
-
-    else:
-        return merged_img.data, metadata
+    # The docstring promises (merged_img: nibabel.Nifti1Image, metadata) in
+    # both cases - `nib.Nifti1Image` has no `.data` attribute, so the old
+    # `output_path is None` branch (`return merged_img.data, metadata`) was
+    # a guaranteed AttributeError. Return the image object itself, always.
+    return merged_img, metadata
 
 
 #####################################################################################################
@@ -1771,7 +1851,6 @@ def create_spams(
                             )
 
     sts_ids = lut_dict["index"]
-    lut_dict["name"]
     sts_colors = lut_dict["color"]
     sts_colors = cltcol.multi_hex2rgb(sts_colors)
 
@@ -1827,9 +1906,9 @@ def create_spams(
 
 ####################################################################################################
 def spams2maxprob(
-    spam_image: str,
+    spam_image: str | Path,
     prob_thresh: float = 0.05,
-    vol_indexes: np.array = None,
+    vol_indexes: np.ndarray | list | str = None,
     maxp_name: str = None,
 ):
     """
@@ -1841,7 +1920,7 @@ def spams2maxprob(
 
     Parameters
     ----------
-    spam_image : str
+    spam_image : str or Path
         Path to 4D SPAM image file with probability maps for each region.
 
     prob_thresh : float, optional
@@ -1893,15 +1972,25 @@ def spams2maxprob(
     >>> print(f"Max label: {maxprob_array.max()}")
     """
 
+    # Check if the spam_image exists
+    if isinstance(spam_image, Path):
+        spam_image = str(spam_image)
+
+    if not os.path.exists(spam_image):
+        raise FileNotFoundError(f"SPAM image file not found: {spam_image}")
+
+    # Load the SPAM image using nibabel
     spam_img = nib.load(spam_image)
     affine = spam_img.affine
     spam_vol = spam_img.get_fdata()
 
+    # Apply probability threshold and clamp values between 0 and 1
     spam_vol[spam_vol < prob_thresh] = 0
     spam_vol[spam_vol > 1] = 1
 
     if vol_indexes is not None:
-        # Creating the maxprob
+        vol_indexes = cltmisc.build_indices(vol_indexes)
+        vol_indexes = np.array(vol_indexes)
 
         # I want to find the complementary indexes to vol_indexes
         all_indexes = np.arange(0, spam_vol.shape[3])
@@ -1912,7 +2001,9 @@ def spams2maxprob(
         diff_elements = set1.symmetric_difference(set2)
 
         # Convert the result back to a NumPy array if needed
-        diff_array = np.array(list(diff_elements))
+        diff_array = np.array(list(diff_elements), dtype=int)
+
+        diff_array = np.array(list(diff_elements), dtype=int)
         spam_vol[:, :, :, diff_array] = 0
         # array_data = np.delete(spam_vol, diff_array, 3)
 
@@ -1932,9 +2023,10 @@ def spams2maxprob(
 
 #####################################################################################################
 def simulate_image(
-    input_image: str | nib.Nifti1Image,
+    reference: "str | Path | nib.Nifti1Image | cltparc.Parcellation | tuple | list | np.ndarray",
     simulated_image: str = None,
-    n_volumes: int = 3,
+    affine: np.ndarray | None = None,
+    n_volumes: int | None = None,
     distribution: str = "normal",
     random_seed: int | None = None,
     **dist_params,
@@ -1942,30 +2034,59 @@ def simulate_image(
     """
     Generate a simulated image with random values at non-zero voxel positions.
 
-    This function creates a new NIfTI image where non-zero voxels from the input
-    image are filled with random values following a specified statistical distribution.
-    The output preserves the spatial dimensions, affine transformation, and header
-    information from the input image.
+    This function creates a new NIfTI image where non-zero voxels from the
+    reference are filled with random values following a specified statistical
+    distribution. The output preserves the spatial dimensions, affine
+    transformation, and header information from the reference.
 
-    This is useful for simulating functional or structural images based on a mask
-    or anatomical image, allowing for controlled random value generation in specific
-    regions of interest.
+    This is useful for simulating functional or structural images based on a mask,
+    parcellation, anatomical image, or bare geometry, allowing for controlled
+    random value generation in specific regions of interest.
 
     Parameters
     ----------
-    input_image : str or nibabel.Nifti1Image
-        Input image used as a mask. Can be either a file path to a NIfTI image
-        or a nibabel Nifti1Image object.
+    reference : str, Path, nibabel.Nifti1Image, Parcellation, tuple, list, or np.ndarray
+        Source used to define the volume's mask, shape, and (unless overridden by
+        `affine`) affine. Can be:
+        - str or Path: file path to a NIfTI image, loaded and used as a mask.
+        - nibabel.Nifti1Image: used directly as a mask.
+        - Parcellation: its `.data` is used as the mask and its `.affine` as the
+        affine (unless `affine` is explicitly given).
+        - tuple, list, or 1-D np.ndarray of length 3 or 4: a volume *shape*
+        rather than real data - (dimx, dimy, dimz) or (dimx, dimy, dimz,
+        n_volumes). Since there is no real anatomy to mask, every voxel is
+        treated as "in mask". A length-4 shape implies `n_volumes` from its
+        last value unless `n_volumes` is explicitly given (see below).
+
+        If the reference itself is 4D (a real 4D file, Nifti1Image, or
+        Parcellation whose `.data` happens to be 4D), the mask used is
+        spatial/3D: a voxel counts as "in mask" if it is non-zero in ANY of
+        the reference's volumes. This 3D mask is then applied uniformly to
+        every volume of the *output*, whose number of volumes is controlled
+        solely by `n_volumes` (see below) - independent of how many volumes
+        the reference itself had.
 
     simulated_image : str
         Output file path where the simulated image will be saved. Must include
         the .nii or .nii.gz extension. If None, the function will generate a
-        default name based on the input image.
+        default name based on the reference.
 
-    n_volumes : int, default=3
+    affine : np.ndarray, optional
+        4x4 affine transformation matrix. If given, it always takes priority
+        over any affine implied by `reference` (a loaded file's affine, a
+        Parcellation's affine, or the default centered affine built for a
+        shape reference). If None and `reference` is a shape, a diagonal
+        affine centered on the volume is built automatically.
+
+    n_volumes : int, optional
         Number of volumes in the output image:
-        - If n_volumes == 1: creates a 3D image
-        - If n_volumes > 1: creates a 4D image with n_volumes timepoints
+        - If n_volumes == 1: creates a 3D image, always collapsed to pure
+        spatial dimensions even if the reference itself was 4D.
+        - If n_volumes > 1: creates a 4D image with n_volumes timepoints.
+        - If None (default): uses 3, unless `reference` is a length-4 shape,
+        in which case its last value is used instead. If both a length-4
+        shape and an explicit n_volumes are given and they disagree, the
+        explicit n_volumes wins and a warning is raised.
 
     distribution : str, default='normal'
         Statistical distribution for random value generation. Supported options:
@@ -1985,23 +2106,24 @@ def simulate_image(
     Returns
     -------
     nibabel.Nifti1Image
-        The simulated image object with the same spatial properties as input.
+        The simulated image object with the same spatial (3D) properties as
+        the reference, and n_volumes volumes.
 
     Raises
     ------
     FileNotFoundError
-        If input_image path does not exist.
+        If reference is a path that does not exist.
 
     ValueError
-        If input_image is not a valid type, distribution is unsupported,
+        If reference is not a valid type/shape, distribution is unsupported,
         n_volumes is invalid, or output directory doesn't exist.
 
     RuntimeError
-        If no non-zero voxels are found in the input image.
+        If no non-zero voxels are found in the reference.
 
     Examples
     --------
-    >>> # Create 3D simulation with normal distribution
+    >>> # Create 3D simulation with normal distribution, from a real file
     >>> sim_img = simulate_image(
     ...     'brain_mask.nii.gz',
     ...     'output_3d.nii.gz',
@@ -2022,18 +2144,39 @@ def simulate_image(
     ...     high=100
     ... )
 
+    >>> # From a Parcellation object, using its own affine
+    >>> sim_img = simulate_image(parc, 'output.nii.gz', n_volumes=5)
+
+    >>> # From a shape only - no real anatomy, every voxel gets random values
+    >>> sim_img = simulate_image((64, 64, 40), 'output.nii.gz', n_volumes=20)
+
+    >>> # A length-4 shape implies n_volumes from its last value
+    >>> sim_img = simulate_image((64, 64, 40, 20), 'output.nii.gz')
+
+    >>> # Shape with a custom affine
+    >>> sim_img = simulate_image(
+    ...     (64, 64, 40), 'output.nii.gz', affine=my_affine, n_volumes=1
+    ... )
+
+    >>> # A real 4D reference, but requesting a single 3D output volume -
+    >>> # the mask is "non-zero in any of the reference's volumes"
+    >>> sim_img = simulate_image('fmri_4d.nii.gz', 'output_3d.nii.gz', n_volumes=1)
+
     Notes
     -----
-    - Only voxels with non-zero values in the input image will contain random values
+    - Only voxels with non-zero values in the reference will contain random values
     - All other voxels remain zero in the output
-    - The function preserves the input image's affine transformation and header
+    - When reference is a real image/Parcellation, the function preserves its
+    affine transformation and header, unless `affine` is explicitly given
+    - When reference is a shape, there is no real header/anatomy to preserve;
+    a default header is generated and every voxel is treated as "in mask"
+    - The output is always shaped from reference's spatial (x, y, z) dimensions
+    plus n_volumes - a 4D reference does not force a 4D output, and a 3D
+    reference does not prevent a multi-volume output
     - Output file extension should be .nii or .nii.gz
     """
 
-    # Input validation
-    if not isinstance(n_volumes, int) or n_volumes < 1:
-        raise ValueError("n_volumes must be a positive integer")
-
+    # Distribution validation up front (independent of reference type)
     if distribution not in ["normal", "uniform", "exponential"]:
         raise ValueError(
             f"Unsupported distribution '{distribution}'. "
@@ -2044,21 +2187,78 @@ def simulate_image(
     if random_seed is not None:
         np.random.seed(random_seed)
 
-    # Load and validate input image
-    if isinstance(input_image, str):
-        if not os.path.exists(input_image):
-            raise FileNotFoundError(f"Input image file not found: {input_image}")
-        try:
-            input_img = nib.load(input_image)
-        except Exception as e:
-            raise ValueError(f"Failed to load input image: {e}") from e
+    # --- Resolve reference into a working nib.Nifti1Image, and (for a
+    #     shape reference) any n_volumes implied by a 4th shape element ---
+    implied_n_volumes = None
 
-    elif isinstance(input_image, nib.Nifti1Image):
-        input_img = input_image
+    if isinstance(reference, (str, Path)):
+        reference = str(reference)
+        if not os.path.exists(reference):
+            raise FileNotFoundError(f"Reference image file not found: {reference}")
+        try:
+            input_img = nib.load(reference)
+        except Exception as e:
+            raise ValueError(f"Failed to load reference image: {e}") from e
+
+    elif isinstance(reference, nib.Nifti1Image):
+        input_img = reference
+
+    elif isinstance(reference, cltparc.Parcellation):
+        input_img = nib.Nifti1Image(reference.data.astype(np.float32), reference.affine)
+
+    elif isinstance(reference, (tuple, list)) or (
+        isinstance(reference, np.ndarray) and reference.ndim == 1
+    ):
+        shape = tuple(int(s) for s in reference)
+        if len(shape) not in (3, 4):
+            raise ValueError(
+                f"When given as a shape, reference must have length 3 "
+                f"(dimx, dimy, dimz) or 4 (dimx, dimy, dimz, n_volumes), "
+                f"got length {len(shape)}: {shape}."
+            )
+        if not all(s > 0 for s in shape):
+            raise ValueError(
+                f"All shape values must be positive integers, got {shape}."
+            )
+
+        spatial_shape_in = shape[:3]
+        if len(shape) == 4:
+            implied_n_volumes = shape[3]
+
+        # No real anatomy to derive a mask from - every voxel is "in mask".
+        default_affine = np.eye(4)
+        center = np.array(spatial_shape_in) // 2
+        default_affine[:3, 3] = -center
+
+        input_img = nib.Nifti1Image(
+            np.ones(spatial_shape_in, dtype=np.float32),
+            affine if affine is not None else default_affine,
+        )
+
     else:
         raise ValueError(
-            "input_image must be a file path (str) or nibabel.Nifti1Image object"
+            "reference must be a file path (str/Path), nibabel.Nifti1Image, "
+            "Parcellation, or a shape given as a tuple/list/np.ndarray of "
+            f"length 3 or 4 (got {type(reference)})."
         )
+
+    # --- Explicit affine always wins over whatever reference implied ---
+    if affine is not None and not np.array_equal(input_img.affine, affine):
+        input_img = nib.Nifti1Image(input_img.get_fdata(), affine, input_img.header)
+
+    # --- Resolve n_volumes: explicit > shape-implied > default (3) ---
+    if n_volumes is None:
+        n_volumes = implied_n_volumes if implied_n_volumes is not None else 3
+    elif implied_n_volumes is not None and n_volumes != implied_n_volumes:
+        warnings.warn(
+            f"reference's shape implies n_volumes={implied_n_volumes}, but "
+            f"n_volumes={n_volumes} was explicitly given. Using the explicit "
+            f"value.",
+            stacklevel=2,
+        )
+
+    if not isinstance(n_volumes, int) or n_volumes < 1:
+        raise ValueError("n_volumes must be a positive integer")
 
     # Validate simulated_image path. If None, create a temporary filename
     if simulated_image is None:
@@ -2081,13 +2281,23 @@ def simulate_image(
     affine = input_img.affine.copy()
     header = input_img.header.copy()
     original_shape = input_data.shape
+    spatial_shape = original_shape[:3] if len(original_shape) >= 3 else original_shape
 
-    # Create mask for non-zero voxels
-    mask = input_data != 0
+    # Create mask for non-zero voxels. The mask must always be spatial/3D so
+    # it can be applied uniformly to every generated output volume below -
+    # if the reference itself is 4D, a voxel counts as "in mask" if it is
+    # non-zero in ANY of the reference's volumes. (Previously, a 4D
+    # reference's mask stayed 4D, which broke n_volumes>1 outputs via a
+    # shape-mismatched boolean index, and n_volumes==1 outputs silently
+    # stayed 4D instead of collapsing to pure spatial dimensions.)
+    if input_data.ndim == 4:
+        mask = np.any(input_data != 0, axis=3)
+    else:
+        mask = input_data != 0
     n_nonzero_voxels = np.sum(mask)
 
     if n_nonzero_voxels == 0:
-        raise RuntimeError("No non-zero voxels found in input image")
+        raise RuntimeError("No non-zero voxels found in reference image")
 
     # Distribution parameter validation and random value generation
     def _generate_random_values(size: int) -> np.ndarray:
@@ -2122,18 +2332,17 @@ def simulate_image(
         except Exception as e:
             raise ValueError(f"Error generating random values: {e}") from e
 
-    # Create simulated data array
+    # Create simulated data array - always built from spatial_shape (3D), so
+    # the output's dimensionality is governed purely by n_volumes rather
+    # than by whatever dimensionality the reference itself happened to have.
     if n_volumes == 1:
         # 3D output
-        simulated_data = np.zeros(original_shape, dtype=np.float32)
+        simulated_data = np.zeros(spatial_shape, dtype=np.float32)
         simulated_data[mask] = _generate_random_values(n_nonzero_voxels)
-        output_shape = original_shape
+        output_shape = spatial_shape
 
     else:
         # 4D output
-        spatial_shape = (
-            original_shape[:3] if len(original_shape) >= 3 else original_shape
-        )
         output_shape = spatial_shape + (n_volumes,)
         simulated_data = np.zeros(output_shape, dtype=np.float32)
 
@@ -2143,18 +2352,18 @@ def simulate_image(
                 n_nonzero_voxels
             )
 
-    # Update header for correct dimensionality
+    # Update header for correct dimensionality. Note: nib.Nifti1Image below
+    # recomputes the header's dim fields from the array actually passed to
+    # it, so this is mostly a defensive no-op - kept for header metadata
+    # consistency in case any downstream code reads header_copy directly.
     header_copy = header.copy()
     key_value = next(
         k for k in ["dim", "dims"] if k in header_copy.structarr.dtype.names
     )
 
-    if n_volumes == 1 and len(original_shape) > 3:
-        # Convert from 4D+ to 3D
+    if n_volumes == 1:
         header_copy.structarr[key_value][4] = 1
-
-    elif n_volumes > 1:
-        # Ensure 4D header
+    else:
         header_copy.structarr[key_value][3] = n_volumes
 
     # Create output image
@@ -2167,7 +2376,7 @@ def simulate_image(
 
     # Log summary information
     print("Successfully created simulated image:")
-    print(f"  Input shape: {original_shape}")
+    print(f"  Reference shape: {original_shape}")
     print(f"  Output shape: {output_shape}")
     print(f"  Non-zero voxels: {n_nonzero_voxels:,}")
     print(f"  Distribution: {distribution}")
@@ -2178,8 +2387,8 @@ def simulate_image(
 
 #####################################################################################################
 def delete_volumes_from_4D_images(
-    in_image: str,
-    out_image: str,
+    in_image: str | Path,
+    out_image: str | Path,
     vols_to_delete: list[int | tuple | list | str | np.ndarray] = None,
     overwrite: bool = False,
 ) -> tuple[str, list[int]]:
@@ -2193,11 +2402,11 @@ def delete_volumes_from_4D_images(
 
     Parameters
     ----------
-    in_image : str
+    in_image : str | Path
         Path to the input 4D NIfTI image file (.nii or .nii.gz).
         The file must exist and be a valid 4D image.
 
-    out_image : str
+    out_image : str | Path
         Path where the output 4D image will be saved. The directory must exist.
         If the file already exists, use `overwrite=True` to replace it.
 
@@ -2328,6 +2537,12 @@ def delete_volumes_from_4D_images(
     >>> # This removes: [0,1,2,5,10,12,14,20,21,22,50]
 
     """
+
+    if isinstance(in_image, Path):
+        in_image = str(in_image)
+
+    if isinstance(out_image, Path):
+        out_image = str(out_image)
 
     # Check if input file exists
     if not os.path.isfile(in_image):
@@ -2757,8 +2972,11 @@ def create_spams_from_volume(
     if not isinstance(indiv_parc, np.ndarray) or indiv_parc.ndim != 4:
         raise ValueError("indiv_parc must be a 4D numpy array (X, Y, Z, N).")
 
+    # np.int64/np.int32 (e.g. from np.unique(...), a common source of sts_ids)
+    # are NOT instances of Python's built-in int, so isinstance(id, int)
+    # alone would wrongly reject perfectly valid numpy-integer input.
     if not isinstance(sts_ids, (list, np.ndarray)) or not all(
-        isinstance(id, int) for id in sts_ids
+        isinstance(id, (int, np.integer)) for id in sts_ids
     ):
         raise ValueError("sts_ids must be a list or numpy array of integers.")
 
@@ -2847,7 +3065,7 @@ def spams2maxprob_from_volume(
         diff_elements = set1.symmetric_difference(set2)
 
         # Convert the result back to a NumPy array if needed
-        diff_array = np.array(list(diff_elements))
+        diff_array = np.array(list(diff_elements), dtype=int)
         spam_vol[:, :, :, diff_array] = 0
         # array_data = np.delete(spam_vol, diff_array, 3)
 
@@ -3623,4 +3841,4 @@ def dilate_mm(
 
     dilated = binary_dilation(binary_array, structure=structure)
 
-    return dilated
+    return dilated.astype(bool)
