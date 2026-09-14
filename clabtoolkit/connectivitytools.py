@@ -42,7 +42,7 @@ class Connectome:
     #################################################################################
     def __init__(
         self,
-        data: np.ndarray | str | Path | None = None,
+        matrix: np.ndarray | str | Path | None = None,
         name: str | None = None,
         region_coords: np.ndarray | None = None,
         region_names: list[str] | None = None,
@@ -56,7 +56,7 @@ class Connectome:
 
         Parameters:
         -----------
-        data : np.ndarray, str, Path, or None
+        matrix : np.ndarray, str, Path, or None
             Can be:
             - np.ndarray: Connectivity matrix (n_regions x n_regions)
             - str or Path: Path to HDF5 file to load
@@ -91,26 +91,28 @@ class Connectome:
         self.type = connectivity_type
 
         # Handle different input types for data
-        matrix = None
         load_from_file = False
+        filepath = None
 
-        if data is not None:
-            if isinstance(data, (str, Path)):
+        if matrix is not None:
+            if isinstance(matrix, (str, Path)):
                 # Load from file
                 load_from_file = True
-                filepath = Path(data)
+                filepath = Path(matrix)
 
                 # Set default name from filename if not provided
                 if name is None:
                     name = filepath.stem
 
-            elif isinstance(data, np.ndarray):
-                # Use as connectivity matrix
-                matrix = data
+                matrix = None
+
+            elif isinstance(matrix, np.ndarray):
+                # Use as connectivity matrix - nothing to transform here
+                pass
 
             else:
                 raise TypeError(
-                    f"data must be np.ndarray, str, Path, or None. Got {type(data)}"
+                    f"The input matrix must be np.ndarray, str, Path, or None. Got {type(matrix)}"
                 )
 
         self.name = name
@@ -173,11 +175,6 @@ class Connectome:
         # Load from file if specified
         if load_from_file:
             self.load_h5(filepath)
-
-    # BUG FIX 1: Removed the @property for n_regions.
-    # The original property unconditionally called `return self.n_regions`, causing
-    # infinite recursion because the property shadowed the instance attribute set in
-    # __init__.  n_regions is a plain instance attribute; no property is needed.
 
     #################################################################################
     @staticmethod
@@ -431,8 +428,6 @@ class Connectome:
 
         matrix = np.loadtxt(filename, delimiter=",")
 
-        # BUG FIX 6: validate squareness, matching __init__'s behavior for
-        # matrices supplied directly as np.ndarray.
         if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
             raise ValueError(
                 f"CSV must contain a square connectivity matrix, got shape {matrix.shape}"
@@ -489,10 +484,6 @@ class Connectome:
         else:
             self.name = filename.stem
 
-        # BUG FIX 2: this used to write to a separate `self.connectivity_type`
-        # attribute that nothing else in the class reads. The rest of the class
-        # (get_info, __repr__, threshold, copy, load_h5, save_h5, ...) all use
-        # `self.type`, so that's what must be set here too.
         self.type = connectivity_type if connectivity_type is not None else "unknown"
 
     #################################################################################
@@ -541,10 +532,6 @@ class Connectome:
                         stacklevel=2,
                     )
 
-                # BUG FIX 2 (h5): Added "region_colors" (the key used by save_h5) to the
-                # search tuple, and grouped it with "gmcolors" since both store hex
-                # strings.  The original code only looked for "gmcolors" and "colors",
-                # so connectomes saved by save_h5 could never reload their colors.
                 for key in ("gmcolors", "region_colors", "colors"):
                     if key in data_group:
                         colors_data = data_group[key][:]
@@ -726,10 +713,7 @@ class Connectome:
         --------
         Optional[list[int]] : List of region indices or None
         """
-        # BUG FIX 3: previously returned self.region_indices (plural), an
-        # attribute that was never set anywhere else in the class (it's
-        # self.region_index, singular, everywhere else). This now reads/writes
-        # the same attribute the rest of the class relies on.
+
         return self.region_index
 
     #################################################################################
@@ -775,8 +759,7 @@ class Connectome:
         indices : list[int] | np.ndarray
             List or array of region indices
         """
-        # BUG FIX 3 (continued): unified with self.region_index and normalized
-        # via _normalize_region_index so the stored type is always list[int].
+
         n = self.n_regions if self.matrix is not None else None
         self.region_index = self._normalize_region_index(indices, n)
 
@@ -833,8 +816,7 @@ class Connectome:
             of colors/names/index, or an already-loaded ColorTableLoader.
         """
         if isinstance(filename, dict):
-            # BUG FIX 1: this referenced an undefined `col_dict` (NameError).
-            # It must read from `filename`, the dict actually passed in.
+
             colors = filename["color"]
             names = filename["name"]
             index = filename.get("index")
@@ -1041,11 +1023,8 @@ class Connectome:
         np.fill_diagonal(matrix_thresh, 0)
 
         if copy:
-            # BUG FIX 3 (orig): was passing `colors=` which is not a valid __init__ parameter;
-            # corrected to `region_colors=` throughout threshold(), get_subnetwork(),
-            # and copy().
             return Connectome(
-                data=matrix_thresh,
+                matrix=matrix_thresh,
                 name=self.name,
                 region_coords=(
                     self.region_coords.copy()
@@ -1098,12 +1077,6 @@ class Connectome:
         # Extract subnetwork data
         sub_matrix = self.matrix[np.ix_(idx, idx)]
         sub_coords = self.region_coords[idx] if self.region_coords is not None else None
-        # BUG FIX 7: self.region_colors can be a plain list of hex strings
-        # (harmonize_colors' output whenever colors were explicitly set/loaded)
-        # rather than an ndarray, and a plain list doesn't support fancy/array
-        # indexing (self.region_colors[idx] raises TypeError). Same class of bug
-        # as BUG FIX 5 for region_index — index with a comprehension when it's a
-        # list, and fall back to array indexing when it's already an ndarray.
         sub_colors = (
             None
             if self.region_colors is None
@@ -1118,9 +1091,7 @@ class Connectome:
             if self.region_names is not None
             else None
         )
-        # BUG FIX 5: self.region_index is now a plain list[int], which doesn't
-        # support fancy/array indexing (self.region_index[idx] would raise
-        # TypeError). Index it with a comprehension instead.
+
         sub_index = (
             [self.region_index[i] for i in idx]
             if self.region_index is not None
@@ -1128,9 +1099,8 @@ class Connectome:
         )
 
         if copy:
-            # BUG FIX 3 (orig, continued): corrected `colors=` -> `region_colors=`
             return Connectome(
-                data=sub_matrix,
+                matrix=sub_matrix,
                 name=f"{self.name}_subnetwork" if self.name else "subnetwork",
                 region_coords=sub_coords,
                 region_colors=sub_colors,
@@ -1159,9 +1129,8 @@ class Connectome:
         Connectome
             Deep copy of the Connectome
         """
-        # BUG FIX 3 (orig, continued): corrected `colors=` -> `region_colors=`
         return Connectome(
-            data=self.matrix.copy() if self.matrix is not None else None,
+            matrix=self.matrix.copy() if self.matrix is not None else None,
             name=self.name,
             region_coords=(
                 self.region_coords.copy() if self.region_coords is not None else None
@@ -1390,8 +1359,6 @@ class Connectome:
 
         # Add labels if requested
         if show_labels:
-            # BUG FIX 4: was calling self.get_roi_names() which does not exist;
-            # corrected to self.get_region_names()
             region_names = self.get_region_names()
 
             # Create labels dictionary
@@ -1634,9 +1601,8 @@ class Connectome:
         if name is None:
             name = f"synthetic_{method}_{n_regions}"
 
-        # __init__ fills in default names/colors when these are None
         return cls(
-            data=matrix,
+            matrix=matrix,
             name=name,
             region_coords=region_coords,
             region_names=region_names,
@@ -1736,8 +1702,6 @@ class Connectome:
         # Get colors (use provided or generate defaults)
         colors = self.get_region_colors()
 
-        # BUG FIX 4 (continued): was calling self.get_roi_names() which does not exist;
-        # corrected to self.get_region_names()
         region_names = self.get_region_names()
 
         # Add nodes (brain regions)
@@ -1873,7 +1837,6 @@ class Connectome:
         ║   Region index:   ✔  (84 entries)                              ║
         ╚════════════════════════════════════════════════════════════════╝
         """
-        import numpy as np
 
         def print_line(content, width=64):
             print(f"║{content.ljust(width)}║")
