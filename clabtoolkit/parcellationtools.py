@@ -1753,27 +1753,66 @@ class Parcellation:
         return [self.name[i] for i in indexes]
 
     #####################################################################################################
-    def get_voxels_by_code(self, code: int | list[int]) -> np.ndarray:
+    def get_voxels_by_code(
+        self,
+        code: int | list[int] | np.ndarray,
+        all_voxels: bool = True,
+    ) -> np.ndarray | dict[int, np.ndarray]:
         """
         Get voxels corresponding to the specified region code(s).
 
         Parameters
         ----------
-        code : int or list of int
+        code : int, list of int, or np.ndarray
             Region code(s) to retrieve voxels for.
+
+        all_voxels : bool, optional
+            If True (default), return a single flat array containing the label
+            value of every voxel matching any of the requested codes (voxels
+            from different codes are merged together — the original behavior).
+            If False, return a dictionary mapping each requested code that is
+            actually present in the data to an (N, 3) array of its voxel
+            coordinates (i, j, k). Codes not present in the data are simply
+            omitted from the dictionary — no error is raised for missing codes.
 
         Returns
         -------
-        np.ndarray
-            Array of voxels corresponding to the specified code(s).
+        np.ndarray or dict of {int : np.ndarray}
+            If all_voxels is True: 1-D array of label values for every matching
+            voxel. If all_voxels is False: dictionary of {code: voxel_coords}
+            for the codes that exist, where voxel_coords has shape
+            (n_voxels_for_that_code, 3).
+
+        Examples
+        --------
+        >>> # Flat array of matching voxel values (original behavior)
+        >>> parc.get_voxels_by_code([1, 2])
+        array([1, 1, 1, ..., 2, 2, 2])
+        >>>
+        >>> # Per-region voxel coordinates, existing codes only
+        >>> parc.get_voxels_by_code([1, 2, 999], all_voxels=False)
+        {1: array([[10, 20, 15], ...]), 2: array([[30, 40, 25], ...])}
         """
-        if isinstance(code, int):
+        if isinstance(code, (int, np.integer)):
             code = [code]
 
-        return self.data[np.isin(self.data, code)]
+        if isinstance(code, np.ndarray):
+            code = code.tolist()
+
+        if all_voxels:
+            return self.data[np.isin(self.data, code)]
+
+        present_codes = set(np.unique(self.data).tolist())
+        existing_codes = [c for c in code if c in present_codes]
+
+        return {c: np.argwhere(self.data == c) for c in existing_codes}
 
     #####################################################################################################
-    def get_voxels_by_name(self, names: str | list[str]) -> np.ndarray:
+    def get_voxels_by_name(
+        self,
+        names: str | list[str],
+        all_voxels: bool = True,
+    ) -> np.ndarray | dict[str, np.ndarray]:
         """
         Get voxels corresponding to the specified region name(s).
 
@@ -1782,16 +1821,50 @@ class Parcellation:
         names : str or list of str
             Region name(s) to retrieve voxels for.
 
+        all_voxels : bool, optional
+            If True (default), return a single flat array containing the label
+            value of every voxel matching any of the specified names (voxels
+            from different regions are merged together — the original behavior).
+            If False, return a dictionary mapping each matched region name to
+            an (N, 3) array of its voxel coordinates (i, j, k). Only names that
+            actually match a region present in the data are included — no error
+            is raised for names that don't match anything.
+
         Returns
         -------
-        np.ndarray
-            Array of voxels corresponding to the specified name(s).
+        np.ndarray or dict of {str : np.ndarray}
+            If all_voxels is True: 1-D array of label values for every matching
+            voxel. If all_voxels is False: dictionary of {name: voxel_coords}
+            for the region names that exist, where voxel_coords has shape
+            (n_voxels_for_that_region, 3).
+
+        Examples
+        --------
+        >>> # Flat array of matching voxel values (original behavior)
+        >>> parc.get_voxels_by_name(['bankssts'])
+        array([1, 1, 1, ...])
+        >>>
+        >>> # Per-region voxel coordinates, existing names only
+        >>> parc.get_voxels_by_name(['bankssts', 'not-a-real-region'], all_voxels=False)
+        {'ctx-lh-bankssts': array([[10, 20, 15], ...])}
         """
         if isinstance(names, str):
             names = [names]
 
-        codes = self.names_to_labels(names)
-        return self.get_voxels_by_code(codes)
+        indexes = cltmisc.get_indexes_by_substring(self.name, names)
+        codes = [self.index[i] for i in indexes]
+        matched_names = [self.name[i] for i in indexes]
+
+        if all_voxels:
+            return self.get_voxels_by_code(codes)
+
+        voxel_dict_by_code = self.get_voxels_by_code(codes, all_voxels=False)
+
+        return {
+            name: voxel_dict_by_code[code]
+            for name, code in zip(matched_names, codes)
+            if code in voxel_dict_by_code
+        }
 
     #####################################################################################################
     def remove_by_code(
