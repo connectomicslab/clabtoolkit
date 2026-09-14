@@ -2237,7 +2237,7 @@ class Parcellation:
     ####################################################################################################
     def mask_image(
         self,
-        image_2mask: str | Path | list | np.ndarray,
+        image_2mask: str | Path | list[str | Path] | np.ndarray,
         masked_image: str | Path | list | None = None,
         roi_codes: str | list | np.ndarray = None,
         roi_names: str | list = None,
@@ -2248,8 +2248,11 @@ class Parcellation:
 
         Parameters
         ----------
-        image_2mask : str, Path, list, or np.ndarray
-            Image(s) to mask using parcellation. Can be file path(s) or array.
+        image_2mask : str, Path, list of str/Path, or np.ndarray
+            Image(s) to mask using parcellation. Can be file path(s) or a numpy
+            array. Arrays may be 3D (matching the parcellation's spatial shape)
+            or 4D (e.g. an fMRI time series) - for 4D input, every volume is
+            masked identically using the parcellation's 3D mask.
 
         masked_image : str, Path, list, optional
             Output path(s) for masked images. Required when image_2mask is path(s).
@@ -2275,8 +2278,10 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both roi_codes and roi_names are specified, if output paths don't
-            match input paths in length, or files don't exist, or shapes don't match.
+            If both roi_codes and roi_names are specified, if none of the
+            requested roi_codes/roi_names match a region in the parcellation,
+            if image_2mask is an empty list, if output paths don't match input
+            paths in length, or if files don't exist, or shapes don't match.
 
         Examples
         --------
@@ -2304,6 +2309,9 @@ class Parcellation:
         if isinstance(image_2mask, (str, Path)):
             image_2mask = [image_2mask]
 
+        if isinstance(image_2mask, list) and len(image_2mask) == 0:
+            raise ValueError("image_2mask cannot be an empty list")
+
         is_file_input = isinstance(image_2mask, list) and isinstance(
             image_2mask[0], (str, Path)
         )
@@ -2330,9 +2338,8 @@ class Parcellation:
 
         # Check if both inclusion criteria are specified
         if roi_codes is not None and roi_names is not None:
-            raise ValueError(
-                "Cannot specify both roi_codes and roi_names. Please choose one."
-            )
+            # If both are specified, prioritize roi_codes and ignore roi_names
+            roi_names = None
 
         # Determine which codes to use for masking
         if roi_codes is not None:
@@ -2341,6 +2348,17 @@ class Parcellation:
                 roi_codes = [roi_codes]
             codes_to_use = cltmisc.build_indices(roi_codes)
             codes_to_use = np.array(codes_to_use)
+
+            # Unlike the roi_names branch below, np.isin silently matches nothing
+            # if none of these codes exist in the data - with invert=False (the
+            # default) that would zero out the ENTIRE image with no warning, so
+            # check explicitly rather than letting it fail silently.
+            present_codes = set(np.unique(self.data).tolist())
+            if not any(c in present_codes for c in codes_to_use.tolist()):
+                raise ValueError(
+                    f"None of the requested roi_codes were found in the "
+                    f"parcellation: {roi_codes}"
+                )
 
         elif roi_names is not None:
             # Get codes from names
@@ -2394,7 +2412,10 @@ class Parcellation:
                         f"parcellation shape {self.data.shape}"
                     )
 
-                # Apply mask
+                # Apply mask. voxels_to_zero is always 3D; for a 4D img_data
+                # (e.g. an fMRI series) numpy's boolean-indexing rule zeroes
+                # every volume at each matching voxel, which is the intended
+                # behavior for both 3D and 4D inputs.
                 img_data[voxels_to_zero] = 0
 
                 # Save masked image
@@ -2421,7 +2442,8 @@ class Parcellation:
 
         else:
             raise ValueError(
-                "image_2mask must be a file path, Path object, list of paths, or numpy array"
+                "image_2mask must be a file path, Path object, list of file "
+                "paths/Path objects, or numpy array"
             )
 
     #####################################################################################################
