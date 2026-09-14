@@ -1023,6 +1023,152 @@ class Parcellation:
 
         return info
 
+    ######################################################################################################
+    def get_regions_info(
+        self,
+        region_labels: int | list[int] | np.ndarray = None,
+        region_names: str | list[str] = None,
+        output_format: str = "dataframe",
+    ) -> "pd.DataFrame | dict":
+        """
+        Get summary information (name, color, voxel count, and volume) for the
+        specified regions.
+
+        Parameters
+        ----------
+        region_labels : int, list of int, or np.ndarray, optional
+            Region labels to include. If both region_labels and region_names
+            are specified, region_labels takes priority and region_names is
+            ignored. Default is None.
+
+        region_names : str or list of str, optional
+            Region name(s) (substring match) to include. Ignored if
+            region_labels is also specified. Default is None.
+
+        output_format : str, optional
+            'dataframe' (default) returns a pandas.DataFrame with one row per
+            region. 'dict' returns a dictionary keyed by region label, e.g.
+            {label: {'name': ..., 'color': ..., 'nvoxels': ..., 'volume': ...}}.
+
+        Returns
+        -------
+        pd.DataFrame or dict
+            Regions' index, name, color, number of voxels ('nvoxels'), and
+            volume in mm^3 ('volume'). If neither region_labels nor
+            region_names is given, all regions currently in the parcellation
+            are returned.
+
+        Raises
+        ------
+        ValueError
+            If none of the requested labels/names match a region in the
+            parcellation, or if output_format is not 'dataframe' or 'dict'.
+
+        Examples
+        --------
+        >>> # Info for every region currently in the parcellation
+        >>> df = parc.get_regions_info()
+        >>>
+        >>> # Info for specific labels
+        >>> df = parc.get_regions_info(region_labels=[1, 2, 3])
+        >>>
+        >>> # Info by name (substring match)
+        >>> df = parc.get_regions_info(region_names=['hippocampus', 'amygdala'])
+        >>>
+        >>> # region_labels takes priority when both are given
+        >>> df = parc.get_regions_info(region_labels=[1, 2], region_names=['hippocampus'])
+        >>>
+        >>> # As a dictionary keyed by region label instead of a DataFrame
+        >>> info = parc.get_regions_info(region_labels=[1, 2], output_format='dict')
+        >>> info[1]['volume']
+        """
+
+        if output_format not in ("dataframe", "dict"):
+            raise ValueError(
+                f"output_format must be 'dataframe' or 'dict', got '{output_format}'."
+            )
+
+        if region_labels is not None and region_names is not None:
+            print(
+                "Both region_labels and region_names were specified. Ignoring "
+                "region_names and using region_labels for region selection."
+            )
+            region_names = None
+
+        # Determine which labels to summarize
+        if region_labels is not None:
+            if isinstance(region_labels, (int, np.integer)):
+                region_labels = [region_labels]
+            elif isinstance(region_labels, np.ndarray):
+                region_labels = region_labels.tolist()
+            region_labels = cltmisc.build_indices(region_labels)
+
+            present_labels = set(self.index)
+            selected_labels = [lb for lb in region_labels if lb in present_labels]
+
+            if len(selected_labels) == 0:
+                raise ValueError(
+                    f"None of the requested region_labels were found in the "
+                    f"parcellation: {region_labels}"
+                )
+
+        elif region_names is not None:
+            if isinstance(region_names, str):
+                region_names = [region_names]
+
+            indexes = cltmisc.get_indexes_by_substring(
+                input_list=self.name,
+                or_filter=region_names,
+                invert=False,
+                bool_case=False,
+            )
+
+            if len(indexes) == 0:
+                raise ValueError(
+                    f"None of the requested region_names matched any region in "
+                    f"the parcellation: {region_names}"
+                )
+
+            selected_labels = [self.index[i] for i in indexes]
+
+        else:
+            # No filter specified - summarize every region currently in the parcellation
+            selected_labels = list(self.index)
+
+        # Voxel volume (mm^3) implied by the affine
+        voxel_volume = cltimg.get_voxel_volume(self.affine)
+
+        # Count voxels per label directly from the data, so counts stay correct
+        # even if self.index/self.data were ever out of sync
+        unique_data_labels, voxel_counts = np.unique(self.data, return_counts=True)
+        voxel_count_map = dict(zip(unique_data_labels.tolist(), voxel_counts.tolist()))
+
+        info: dict = {}
+        for label in selected_labels:
+            pos = self.index.index(label)
+            nvox = voxel_count_map.get(label, 0)
+
+            info[int(label)] = {
+                "name": self.name[pos],
+                "color": self.color[pos],
+                "nvoxels": int(nvox),
+                "volume": float(nvox) * voxel_volume,
+            }
+
+        if output_format == "dict":
+            return info
+
+        df = pd.DataFrame(
+            {
+                "index": list(info.keys()),
+                "name": [v["name"] for v in info.values()],
+                "color": [v["color"] for v in info.values()],
+                "nvoxels": [v["nvoxels"] for v in info.values()],
+                "volume": [v["volume"] for v in info.values()],
+            }
+        )
+        return df
+
     ##########################################################################################################
     def get_data(self) -> np.ndarray:
         """
