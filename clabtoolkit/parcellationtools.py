@@ -3090,13 +3090,18 @@ class Parcellation:
             color_table
         )
 
+        # Surface objects store their colortables with the colors in the range
+        # [0, 1] and an explicit opacity, while the FreeSurfer table uses the
+        # range [0, 255] and leaves the alpha channel at 0. The last column, used
+        # as the vertex value of every mesh, is kept untouched.
+        surf_color_table = color_table.astype(float)
+        surf_color_table[:, :3] = surf_color_table[:, :3] / 255
+        surf_color_table[:, 3] = 1.0
+
         table_dict = {
             "names": temp_parc.name,
-            "color_table": color_table,
+            "color_table": surf_color_table,
             "lookup_table": None,
-        }
-        color_tables = {
-            "default": table_dict,
         }
 
         surfaces_list = []
@@ -3137,9 +3142,18 @@ class Parcellation:
                     vertex_value=color_table[i, 4],
                 )
 
-                surf_temp = cltsurf.Surface()
+                surf_temp = cltsurf.Surface(name=struct_name)
                 surf_temp.mesh = copy.deepcopy(mesh)
-                # surf_temp.load_from_mesh(mesh, hemi="lh")
+
+                # The mesh is attached directly, so the default colortable must be
+                # replaced by the one of the region it was extracted from. Its
+                # value column matches the vertex value assigned to the mesh.
+                surf_temp.colortables["default"] = {
+                    "names": [struct_name],
+                    "color_table": surf_color_table[i : i + 1, :].copy(),
+                    "lookup_table": None,
+                }
+
                 surfaces_list.append(surf_temp)
                 # Update progress to show completion of this region
 
@@ -3148,7 +3162,7 @@ class Parcellation:
 
         # surf_orig.merge_surfaces(surfaces_list)
         merged_surf = cltsurf.merge_surfaces(surfaces_list)
-        merged_surf.colortables = color_tables
+        merged_surf.colortables["default"] = table_dict
 
         if out_filename is not None:
             # Check if the directory exists, if not, gives an error
