@@ -35,6 +35,10 @@ class Surface:
 
     Attributes
     ----------
+    name : str
+        Name identifying the surface. It is always defined and defaults to
+        'unknown'.
+
     surf : str or None
         Path to surface file if loaded from file.
 
@@ -69,6 +73,7 @@ class Surface:
         color: str | np.ndarray = "#f0f0f0",
         alpha: float = 1.0,
         hemi: str = None,
+        name: str = "unknown",
     ) -> None:
         """
         Initialize Surface object from file, arrays, or create empty instance.
@@ -95,6 +100,10 @@ class Surface:
             Hemisphere designation ('lh' or 'rh'). Auto-detected from filename
             if None. Default is None.
 
+        name : str, optional
+            Name identifying the surface. It is stored in the ``name`` attribute
+            and used by :meth:`get_info`. Default is 'unknown'.
+
         Raises
         ------
         ValueError
@@ -118,6 +127,7 @@ class Surface:
         """
 
         # Initialize attributes to None (empty instance)
+        self.name = "unknown" if name is None else str(name)
         self.surf = None
         self.mesh = None
         self.hemi = None
@@ -138,7 +148,7 @@ class Surface:
         color = cltcol.harmonize_colors(color, output_format="rgb")
 
         tmp_ctable = cltcol.colors_to_table(colors=color, alpha_values=alpha)
-        tmp_ctable[:, :3] = tmp_ctable[:, :3]  # Ensure colors are between 0 and 1
+        tmp_ctable[:, :3] = tmp_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # Store parcellation information in organized structure
         self.colortables["default"] = {
@@ -274,18 +284,18 @@ class Surface:
                     f"Also failed with PyVista: {e2}"
                 ) from e2
 
-        # Hemisphere detection from filename
+        # Hemisphere detection from filename. An explicit hemisphere always wins.
         if hemi is not None:
             self.hemi = hemi
         else:
             self.hemi = cltfree.detect_hemi(self.surf)
 
-        # Fallback hemisphere detection from BIDS organization
-        surf_name = os.path.basename(self.surf)
-        detected_hemi = cltfree.detect_hemi(surf_name)
+            # Fallback hemisphere detection from the file name (BIDS organization)
+            if self.hemi is None:
+                self.hemi = cltfree.detect_hemi(os.path.basename(self.surf))
 
-        if detected_hemi is None:
-            self.hemi = "lh"  # Default to left hemisphere
+            if self.hemi is None:
+                self.hemi = "lh"  # Default to left hemisphere
 
         # Create default parcellation data
         self._create_default_parcellation(
@@ -441,6 +451,212 @@ class Surface:
         >>> print(surface.is_loaded())  # True
         """
         return self.mesh is not None
+
+    ##############################################################################################
+    def get_info(self, verbose: bool = True) -> dict:
+        """
+        Display and return comprehensive information about the Surface object.
+
+        Provides a formatted overview of the surface including its identification,
+        the geometry of the mesh, the global color and opacity used when no overlay
+        is selected, and the vertex-wise maps currently loaded, indicating which of
+        them are linked to a colortable.
+
+        The method displays:
+            - Basic identification (name, hemisphere, file path)
+            - Mesh geometry (number of vertices and faces)
+            - Global appearance (color and opacity of the default colortable)
+            - Vertex-wise maps (type, data type and colortable availability)
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True, prints the information in a formatted table to stdout.
+            If False, only returns the info dictionary without printing.
+            Default is True.
+
+        Returns
+        -------
+        info : dict
+            Dictionary containing the following keys:
+
+            - 'name' : str
+                Name of the surface ('unknown' if it was not supplied).
+
+            - 'hemi' : str or None
+                Hemisphere designation ('lh', 'rh', 'unknown' or None).
+
+            - 'surf_file' : str or None
+                Path to the surface file, or None if it was not loaded from a file.
+
+            - 'is_loaded' : bool
+                Whether the mesh contains geometry.
+
+            - 'n_vertices' : int or None
+                Number of vertices of the mesh.
+
+            - 'n_faces' : int or None
+                Number of faces of the mesh.
+
+            - 'global_color' : str or None
+                Hexadecimal color stored in the 'default' colortable.
+
+            - 'global_opacity' : float or None
+                Opacity stored in the 'default' colortable.
+
+            - 'active_overlay' : str or None
+                Name of the overlay currently set as active.
+
+            - 'n_overlays' : int
+                Number of vertex-wise maps stored in the mesh.
+
+            - 'overlays' : list of dict
+                One dictionary per vertex-wise map with the keys 'name', 'type'
+                (as reported by :meth:`list_overlays`), 'dtype', 'shape',
+                'has_colortable' and 'n_regions' (None when there is no
+                colortable).
+
+        Examples
+        --------
+        >>> surf = Surface('lh.pial', name='bert_lh_pial')
+        >>> info = surf.get_info()
+        >>> # Only the dictionary, without printing
+        >>> info = surf.get_info(verbose=False)
+        >>> print(info['n_vertices'], info['global_color'])
+        """
+
+        WIDTH = 64  # inner content width (between the ║ borders)
+
+        def _row(content: str) -> None:
+            """Print a single bordered row, left-justified."""
+            if len(content) > WIDTH:
+                content = content[: WIDTH - 3] + "..."
+            print(f"║{content.ljust(WIDTH)}║")
+
+        def _trunc(s: str, max_w: int) -> str:
+            """Truncate a string to fit within a column width."""
+            return s if len(s) <= max_w else "..." + s[-(max_w - 3) :]
+
+        # ── Gather information ────────────────────────────────────────────────────
+
+        loaded = self.is_loaded()
+
+        info: dict = {
+            "name": getattr(self, "name", None),
+            "hemi": getattr(self, "hemi", None),
+            "surf_file": getattr(self, "surf", None),
+            "is_loaded": loaded,
+            "n_vertices": int(self.mesh.n_points) if loaded else None,
+            "n_faces": int(self.mesh.n_cells) if loaded else None,
+            "global_color": None,
+            "global_opacity": None,
+            "active_overlay": getattr(self, "active_scalar", None),
+            "n_overlays": 0,
+            "overlays": [],
+        }
+
+        # Global color and opacity are stored in the 'default' colortable
+        default_ctable = self.colortables.get("default", {}).get("color_table", None)
+        if default_ctable is not None and len(default_ctable) > 0:
+            rgb = np.asarray(default_ctable[0, :3], dtype=float)
+
+            try:
+                info["global_color"] = cltcol.harmonize_colors(
+                    rgb, output_format="hex"
+                )[0]
+            except Exception:
+                info["global_color"] = None
+
+            opacity = float(default_ctable[0, 3])
+
+            # Opacities can be stored either in [0, 1] or in [0, 255]
+            info["global_opacity"] = opacity / 255 if opacity > 1 else opacity
+
+        # Vertex-wise maps
+        if loaded:
+            overlay_types = self.list_overlays()
+
+            for map_name in self.mesh.point_data.keys():
+                map_data = self.mesh.point_data[map_name]
+                ctable_info = self.colortables.get(map_name, None)
+
+                info["overlays"].append(
+                    {
+                        "name": map_name,
+                        "type": overlay_types.get(map_name, "unknown"),
+                        "dtype": str(map_data.dtype),
+                        "shape": tuple(map_data.shape),
+                        "has_colortable": ctable_info is not None,
+                        "n_regions": (
+                            len(ctable_info["names"])
+                            if ctable_info is not None
+                            else None
+                        ),
+                    }
+                )
+
+            info["n_overlays"] = len(info["overlays"])
+
+        # ── Print ─────────────────────────────────────────────────────────────────
+        if verbose:
+
+            print("╔" + "═" * WIDTH + "╗")
+            _row("  SURFACE INFO".center(WIDTH))
+            print("╠" + "═" * WIDTH + "╣")
+
+            # — Identification ————————————————————————————————————————————————
+            _row(f"  Name   : {_trunc(str(info['name'] or 'unknown'), WIDTH - 12)}")
+            _row(f"  Hemi   : {info['hemi'] or 'N/A'}")
+            _row(f"  File   : {_trunc(str(info['surf_file'] or 'N/A'), WIDTH - 12)}")
+
+            # — Geometry ——————————————————————————————————————————————————————
+            print("╠" + "═" * WIDTH + "╣")
+            _row("  MESH GEOMETRY")
+
+            if loaded:
+                _row(f"    Vertices    : {info['n_vertices']:>20,}")
+                _row(f"    Faces       : {info['n_faces']:>20,}")
+            else:
+                _row("    Vertices    :          N/A (not loaded)")
+                _row("    Faces       :          N/A (not loaded)")
+
+            # — Global appearance ——————————————————————————————————————————————
+            print("╠" + "═" * WIDTH + "╣")
+            _row("  GLOBAL APPEARANCE")
+
+            if info["global_color"] is not None:
+                _row(f"    Color       : {info['global_color']:>20}")
+            else:
+                _row("    Color       :          N/A")
+
+            if info["global_opacity"] is not None:
+                _row(f"    Opacity     : {info['global_opacity']:>20.2f}")
+            else:
+                _row("    Opacity     :          N/A")
+
+            # — Vertex-wise maps ———————————————————————————————————————————————
+            print("╠" + "═" * WIDTH + "╣")
+            _row("  VERTEX-WISE MAPS")
+            _row(f"    Maps        : {info['n_overlays']:>20,}")
+            _row(
+                f"    Active map  : {_trunc(str(info['active_overlay'] or 'N/A'), 20):>20}"
+            )
+
+            for overlay in info["overlays"]:
+                marker = "*" if overlay["name"] == info["active_overlay"] else " "
+                _row(f"   {marker} {_trunc(overlay['name'], 24):<24} {overlay['type']}")
+
+                if overlay["has_colortable"]:
+                    _row(
+                        f"       ↳ colortable : {overlay['n_regions']:,} region(s)"
+                        f", dtype: {overlay['dtype']}"
+                    )
+                else:
+                    _row(f"       ↳ no colortable, dtype: {overlay['dtype']}")
+
+            print("╚" + "═" * WIDTH + "╝")
+
+        return info
 
     ##############################################################################################
     def _create_default_parcellation(
@@ -834,10 +1050,7 @@ class Surface:
         >>> manifold = get_manifold_edges(faces)
         >>> print("Manifold edges:", manifold)
         """
-        # Getting the faces array from the mesh
-        faces = self.mesh.faces[:, 1:4]  # Extract only the vertex indices
-
-        edges, counts = self.get_edges(faces, return_counts=True)
+        edges, counts = self.get_edges(return_counts=True)
         return edges[counts == 2]
 
     ##############################################################################################
@@ -1005,8 +1218,6 @@ class Surface:
             parc_name = annot_parc.id
 
         # Store the parcellation data
-        reg_ctable[:, :3]
-
         reg_ctable[:, :3] = reg_ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
         # If all the opacity values are 0 set them to 1
@@ -1404,20 +1615,30 @@ class Surface:
 
                 if tmp_map.shape[0] == self.mesh.n_points:
                     if maps_names is None:
-                        # If maps_names is not provided, use the file name as the map name
-                        map_name = os.path.splitext(os.path.basename(scalar_map))[0]
+                        # If maps_names is not provided, use the file name as the
+                        # map name. FreeSurfer files are named <hemi>.<measure>,
+                        # so in that case the measure is the meaningful part.
+                        base_name = os.path.basename(scalar_map)
+                        map_name, extension = os.path.splitext(base_name)
+                        if map_name in ["lh", "rh"] and extension:
+                            map_name = extension.lstrip(".")
                     else:
                         if len(maps_names) != 1:
                             raise ValueError(
                                 "maps_names must be a single string or a list with one name"
                             ) from err
 
-                        self.mesh.point_data[maps_names[0]] = tmp_map
+                        map_name = maps_names[0]
+
+                    self.mesh.point_data[map_name] = tmp_map
 
                 else:
                     raise ValueError(
                         f"Map file {scalar_map} does not match the number of vertices"
                     ) from err
+            else:
+                # The fallback only handles files, any other failure must be visible
+                raise
 
     ###############################################################################################
     def separate_mesh_components(
@@ -1426,7 +1647,7 @@ class Surface:
         labels_to_extract: list[int] | None = None,
         clean_mesh: bool = True,
         preserve_order: bool = False,
-    ) -> list[pv.PolyData]:
+    ) -> list["Surface"]:
         """
         Separate a mesh into independent submeshes based on connected component labels.
 
@@ -1696,7 +1917,7 @@ class Surface:
             if hasattr(mesh, "field_data"):
                 submesh.field_data.update(mesh.field_data)
 
-            subsurf_obj = Surface(submesh)
+            subsurf_obj = Surface(submesh, name=f"{self.name}_component_{int(label)}")
             if colortable:
                 # Copy colortable if it exists for the component_labels
 
@@ -1705,12 +1926,15 @@ class Surface:
                 if len(index) > 0:
                     tmp_ctab["color_table"] = tmp_ctab["color_table"][index, :]
                     tmp_ctab["names"] = [tmp_ctab["names"][index[0]]]
+
+                    # Name the sub-surface after its region in the colortable
+                    subsurf_obj.name = f"{self.name}_{tmp_ctab['names'][0]}"
                 else:
                     single_color_ctab = cltcol.colors_to_table(
                         np.array([[240, 240, 240]]), alpha_values=255
                     )
                     tmp_ctab["color_table"] = single_color_ctab
-                    tmp_ctab["names"] = [f"component_{single_color_ctab[4]}"]
+                    tmp_ctab["names"] = [f"component_{int(single_color_ctab[0, 4])}"]
 
                 subsurf_obj.colortables[component_labels] = tmp_ctab
 
@@ -1718,7 +1942,7 @@ class Surface:
 
         if preserve_order:
             # Sort submeshes by component label to maintain order
-            submeshes.sort(key=lambda sm: sm.point_data[component_labels][0])
+            submeshes.sort(key=lambda sm: sm.mesh.point_data[component_labels][0])
 
         return submeshes
 
@@ -2029,7 +2253,7 @@ class Surface:
         range_min: np.float64 = None,
         range_max: np.float64 = None,
         range_color: tuple = (128, 128, 128, 255),
-    ) -> None:
+    ) -> np.ndarray:
         """
         Compute vertices colors for visualization based on the specified overlay.
 
@@ -2219,6 +2443,22 @@ class Surface:
         >>> surface.prepare_colors()
         """
 
+        # Resolve the overlay name. If it is not supplied, the active overlay is
+        # used and, if it is not available, the first overlay of the mesh.
+        if overlay_name is None:
+            overlays = list(self.mesh.point_data.keys())
+            if not overlays:
+                raise ValueError("No overlays available in the surface point_data")
+
+            overlay_name = (
+                self.active_scalar if self.active_scalar in overlays else overlays[0]
+            )
+
+        if overlay_name not in self.mesh.point_data:
+            raise ValueError(
+                f"Data array '{overlay_name}' not found in surface point_data"
+            )
+
         # Getting the minimum and maximum values of the overlay
         if vmin is None:
             vmin = np.min(self.mesh.point_data[overlay_name])
@@ -2350,6 +2590,7 @@ class Surface:
         merged_surface = Surface.__new__(Surface)
         merged_surface.mesh = merged_mesh
         merged_surface.hemi = "unknown"
+        merged_surface.name = "merged_surface"
         merged_surface.surf = "merged_surface"
 
         # Merge colortables - only keep those for common fields
@@ -3232,7 +3473,7 @@ class Surface:
         views_orientation: str = "grid",
         hemi: str = "lh",
         notebook: bool = False,
-        show_colorbar: bool = False,
+        show_colorbar: bool = None,
         colorbar_title: str = None,
         colorbar_position: str = "bottom",
         save_path: str = None,
@@ -3284,8 +3525,10 @@ class Surface:
         notebook : bool, default False
             Whether to display in Jupyter notebook. If False, opens interactive window.
 
-        show_colorbar : bool, default False
-            Whether to display colorbar. Automatically determined if None.
+        show_colorbar : bool, optional
+            Whether to display the colorbar. If None (default) it is determined
+            automatically: it is hidden for overlays coloured with a colortable
+            and shown otherwise.
 
         colorbar_title : str, optional
             Title for the colorbar. Uses overlay name if None.
@@ -3319,16 +3562,10 @@ class Surface:
         if overlay_name is None:
             overlay_name = self.active_scalar
 
-        dict_ctables = self.colortables
-        if cmap is None:
-            if overlay_name in dict_ctables.keys():
-                show_colorbar = False
-
-            else:
-                show_colorbar = True
-
-        else:
-            show_colorbar = True
+        # Only decide for the user when the flag was not supplied
+        if show_colorbar is None:
+            dict_ctables = self.colortables
+            show_colorbar = not (cmap is None and overlay_name in dict_ctables)
 
         from . import visualizationtools as cltvis
 
@@ -3492,7 +3729,7 @@ def merge_surfaces(
             return None
 
     # Create surf_ids based on actual point ranges
-    surf_ids = np.zeros((merged.mesh.n_points, 1))
+    surf_ids = np.zeros(merged.mesh.n_points)
     for i, (start, end) in enumerate(point_ranges):
         surf_ids[start:end] = color_table_array[i, 4]
 
