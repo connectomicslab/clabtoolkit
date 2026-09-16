@@ -6,6 +6,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
+from scipy.sparse import csr_matrix, issparse
 
 from . import colorstools as cltcol
 from . import misctools as cltmisc
@@ -42,7 +43,7 @@ class Connectome:
     #################################################################################
     def __init__(
         self,
-        matrix: np.ndarray | str | Path | None = None,
+        matrix: np.ndarray | csr_matrix | str | Path | None = None,
         name: str | None = None,
         region_coords: np.ndarray | None = None,
         region_names: list[str] | None = None,
@@ -110,9 +111,14 @@ class Connectome:
                 # Use as connectivity matrix - nothing to transform here
                 pass
 
+            elif issparse(matrix):
+                # Sparse input (e.g. CSR from networktools) - densify
+                matrix = matrix.toarray()
+
             else:
                 raise TypeError(
-                    f"The input matrix must be np.ndarray, str, Path, or None. Got {type(matrix)}"
+                    "The input matrix must be np.ndarray, scipy sparse matrix, "
+                    f"str, Path, or None. Got {type(matrix)}"
                 )
 
         self.name = name
@@ -234,6 +240,51 @@ class Connectome:
         connectome = cls(name=name)
         connectome.load_h5(filename)
         return connectome
+
+    #################################################################################
+    @classmethod
+    def from_csr(
+        cls,
+        csr_graph: csr_matrix,
+        name: str | None = None,
+        **kwargs,
+    ) -> "Connectome":
+        """
+        Create a Connectome object from a scipy sparse matrix.
+
+        The matrix is densified, since Connectome stores region-level
+        connectivity as a dense array.
+
+        Parameters:
+        -----------
+        csr_graph : scipy.sparse matrix
+            Square sparse connectivity matrix (CSR preferred; any sparse
+            format is accepted and converted).
+        name : str, optional
+            Name for the connectome.
+        **kwargs
+            Additional keyword arguments passed to Connectome.__init__
+            (region_coords, region_names, region_index, region_colors,
+            connectivity_type, affine).
+
+        Returns:
+        --------
+        Connectome : New Connectome object
+
+        Examples:
+        ---------
+        >>> from scipy.sparse import random as sprandom
+        >>> A = sprandom(50, 50, density=0.05, format="csr")
+        >>> conn = Connectome.from_csr(A, name="sparse_example")
+        """
+        if not issparse(csr_graph):
+            raise TypeError(
+                f"Input must be a scipy sparse matrix. Got {type(csr_graph)}"
+            )
+        if csr_graph.shape[0] != csr_graph.shape[1]:
+            raise ValueError("Sparse matrix must be square")
+
+        return cls(matrix=csr_graph.toarray(), name=name, **kwargs)
 
     #################################################################################
     @classmethod
@@ -509,11 +560,19 @@ class Connectome:
                 else:
                     data_group = f
 
-                # Load connectivity matrix (required)
+                # Load connectivity matrix (required).
+                # Supports a dense dataset ("matrix") or a CSR group
+                # ("matrix_csr" with data / indices / indptr and a shape attr).
                 if "matrix" in data_group:
-                    self.matrix = data_group["matrix"][:]
+                    self.matrix = data_group["matrix"][:].astype(np.float64)
+                elif "matrix_csr" in data_group:
+                    self.matrix = self._read_csr_group(
+                        data_group["matrix_csr"]
+                    ).toarray()
                 else:
-                    raise KeyError("No 'matrix' dataset found in HDF5 file")
+                    raise KeyError(
+                        "No 'matrix' dataset or 'matrix_csr' group found in HDF5 file"
+                    )
 
                 self.n_regions = self.matrix.shape[0]
 
@@ -605,7 +664,13 @@ class Connectome:
             raise RuntimeError(f"Error loading HDF5 file: {e}") from e
 
     #################################################################################
-    def save_h5(self, filename: str | Path, compression: bool = True) -> None:
+    def save_h5(
+        self,
+        filename: str | Path,
+        compression: bool = True,
+        sparse: bool | Literal["auto"] = "auto",
+        sparse_density_threshold: float = 0.1,
+    ) -> None:
         """
         Save Connectome to HDF5 file.
 
@@ -615,6 +680,17 @@ class Connectome:
             Output HDF5 filename
         compression : bool, optional
             Whether to use gzip compression (default: True)
+        sparse : bool or "auto", optional
+            How to store the connectivity matrix:
+            - False: dense dataset "connmat/matrix"
+            - True: CSR group "connmat/matrix_csr" (data, indices, indptr, shape)
+            - "auto" (default): CSR if the fraction of nonzero entries in the
+              full matrix is below ``sparse_density_threshold``, dense otherwise.
+            Both layouts are read transparently by ``load_h5``.
+        sparse_density_threshold : float, optional
+            Nonzero fraction below which "auto" selects CSR (default: 0.1).
+            CSR only saves space at low density, since each nonzero costs a
+            value plus a column index.
         """
         if self.matrix is None:
             raise ValueError("No connectivity matrix to save")
@@ -625,11 +701,24 @@ class Connectome:
             # Create main group
             grp = f.create_group("connmat")
 
-            # Save matrix (required)
-            if compression:
-                grp.create_dataset("matrix", data=self.matrix, compression="gzip")
+            # Save matrix (required), dense or CSR
+            if sparse == "auto":
+                nnz_fraction = (
+                    np.count_nonzero(self.matrix) / self.matrix.size
+                    if self.matrix.size > 0
+                    else 0.0
+                )
+                use_sparse = nnz_fraction < sparse_density_threshold
+            elif isinstance(sparse, bool):
+                use_sparse = sparse
             else:
-                grp.create_dataset("matrix", data=self.matrix)
+                raise ValueError(f"sparse must be True, False or 'auto'. Got {sparse!r}")
+
+            comp = "gzip" if compression else None
+            if use_sparse:
+                self._write_csr_group(grp, "matrix_csr", self.to_csr(), comp)
+            else:
+                grp.create_dataset("matrix", data=self.matrix, compression=comp)
 
             # Save coordinates (if available)
             if self.region_coords is not None:
@@ -662,6 +751,7 @@ class Connectome:
             grp.attrs["type"] = self.type
             grp.attrs["n_regions"] = self.n_regions
             grp.attrs["density"] = self.get_density()
+            grp.attrs["matrix_format"] = "csr" if use_sparse else "dense"
 
         print(f"Connectome saved to: {filename}")
 
@@ -850,6 +940,85 @@ class Connectome:
         self.set_region_names(names)
         if index is not None:
             self.set_region_indices(index)
+
+    #################################################################################
+    def to_csr(self, drop_diagonal: bool = False) -> csr_matrix:
+        """
+        Return the connectivity matrix as a scipy CSR sparse matrix.
+
+        Useful for passing a Connectome to graph routines in networktools
+        (e.g. ``connected_components``). The Connectome itself is not modified.
+
+        Parameters:
+        -----------
+        drop_diagonal : bool, optional
+            If True, self-connections are excluded (default: False).
+
+        Returns:
+        --------
+        csr_matrix : Sparse (n_regions x n_regions) matrix with explicit zeros removed
+
+        Examples:
+        ---------
+        >>> from clabtoolkit import networktools as cltnet
+        >>> conn = Connectome.from_h5("sub-01_connectome.h5")
+        >>> n_comp, labels, sizes = cltnet.connected_components(conn.to_csr())
+        """
+        if self.matrix is None:
+            raise ValueError("No connectivity matrix available")
+
+        csr = csr_matrix(self.matrix)
+        if drop_diagonal:
+            csr.setdiag(0)
+        csr.eliminate_zeros()
+        return csr
+
+    #################################################################################
+    @staticmethod
+    def _write_csr_group(
+        parent: h5py.Group,
+        name: str,
+        csr: csr_matrix,
+        compression: str | None = "gzip",
+    ) -> None:
+        """
+        Write a CSR matrix to an HDF5 group as data / indices / indptr datasets.
+
+        The layout follows the common convention also used by AnnData (.h5ad):
+        a group holding the three CSR arrays plus ``shape`` and
+        ``encoding-type`` attributes.
+        """
+        g = parent.create_group(name)
+        g.create_dataset("data", data=csr.data, compression=compression)
+        g.create_dataset("indices", data=csr.indices, compression=compression)
+        g.create_dataset("indptr", data=csr.indptr, compression=compression)
+        g.attrs["shape"] = np.asarray(csr.shape, dtype=np.int64)
+        g.attrs["encoding-type"] = "csr_matrix"
+
+    #################################################################################
+    @staticmethod
+    def _read_csr_group(group: h5py.Group) -> csr_matrix:
+        """
+        Read a CSR matrix written by ``_write_csr_group``.
+        """
+        for key in ("data", "indices", "indptr"):
+            if key not in group:
+                raise KeyError(f"CSR group is missing the '{key}' dataset")
+        if "shape" not in group.attrs:
+            raise KeyError("CSR group is missing the 'shape' attribute")
+
+        shape = tuple(int(x) for x in group.attrs["shape"])
+        if len(shape) != 2 or shape[0] != shape[1]:
+            raise ValueError(f"Stored CSR matrix must be square. Got shape {shape}")
+
+        return csr_matrix(
+            (
+                group["data"][:].astype(np.float64),
+                group["indices"][:],
+                group["indptr"][:],
+            ),
+            shape=shape,
+        )
 
     #################################################################################
     def get_density(self) -> float:
