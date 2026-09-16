@@ -3209,55 +3209,34 @@ class Parcellation:
         """
         Synchronize index, name, and color attributes with data contents.
 
-        Removes entries for codes not present in data and updates
-        min/max label range.
-
-        Examples
-        --------
-        >>> parc.adjust_values()
-        >>> print(f"Regions in data: {len(parc.index)}")
+        Removes entries for codes not present in data, sorts the remaining
+        entries by index value, and updates the min/max label range.
         """
+        attrs = [a for a in ("index", "name", "color", "opacity") if hasattr(self, a)]
 
-        # I want to check if the len of index, name, color and opacity are the same, if not I want to raise an error
-        if (
-            hasattr(self, "index")
-            and hasattr(self, "name")
-            and hasattr(self, "color")
-            and hasattr(self, "opacity")
-        ):
-            if not (
-                len(self.index)
-                == len(self.name)
-                == len(self.color)
-                == len(self.opacity)
-            ):
-                raise ValueError(
-                    "The length of index, name, color and opacity attributes must be the same."
-                )
+        if "index" not in attrs:
+            raise AttributeError("The object has no 'index' attribute to adjust.")
+
+        lengths = {a: len(getattr(self, a)) for a in attrs}
+        if len(set(lengths.values())) > 1:
+            raise ValueError(
+                f"index, name, color and opacity must have the same length. Got {lengths}"
+            )
 
         st_codes = np.unique(self.data)
         unique_codes = st_codes[st_codes != 0]
 
-        mask = np.isin(self.index, unique_codes)
-        indexes = np.where(mask)[0]
+        index_arr = np.asarray(self.index)
+        keep = np.where(np.isin(index_arr, unique_codes))[0]
 
-        temp_index = np.array(self.index)
-        index_new = temp_index[mask]
+        # Order the kept positions by their index value (stable, so ties keep order)
+        order = keep[np.argsort(index_arr[keep], kind="stable")]
 
-        if hasattr(self, "index"):
-            self.index = [int(x) for x in index_new.tolist()]
-
-        # If name is an attribute of self
-        if hasattr(self, "name"):
-            self.name = [self.name[i] for i in indexes]
-
-        # If color is an attribute of self
-        if hasattr(self, "color"):
-            self.color = [self.color[i] for i in indexes]
-
-        #  If opacity is an attribute of self
-        if hasattr(self, "opacity"):
-            self.opacity = [self.opacity[i] for i in indexes]
+        self.index = [int(x) for x in index_arr[order]]
+        for attr in ("name", "color", "opacity"):
+            if attr in attrs:
+                values = getattr(self, attr)
+                setattr(self, attr, [values[i] for i in order])
 
         self.parc_range()
 
