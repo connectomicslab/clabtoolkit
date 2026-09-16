@@ -504,9 +504,11 @@ def connected_components(
         raise ValueError("Graph cannot be empty")
 
     # Check if graph is symmetric (undirected)
-    if not np.allclose(csr_graph.data, csr_graph.T.data) or not np.array_equal(
-        csr_graph.indices, csr_graph.T.indices
-    ):
+    # Note: csr_graph.T reuses the same data/indices/indptr arrays (as a CSC
+    # matrix), so comparing those arrays directly is always True. Compare the
+    # matrices themselves instead.
+    asym = csr_graph - csr_graph.T
+    if asym.nnz > 0 and np.max(np.abs(asym.data)) > 1e-10:
         warnings.warn(
             "Graph appears to be directed (non-symmetric). "
             "Finding weakly connected components.",
