@@ -2239,8 +2239,8 @@ class Parcellation:
         self,
         image_2mask: str | Path | list[str | Path] | np.ndarray,
         masked_image: str | Path | list | None = None,
-        roi_codes: str | list | np.ndarray = None,
-        roi_names: str | list = None,
+        region_labels: str | list | np.ndarray = None,
+        region_names: str | list = None,
         invert: bool = False,
     ) -> np.ndarray | list:
         """
@@ -2258,10 +2258,10 @@ class Parcellation:
             Output path(s) for masked images. Required when image_2mask is path(s).
             Ignored when image_2mask is numpy array. Default is None.
 
-        roi_codes : str, list or np.ndarray, optional
+        region_labels : str, list or np.ndarray, optional
             Region codes to use for masking. Default is None (all non-zero regions).
 
-        roi_names : str or list, optional
+        region_names : str or list, optional
             Region names to use for masking. Default is None.
 
         invert : bool, optional
@@ -2278,8 +2278,8 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both roi_codes and roi_names are specified, if none of the
-            requested roi_codes/roi_names match a region in the parcellation,
+            If both region_labels and region_names are specified, if none of the
+            requested region_labels/region_names match a region in the parcellation,
             if image_2mask is an empty list, if output paths don't match input
             paths in length, or if files don't exist, or shapes don't match.
 
@@ -2290,19 +2290,19 @@ class Parcellation:
         ['T1w_masked.nii.gz']
 
         >>> # Mask with specific region codes
-        >>> parc.mask_image('fmri.nii.gz', 'fmri_masked.nii.gz', roi_codes=[1, 2, 3])
+        >>> parc.mask_image('fmri.nii.gz', 'fmri_masked.nii.gz', region_labels=[1, 2, 3])
         ['fmri_masked.nii.gz']
 
         >>> # Mask with specific region names
-        >>> parc.mask_image('dwi.nii.gz', 'dwi_masked.nii.gz', roi_names=['cortex', 'hippocampus'])
+        >>> parc.mask_image('dwi.nii.gz', 'dwi_masked.nii.gz', region_names=['cortex', 'hippocampus'])
         ['dwi_masked.nii.gz']
 
         >>> # Inverted masking (remove specific regions)
-        >>> parc.mask_image('dwi.nii.gz', 'dwi_masked.nii.gz', roi_codes=[5, 6], invert=True)
+        >>> parc.mask_image('dwi.nii.gz', 'dwi_masked.nii.gz', region_labels=[5, 6], invert=True)
         ['dwi_masked.nii.gz']
 
         >>> # Mask numpy array
-        >>> masked_data = parc.mask_image(img_array, roi_codes=[10, 20])
+        >>> masked_data = parc.mask_image(img_array, region_labels=[10, 20])
         """
 
         # Normalize image_2mask to list
@@ -2337,46 +2337,49 @@ class Parcellation:
                 )
 
         # Check if both inclusion criteria are specified
-        if roi_codes is not None and roi_names is not None:
-            # If both are specified, prioritize roi_codes and ignore roi_names
-            roi_names = None
+        if region_labels is not None and region_names is not None:
+            # If both are specified, prioritize region_labels and ignore region_names
+            region_names = None
 
         # Determine which codes to use for masking
-        if roi_codes is not None:
+        if region_labels is not None:
             # Use specified codes
-            if isinstance(roi_codes, str):
-                roi_codes = [roi_codes]
-            codes_to_use = cltmisc.build_indices(roi_codes)
+            if isinstance(region_labels, str):
+                region_labels = [region_labels]
+            codes_to_use = cltmisc.build_indices(region_labels)
             codes_to_use = np.array(codes_to_use)
 
-            # Unlike the roi_names branch below, np.isin silently matches nothing
+            # Unlike the region_names branch below, np.isin silently matches nothing
             # if none of these codes exist in the data - with invert=False (the
             # default) that would zero out the ENTIRE image with no warning, so
             # check explicitly rather than letting it fail silently.
             present_codes = set(np.unique(self.data).tolist())
             if not any(c in present_codes for c in codes_to_use.tolist()):
                 raise ValueError(
-                    f"None of the requested roi_codes were found in the "
-                    f"parcellation: {roi_codes}"
+                    f"None of the requested region_labels were found in the "
+                    f"parcellation: {region_labels}"
                 )
 
-        elif roi_names is not None:
+        elif region_names is not None:
             # Get codes from names
-            if isinstance(roi_names, str):
-                roi_names = [roi_names]
+            if isinstance(region_names, str):
+                region_names = [region_names]
 
             if not hasattr(self, "name") or not hasattr(self, "index"):
                 raise ValueError(
-                    "Parcellation must have 'name' and 'index' attributes to use roi_names"
+                    "Parcellation must have 'name' and 'index' attributes to use region_names"
                 )
 
             # Find indexes of matching names
             indexes = cltmisc.get_indexes_by_substring(
-                input_list=self.name, or_filter=roi_names, invert=False, bool_case=False
+                input_list=self.name,
+                or_filter=region_names,
+                invert=False,
+                bool_case=False,
             )
 
             if len(indexes) == 0:
-                raise ValueError(f"No regions found matching names: {roi_names}")
+                raise ValueError(f"No regions found matching names: {region_names}")
 
             codes_to_use = np.array([self.index[i] for i in indexes])
 
@@ -2449,136 +2452,266 @@ class Parcellation:
     #####################################################################################################
     def compute_region_adjacency(
         self,
-        roi_codes: list[int] | np.ndarray = None,
-        roi_names: list[str] | str = None,
+        region_labels: list[int] | np.ndarray = None,
+        region_names: list[str] | str = None,
         rearrange: bool = False,
-    ) -> tuple[np.ndarray, dict, dict]:
+        weighted: bool = False,
+        name: str = None,
+    ) -> tuple["cltcon.Connectome", dict, dict]:
         """
         Computes the region adjacency (neighbor) matrix for the parcellation.
 
+        Two regions are considered neighbors when the dilation of one of them by a
+        single voxel reaches the other. The resulting matrix, binary or weighted, is
+        returned as a Connectome object whose nodes are labeled by the parcellation
+        codes: the matrix is N x N, with N the maximum label present in the image, so
+        the row and the column of a region are always its code minus one. Labels that
+        are absent from the image keep an empty row and column, which makes the
+        matrices of different subjects directly comparable as long as they share the
+        same labeling scheme.
+
+        The names, the colors and the centroids of the regions that remain in the
+        parcellation are attached to the Connectome object, so it carries everything
+        needed to plot the matrix or the network.
+
         Parameters
         ----------
-        roi_codes : list or np.ndarray, optional
+        region_labels : list or np.ndarray, optional
             Specific region codes to include. Default is None (all regions).
 
-        roi_names : list or str, optional
+        region_names : list or str, optional
             Specific region names to include. Default is None.
 
         rearrange : bool, optional
-            Whether to rearrange the parcellation labels before computing connectivity.
+            Whether to rearrange the parcellation labels before computing the
+            adjacency. If True, the regions kept are relabeled from 1 to the number
+            of regions, which gives the most compact matrix. Default is False.
+
+        weighted : bool, optional
+            If False, the matrix is binary (1 for neighboring regions). If True, the
+            weight of a pair of regions A and B is the number of interface voxels:
+            the voxels of B that fall in the one-voxel dilation shell of A, plus the
+            voxels of A that fall in the dilation shell of B. The matrix is symmetric,
+            and binarizing it gives the same matrix as weighted=False.
             Default is False.
+
+        name : str, optional
+            Name of the resulting Connectome object. If None, it is derived from the
+            parcellation identifier. Default is None.
 
         Returns
         -------
-        neighb_matrix : np.ndarray
-            Binary adjacency matrix (n_regions x n_regions) indicating neighboring regions.
+        adjacency : cltcon.Connectome
+            Connectome object with the binary or weighted adjacency matrix (N x N, N
+            being the maximum label present in the image), the region names, colors,
+            centroid coordinates in mm and the affine of the parcellation. Its
+            connectivity type is set to "adjacency" or "adjacency-weighted".
 
         source : dict
-            Dictionary containing source region indices, codes, and names.
+            Dictionary with the row indices ('idxs'), the codes ('codes'), the names
+            ('names') of the first region of every neighboring pair, and the number
+            of interface voxels of the pair ('weights'). The weights are reported
+            even when weighted=False.
 
         target : dict
-            Dictionary containing target region indices, codes, and names.
+            Row indices ('idxs'), codes ('codes') and names ('names') of the second
+            region of every neighboring pair. Each pair is reported once, even though
+            the matrix is symmetric.
 
         Raises
         ------
         ValueError
-            If both roi_codes and roi_names are specified.
+            If both region_labels and region_names are specified, or if the parcellation
+            does not contain any labeled voxel.
+
+        Notes
+        -----
+        The centroids are the centers of mass of the regions, converted to mm with
+        the affine of the parcellation. They are computed in a single pass, unlike
+        `compute_centroids`, which refines them region by region.
+
+        The interface voxel counts depend on the connectivity of the structuring
+        element used by the dilation. With a 26-connected element, voxels that touch
+        another region only through an edge or a corner are also counted. Larger
+        regions naturally share more interface voxels, so normalize the weights if
+        pairs of regions with very different sizes have to be compared.
+
+        The size of the matrix follows the labeling scheme, not the number of
+        regions. Parcellations with sparse codes, such as the FreeSurfer ones, can
+        therefore produce large matrices, and a warning is issued when the matrix
+        needs more than 256 MB. Use rearrange=True to obtain a compact matrix.
+
+        Examples
+        --------
+        >>> # Binary adjacency of the whole parcellation
+        >>> adjacency, source, target = parc.compute_region_adjacency()
+        >>> adjacency.plot_matrix(figsize=(5, 4))
+        >>>
+        >>> # Weighted adjacency: number of interface voxels between regions
+        >>> adjacency_w, source, target = parc.compute_region_adjacency(weighted=True)
+        >>> adjacency_w.plot_matrix(figsize=(5, 4), log_scale=True)
+        >>>
+        >>> # Compact matrix, with one row per region kept
+        >>> adjacency, source, target = parc.compute_region_adjacency(
+        ...     region_names="ctx", rearrange=True, weighted=True
+        ... )
+        >>> for s, t, w in zip(source["names"], target["names"], source["weights"]):
+        ...     print(f"{s} - {t}: {w} voxels")
         """
+
+        from scipy import ndimage
 
         from .imagetools import MorphologicalOperations
 
         # Check if both inclusion criteria are specified
-        if roi_codes is not None and roi_names is not None:
+        if region_labels is not None and region_names is not None:
             raise ValueError(
-                "Cannot specify both roi_codes and roi_names. Please choose one."
+                "Cannot specify both region_labels and region_names. Please choose one."
             )
 
         # Work on a copy to avoid modifying original
         temp_parc = copy.deepcopy(self)
 
         # Apply filtering if specified
-        if roi_codes is not None:
-            temp_parc.keep_by_code(codes2keep=roi_codes, rearrange=rearrange)
+        if region_labels is not None:
+            temp_parc.keep_by_code(codes2keep=region_labels, rearrange=rearrange)
 
-        if roi_names is not None:
-            temp_parc.keep_by_name(names2keep=roi_names, rearrange=rearrange)
+        if region_names is not None:
+            temp_parc.keep_by_name(names2keep=region_names, rearrange=rearrange)
 
         data = temp_parc.data
-        all_neigh_pairs = np.zeros((0, 2), dtype=int)
 
-        # Find all neighboring pairs
-        for i in range(len(temp_parc.index)):
-            region_code = temp_parc.index[i]
+        # Codes that are really present in the image. They define the size of the
+        # matrix, which is the maximum label found in the image.
+        present_codes = np.unique(data[data > 0]).astype(int)
 
-            # Create binary mask for the region of interest
+        if present_codes.size == 0:
+            raise ValueError(
+                "The parcellation does not contain any labeled voxel. "
+                "The adjacency matrix cannot be computed."
+            )
+
+        n_nodes = int(present_codes.max())
+
+        # The Connectome object stores the matrix as float64. The count matrix used
+        # below is int64, so the peak memory is roughly three times this size.
+        matrix_size = n_nodes * n_nodes * 8
+        if matrix_size > 256 * 1024**2:
+            warnings.warn(
+                f"The maximum label in the image ({n_nodes}) leads to a matrix of "
+                f"{matrix_size / 1024**3:.1f} GB. Use rearrange=True to relabel the "
+                "regions and obtain a compact matrix.",
+                stacklevel=2,
+            )
+
+        # counts[i, j]: number of voxels of region j+1 inside the one-voxel dilation
+        # shell of region i+1. This matrix is not symmetric.
+        counts = np.zeros((n_nodes, n_nodes), dtype=np.int64)
+
+        morph = MorphologicalOperations()
+        for region_code in present_codes:
+
+            # Binary mask of the region of interest
             region_mask = data == region_code
 
             # Dilate the region by 1 voxel
-            morph = MorphologicalOperations()
             dilated_mask = morph.dilate(region_mask.astype(int), iterations=1)
 
-            # Find the boundary (dilated area minus original region)
+            # Boundary shell: dilated area minus the original region
             boundary = (dilated_mask == 1) & (region_mask == 0)
 
-            # Get values of neighboring regions (excluding background and self)
-            neighbor_codes = np.unique(data[boundary])
-            neighbor_codes = neighbor_codes[neighbor_codes != 0]  # Remove background
-            neighbor_codes = neighbor_codes[
-                neighbor_codes != region_code
-            ]  # Remove self
+            # Count the voxels of every label in the shell. Index 0 is background,
+            # and the region itself cannot appear because the shell excludes it.
+            shell_labels = data[boundary].astype(np.int64)
+            label_counts = np.bincount(shell_labels, minlength=n_nodes + 1)
 
-            # Create pairs for this region
-            reg_pairs = np.ones((len(neighbor_codes), 2), dtype=int) * region_code
-            reg_pairs[:, 1] = neighbor_codes
+            counts[region_code - 1, :] = label_counts[1 : n_nodes + 1]
 
-            # Concatenate to overall neighbor pairs
-            all_neigh_pairs = np.vstack((all_neigh_pairs, reg_pairs))
+        # Symmetric interface size: voxels of both regions touching each other
+        interface_voxels = counts + counts.T
+        np.fill_diagonal(interface_voxels, 0)
+        del counts
 
-        # Sort each row so the smaller value is always first
-        sorted_pairs = np.sort(all_neigh_pairs, axis=1)
+        # Unique neighboring pairs (upper triangle, smaller code first). np.nonzero
+        # returns them in row-major order, sorted by the first and then the second code.
+        rows, cols = np.nonzero(np.triu(interface_voxels, k=1))
+        unique_pairs = np.column_stack((rows + 1, cols + 1))
 
-        # Find unique pairs
-        unique_pairs = np.unique(sorted_pairs, axis=0)
+        # Names and colors of the regions still in the parcellation. The rows of the
+        # labels that are not in the table are filled with placeholders.
+        node_codes = np.arange(1, n_nodes + 1, dtype=int)
+        node_names = cltmisc.create_names_from_indices(
+            node_codes, prefix="unused-label"
+        )
+        node_colors = ["#000000"] * n_nodes
 
-        # Get ROI information
-        roi_codes = np.array(temp_parc.index)
-        roi_names = temp_parc.name
-        n_rois = len(roi_codes)
+        for i, region_code in enumerate(temp_parc.index):
+            region_code = int(region_code)
+            if 1 <= region_code <= n_nodes:
+                node_names[region_code - 1] = temp_parc.name[i]
+                node_colors[region_code - 1] = temp_parc.color[i]
 
-        # Initialize the neighborhood matrix
-        neighb_matrix = np.zeros((n_rois, n_rois), dtype=int)
+        # Centroids, as centers of mass of every region present in the image. They
+        # are computed in a single pass and converted to mm.
+        node_coords = np.full((n_nodes, 3), np.nan)
+        centroids_vox = np.array(
+            ndimage.center_of_mass(data > 0, labels=data, index=present_codes)
+        )
+        node_coords[present_codes - 1, :] = cltimg.vox2mm(
+            centroids_vox, temp_parc.affine
+        )
+
+        # Adjacency matrix. The row of a region is its code minus one.
+        if weighted:
+            neighb_matrix = interface_voxels.astype(np.float64)
+        else:
+            neighb_matrix = (interface_voxels > 0).astype(np.float64)
 
         # Create source and target dictionaries
-        source = {"idxs": [], "codes": [], "names": []}
+        source = {"idxs": [], "codes": [], "names": [], "weights": []}
         target = {"idxs": [], "codes": [], "names": []}
 
-        for pair in unique_pairs:
-            code1, code2 = pair[0], pair[1]
+        for code1, code2 in unique_pairs:
+            code1, code2 = int(code1), int(code2)
 
-            # Find the row indices in the ROI list
-            roi_idx1 = np.where(roi_codes == code1)[0][0]
-            roi_idx2 = np.where(roi_codes == code2)[0][0]
-
-            # Update symmetric adjacency matrix
-            neighb_matrix[roi_idx1, roi_idx2] = 1
-            neighb_matrix[roi_idx2, roi_idx1] = 1
+            # Row indices of both regions in the matrix
+            roi_idx1 = code1 - 1
+            roi_idx2 = code2 - 1
 
             # Store the pair (only once, not symmetric)
             source["idxs"].append(roi_idx1)
             source["codes"].append(code1)
-            source["names"].append(roi_names[roi_idx1])
+            source["names"].append(node_names[roi_idx1])
+            source["weights"].append(int(interface_voxels[roi_idx1, roi_idx2]))
 
             target["idxs"].append(roi_idx2)
             target["codes"].append(code2)
-            target["names"].append(roi_names[roi_idx2])
+            target["names"].append(node_names[roi_idx2])
 
-        return neighb_matrix, source, target
+        # Name of the resulting Connectome object
+        if name is None:
+            parc_id = getattr(self, "id", None)
+            suffix = "adjacency-weighted" if weighted else "adjacency"
+            name = f"{parc_id}-{suffix}" if parc_id else f"region-{suffix}"
+
+        adjacency = cltcon.Connectome(
+            matrix=neighb_matrix,
+            name=name,
+            region_coords=node_coords,
+            region_names=node_names,
+            region_index=node_codes,
+            region_colors=node_colors,
+            connectivity_type="adjacency-weighted" if weighted else "adjacency",
+            affine=temp_parc.affine,
+        )
+
+        return adjacency, source, target
 
     ######################################################################################################
     def compute_centroids(
         self,
-        roi_codes: list[int] | np.ndarray = None,
-        roi_names: list[str] | str = None,
+        region_labels: list[int] | np.ndarray = None,
+        region_names: list[str] | str = None,
         gaussian_smooth: bool = True,
         sigma: float = 1.0,
         closing_iterations: int = 2,
@@ -2590,10 +2723,10 @@ class Parcellation:
 
         Parameters
         ----------
-        roi_codes : list or np.ndarray, optional
+        region_labels : list or np.ndarray, optional
             Specific region codes to include. Default is None (all regions).
 
-        roi_names : list or str, optional
+        region_names : list or str, optional
             Specific region names to include. Default is None.
 
         gaussian_smooth : bool, optional
@@ -2618,7 +2751,7 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both roi_codes and roi_names are specified.
+            If both region_labels and region_names are specified.
 
         Notes
         -----
@@ -2631,31 +2764,31 @@ class Parcellation:
         >>>
         >>> # Specific regions with file output
         >>> df = parc.compute_centroids(
-        ...     roi_codes=[1, 2, 3],
+        ...     region_labels=[1, 2, 3],
         ...     centroid_table='centroids.tsv'
         ... )
         >>> # Specific regions by name
         >>> df = parc.compute_centroids(
-        ...     roi_names=['hippocampus', 'amygdala'],
+        ...     region_names=['hippocampus', 'amygdala'],
         ...     centroid_table='centroids.tsv'
         ... )
         """
 
         # Check if both inclusion criteria are specified
-        if roi_codes is not None and roi_names is not None:
+        if region_labels is not None and region_names is not None:
             raise ValueError(
-                "Cannot specify both roi_codes and roi_names. Please choose one."
+                "Cannot specify both region_labels and region_names. Please choose one."
             )
 
         # Work on a copy to avoid modifying original
         temp_parc = copy.deepcopy(self)
 
         # Apply filtering if specified
-        if roi_codes is not None:
-            temp_parc.keep_by_code(codes2keep=roi_codes)
+        if region_labels is not None:
+            temp_parc.keep_by_code(codes2keep=region_labels)
 
-        if roi_names is not None:
-            temp_parc.keep_by_name(names2keep=roi_names)
+        if region_names is not None:
+            temp_parc.keep_by_name(names2keep=region_names)
 
         # Get region information
         region_codes = np.array(temp_parc.index)
@@ -2766,8 +2899,8 @@ class Parcellation:
         vols_to_delete: list[int] | np.ndarray = None,
         method: str = "nilearn",
         metric: str = "mean",
-        roi_codes: list[int] | np.ndarray = None,
-        roi_names: list[str] | str = None,
+        region_labels: list[int] | np.ndarray = None,
+        region_names: list[str] | str = None,
     ) -> np.ndarray:
         """
         Compute region-wise time series.
@@ -2777,10 +2910,10 @@ class Parcellation:
         time_series_data : str or np.ndarray
             Path to time series file or numpy array with shape (dimx X dimy X dimZ x Timepoints).
 
-        roi_codes : list or np.ndarray, optional
+        region_labels : list or np.ndarray, optional
             Specific region codes to include. Default is None (all regions).
 
-        roi_names : list or str, optional
+        region_names : list or str, optional
             Specific region names to include. Default is None.
 
         ouput_h5file : str, optional
@@ -2794,7 +2927,7 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both roi_codes and roi_names are specified.
+            If both region_labels and region_names are specified.
 
         Examples
         --------
@@ -2807,25 +2940,25 @@ class Parcellation:
         # Compute with specific regions using codes
         >>> region_ts = parc.get_regionwise_timeseries(
         ...     time_series_data='timeseries.nii.gz',
-        ...     roi_codes=[1, 2, 3])
+        ...     region_labels=[1, 2, 3])
 
         """
 
         # Check if include_by_code and include_by_name are different from None at the same time
-        if roi_codes is not None and roi_names is not None:
-            roi_codes = None
+        if region_labels is not None and region_names is not None:
+            region_labels = None
             print(
-                "Both roi_codes and roi_names were specified. Ignoring roi_codes and using roi_names for region selection."
+                "Both region_labels and region_names were specified. Ignoring region_labels and using region_names for region selection."
             )
 
         temp_parc = copy.deepcopy(self)
 
         # Apply inclusion if specified
-        if roi_codes is not None:
-            temp_parc.keep_by_code(codes2keep=roi_codes)
+        if region_labels is not None:
+            temp_parc.keep_by_code(codes2keep=region_labels)
 
-        if roi_names is not None:
-            temp_parc.keep_by_name(names2keep=roi_names)
+        if region_names is not None:
+            temp_parc.keep_by_name(names2keep=region_names)
 
         # Delete volumes if specified
         if vols_to_delete is not None:
@@ -2983,8 +3116,8 @@ class Parcellation:
     ######################################################################################################
     def surface_extraction(
         self,
-        roi_codes: list[int] | np.ndarray = None,
-        roi_names: list[str] | str = None,
+        region_labels: list[int] | np.ndarray = None,
+        region_names: list[str] | str = None,
         gaussian_smooth: bool = True,
         smooth_iterations: int = 10,
         fill_holes: bool = True,
@@ -3004,10 +3137,10 @@ class Parcellation:
 
         Parameters
         ----------
-        roi_codes : list or np.ndarray, optional
+        region_labels : list or np.ndarray, optional
             Region codes to extract surfaces for. Default is None (all regions).
 
-        roi_names : list or str, optional
+        region_names : list or str, optional
             Region names to extract surfaces for. Default is None.
 
         gaussian_smooth : bool, optional
@@ -3048,7 +3181,7 @@ class Parcellation:
         Raises
         ------
         ValueError
-            If both roi_codes and roi_names are specified.
+            If both region_labels and region_names are specified.
         FileNotFoundError
             If output directory doesn't exist.
         FileExistsError
@@ -3061,14 +3194,14 @@ class Parcellation:
         >>>
         >>> # Extract specific regions with high quality
         >>> surface = parc.surface_extraction(
-        ...     roi_codes=[1, 2, 3],
+        ...     region_labels=[1, 2, 3],
         ...     smooth_iterations=20,
         ...     out_filename='regions.surf'
         ... )
         """
 
         # Check if include_by_code and include_by_name are different from None at the same time
-        if roi_codes is not None and roi_names is not None:
+        if region_labels is not None and region_names is not None:
             raise ValueError(
                 "You cannot specify both include_by_code and include_by_name at the same time. Please choose one of them."
             )
@@ -3076,11 +3209,11 @@ class Parcellation:
         temp_parc = copy.deepcopy(self)
 
         # Apply inclusion if specified
-        if roi_codes is not None:
-            temp_parc.keep_by_code(codes2keep=roi_codes)
+        if region_labels is not None:
+            temp_parc.keep_by_code(codes2keep=region_labels)
 
-        if roi_names is not None:
-            temp_parc.keep_by_name(names2keep=roi_names)
+        if region_names is not None:
+            temp_parc.keep_by_name(names2keep=region_names)
 
         # Get unique region values
         unique_regions = np.array(temp_parc.index)
@@ -4892,8 +5025,8 @@ class Parcellation:
         normalize_rows: bool = False,
         vols_to_delete: str | list | np.ndarray = None,
         ts_method: str = "nilearn",
-        roi_codes: list[int] | np.ndarray = None,
-        roi_names: list[str] | str = None,
+        region_labels: list[int] | np.ndarray = None,
+        region_names: list[str] | str = None,
     ) -> cltcon.Connectome:
         """Compute a functional connectivity (FC) matrix from a ROI × time series or 4-D NIfTI file.
 
@@ -4988,27 +5121,27 @@ class Parcellation:
                 z_transform=z_transform,
                 absolute=absolute,
                 threshold=threshold,
-                roi_codes=roi_codes,
-                roi_names=roi_names,
+                region_labels=region_labels,
+                region_names=region_names,
                 normalize_rows=normalize_rows,
             )
             return fc_connectome
 
         # Check if include_by_code and include_by_name are different from None at the same time
-        if roi_codes is not None and roi_names is not None:
-            roi_codes = None
+        if region_labels is not None and region_names is not None:
+            region_labels = None
             print(
-                "Both roi_codes and roi_names were specified. Ignoring roi_codes and using roi_names for region selection."
+                "Both region_labels and region_names were specified. Ignoring region_labels and using region_names for region selection."
             )
 
         temp_parc = copy.deepcopy(self)
 
         # Apply inclusion if specified
-        if roi_codes is not None:
-            temp_parc.keep_by_code(codes2keep=roi_codes)
+        if region_labels is not None:
+            temp_parc.keep_by_code(codes2keep=region_labels)
 
-        if roi_names is not None:
-            temp_parc.keep_by_name(names2keep=roi_names)
+        if region_names is not None:
+            temp_parc.keep_by_name(names2keep=region_names)
 
         if vols_to_delete is not None:
             # Ensure vols_to_delete is a list
@@ -5028,7 +5161,7 @@ class Parcellation:
                     data = temp_parc.get_regionwise_timeseries(
                         data, vols_to_delete=vols_to_delete, method=ts_method
                     )
-                    roi_names = data.region_names
+                    region_names = data.region_names
                     data = data.data
 
             else:
@@ -5246,7 +5379,7 @@ class RegionTimeSeries:
         threshold: float | None = None,
         normalize_rows: bool = False,
         vols_to_delete: str | list | np.ndarray = None,
-        roi_names: list[str] | str = None,
+        region_names: list[str] | str = None,
     ) -> cltcon.Connectome:
         """Compute a functional connectivity (FC) matrix.
 
@@ -5328,23 +5461,25 @@ class RegionTimeSeries:
         # ------------------------------------------------------------------
         SUPPORTED = {"pearson", "spearman", "kendall", "partial", "mutual_info"}
 
-        if roi_names is not None:
-            if isinstance(roi_names, str):
-                roi_names = [roi_names]
-            elif isinstance(roi_names, list):
-                if not all(isinstance(name, str) for name in roi_names):
-                    raise TypeError("All items in roi_names must be strings")
+        if region_names is not None:
+            if isinstance(region_names, str):
+                region_names = [region_names]
+            elif isinstance(region_names, list):
+                if not all(isinstance(name, str) for name in region_names):
+                    raise TypeError("All items in region_names must be strings")
             else:
-                raise TypeError(f"roi_names must be str or list, got {type(roi_names)}")
+                raise TypeError(
+                    f"region_names must be str or list, got {type(region_names)}"
+                )
 
-            indices = cltmisc.get_indexes_by_substring(self.region_names, roi_names)
+            indices = cltmisc.get_indexes_by_substring(self.region_names, region_names)
             data = self.data[indices, :]
-            roi_names = [self.region_names[i] for i in indices]
-            roi_colors = [self.region_colors[i] for i in indices]
+            region_names = [self.region_names[i] for i in indices]
+            region_colors = [self.region_colors[i] for i in indices]
         else:
             data = self.data
-            roi_names = self.region_names
-            roi_colors = self.region_colors
+            region_names = self.region_names
+            region_colors = self.region_colors
 
         if vols_to_delete is not None:
             # Ensure vols_to_delete is a list
@@ -5456,9 +5591,9 @@ class RegionTimeSeries:
 
         fc_connectome = cltcon.Connectome(
             fc,
-            region_names=roi_names,
+            region_names=region_names,
             region_index=list(range(1, n_rois + 1)),
-            region_colors=roi_colors,
+            region_colors=region_colors,
         )
 
         return fc_connectome
