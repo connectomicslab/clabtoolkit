@@ -2581,9 +2581,15 @@ class Parcellation:
 
         data = temp_parc.data
 
+        # Integer view of the volume, needed to locate and group the labels
+        if np.issubdtype(data.dtype, np.integer):
+            label_volume = data
+        else:
+            label_volume = data.astype(np.int32)
+
         # Codes that are really present in the image. They define the size of the
         # matrix, which is the maximum label found in the image.
-        present_codes = np.unique(data[data > 0]).astype(int)
+        present_codes = np.unique(label_volume[label_volume > 0]).astype(int)
 
         if present_codes.size == 0:
             raise ValueError(
@@ -2608,11 +2614,24 @@ class Parcellation:
         # shell of region i+1. This matrix is not symmetric.
         counts = np.zeros((n_nodes, n_nodes), dtype=np.int64)
 
+        # Bounding box of every label. The shell of a region never reaches further
+        # than one voxel outside its bounding box, so dilating the whole volume for
+        # every region is unnecessary and, on a large image, very expensive.
+        bounding_boxes = ndimage.find_objects(label_volume)
+
         morph = MorphologicalOperations()
         for region_code in present_codes:
 
+            # Sub-volume holding the region and the voxels its dilation can reach
+            bbox = bounding_boxes[region_code - 1]
+            sub_slices = tuple(
+                slice(max(axis_slice.start - 1, 0), min(axis_slice.stop + 1, dim))
+                for axis_slice, dim in zip(bbox, label_volume.shape, strict=False)
+            )
+            sub_volume = label_volume[sub_slices]
+
             # Binary mask of the region of interest
-            region_mask = data == region_code
+            region_mask = sub_volume == region_code
 
             # Dilate the region by 1 voxel
             dilated_mask = morph.dilate(region_mask.astype(int), iterations=1)
@@ -2622,7 +2641,7 @@ class Parcellation:
 
             # Count the voxels of every label in the shell. Index 0 is background,
             # and the region itself cannot appear because the shell excludes it.
-            shell_labels = data[boundary].astype(np.int64)
+            shell_labels = sub_volume[boundary].astype(np.int64)
             label_counts = np.bincount(shell_labels, minlength=n_nodes + 1)
 
             counts[region_code - 1, :] = label_counts[1 : n_nodes + 1]
