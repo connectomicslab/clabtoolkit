@@ -499,10 +499,21 @@ class Surface:
                 Number of faces of the mesh.
 
             - 'global_color' : str or None
-                Hexadecimal color stored in the 'default' colortable.
+                Hexadecimal color of the surface, taken from the 'default'
+                colortable. It is None when that colortable holds more than one
+                color, meaning the default map is a parcellation and each region
+                carries its own color.
 
             - 'global_opacity' : float or None
-                Opacity stored in the 'default' colortable.
+                Opacity stored in the 'default' colortable, or None when the
+                regions do not share the same opacity.
+
+            - 'opacity_range' : tuple or None
+                (min_opacity, max_opacity) across the entries of the 'default'
+                colortable.
+
+            - 'n_default_colors' : int
+                Number of entries of the 'default' colortable.
 
             - 'active_overlay' : str or None
                 Name of the overlay currently set as active.
@@ -550,6 +561,8 @@ class Surface:
             "n_faces": int(self.mesh.n_cells) if loaded else None,
             "global_color": None,
             "global_opacity": None,
+            "opacity_range": None,
+            "n_default_colors": 0,
             "active_overlay": getattr(self, "active_scalar", None),
             "n_overlays": 0,
             "overlays": [],
@@ -558,19 +571,29 @@ class Surface:
         # Global color and opacity are stored in the 'default' colortable
         default_ctable = self.colortables.get("default", {}).get("color_table", None)
         if default_ctable is not None and len(default_ctable) > 0:
-            rgb = np.asarray(default_ctable[0, :3], dtype=float)
+            info["n_default_colors"] = len(default_ctable)
 
-            try:
-                info["global_color"] = cltcol.harmonize_colors(
-                    rgb, output_format="hex"
-                )[0]
-            except Exception:
-                info["global_color"] = None
+            # A single color is a global color. If the default map is a
+            # parcellation there is one color per region and none of them is global.
+            if len(default_ctable) == 1:
+                rgb = np.asarray(default_ctable[0, :3], dtype=float)
 
-            opacity = float(default_ctable[0, 3])
+                try:
+                    info["global_color"] = cltcol.harmonize_colors(
+                        rgb, output_format="hex"
+                    )[0]
+                except Exception:
+                    info["global_color"] = None
 
             # Opacities can be stored either in [0, 1] or in [0, 255]
-            info["global_opacity"] = opacity / 255 if opacity > 1 else opacity
+            opacities = np.asarray(default_ctable[:, 3], dtype=float)
+            if opacities.size and opacities.max() > 1:
+                opacities = opacities / 255
+
+            info["opacity_range"] = (float(opacities.min()), float(opacities.max()))
+
+            if np.allclose(opacities, opacities[0]):
+                info["global_opacity"] = float(opacities[0])
 
         # Vertex-wise maps
         if loaded:
@@ -626,11 +649,22 @@ class Surface:
 
             if info["global_color"] is not None:
                 _row(f"    Color       : {info['global_color']:>20}")
+
+            elif info["n_default_colors"] > 1:
+                # The default map is a parcellation: report its colortable instead
+                colors_str = f"{info['n_default_colors']:,} region colors"
+                _row(f"    Color       : {colors_str:>20}")
             else:
                 _row("    Color       :          N/A")
 
             if info["global_opacity"] is not None:
                 _row(f"    Opacity     : {info['global_opacity']:>20.2f}")
+
+            elif info["opacity_range"] is not None:
+                op_str = (
+                    f"{info['opacity_range'][0]:.2f}  →  {info['opacity_range'][1]:.2f}"
+                )
+                _row(f"    Opacity     : {op_str:>20}")
             else:
                 _row("    Opacity     :          N/A")
 
@@ -3274,10 +3308,12 @@ class Surface:
         # Extract the annotation data
         maps_array = self.mesh.point_data[parc_name]
 
-        # If there is a colortable for this map, use it
+        # If there is a colortable for this map, use it. A copy is sent because
+        # AnnotParcellation rescales the colors and removes the unused regions
+        # in place, which would corrupt the colortable of this surface.
         if parc_name in self.colortables:
-            ctable = self.colortables[parc_name]["color_table"]
-            struct_names = self.colortables[parc_name]["names"]
+            ctable = copy.deepcopy(self.colortables[parc_name]["color_table"])
+            struct_names = copy.deepcopy(self.colortables[parc_name]["names"])
 
             # Saving the annotation data in FreeSurfer format
             annot_obj = cltfree.AnnotParcellation()
