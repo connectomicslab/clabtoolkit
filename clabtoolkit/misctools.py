@@ -16,7 +16,7 @@ from typing import (
     Any,
     Literal,
 )
-
+from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_numeric_dtype
 import h5py
 import numpy as np
 import pandas as pd
@@ -2737,9 +2737,13 @@ def drop_empty_columns(
     """
     Remove columns whose values are all NaN or empty.
 
-    A column is dropped when every one of its entries is missing (NaN/None)
-    or an empty string. Optionally, whitespace-only strings (e.g. '   ') are
-    also treated as empty. Columns with at least one meaningful value are kept.
+    A column is dropped when every one of its entries is missing (NaN, None,
+    NaT, pd.NA) or an empty string. Optionally, whitespace-only strings
+    (e.g. '   ') are also treated as empty. Columns with at least one
+    meaningful value are kept.
+
+    Text is detected by value, not by dtype, so object, string (the default
+    for text in pandas >= 3) and categorical columns are all handled.
 
     Parameters
     ----------
@@ -2749,17 +2753,22 @@ def drop_empty_columns(
         If True, strings containing only whitespace are considered empty.
     inplace : bool, default=False
         If True, drop the columns in place and return the same DataFrame.
-        If False (default), operate on and return a copy.
+        If False (default), return a new DataFrame.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with all-empty columns removed.
+        DataFrame with all-empty columns removed. A DataFrame with no rows is
+        returned unchanged, since its columns cannot be judged empty.
+
+    Raises
+    ------
+    ValueError
+        If inplace=True and columns sharing the same name would be only partly
+        dropped, which cannot be done in place.
 
     Examples
     --------
-    >>> import pandas as pd
-    >>> import numpy as np
     >>> df = pd.DataFrame({
     ...     'a': [1, 2, 3],
     ...     'b': [np.nan, np.nan, np.nan],
@@ -2769,30 +2778,51 @@ def drop_empty_columns(
     >>> drop_empty_columns(df).columns.tolist()
     ['a', 'd']
     """
-    target = df if inplace else df.copy()
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError(f"df must be a pandas DataFrame, got {type(df)}")
 
-    # Start from the standard missing-value mask (NaN, None, NaT)
-    empty_mask = target.isna()
+    # With no rows, every column is vacuously empty; keep the structure
+    if df.shape[0] == 0:
+        return df if inplace else df.copy()
 
-    # Also flag empty (and optionally whitespace-only) strings
-    # Series-wide dtype comparison, not a type() check.
-    obj_cols = target.columns[target.dtypes == object]  # noqa: E721
-    if len(obj_cols) > 0:
-        stripped = target[obj_cols].apply(
-            lambda col: col.map(
-                lambda x: (
-                    isinstance(x, str)
-                    and (x.strip() == "" if treat_whitespace_as_empty else x == "")
-                )
-            )
+    def _is_empty(col: pd.Series) -> bool:
+        present = col[col.notna()]
+        if present.empty:
+            return True
+
+        # Numbers, booleans and dates that are not missing are real values
+        if is_numeric_dtype(col) or is_bool_dtype(col) or is_datetime64_any_dtype(col):
+            return False
+
+        for value in present.astype(object):
+            if not isinstance(value, str):
+                return False
+            if (value.strip() if treat_whitespace_as_empty else value) != "":
+                return False
+        return True
+
+    # Decide column by column, by position, so duplicate names are handled
+    keep = np.array(
+        [not _is_empty(df.iloc[:, pos]) for pos in range(df.shape[1])], dtype=bool
+    )
+
+    if keep.all():
+        return df if inplace else df.copy()
+
+    if not inplace:
+        return df.iloc[:, keep].copy()
+
+    labels_to_drop = df.columns[~keep]
+    labels_to_keep = set(df.columns[keep])
+    partial = sorted({str(c) for c in labels_to_drop if c in labels_to_keep})
+    if partial:
+        raise ValueError(
+            f"Cannot drop in place: columns named {partial} are only partly empty. "
+            "Use inplace=False."
         )
-        empty_mask[obj_cols] = empty_mask[obj_cols] | stripped
 
-    # A column is "empty" only if every entry is empty
-    cols_to_drop = empty_mask.columns[empty_mask.all(axis=0)]
-
-    target.drop(columns=cols_to_drop, inplace=True)
-    return target
+    df.drop(columns=labels_to_drop.unique(), inplace=True)
+    return df
 
 
 ####################################################################################################
