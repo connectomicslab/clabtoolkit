@@ -712,7 +712,9 @@ class Connectome:
             elif isinstance(sparse, bool):
                 use_sparse = sparse
             else:
-                raise ValueError(f"sparse must be True, False or 'auto'. Got {sparse!r}")
+                raise ValueError(
+                    f"sparse must be True, False or 'auto'. Got {sparse!r}"
+                )
 
             comp = "gzip" if compression else None
             if use_sparse:
@@ -1321,6 +1323,7 @@ class Connectome:
     def plot_matrix(
         self,
         figsize: tuple[int, int] = (12, 10),
+        title: str | None = None,
         log_scale: bool = False,
         show_labels: bool = True,
         cmap: str = "RdBu_r",
@@ -1366,9 +1369,10 @@ class Connectome:
         plt.colorbar(im, label="Connection Strength")
 
         # Add threshold info to title
-        title = f"Connectivity Matrix - {self.name}"
-        if threshold is not None:
-            title += f" (threshold: {threshold}, mode: {threshold_mode})"
+        if title is None:
+            title = f"Connectivity Matrix - {self.name}"
+            if threshold is not None:
+                title += f" (threshold: {threshold}, mode: {threshold_mode})"
 
         # Add labels if available and requested
         if (
@@ -2042,10 +2046,22 @@ class Connectome:
         print("╠" + "═" * width + "╣")
         if self.region_coords is not None:
             print_line(" COORDINATE RANGES")
+
+            # Nodes without coordinates are stored as NaN, so the ranges are
+            # computed over the nodes that do have them
+            n_missing = int(np.sum(np.all(np.isnan(self.region_coords), axis=1)))
+
             for axis, label in enumerate(("X", "Y", "Z")):
-                lo = np.min(self.region_coords[:, axis])
-                hi = np.max(self.region_coords[:, axis])
-                print_line(f"   {label}:  [{lo:8.2f}, {hi:8.2f}]")
+                column = self.region_coords[:, axis]
+                if np.all(np.isnan(column)):
+                    print_line(f"   {label}:  [     n/a,      n/a]")
+                else:
+                    lo = np.nanmin(column)
+                    hi = np.nanmax(column)
+                    print_line(f"   {label}:  [{lo:8.2f}, {hi:8.2f}]")
+
+            if n_missing:
+                print_line(f"   Nodes without coordinates: {n_missing}")
         else:
             print_line(" COORDINATE RANGES")
             print_line("   Not available — 3D visualization disabled")
