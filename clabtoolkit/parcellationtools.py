@@ -4616,6 +4616,245 @@ class Parcellation:
             self.parc_range()
 
     ######################################################################################################
+    def replace_names(
+        self,
+        names2rep: str | list[str | list[str]] | np.ndarray | dict,
+        new_names: str | list[str] | np.ndarray | None = None,
+        match: str = "exact",
+        bool_case: bool = True,
+    ) -> "Parcellation":
+        """
+        Replace region names, supporting group replacements.
+
+        Only the names change; labels, colors, and opacities are untouched.
+        All matches are resolved against the ORIGINAL names, so overlapping or
+        swapping mappings (e.g. {"lh": "rh", "rh": "lh"}) never cascade.
+
+        Parameters
+        ----------
+        names2rep : str, list, np.ndarray, or dict
+            Names to replace. Accepted forms:
+            - dict: {old: new} or {(old1, old2): new}. new_names is ignored.
+            - str: a single name (new_names must be a single name).
+            - list of str: each entry is paired with one entry of new_names.
+            - list of lists of str: every name in a group gets the same new name.
+            - 1-D np.ndarray of str: same as a list of str.
+
+        new_names : str, list of str, or np.ndarray, optional
+            Replacement names, paired positionally with the groups in names2rep.
+            Required unless names2rep is a dict.
+
+        match : {"exact", "contains", "substring"}, optional
+            - "exact": a region matches if its whole name equals an old name.
+            - "contains": a region matches if its name contains an old name;
+            the WHOLE name is replaced by the new name.
+            - "substring": every occurrence of an old name inside a region name
+            is replaced by the new text, in a single pass
+            (e.g. "ctx-lh-" -> "ctx-left-").
+            Default is "exact".
+
+        bool_case : bool, optional
+            Case-sensitive matching. Default is True.
+
+        Returns
+        -------
+        Parcellation
+            self, to allow method chaining.
+
+        Raises
+        ------
+        TypeError
+            If the inputs have unsupported types.
+        ValueError
+            If new_names is missing, the number of new names does not match the
+            number of groups, match is invalid, an old name is empty, a region
+            matches more than one group ("exact"/"contains"), or the same old
+            text maps to different new texts ("substring").
+
+        Warns
+        -----
+        UserWarning
+            If a group matches no region, or the replacement creates duplicate names.
+
+        Examples
+        --------
+        >>> # Dictionary, exact names
+        >>> parc.replace_names({"ctx-lh-bankssts": "L_BSTS", "ctx-rh-bankssts": "R_BSTS"})
+        >>>
+        >>> # Paired lists
+        >>> parc.replace_names(["ctx-lh-bankssts", "ctx-rh-bankssts"], ["L_BSTS", "R_BSTS"])
+        >>>
+        >>> # Group: several regions get the same name
+        >>> parc.replace_names([["thal-lh-VA", "thal-lh-VL"]], ["thal-lh-ventral"])
+        >>>
+        >>> # Rename every region containing a substring
+        >>> parc.replace_names("hipp-lh", "Left-Hippocampus", match="contains")
+        >>>
+        >>> # Swap hemisphere tags inside names, without cascading
+        >>> parc.replace_names({"-lh-": "-rh-", "-rh-": "-lh-"}, match="substring")
+        """
+        import re
+        from collections import Counter
+
+        if not hasattr(self, "name") or self.name is None:
+            raise AttributeError("Object must have a 'name' attribute")
+
+        match = match.lower().strip()
+        if match not in ("exact", "contains", "substring"):
+            raise ValueError(
+                f"match must be 'exact', 'contains' or 'substring', got '{match}'."
+            )
+
+        # ------------------------------------------------------------------
+        # Normalize names2rep into groups of old names
+        # ------------------------------------------------------------------
+        if isinstance(names2rep, dict):
+            if new_names is not None:
+                warnings.warn(
+                    "names2rep is a dict; new_names is ignored.", stacklevel=2
+                )
+            old_groups, new_list = [], []
+            for old, new in names2rep.items():
+                old_groups.append([old] if isinstance(old, str) else list(old))
+                new_list.append(new)
+
+        else:
+            if isinstance(names2rep, str):
+                old_groups = [[names2rep]]
+            elif isinstance(names2rep, np.ndarray):
+                if names2rep.ndim != 1:
+                    raise TypeError("Unsupported numpy array shape for names2rep")
+                old_groups = [[str(x)] for x in names2rep.tolist()]
+            elif isinstance(names2rep, (list, tuple)):
+                if len(names2rep) == 0:
+                    raise ValueError("names2rep cannot be empty")
+                if all(isinstance(x, str) for x in names2rep):
+                    old_groups = [[x] for x in names2rep]
+                elif all(isinstance(x, (list, tuple)) for x in names2rep):
+                    old_groups = [list(x) for x in names2rep]
+                else:
+                    raise TypeError(
+                        "names2rep must be a list of str or a list of lists of str"
+                    )
+            else:
+                raise TypeError(
+                    f"names2rep must be str, list, numpy array or dict, got {type(names2rep)}"
+                )
+
+            # Normalize new_names
+            if new_names is None:
+                raise ValueError("new_names is required unless names2rep is a dict.")
+            if isinstance(new_names, str):
+                new_list = [new_names]
+            elif isinstance(new_names, (list, tuple, np.ndarray)):
+                new_list = list(new_names)
+            else:
+                raise TypeError(
+                    f"new_names must be str, list or numpy array, got {type(new_names)}"
+                )
+
+        # Validate contents
+        for group in old_groups:
+            if len(group) == 0 or not all(
+                isinstance(o, str) and o != "" for o in group
+            ):
+                raise ValueError("Every old name must be a non-empty string.")
+        if not all(isinstance(n, (str, np.str_)) for n in new_list):
+            raise TypeError("All new names must be strings.")
+        new_list = [str(n) for n in new_list]
+
+        if len(new_list) != len(old_groups):
+            raise ValueError(
+                f"Number of new names ({len(new_list)}) must equal "
+                f"number of groups ({len(old_groups)}) to be replaced"
+            )
+
+        original = list(self.name)
+        updated = list(original)
+
+        # ------------------------------------------------------------------
+        # "exact" and "contains": replace the whole name
+        # ------------------------------------------------------------------
+        if match in ("exact", "contains"):
+            claimed: dict[int, int] = {}  # region position -> group position
+
+            for g, (olds, new) in enumerate(zip(old_groups, new_list)):
+                if match == "exact":
+                    if bool_case:
+                        olds_set = set(olds)
+                        hits = [k for k, n in enumerate(original) if n in olds_set]
+                    else:
+                        olds_set = {o.lower() for o in olds}
+                        hits = [
+                            k for k, n in enumerate(original) if n.lower() in olds_set
+                        ]
+                else:
+                    hits = cltmisc.get_indexes_by_substring(
+                        input_list=original,
+                        or_filter=olds,
+                        invert=False,
+                        bool_case=bool_case,
+                    )
+
+                if len(hits) == 0:
+                    warnings.warn(f"No region matched {olds}; skipped.", stacklevel=2)
+                    continue
+
+                for k in hits:
+                    if k in claimed and claimed[k] != g:
+                        raise ValueError(
+                            f"Region '{original[k]}' matches both {old_groups[claimed[k]]} "
+                            f"and {olds}. Use more specific names."
+                        )
+                    claimed[k] = g
+                    updated[k] = new
+
+        # ------------------------------------------------------------------
+        # "substring": replace text inside names, single pass
+        # ------------------------------------------------------------------
+        else:
+            lookup: dict[str, str] = {}
+            for olds, new in zip(old_groups, new_list):
+                for o in olds:
+                    key = o if bool_case else o.lower()
+                    if key in lookup and lookup[key] != new:
+                        raise ValueError(
+                            f"'{o}' is mapped to both '{lookup[key]}' and '{new}'."
+                        )
+                    lookup[key] = new
+
+            # Longest first, so "ctx-lh-" wins over "lh"
+            olds_sorted = sorted(lookup, key=len, reverse=True)
+            flags = 0 if bool_case else re.IGNORECASE
+            pattern = re.compile("|".join(re.escape(o) for o in olds_sorted), flags)
+
+            def _sub(m):
+                text = m.group(0)
+                return lookup[text if bool_case else text.lower()]
+
+            updated = [pattern.sub(_sub, n) for n in original]
+
+            for o in olds_sorted:
+                if not any(re.search(re.escape(o), n, flags) for n in original):
+                    warnings.warn(f"No region name contains '{o}'.", stacklevel=2)
+
+        # ------------------------------------------------------------------
+        # Warn about duplicates introduced by the replacement
+        # ------------------------------------------------------------------
+        before = Counter(original)
+        after = Counter(updated)
+        new_dups = sorted(n for n, c in after.items() if c > 1 and before.get(n, 0) < c)
+        if new_dups:
+            warnings.warn(
+                f"Replacement produced duplicate region names: {new_dups}. "
+                "Name-based methods will treat these regions as one.",
+                stacklevel=2,
+            )
+
+        self.name = updated
+        return self
+
+    ######################################################################################################
     def parc_range(self) -> None:
         """
         Update minimum and maximum label values in parcellation.
