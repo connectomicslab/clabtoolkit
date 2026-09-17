@@ -4510,110 +4510,236 @@ class Parcellation:
     ######################################################################################################
     def replace_labels(
         self,
-        codes2rep: list[int | list[int]] | np.ndarray | dict,
-        new_codes: int | list[int] | np.ndarray = None,
-    ) -> None:
+        codes2rep: int | str | list[int | str | list[int]] | np.ndarray | dict,
+        new_codes: int | list[int] | np.ndarray | None = None,
+    ) -> "Parcellation":
         """
         Replace region codes with new values, supporting group replacements.
-        """
 
-        # Input validation
+        All masks are built from the ORIGINAL data, so chained or swapping
+        mappings (e.g. {1: 2, 2: 1}) never cascade.
+
+        Parameters
+        ----------
+        codes2rep : int, str, list, np.ndarray, or dict
+            Codes to replace. Accepted forms:
+            - dict: {old: new} or {(old1, old2): new}; keys may also be range
+            strings ("11:12", "50-52"). new_codes is ignored.
+            - int or str: a single code or range (one group).
+            - list of int/str: each entry is one group, paired with one new code.
+            - list of lists: every code in a group gets the same new code.
+            - 1-D np.ndarray: same as a list of int.
+
+        new_codes : int, list of int, or np.ndarray, optional
+            New codes, paired positionally with the groups in codes2rep.
+            Required unless codes2rep is a dict. Each entry must resolve to
+            exactly one code.
+
+        Returns
+        -------
+        Parcellation
+            self, to allow method chaining.
+
+        Notes
+        -----
+        Metadata (name, color, opacity) of the resulting regions:
+        - A region whose code is not replaced keeps its own metadata. If replaced
+        codes are merged into it, its metadata wins and a warning is issued.
+        - When several codes are merged into a new code, the metadata of the
+        lowest code in the group is used.
+        - If none of the merged codes had a color-table entry, a default entry
+        (region_<code>, white, opacity 1.0) is created.
+
+        Raises
+        ------
+        AttributeError
+            If the object has no 'data' attribute.
+        TypeError
+            If the inputs have unsupported types.
+        ValueError
+            If new_codes is missing, the numbers of groups and new codes differ,
+            a new-code entry resolves to more than one code, or a code is assigned
+            to different new codes.
+
+        Examples
+        --------
+        >>> parc.replace_labels({1: 9, 2: 8})
+        >>> parc.replace_labels([1, 2], [20, 10])
+        >>> parc.replace_labels([[1, 2], [3]], [10, 20])          # merge 1 and 2
+        >>> parc.replace_labels({(11, 12, 13): 100, "50-52": 200})
+        >>> parc.replace_labels({1: 2, 2: 1})                      # swap
+        """
         if not hasattr(self, "data"):
             raise AttributeError("Object must have 'data' attribute")
 
-        # Handle Dictionary input
+        _scalar = (int, np.integer, str)
+
+        # ------------------------------------------------------------------
+        # Normalize inputs into groups of old codes and a list of new codes
+        # ------------------------------------------------------------------
         if isinstance(codes2rep, dict):
-            # Expand every key on its own. build_indices() returns a sorted,
-            # de-duplicated list, so expanding all keys and all values as two
-            # flat lists would silently re-pair them: {1: 9, 2: 8} used to
-            # relabel 1 as 8 and 2 as 9.
-            old_groups = []
-            new_codes_list = []
-            for old_code, new_code in codes2rep.items():
-                old_groups.append(
-                    cltmisc.build_indices(
-                        old_code if isinstance(old_code, list) else [old_code],
-                        nonzeros=False,
-                    )
+            if new_codes is not None:
+                warnings.warn(
+                    "codes2rep is a dict; new_codes is ignored.", stacklevel=2
                 )
-                new_codes_list.append(new_code)
-            codes2rep = copy.deepcopy(old_groups)
-            new_codes = copy.deepcopy(new_codes_list)
+            raw_groups, raw_new = [], []
+            for old, new in codes2rep.items():
+                raw_groups.append(
+                    list(old) if isinstance(old, (list, tuple)) else [old]
+                )
+                raw_new.append(new)
 
-        # Process codes2rep to determine structure and number of groups
-        if isinstance(codes2rep, list):
-            if len(codes2rep) == 0:
-                raise ValueError("codes2rep cannot be empty")
-
-            # Detect whether it's a flat list of ints or a list of lists
-            if all(isinstance(x, (int, np.integer)) for x in codes2rep):
-                codes2rep = [[x] for x in codes2rep]
-            elif all(isinstance(x, list) for x in codes2rep):
-                pass  # Already in group form
+        else:
+            if isinstance(codes2rep, _scalar):
+                raw_groups = [[codes2rep]]
+            elif isinstance(codes2rep, np.ndarray):
+                if codes2rep.ndim != 1:
+                    raise TypeError("Unsupported numpy array shape for codes2rep")
+                raw_groups = [[int(x)] for x in codes2rep.tolist()]
+            elif isinstance(codes2rep, (list, tuple)):
+                if len(codes2rep) == 0:
+                    raise ValueError("codes2rep cannot be empty")
+                if all(isinstance(x, _scalar) for x in codes2rep):
+                    raw_groups = [[x] for x in codes2rep]
+                elif all(isinstance(x, (list, tuple)) for x in codes2rep):
+                    raw_groups = [list(x) for x in codes2rep]
+                else:
+                    raise TypeError(
+                        "codes2rep must be a list of codes or a list of lists of codes"
+                    )
             else:
                 raise TypeError(
-                    "codes2rep must be a list of ints or a list of lists of ints"
+                    f"codes2rep must be int, str, list, numpy array or dict, "
+                    f"got {type(codes2rep)}"
                 )
-            n_groups = len(codes2rep)
 
-        elif isinstance(codes2rep, np.ndarray):
-            if codes2rep.ndim == 1:
-                codes2rep = [[int(x)] for x in codes2rep.tolist()]
+            if new_codes is None:
+                raise ValueError("new_codes is required unless codes2rep is a dict.")
+            if isinstance(new_codes, _scalar):
+                raw_new = [new_codes]
+            elif isinstance(new_codes, np.ndarray):
+                raw_new = new_codes.ravel().tolist()
+            elif isinstance(new_codes, (list, tuple)):
+                raw_new = list(new_codes)
             else:
-                raise TypeError("Unsupported numpy array shape for codes2rep")
-            n_groups = len(codes2rep)
-        else:
-            raise TypeError(
-                f"codes2rep must be list or numpy array, got {type(codes2rep)}"
-            )
+                raise TypeError(
+                    f"new_codes must be int, list or numpy array, got {type(new_codes)}"
+                )
 
-        # Apply build_indices to each group in codes2rep
-        for i, group in enumerate(codes2rep):
-            codes2rep[i] = cltmisc.build_indices(group, nonzeros=False)
+        # Expand every group on its own, so build_indices() sorting cannot re-pair them
+        groups = []
+        for g in raw_groups:
+            expanded = [int(c) for c in cltmisc.build_indices(g, nonzeros=False)]
+            if len(expanded) == 0:
+                raise ValueError(f"Group {g} does not contain any code.")
+            groups.append(expanded)
 
-        # Process new_codes (handle single int, list, or array)
-        if isinstance(new_codes, (int, np.integer)):
-            new_codes = np.array([new_codes], dtype=np.int32)
-        elif isinstance(new_codes, list):
-            # Expand entry by entry: build_indices() sorts and de-duplicates its
-            # whole input, which would break the positional pairing with
-            # codes2rep (replace_labels([1, 2], [20, 10]) relabelled 1 as 10).
-            expanded_new = []
-            for entry in new_codes:
-                expanded_new.extend(cltmisc.build_indices([entry], nonzeros=False))
-            new_codes = np.array(expanded_new, dtype=np.int32)
-        else:
-            new_codes = np.array(new_codes, dtype=np.int32)
+        new_list = []
+        for entry in raw_new:
+            expanded = cltmisc.build_indices([entry], nonzeros=False)
+            if len(expanded) != 1:
+                raise ValueError(
+                    f"Each new code must resolve to a single label; '{entry}' "
+                    f"resolved to {len(expanded)} labels."
+                )
+            new_list.append(int(expanded[0]))
 
-        # Validate matching lengths
-        if len(new_codes) != n_groups:
+        if len(new_list) != len(groups):
             raise ValueError(
-                f"Number of new codes ({len(new_codes)}) must equal "
-                f"number of groups ({n_groups}) to be replaced"
+                f"Number of new codes ({len(new_list)}) must equal "
+                f"number of groups ({len(groups)}) to be replaced"
             )
 
-        # Perform replacements
-        for group_idx in range(n_groups):
-            codes_to_replace = np.array(codes2rep[group_idx])
-            mask = np.isin(self.data, codes_to_replace)
-            self.data[mask] = new_codes[group_idx]
+        # A code assigned to two different targets is ambiguous
+        code_to_new: dict[int, int] = {}
+        for group, new in zip(groups, new_list):
+            for c in group:
+                if c in code_to_new and code_to_new[c] != new:
+                    raise ValueError(
+                        f"Code {c} is assigned to both {code_to_new[c]} and {new}."
+                    )
+                code_to_new[c] = new
 
-            # Update color table if present
-            if hasattr(self, "index"):
-                for code in codes_to_replace:
-                    if code in self.index:
-                        pos = self.index.index(code)
-                        self.index[pos] = new_codes[group_idx]
+        # ------------------------------------------------------------------
+        # Relabel the data, building every mask from the original volume
+        # ------------------------------------------------------------------
+        orig = self.data
+        new_data = orig.copy()
+        present = set(np.unique(orig).tolist())
 
-                        # Optionally, update name/color here if desired
+        for group, new in zip(groups, new_list):
+            if not any(c in present for c in group):
+                warnings.warn(
+                    f"None of the codes {group} is present in the data.", stacklevel=2
+                )
+                continue
+            new_data[np.isin(orig, group)] = new
 
-        # Optional post-processing
-        if hasattr(self, "index") and hasattr(self, "name") and hasattr(self, "color"):
-            if hasattr(self, "adjust_values"):
-                self.adjust_values()
+        # ------------------------------------------------------------------
+        # Rebuild the color table with one entry per final code
+        # ------------------------------------------------------------------
+        if getattr(self, "index", None) is not None:
+            old_index = [int(c) for c in self.index]
+            n_entries = len(old_index)
 
-        if hasattr(self, "parc_range"):
-            self.parc_range()
+            names = list(
+                getattr(self, "name", None) or [f"region_{c}" for c in old_index]
+            )
+            colors = list(getattr(self, "color", None) or ["#ffffff"] * n_entries)
+            opac = getattr(self, "opacity", None)
+            opacities = (
+                [float(x) for x in opac]
+                if opac is not None
+                and hasattr(opac, "__len__")
+                and len(opac) == n_entries
+                else [1.0] * n_entries
+            )
+
+            # First position of every code in the original table
+            pos_of: dict[int, int] = {}
+            for pos, c in enumerate(old_index):
+                pos_of.setdefault(c, pos)
+
+            final: dict[int, tuple] = {}  # final code -> (name, color, opacity)
+
+            # 1) Entries whose code is not replaced keep their own metadata
+            for c, pos in pos_of.items():
+                if c not in code_to_new:
+                    final[c] = (names[pos], colors[pos], opacities[pos])
+
+            # 2) Replaced codes: metadata of the lowest code in the group
+            for group, new in zip(groups, new_list):
+                if not any(c in present for c in group):
+                    continue
+                if new in final:
+                    if new not in code_to_new:  # existing, untouched region
+                        warnings.warn(
+                            f"Codes {group} were merged into the existing region "
+                            f"{new} ('{final[new][0]}'), whose metadata is kept.",
+                            stacklevel=2,
+                        )
+                    continue
+                donor = next((c for c in group if c in pos_of), None)
+                if donor is not None:
+                    p = pos_of[donor]
+                    final[new] = (names[p], colors[p], opacities[p])
+                else:
+                    final[new] = (f"region_{new}", "#ffffff", 1.0)
+
+            self.index = list(final.keys())
+            self.name = [v[0] for v in final.values()]
+            self.color = cltcol.harmonize_colors(
+                [v[1] for v in final.values()], output_format="hex"
+            )
+            self.opacity = [v[2] for v in final.values()]
+
+            self.data = new_data
+            self.adjust_values()  # drops codes absent from the data and sorts
+        else:
+            self.data = new_data
+
+        self.parc_range()
+        return self
 
     ######################################################################################################
     def replace_names(
