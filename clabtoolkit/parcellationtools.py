@@ -5234,7 +5234,7 @@ class Parcellation:
             task = progress.add_task(
                 "[bold green]Computing base morphometry: volume[/bold green] "
                 "([yellow]cm³[/yellow])",
-                total=1 + n_valid_maps,
+                total=n_valid_maps,
             )
 
             # --- Step 1: base morphometry ---
