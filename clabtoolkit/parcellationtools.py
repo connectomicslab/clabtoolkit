@@ -2674,7 +2674,9 @@ class Parcellation:
         # are computed in a single pass and converted to mm.
         node_coords = np.full((n_nodes, 3), np.nan)
         centroids_vox = np.array(
-            ndimage.center_of_mass(data > 0, labels=data, index=present_codes)
+            ndimage.center_of_mass(
+                label_volume > 0, labels=label_volume, index=present_codes
+            )
         )
         node_coords[present_codes - 1, :] = cltimg.vox2mm(
             centroids_vox, temp_parc.affine
@@ -3441,17 +3443,54 @@ class Parcellation:
         >>> print(color_table['name'])   # ['group_1', 'Thalamus', 'LimbicSystem', 'Cerebellum', ...original names...]
         """
 
-        if not keep_ungrouped:
-            # Create a mask of all old IDs to be grouped
-            all_old_ids = []
-            for params in group_dict.values():
-                old_ids = params["index"]
-                old_ids = cltmisc.build_indices(old_ids)
-                all_old_ids.extend(old_ids)
-            all_old_ids = set(all_old_ids)
-            self.keep_by_code(codes2keep=list(all_old_ids))
+        # Expand all groups up front
+        groups = []
+        for new_id, params in group_dict.items():
+            old_ids = cltmisc.build_indices(params["index"])
+            groups.append((int(new_id), [int(c) for c in old_ids], params))
 
-        array = self.data
+        new_ids = [g[0] for g in groups]
+        if len(set(new_ids)) != len(new_ids):
+            raise ValueError("Duplicate new IDs in group_dict.")
+
+        # A code assigned to two groups is ambiguous
+        seen = {}
+        for new_id, old_ids, _ in groups:
+            for c in old_ids:
+                if c in seen and seen[c] != new_id:
+                    raise ValueError(
+                        f"Code {c} is assigned to groups {seen[c]} and {new_id}."
+                    )
+                seen[c] = new_id
+
+        if not keep_ungrouped:
+            self.keep_by_code(codes2keep=sorted(seen))
+
+        # Snapshot the original data and metadata BEFORE modifying anything
+        orig = self.data.copy()
+        orig_meta = {
+            int(c): (n, col, op)
+            for c, n, col, op in zip(self.index, self.name, self.color, self.opacity)
+        }
+
+        grouped_mask = np.isin(orig, list(seen))
+        ungrouped_codes = [int(c) for c in np.unique(orig[~grouped_mask]) if c != 0]
+
+        clash = set(ungrouped_codes) & set(new_ids)
+        if clash:
+            raise ValueError(
+                f"New group IDs {sorted(clash)} collide with ungrouped region codes. "
+                "Choose IDs outside the existing label range or set keep_ungrouped=False."
+            )
+
+        new_data = orig.copy()
+        def_colors = cltcol.create_distinguishable_colors(
+            len(groups), output_format="hex"
+        )
+        def_names = cltmisc.create_names_from_indices(
+            np.arange(1, len(groups) + 1), prefix="group"
+        )
+
         color_table = {
             "index": [],
             "name": [],
@@ -3459,181 +3498,148 @@ class Parcellation:
             "opacity": [],
             "headerlines": [],
         }
-
-        ngroups = len(group_dict)
-        def_color = cltcol.create_distinguishable_colors(ngroups, output_format="hex")
-        def_names = cltmisc.create_names_from_indices(
-            np.arange(1, ngroups + 1), prefix="group"
-        )
-
-        for i, (new_id, params) in enumerate(group_dict.items()):
-
-            old_ids = params["index"]
-            old_ids = cltmisc.build_indices(old_ids)
-
-            # Replace old IDs with new ID in array
-            mask = np.isin(array, old_ids)
-            array[mask] = new_id
-
-            # Create new entry
+        for i, (new_id, old_ids, params) in enumerate(groups):
+            new_data[np.isin(orig, old_ids)] = new_id  # mask from ORIGINAL data
             color_table["index"].append(new_id)
             color_table["name"].append(params.get("name", def_names[i]))
-            color_table["color"].append(params.get("color", def_color[i]))
-            color_table["opacity"].append(params.get("opacity", 1.0))
+            color_table["color"].append(params.get("color", def_colors[i]))
+            color_table["opacity"].append(float(params.get("opacity", 1.0)))
 
-        # Updating the parcellation data
-        self.data = array
+        for code in ungrouped_codes:
+            n, col, op = orig_meta.get(code, (f"region_{code}", "#ffffff", 1.0))
+            color_table["index"].append(code)
+            color_table["name"].append(n)
+            color_table["color"].append(col)
+            color_table["opacity"].append(op)
 
-        # Looking for codes that were not grouped
-        unique_codes = np.unique(array)
-        unique_codes = unique_codes[unique_codes != 0]
-
-        # Adding ungrouped codes to the color table
-        for code in unique_codes:
-            if code not in color_table["index"]:
-                color_table["index"].append(code)
-                try:
-                    pos = self.index.index(code)
-                    color_table["name"].append(self.name[pos])
-                    color_table["color"].append(self.color[pos])
-                    color_table["opacity"].append(self.opacity[pos])
-                except ValueError:
-                    # Code not in original color table, use defaults
-                    color_table["name"].append(f"region_{code}")
-                    color_table["color"].append("#ffffff")
-                    color_table["opacity"].append(1.0)
-
+        self.data = new_data
         self.index = color_table["index"]
         self.name = color_table["name"]
         self.color = cltcol.harmonize_colors(color_table["color"], output_format="hex")
         self.opacity = color_table["opacity"]
-
         self.adjust_values()
-        # Detect minimum and maximum labels
-        self.parc_range()
 
-        return array, color_table
+        return self.data, color_table
 
     ######################################################################################################
     def group_by_names(
-        self, group_dict: dict, keep_ungrouped: bool = True
+        self,
+        group_dict: dict,
+        keep_ungrouped: bool = True,
+        bool_case: bool = False,
     ) -> tuple[np.ndarray, dict]:
         """
-        Group array values and create color table for new groups using name-based dictionary.
+        Group regions by name substrings and create a color table for the new groups.
 
-        Structures not included in any group will remain unchanged with their original
-        properties in both the array and color table.
+        Every region whose name contains one of a group's substrings is relabeled
+        with that group's ID. Masks are built from the original data, so groups
+        cannot contaminate each other.
 
-        Parameters:
-        -----------
-
+        Parameters
+        ----------
         group_dict : dict
-            {name: {'codes': [old_ids], 'color': (R,G,B)/hex or str, 'opacity': float, 'index': new_id}}
-            Codes can be integers, strings with ranges ("11:12", "50-52"), or mixed.
-            Color can be RGB tuple (0-255) or hex string.
-            Opacity is optional (default: 1.0).
+            {group_name: {'names': str | list[str], 'index': int,
+                        'color': (R, G, B) | hex str, 'opacity': float}}
+            'names' is required: substring(s) matched against region names.
+            'index' is the new label; defaults to the group's position (1, 2, ...).
+            'color' and 'opacity' are optional (opacity defaults to 1.0).
 
         keep_ungrouped : bool, optional
-            Whether to keep structures not included in any group. Default is True.
+            Keep regions not matched by any group, with their original code, name,
+            and color. Default is True.
 
-        Returns:
-        --------
+        bool_case : bool, optional
+            Case-sensitive substring matching. Default is False.
+
+        Returns
+        -------
         tuple : (modified_array, color_table)
-            modified_array : numpy.ndarray
-                Array with grouped values replaced by new IDs. Ungrouped structures remain unchanged.
-
+            modified_array : np.ndarray
+                The grouped parcellation data (same object as self.data).
             color_table : dict
-                Color table with 'index', 'name', 'color', 'opacity', 'headerlines' keys.
-                Includes both grouped structures and ungrouped structures with original properties.
+                Keys 'index', 'name', 'color', 'opacity', 'headerlines'.
 
-        Examples:
-        ---------
+        Raises
+        ------
+        ValueError
+            If group_dict is empty, a group lacks 'names', new IDs are duplicated,
+            a region matches more than one group, no group matches any region, or a
+            new ID collides with an ungrouped region code.
+
+        Examples
+        --------
         >>> group_dict = {
-        ...     'BasalGanglia': {"codes": [11, 12, 50, 51, 13, 52], "color": (255, 0, 0), "opacity": 0.8, "index": 1},
-        ...     'Thalamus': {"codes": [10, 49], "color": (0, 255, 0), "opacity": 0.8, "index": 2},
-        ...     'Limbic': {"codes": [17, 53, 18, 54, 26, 58], "color": (0, 0, 255), "opacity": 0.8, "index": 3},
-        ...     'Cerebellum': {"codes": [7, 46], "color": (255, 255, 0), "opacity": 0.8, "index": 4}
+        ...     'Thalamus':    {'names': 'thal-',  'index': 1, 'color': '#2CB746', 'opacity': 0.8},
+        ...     'Hippocampus': {'names': 'hipp-',  'index': 2, 'color': (241, 196, 15)},
+        ...     'Cerebellum':  {'names': ['cer-'], 'index': 3},
         ... }
-        >>>
         >>> grouped_array, color_table = parc.group_by_names(group_dict)
-        >>> print(color_table['index'])  # [1, 2, 3, 4, ...ungrouped codes...]
-        >>> print(color_table['name'])   # ['BasalGanglia', 'Thalamus', 'Limbic', 'Cerebellum', ...original names...]
         """
+        if not isinstance(group_dict, dict) or len(group_dict) == 0:
+            raise ValueError("group_dict must be a non-empty dictionary.")
 
-        if not keep_ungrouped:
-            # Create a mask of all old IDs to be grouped
-            all_old_names = []
-            for params in group_dict.values():
-                new_id = params["index"]
+        code_groups: dict[int, dict] = {}
+        claimed: dict[int, str] = {}  # region code -> group name that claimed it
 
-                all_old_names.extend(params["names"])
-            all_old_names = set(all_old_names)
-            self.keep_by_name(names2keep=list(all_old_names))
+        for pos, (group_name, params) in enumerate(group_dict.items()):
+            if "names" not in params:
+                raise ValueError(f"Group '{group_name}' has no 'names' key.")
 
-        array = self.data
-        color_table = {
-            "index": [],
-            "name": [],
-            "color": [],
-            "opacity": [],
-            "headerlines": [],
-        }
+            filters = params["names"]
+            if isinstance(filters, str):
+                filters = [filters]
 
-        ngroups = len(group_dict)
-        def_color = cltcol.create_distinguishable_colors(ngroups, output_format="hex")
+            new_id = int(params.get("index", pos + 1))
+            if new_id in code_groups:
+                raise ValueError(
+                    f"New ID {new_id} is used by more than one group "
+                    f"('{code_groups[new_id]['name']}' and '{group_name}')."
+                )
 
-        for i, (name, params) in enumerate(group_dict.items()):
-            new_id = params["index"]
-            indexes = cltmisc.get_indexes_by_substring(self.name, params["names"])
-            old_ids = [self.index[i] for i in indexes]
+            matches = cltmisc.get_indexes_by_substring(
+                input_list=self.name,
+                or_filter=filters,
+                invert=False,
+                bool_case=bool_case,
+            )
+            codes = [int(self.index[k]) for k in matches]
 
-            # Replace old IDs with new ID in array
-            mask = np.isin(array, old_ids)
-            array[mask] = new_id
+            if len(codes) == 0:
+                warnings.warn(
+                    f"Group '{group_name}' ({filters}) matched no region and is skipped.",
+                    stacklevel=2,
+                )
+                continue
 
-            # Convert RGB tuple to hex if needed
-            color = params.get("color", def_color[i])
-            color = cltcol.harmonize_colors([color], output_format="hex")[0]
+            # A region matched by two groups is ambiguous
+            for k, code in zip(matches, codes):
+                if code in claimed:
+                    raise ValueError(
+                        f"Region '{self.name[k]}' (code {code}) matches both "
+                        f"'{claimed[code]}' and '{group_name}'. Use more specific substrings."
+                    )
+                claimed[code] = group_name
 
-            # Create new entry
-            color_table["index"].append(new_id)
-            color_table["name"].append(name)
-            color_table["color"].append(color)
-            color_table["opacity"].append(params.get("opacity", 1.0))
+            entry = {
+                "index": codes,
+                "name": group_name,
+                "opacity": float(params.get("opacity", 1.0)),
+            }
+            if "color" in params:
+                entry["color"] = cltcol.harmonize_colors(
+                    [params["color"]], output_format="hex"
+                )[0]
 
-        # Updating the parcellation data
-        self.data = array
+            code_groups[new_id] = entry
 
-        # Looking for codes that were not grouped
-        unique_codes = np.unique(array)
-        unique_codes = unique_codes[unique_codes != 0]
+        if len(code_groups) == 0:
+            raise ValueError(
+                "None of the groups matched any region in the parcellation."
+            )
 
-        # Adding ungrouped codes to the color table
-        for code in unique_codes:
-            if code not in color_table["index"]:
-                try:
-                    pos = self.index.index(code)
-                    color_table["index"].append(code)
-                    color_table["name"].append(self.name[pos])
-                    color_table["color"].append(self.color[pos])
-                    color_table["opacity"].append(self.opacity[pos])
-                except ValueError:
-                    # Code not in original color table, use defaults
-                    color_table["index"].append(code)
-                    color_table["name"].append(f"region_{code}")
-                    color_table["color"].append("#ffffff")
-                    color_table["opacity"].append(1.0)
-
-        self.index = color_table["index"]
-        self.name = color_table["name"]
-        self.color = cltcol.harmonize_colors(color_table["color"], output_format="hex")
-        self.opacity = color_table["opacity"]
-
-        self.adjust_values()
-        # Detect minimum and maximum labels
-        self.parc_range()
-
-        return array, color_table
+        # Masking from the original data, ungrouped handling, collision checks,
+        # and metadata updates are all done by group_by_codes
+        return self.group_by_codes(code_groups, keep_ungrouped=keep_ungrouped)
 
     ######################################################################################################
     def relabel_regions(self, relabel_dict: dict, rearrange: bool = False):
