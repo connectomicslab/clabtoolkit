@@ -4508,7 +4508,7 @@ class Parcellation:
         return five_tt_image
 
     ######################################################################################################
-    def replace_values(
+    def replace_labels(
         self,
         codes2rep: list[int | list[int]] | np.ndarray | dict,
         new_codes: int | list[int] | np.ndarray = None,
@@ -4577,7 +4577,7 @@ class Parcellation:
         elif isinstance(new_codes, list):
             # Expand entry by entry: build_indices() sorts and de-duplicates its
             # whole input, which would break the positional pairing with
-            # codes2rep (replace_values([1, 2], [20, 10]) relabelled 1 as 10).
+            # codes2rep (replace_labels([1, 2], [20, 10]) relabelled 1 as 10).
             expanded_new = []
             for entry in new_codes:
                 expanded_new.extend(cltmisc.build_indices([entry], nonzeros=False))
