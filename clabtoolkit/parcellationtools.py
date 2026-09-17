@@ -5124,6 +5124,16 @@ class Parcellation:
 
         from . import morphometrytools as cltmorpho
 
+        # Loading the default configuration file
+        cwd = os.path.dirname(os.path.abspath(__file__))
+
+        # Default to the standard configuration file
+        def_config_file = os.path.join(cwd, "config", "config.json")
+
+        # Read the config file in order to get default settings and units
+        config = cltmisc.load_json(def_config_file)
+        vol_units = config["metrics_units"]["volume"]
+
         # ------------------------------------------------------------------
         # Validate the output path first, so a bad path fails before computing
         # ------------------------------------------------------------------
@@ -5233,7 +5243,7 @@ class Parcellation:
 
             task = progress.add_task(
                 "[bold green]Computing base morphometry: volume[/bold green] "
-                "([yellow]cm³[/yellow])",
+                f"([yellow]{vol_units}[/yellow])",
                 total=n_valid_maps,
             )
 
