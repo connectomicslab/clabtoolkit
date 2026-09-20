@@ -1923,7 +1923,7 @@ class Parcellation:
     #####################################################################################################
     def get_voxels_by_code(
         self,
-        code: int | list[int] | np.ndarray | str | list[str],
+        labels: int | list[int] | np.ndarray | str | list[str],
         all_voxels: bool = True,
     ) -> np.ndarray | dict[int, np.ndarray]:
         """
@@ -1931,7 +1931,7 @@ class Parcellation:
 
         Parameters
         ----------
-        code : int | list[int] | np.ndarray | str | list[str]
+        labels : int | list[int] | np.ndarray | str | list[str]
             Region code(s) or name(s) to retrieve voxels for.
 
         all_voxels : bool, optional
@@ -1966,12 +1966,12 @@ class Parcellation:
         labels = cltmisc.build_indices(labels)
 
         if all_voxels:
-            return self.data[np.isin(self.data, code)]
+            return self.data[np.isin(self.data, labels)]
 
-        present_codes = set(np.unique(self.data).tolist())
-        existing_codes = [c for c in code if c in present_codes]
+        present_lables = set(np.unique(self.data).tolist())
+        existing_labels = [c for c in labels if c in present_lables]
 
-        return {c: np.argwhere(self.data == c) for c in existing_codes}
+        return {c: np.argwhere(self.data == c) for c in existing_labels}
 
     #####################################################################################################
     def get_voxels_by_name(
