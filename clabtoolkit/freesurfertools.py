@@ -1812,7 +1812,9 @@ class AnnotParcellation:
                 )
             else:
                 # Check if the columns are numeric
-                if not np.issubdtype(regional_values.dtypes[0], np.number):
+                if not all(
+                    np.issubdtype(dtype, np.number) for dtype in regional_values.dtypes
+                ):
                     raise ValueError("The regional values should be numeric")
                 else:
                     # Convert the pandas dataframe to a numpy array
