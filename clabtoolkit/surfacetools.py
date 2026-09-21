@@ -1912,6 +1912,337 @@ class Surface:
                 raise
 
     ###############################################################################################
+    def simulate_map(
+        self,
+        map_name: str = "thickness",
+        mean: float = None,
+        std: float = None,
+        value_range: tuple[float, float] = None,
+        smoothness: float = 1.0,
+        noise: float = 0.0,
+        seed: int = None,
+        set_active: bool = False,
+    ) -> np.ndarray:
+        """
+        Simulate a vertex-wise map and store it as an overlay of the surface.
+
+        Creates a spatially smooth scalar map with one value per vertex and
+        registers it through :meth:`load_scalar_maps`, so the result behaves exactly
+        like a map loaded from disk and can be listed, activated, plotted, exported
+        or removed with the usual methods.
+
+        The spatial pattern is a smooth random field, and its mean, standard
+        deviation and plausible range are taken from :attr:`SIMULATED_MAP_PRESETS`
+        when the name matches a known measurement ('thickness', 'curv', 'sulc',
+        'area', 'volume' or 'myelin'), so that ``simulate_map('thickness')``
+        directly produces values in millimetres around 2.5 mm.
+
+        Parameters
+        ----------
+        map_name : str, default 'thickness'
+            Name under which the map is stored in the mesh point data. The preset
+            is inferred from this name, so 'thickness', 'lh.curv' and
+            'thickness_patient' are all recognized. Unknown names produce a
+            standardized field with zero mean and unit standard deviation.
+
+        mean : float, optional
+            Target mean of the simulated values. If None, the preset value is used.
+
+        std : float, optional
+            Target standard deviation of the simulated values. If None, the preset
+            value is used.
+
+        value_range : tuple of 2 floats, optional
+            ``(minimum, maximum)`` used to clip the simulated values, which keeps
+            them plausible (e.g. no negative thickness). If None, the preset range
+            is used. Pass ``(-np.inf, np.inf)`` to disable clipping.
+
+        smoothness : float, default 1.0
+            Spatial smoothness of the pattern. Values above 1 produce larger and
+            smoother patches, values below 1 produce finer detail. Must be positive.
+
+        noise : float, default 0.0
+            Amount of spatially uncorrelated Gaussian noise added on top of the
+            smooth pattern, as a fraction of ``std``. Must be non-negative.
+
+        seed : int, optional
+            Seed for the random number generator, for reproducible maps.
+
+        set_active : bool, default False
+            Whether to set the new map as the active overlay of the surface.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated values with shape (n_vertices,), also stored in
+            ``self.mesh.point_data[map_name]``.
+
+        Raises
+        ------
+        RuntimeError
+            If no surface data has been loaded.
+
+        ValueError
+            If ``map_name`` is empty or if ``std``, ``smoothness``, ``noise`` or
+            ``value_range`` are invalid.
+
+        See Also
+        --------
+        simulate_surface : Create a simulated surface with simulated maps.
+        load_scalar_maps : Load real vertex-wise or region-wise maps.
+        list_overlays : List the overlays currently attached to the surface.
+
+        Notes
+        -----
+        The method works on any loaded surface, not only on simulated ones, so
+        plausible synthetic maps can also be generated on a real subject or template
+        mesh for testing purposes.
+
+        The simulated values reproduce the order of magnitude and the spatial
+        smoothness of real cortical measurements, but they carry no biological
+        information and must never be used as real data.
+
+        Examples
+        --------
+        >>> surf = Surface.simulate_surface(maps=None, seed=0)
+        >>>
+        >>> # Cortical thickness, using the built-in preset
+        >>> thickness = surf.simulate_map('thickness', seed=1)
+        >>> bool(thickness.min() > 0)
+        True
+        >>>
+        >>> # A thinner, noisier and less smooth cortex for a simulated patient
+        >>> _ = surf.simulate_map(
+        ...     'thickness_patient', mean=2.1, std=0.4, smoothness=0.6,
+        ...     noise=0.15, seed=2
+        ... )
+        >>>
+        >>> # An arbitrary standardized field, named freely
+        >>> _ = surf.simulate_map('my_effect_size', set_active=True, seed=3)
+        >>>
+        >>> # Plot the simulated map
+        >>> surf.plot(overlay_name='thickness', cmap='inferno')  # doctest: +SKIP
+        """
+
+        if not self.is_loaded():
+            raise RuntimeError("No surface data loaded. Load data first.")
+
+        if not isinstance(map_name, str) or not map_name.strip():
+            raise ValueError("map_name must be a non-empty string")
+
+        map_name = map_name.strip()
+
+        # ------------------------------------------------------------------ #
+        # Resolve the preset values
+        # ------------------------------------------------------------------ #
+        preset_mean, preset_std, preset_range = self.SIMULATED_MAP_PRESETS.get(
+            self._infer_map_type(map_name), (0.0, 1.0, None)
+        )
+
+        mean = float(preset_mean) if mean is None else float(mean)
+        std = float(preset_std) if std is None else float(std)
+        if std < 0:
+            raise ValueError(f"std must be non-negative, got {std}")
+
+        if value_range is None:
+            value_range = preset_range
+
+        if value_range is not None:
+            value_range = tuple(float(value) for value in value_range)
+            if len(value_range) != 2 or value_range[0] > value_range[1]:
+                raise ValueError(
+                    "value_range must be a (minimum, maximum) pair with "
+                    f"minimum <= maximum, got {value_range}"
+                )
+
+        if smoothness <= 0:
+            raise ValueError(f"smoothness must be positive, got {smoothness}")
+
+        if noise < 0:
+            raise ValueError(f"noise must be non-negative, got {noise}")
+
+        # ------------------------------------------------------------------ #
+        # Generate the values and store them as a regular overlay
+        # ------------------------------------------------------------------ #
+        rng = np.random.default_rng(seed)
+        n_vertices = self.mesh.n_points
+
+        values = mean + std * self._simulate_random_field(
+            self.get_vertices(),
+            freq_range=(2.0 / smoothness, 8.0 / smoothness),
+            seed=rng,
+        )
+
+        if noise > 0:
+            values = values + rng.normal(0.0, noise * std, size=n_vertices)
+
+        if value_range is not None:
+            values = np.clip(values, value_range[0], value_range[1])
+
+        values = np.ascontiguousarray(values, dtype=np.float32)
+
+        # Reuse the regular loading path so the overlay is registered exactly like
+        # a map read from a file
+        self.load_scalar_maps(values, maps_names=[map_name])
+
+        if set_active:
+            self.set_active_overlay(map_name)
+
+        return values
+
+    ###############################################################################################
+    @classmethod
+    def _infer_map_type(cls, map_name: str) -> str:
+        """
+        Infer the type of a simulated map from its name.
+
+        Parameters
+        ----------
+        map_name : str
+            Name of the map, possibly prefixed by a hemisphere or completed with
+            extra words (e.g. 'lh.thickness', 'curv.fwhm5', 'sulcal_depth').
+
+        Returns
+        -------
+        str
+            Key of :attr:`SIMULATED_MAP_PRESETS` matching the name, or 'unknown'
+            when no known measurement can be recognized.
+
+        Notes
+        -----
+        Internal helper used by :meth:`simulate_map`. The name is lowercased and
+        split on dots, dashes, underscores and spaces; the first token matching a
+        known measurement wins, so free-form names such as 'my_thickness_map' are
+        still resolved correctly.
+        """
+
+        aliases = {
+            "thick": "thickness",
+            "curvature": "curv",
+            "sulcal": "sulc",
+            "sulcaldepth": "sulc",
+            "depth": "sulc",
+            "vol": "volume",
+            "t1t2": "myelin",
+            "t1t2ratio": "myelin",
+        }
+
+        cleaned = str(map_name).strip().lower()
+
+        tokens = [cleaned] + [
+            token
+            for token in cleaned.replace(".", " ")
+            .replace("-", " ")
+            .replace("_", " ")
+            .split()
+            if token
+        ]
+
+        for token in tokens:
+            if token in cls.SIMULATED_MAP_PRESETS:
+                return token
+            if token in aliases:
+                return aliases[token]
+
+        return "unknown"
+
+    ###############################################################################################
+    @staticmethod
+    def _simulate_random_field(
+        points: np.ndarray,
+        n_components: int = 64,
+        freq_range: tuple[float, float] = (2.0, 8.0),
+        seed: int | np.random.Generator = None,
+    ) -> np.ndarray:
+        """
+        Generate a smooth, band-limited random scalar field over a set of points.
+
+        The field is a sum of random plane waves with random directions,
+        frequencies and phases, and with amplitudes decaying as 1/f so that the low
+        spatial frequencies dominate. This produces a spatially autocorrelated
+        pattern similar to the large-scale structure of cortical maps.
+
+        Parameters
+        ----------
+        points : np.ndarray
+            Coordinates with shape (n_points, 3).
+
+        n_components : int, default 64
+            Number of plane waves summed to build the field. More components give a
+            richer, less repetitive pattern.
+
+        freq_range : tuple of 2 floats, default (2.0, 8.0)
+            Minimum and maximum spatial frequency of the plane waves, in cycles
+            across the radius of the point cloud.
+
+        seed : int or np.random.Generator, optional
+            Seed or generator controlling the random directions, frequencies and
+            phases.
+
+        Returns
+        -------
+        np.ndarray
+            Field values with shape (n_points,), with zero mean and unit standard
+            deviation.
+
+        Raises
+        ------
+        ValueError
+            If ``freq_range`` does not satisfy ``0 < minimum <= maximum``.
+
+        Notes
+        -----
+        Internal helper used by :meth:`simulate_map`. The coordinates are
+        normalized to a unit ball, so the frequencies are independent of the
+        physical size of the surface.
+        """
+
+        f_min, f_max = (float(freq_range[0]), float(freq_range[1]))
+        if not 0 < f_min <= f_max:
+            raise ValueError(
+                f"freq_range must satisfy 0 < minimum <= maximum, got {freq_range}"
+            )
+
+        rng = (
+            seed
+            if isinstance(seed, np.random.Generator)
+            else np.random.default_rng(seed)
+        )
+
+        points = np.asarray(points, dtype=np.float64)
+
+        centered = points - points.mean(axis=0)
+        scale = float(np.max(np.linalg.norm(centered, axis=1)))
+        if scale == 0:
+            return np.zeros(len(points), dtype=np.float64)
+        unit_points = centered / scale
+
+        n_components = max(int(n_components), 1)
+
+        # Random propagation directions, uniformly distributed on the sphere
+        directions = rng.normal(size=(n_components, 3))
+        directions /= np.linalg.norm(directions, axis=1, keepdims=True)
+
+        frequencies = rng.uniform(f_min, f_max, size=n_components)
+        phases = rng.uniform(0.0, 2.0 * np.pi, size=n_components)
+
+        # 1/f amplitude spectrum: the coarse components carry most of the energy
+        amplitudes = rng.normal(size=n_components) / frequencies
+
+        field = (
+            np.cos(
+                (unit_points @ directions.T) * frequencies[np.newaxis, :] * np.pi
+                + phases
+            )
+            @ amplitudes
+        )
+
+        field -= field.mean()
+        std = float(field.std())
+
+        return field / std if std > 0 else field
+
+    ###############################################################################################
     def separate_mesh_components(
         self,
         component_labels: str | None = "components",
