@@ -499,6 +499,283 @@ class AnnotParcellation:
             self.name = os.path.basename(filename)
 
     ####################################################################################################
+    @classmethod
+    def simulate_annotation(
+        cls,
+        surface,
+        n_regions: int = 10,
+        region_names: list[str] = None,
+        colors: list | np.ndarray = None,
+        annot_id: str = "simulated",
+        hemi: str = None,
+        seed: int = None,
+    ) -> "AnnotParcellation":
+        """
+        Create a simulated surface parcellation by splitting a surface into regions.
+
+        Builds an AnnotParcellation whose regions are spatially contiguous patches
+        of the supplied surface, which is useful to test, benchmark or demonstrate
+        any code that consumes annotations without depending on a real FreeSurfer
+        parcellation being available.
+
+        The regions are grown from evenly spread seed vertices along the edges of
+        the mesh, so every region is a connected patch of the surface, as in a real
+        parcellation, and every vertex receives a label.
+
+        Parameters
+        ----------
+        surface : str, Path or Surface
+            Surface the parcellation is built on. File paths are loaded with
+            :class:`clabtoolkit.surfacetools.Surface`, and Surface objects are used
+            directly without being modified.
+
+        n_regions : int, default 10
+            Number of regions to simulate. Must be between 1 and the number of
+            vertices of the surface.
+
+        region_names : list of str, optional
+            Names of the regions, one per region. If None, or if the number of
+            names does not match ``n_regions``, names are generated automatically
+            as 'region-001', 'region-002', ... and a warning is issued when a
+            mismatching list was supplied.
+
+        colors : list or np.ndarray, optional
+            Colors of the regions, one per region, as hexadecimal strings or as an
+            (n_regions, 3) array of RGB values. If None, or if the number of colors
+            does not match ``n_regions``, distinguishable colors are generated
+            automatically and a warning is issued when a mismatching list was
+            supplied.
+
+        annot_id : str, default 'simulated'
+            Annotation ID stored in the resulting object.
+
+        hemi : {'lh', 'rh'}, optional
+            Hemisphere designation. If None, it is taken from the surface, falling
+            back to 'lh'.
+
+        seed : int, optional
+            Seed for the random number generator. Passing a seed makes both the
+            region layout and the generated colors reproducible.
+
+        Returns
+        -------
+        AnnotParcellation
+            Simulated parcellation, ready to be saved with
+            :meth:`save_annotation` or attached to a surface with
+            ``Surface.load_annotation``.
+
+        Raises
+        ------
+        ValueError
+            If ``surface`` is not a path or a Surface, if the surface holds no
+            geometry, if ``n_regions`` is outside [1, n_vertices], or if the
+            supplied colors are not all different, since FreeSurfer identifies a
+            region by the packed RGB value of its color.
+
+        See Also
+        --------
+        create_from_data : Build a parcellation from existing arrays.
+        save_annotation : Write the parcellation to a FreeSurfer .annot file.
+
+        Notes
+        -----
+        The seed vertices are chosen by farthest point sampling, which spreads them
+        over the surface and yields regions of comparable size, and the labels are
+        then grown simultaneously from every seed over the mesh graph returned by
+        ``Surface.get_edges``. Vertices belonging to a connected component without
+        any seed are assigned to the closest seed in Euclidean distance.
+
+        The result is a plausible-looking parcellation for testing purposes only.
+        It carries no anatomical meaning and must never be used as a real atlas.
+
+        Examples
+        --------
+        >>> # From a surface file, with generated names and colors
+        >>> parc = AnnotParcellation.simulate_parcellation(
+        ...     '/opt/freesurfer/subjects/fsaverage/surf/lh.pial', n_regions=12, seed=0
+        ... )
+        >>> parc.get_info(verbose=False)                        # doctest: +SKIP
+        >>>
+        >>> # From a Surface object, with explicit names and colors
+        >>> from clabtoolkit.surfacetools import Surface
+        >>> surf = Surface.simulate_surface('icosphere', nsub=4, maps=None)
+        >>> parc = AnnotParcellation.simulate_parcellation(
+        ...     surf,
+        ...     n_regions=3,
+        ...     region_names=['frontal', 'parietal', 'occipital'],
+        ...     colors=['#e41a1c', '#377eb8', '#4daf4a'],
+        ...     seed=0,
+        ... )
+        >>> parc.regnames
+        ['frontal', 'parietal', 'occipital']
+        >>>
+        >>> # Attach it to the surface and save it
+        >>> surf.load_annotation(parc, 'simulated')
+        >>> parc.save_annotation('/tmp/lh.simulated.annot')     # doctest: +SKIP
+        """
+
+        # Imported here, and not at the top of the module, because surfacetools
+        # imports this module
+        from . import surfacetools as cltsurf
+
+        # ------------------------------------------------------------------ #
+        # Resolve the surface
+        # ------------------------------------------------------------------ #
+        if isinstance(surface, (str, Path)):
+            surf = cltsurf.Surface(str(surface))
+
+        elif isinstance(surface, cltsurf.Surface):
+            surf = surface
+
+        else:
+            raise ValueError(
+                "surface must be a path to a surface file or a Surface object, "
+                f"got {type(surface).__name__}"
+            )
+
+        if not surf.is_loaded():
+            raise ValueError("The supplied surface does not contain any geometry")
+
+        vertices = np.asarray(surf.get_vertices(), dtype=np.float64)
+        n_vertices = len(vertices)
+
+        n_regions = int(n_regions)
+        if not 1 <= n_regions <= n_vertices:
+            raise ValueError(
+                f"n_regions must be between 1 and the number of vertices "
+                f"({n_vertices}), got {n_regions}"
+            )
+
+        rng = np.random.default_rng(seed)
+
+        # ------------------------------------------------------------------ #
+        # Spread the seeds over the surface by farthest point sampling
+        # ------------------------------------------------------------------ #
+        seeds = np.empty(n_regions, dtype=np.int64)
+        seeds[0] = int(rng.integers(n_vertices))
+
+        if n_regions > 1:
+            distances = np.linalg.norm(vertices - vertices[seeds[0]], axis=1)
+
+            for index in range(1, n_regions):
+                seeds[index] = int(np.argmax(distances))
+                distances = np.minimum(
+                    distances,
+                    np.linalg.norm(vertices - vertices[seeds[index]], axis=1),
+                )
+
+            # A mesh with repeated vertex coordinates can return the same seed
+            # twice, which would leave a region empty
+            unique_seeds = np.unique(seeds)
+            if unique_seeds.size < n_regions:
+                available = np.setdiff1d(np.arange(n_vertices), unique_seeds)
+                seeds = np.concatenate(
+                    [
+                        unique_seeds,
+                        rng.choice(
+                            available, n_regions - unique_seeds.size, replace=False
+                        ),
+                    ]
+                )
+
+        # ------------------------------------------------------------------ #
+        # Grow every region simultaneously along the edges of the mesh
+        # ------------------------------------------------------------------ #
+        edges = surf.get_edges()
+        sources = np.concatenate([edges[:, 0], edges[:, 1]])
+        targets = np.concatenate([edges[:, 1], edges[:, 0]])
+
+        labels = np.full(n_vertices, -1, dtype=np.int64)
+        labels[seeds] = np.arange(n_regions)
+
+        while np.any(labels < 0):
+            # Edges going from an already labeled vertex to an unlabeled one
+            growing = (labels[sources] >= 0) & (labels[targets] < 0)
+
+            if not np.any(growing):
+                # Remaining vertices belong to components without any seed
+                break
+
+            labels[targets[growing]] = labels[sources[growing]]
+
+        # Assign whatever is left to the closest seed
+        unlabeled = np.flatnonzero(labels < 0)
+        if unlabeled.size > 0:
+            closest = np.full(unlabeled.size, np.inf)
+
+            for index in range(n_regions):
+                distances = np.linalg.norm(
+                    vertices[unlabeled] - vertices[seeds[index]], axis=1
+                )
+                is_closer = distances < closest
+                closest[is_closer] = distances[is_closer]
+                labels[unlabeled[is_closer]] = index
+
+        # ------------------------------------------------------------------ #
+        # Resolve the region names and the region colors
+        # ------------------------------------------------------------------ #
+        if region_names is not None:
+            if isinstance(region_names, str):
+                region_names = [region_names]
+
+            region_names = list(region_names)
+
+            if len(region_names) != n_regions:
+                warnings.warn(
+                    f"{len(region_names)} region names were supplied for "
+                    f"{n_regions} regions. Generating the names automatically.",
+                    stacklevel=2,
+                )
+                region_names = None
+
+        if region_names is None:
+            region_names = cltmisc.create_names_from_indices(
+                np.arange(1, n_regions + 1),
+                padding=max(len(str(n_regions)), 3),
+            )
+
+        if colors is not None:
+            if len(colors) != n_regions:
+                warnings.warn(
+                    f"{len(colors)} colors were supplied for {n_regions} regions. "
+                    "Generating the colors automatically.",
+                    stacklevel=2,
+                )
+                colors = None
+
+        if colors is None:
+            colors = cltcol.create_distinguishable_colors(n_regions, random_seed=seed)
+
+        # FreeSurfer identifies a region by the packed RGB value of its color, so
+        # two regions sharing a color would collapse into a single one
+        regtable = cltcol.colors_to_table(colors, alpha_values=0).astype(np.int32)
+
+        if np.unique(regtable[:, 4]).size != n_regions:
+            raise ValueError(
+                "The supplied colors must all be different: FreeSurfer identifies "
+                "a region by the packed RGB value of its color"
+            )
+
+        # ------------------------------------------------------------------ #
+        # Assemble the parcellation
+        # ------------------------------------------------------------------ #
+        if hemi is None:
+            hemi = getattr(surf, "hemi", None) or "lh"
+
+        codes = regtable[labels, 4].astype(np.int32)
+
+        parc = cls()
+        parc.create_from_data(
+            codes=codes,
+            regtable=regtable,
+            regnames=region_names,
+            annot_id=annot_id,
+            hemi=hemi,
+        )
+
+        return parc
+
+    ####################################################################################################
     def save_annotation(self, out_file: str = None, overwrite: bool = True):
         """
         Save the annotation file. If the file already exists, it will be overwritten.
