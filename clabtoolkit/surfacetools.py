@@ -60,7 +60,7 @@ class Surface:
     >>> surface = Surface(vertices=verts, faces=faces, hemi='lh')
     >>>
     >>> # Load scalar data and parcellations
-    >>> surface.load_scalar_map('thickness.mgh', 'thickness')
+    >>> surface.load_scalar_maps('thickness.mgh', 'thickness')
     >>> surface.load_annotation('lh.aparc.annot', 'aparc')
     """
 
@@ -168,7 +168,7 @@ class Surface:
         self.active_scalar = "default"
         self.colortables: dict[str, dict] = {}
 
-        # Create the defalt colortable for the surface
+        # Create the default colortable for the surface
 
         # Set the colortable for the surface
         # Validate alpha value
@@ -1212,17 +1212,14 @@ class Surface:
         Time complexity: O(n log n) where n is the number of faces
         Space complexity: O(n) for intermediate arrays
 
-        For non-triangular meshes, use the general `extract_edges_from_faces`
-        function instead.
-
         The canonical edge representation ensures that edge (i, j) and edge (j, i)
         are treated as the same edge, with the final representation always having
         the smaller vertex index first.
 
         See Also
         --------
-        extract_edges_from_faces : General version for arbitrary polygon meshes
-        numpy.unique : Used internally for deduplication
+        get_boundary_edges : Edges belonging to a single face.
+        get_manifold_edges : Edges shared by exactly two faces.
         """
 
         # Getting the faces array from the mesh
@@ -1693,7 +1690,7 @@ class Surface:
 
         >>> # Example 1: Reading a region-wise map from a CSV file and selecting a specific column name
         >>> print("Example 1: Reading a region-wise map from a CSV file with a specific column name")
-        >>> surf_lh.load_maps_scalar_maps("/tmp/values.csv",
+        >>> surf_lh.load_scalar_maps("/tmp/values.csv",
                                         annotation="/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot",
                                         maps_names="region_index")
 
@@ -1705,7 +1702,7 @@ class Surface:
         >>> import pandas as pd
         >>> values_df = pd.read_csv("/tmp/values.csv")
         >>> print("Example 2: Reading a region-wise map from a DataFrame with specified names")
-        >>> surf_lh.load_maps_scalar_maps(values_df,
+        >>> surf_lh.load_scalar_maps(values_df,
                                         annotation="/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot",
                                         maps_names=["value"])
 
@@ -1713,11 +1710,11 @@ class Surface:
         >>> print(surf_lh.list_overlays())
         >>> print("")
 
-        >>> # Example 3: Reading a region-wise map from a numpy array without specifiying names
+        >>> # Example 3: Reading a region-wise map from a numpy array without specifying names
         >>> import pandas as pd
         >>> print("Example 3: Reading a region-wise map from a numpy array without specifying names")
         >>> values_df = pd.read_csv("/tmp/values.csv")
-        >>> surf_lh.load_maps_scalar_maps(values_df.to_numpy(),
+        >>> surf_lh.load_scalar_maps(values_df.to_numpy(),
                                         annotation="/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot")
 
         >>> print("Loaded maps from numpy array without specifying names:")
@@ -1733,7 +1730,7 @@ class Surface:
 
         >>> # Example 4: Loading vertex-wise maps from a CSV file
         >>> print("Example 4: Loading vertex-wise maps from a CSV file")
-        >>> surf_lh.load_maps_scalar_maps("/tmp/values-vertexwise.csv"
+        >>> surf_lh.load_scalar_maps("/tmp/values-vertexwise.csv"
                                         )
         >>> print("Loaded vertex-wise maps from CSV file:")
         >>> print(surf_lh.list_overlays())
@@ -1743,7 +1740,7 @@ class Surface:
         >>> print("Example 5: Reading a region-wise map from a numpy array with specified names")
         >>> import numpy as np
         >>> values_array = np.random.rand(n_points)
-        >>> surf_lh.load_maps_scalar_maps(values_array,
+        >>> surf_lh.load_scalar_maps(values_array,
                                         maps_names=["ex5_vertex_value_array"])
         >>> print("Loaded vertex-wise maps from numpy array:")
         >>> print(surf_lh.list_overlays())
@@ -1752,14 +1749,14 @@ class Surface:
         >>> # Example 6: Creating a numpy array without specifying names
         >>> values_array = np.random.rand(n_points)
         >>> print("Example 6: Creating a numpy array with values as the number of vertices without specifying names")
-        >>> surf_lh.load_maps_scalar_maps(values_array)
+        >>> surf_lh.load_scalar_maps(values_array)
         >>> print("Loaded vertex-wise maps from numpy array without specifying names:")
         >>> print(surf_lh.list_overlays())
         >>> print("")
 
         >>> # Example 7: Reading a FreeSurfer map file
         >>> print("Example 7: Reading a FreeSurfer map file")
-        >>> surf_lh.load_maps_scalar_maps("/opt/freesurfer/subjects/fsaverage/surf/lh.thickness",
+        >>> surf_lh.load_scalar_maps("/opt/freesurfer/subjects/fsaverage/surf/lh.thickness",
                                         maps_names=["cthickness"])
         >>> print("Loaded vertex-wise maps from FreeSurfer map file:")
         >>> print(surf_lh.list_overlays())
@@ -1775,7 +1772,7 @@ class Surface:
         >>> maps_names = ["thickness", "curvature", "sulc"]
 
         >>> for i, map_file in enumerate(list_of_maps):
-            surf_lh.load_maps_scalar_maps(map_file, maps_names=maps_names[i])
+            surf_lh.load_scalar_maps(map_file, maps_names=maps_names[i])
         >>> print("Loaded vertex-wise maps from FreeSurfer map files:")
         >>> print(surf_lh.list_overlays())
         >>> print("")
@@ -1992,7 +1989,7 @@ class Surface:
         >>>
         >>> # With a colortable: written as an annotation
         >>> from clabtoolkit.freesurfertools import AnnotParcellation
-        >>> parc = AnnotParcellation.simulate_parcellation(surf, n_regions=8, seed=0)
+        >>> parc = AnnotParcellation.simulate_annotation(surf, n_regions=8, seed=0)
         >>> surf.load_annotation(parc, 'simulated')
         >>> surf.export_overlay('simulated', '/tmp/lh.simulated')
         '/tmp/lh.simulated.annot'
@@ -2742,7 +2739,7 @@ class Surface:
         Examples
         --------
         >>> # Load various data types
-        >>> surface.load_scalar_map('thickness.mgh', 'thickness')
+        >>> surface.load_scalar_maps('thickness.mgh', 'thickness')
         >>> surface.load_annotation('aparc.annot', 'aparc')
         >>> surface.compute_normals()
         >>>
@@ -3023,7 +3020,7 @@ class Surface:
         """
         Compute vertices colors for visualization based on the specified overlay.
 
-        This method processes the overlay data and creates appropiate vertices colors
+        This method processes the overlay data and creates appropriate vertices colors
         for visualization, handling both scalar data (with colormaps) and
         categorical data (with discrete color tables).
 
@@ -3150,7 +3147,7 @@ class Surface:
         """
         Prepare vertices colors for visualization based on the specified overlay.
 
-        This method processes the overlay data and creates appropiate vertices colors
+        This method processes the overlay data and creates appropriate vertices colors
         for visualization, handling both scalar data (with colormaps) and
         categorical data (with discrete color tables).
 
