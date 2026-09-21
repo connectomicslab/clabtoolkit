@@ -1911,6 +1911,170 @@ class Surface:
                 # The fallback only handles files, any other failure must be visible
                 raise
 
+    ##############################################################################################
+    def export_overlay(
+        self,
+        overlay_name: str,
+        filename: str | Path,
+        overwrite: bool = False,
+    ) -> str:
+        """
+        Export an overlay, as an annotation file or as a vertex-wise map.
+
+        Chooses the output format from the nature of the overlay: overlays that
+        have an associated colortable are parcellations and are written as
+        FreeSurfer .annot files, keeping their region names and colors, while
+        overlays without a colortable are continuous measurements and are written
+        as vertex-wise maps.
+
+        Parameters
+        ----------
+        overlay_name : str
+            Name of the overlay to export, as listed by :meth:`list_overlays`.
+
+        filename : str or Path
+            Output file. The extension matching the chosen format is appended when
+            it is missing: '.annot' for a parcellation and '.mgh', '.mgz' or '.gii'
+            for a map, while the extensionless FreeSurfer morphometry format is
+            left untouched. For a map, the extension also selects the format
+            unless ``map_format`` is given.
+
+        overwrite : bool, default False
+            Whether to overwrite an existing file.
+
+        Returns
+        -------
+        str
+            Path of the file that was written, which may differ from ``filename``
+            when an extension had to be appended.
+
+        Raises
+        ------
+        RuntimeError
+            If no surface data has been loaded.
+
+        ValueError
+            If ``overlay_name`` or ``filename`` is invalid, if the overlay does not
+            exist, if the overlay is not vertex-wise scalar data (colors or normals
+            cannot be exported this way), if ``map_format`` is unknown, or if the
+            file exists and ``overwrite`` is False.
+
+        FileNotFoundError
+            If the output directory does not exist.
+
+        See Also
+        --------
+        export_annotation : Export a parcellation, without the format dispatch.
+        list_overlays : List the overlays and their types.
+        load_scalar_maps : Load vertex-wise maps back onto a surface.
+
+        Notes
+        -----
+        The 'curv' format is FreeSurfer's binary morphometry format, the one used
+        by files such as ``lh.thickness`` or ``lh.curv``, and it stores one float
+        per vertex without any header naming the measurement, so the meaning is
+        carried by the file name alone.
+
+        Colortables are exported by :meth:`export_annotation`, which works on a
+        copy, so the colortable of this surface is never modified.
+
+        Examples
+        --------
+        >>> surf = Surface.simulate_surface('icosphere', nsub=5, seed=0)
+        >>>
+        >>> # No colortable: written as a FreeSurfer map
+        >>> surf.export_overlay('thickness', '/tmp/lh.thickness')
+        '/tmp/lh.thickness'
+        >>>
+        >>> # Same map in other formats
+        >>> surf.export_overlay('thickness', '/tmp/lh.thickness.mgz')  # doctest: +SKIP
+        >>> surf.export_overlay('thickness', '/tmp/lh.thickness.shape.gii')  # doctest: +SKIP
+        >>>
+        >>> # With a colortable: written as an annotation
+        >>> from clabtoolkit.freesurfertools import AnnotParcellation
+        >>> parc = AnnotParcellation.simulate_parcellation(surf, n_regions=8, seed=0)
+        >>> surf.load_annotation(parc, 'simulated')
+        >>> surf.export_overlay('simulated', '/tmp/lh.simulated')
+        '/tmp/lh.simulated.annot'
+        """
+
+        if not self.is_loaded():
+            raise RuntimeError("No surface data loaded. Load data first.")
+
+        if not isinstance(overlay_name, str) or not overlay_name:
+            raise ValueError("overlay_name must be a non-empty string")
+
+        if overlay_name not in self.mesh.point_data:
+            raise ValueError(
+                f"Overlay '{overlay_name}' not found in mesh point data. "
+                f"Available overlays: {sorted(self.mesh.point_data.keys())}"
+            )
+
+        if isinstance(filename, Path):
+            filename = str(filename)
+
+        if not isinstance(filename, str) or not filename:
+            raise ValueError("filename must be a non-empty string or a Path")
+
+        # ------------------------------------------------------------------ #
+        # Parcellations keep their region names and colors, so they go out as
+        # annotation files
+        # ------------------------------------------------------------------ #
+        if overlay_name in self.colortables:
+            if not filename.endswith(".annot"):
+                filename = f"{filename}.annot"
+
+            self.export_annotation(
+                filename=filename, parc_name=overlay_name, overwrite=overwrite
+            )
+
+            return filename
+
+        # ------------------------------------------------------------------ #
+        # Everything else is a vertex-wise map
+        # ------------------------------------------------------------------ #
+        overlay = np.asarray(self.mesh.point_data[overlay_name])
+
+        if overlay.ndim != 1:
+            raise ValueError(
+                f"Overlay '{overlay_name}' has shape {overlay.shape} and is not "
+                "vertex-wise scalar data. Colors and normals cannot be exported "
+                "as a map or as an annotation"
+            )
+
+        if os.path.exists(filename) and not overwrite:
+            raise ValueError(
+                f"File '{filename}' already exists. Please set overwrite to True "
+                "or choose a different name."
+            )
+
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            raise FileNotFoundError(f"Directory '{directory}' does not exist")
+
+        values = np.ascontiguousarray(overlay, dtype=np.float32)
+
+        map_format = os.path.basename(filename).split(".")[-1].lower()
+
+        if map_format in ("mgh", "mgz"):
+            # Surface maps are stored as a volume with a single row and slice
+            nib.save(
+                nib.MGHImage(values.reshape(-1, 1, 1), np.eye(4)),
+                filename,
+            )
+
+        elif map_format == "gii":
+            gifti_image = nib.gifti.GiftiImage()
+            gifti_image.add_gifti_data_array(
+                nib.gifti.GiftiDataArray(values, intent="NIFTI_INTENT_SHAPE")
+            )
+            nib.save(gifti_image, filename)
+
+        else:
+            nib.freesurfer.write_morph_data(filename, values)
+
+        return filename
+
     ###############################################################################################
     def simulate_map(
         self,
