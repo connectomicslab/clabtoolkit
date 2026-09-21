@@ -4243,6 +4243,10 @@ class Surface:
         RuntimeError
             If no surface data has been loaded, or if the mesh has no points.
 
+        See Also
+        --------
+        simulate_image : Simulate a volume covering this bounding box.
+
         Examples
         --------
         >>> surface = Surface('lh.pial')
@@ -4260,6 +4264,229 @@ class Surface:
             raise RuntimeError("No surface data loaded. Load data first.")
 
         return np.vstack([self.mesh.points.min(axis=0), self.mesh.points.max(axis=0)])
+
+    ###############################################################################################
+    def simulate_image(
+        self,
+        simulated_image: str = None,
+        voxel_size: float | tuple[float, float, float] = 1.0,
+        padding: float = 5.0,
+        mask: str = "interior",
+        n_volumes: int = None,
+        distribution: str = "normal",
+        random_seed: int = None,
+        **dist_params,
+    ) -> "nib.Nifti1Image":
+        """
+        Simulate a NIfTI volume covering the bounding box of the surface.
+
+        Builds a voxel grid from :meth:`get_bounding_box`, derives a mask from it,
+        and hands that mask to :func:`clabtoolkit.imagetools.simulate_image`, which
+        fills the masked voxels with random values. The result is a volume that is
+        spatially registered with the surface, which is useful to test and
+        demonstrate any surface-to-volume or volume-to-surface code without needing
+        a real subject.
+
+        Parameters
+        ----------
+        simulated_image : str, optional
+            Output file path, ending in '.nii' or '.nii.gz'. If None, a temporary
+            file name is generated.
+
+        voxel_size : float or tuple of 3 floats, default 1.0
+            Size of the voxels in millimetres, isotropic when a single value is
+            given.
+
+        padding : float, default 5.0
+            Margin in millimetres added around the bounding box on every side, so
+            the surface is not flush against the edge of the volume.
+
+        mask : {'interior', 'box'}, default 'interior'
+            Which voxels receive random values. 'interior' keeps only the voxels
+            enclosed by the surface, giving a volume shaped like the surface, while
+            'box' fills the whole bounding box.
+
+        n_volumes : int, optional
+            Number of volumes in the output, forwarded to
+            :func:`clabtoolkit.imagetools.simulate_image`. Defaults to 3 there, and
+            1 produces a purely 3D image.
+
+        distribution : {'normal', 'uniform', 'exponential'}, default 'normal'
+            Statistical distribution used for the random values.
+
+        random_seed : int, optional
+            Seed for reproducible values.
+
+        **dist_params : dict
+            Distribution parameters forwarded unchanged: ``loc`` and ``scale`` for
+            'normal', ``low`` and ``high`` for 'uniform', ``scale`` for
+            'exponential'.
+
+        Returns
+        -------
+        nibabel.Nifti1Image
+            The simulated volume, also written to ``simulated_image``.
+
+        Raises
+        ------
+        RuntimeError
+            If no surface data has been loaded, if the installed PyVista is too old
+            to provide ``voxelize_binary_mask`` (added in PyVista 0.45), or if the
+            interior mask comes out empty.
+
+        ValueError
+            If ``voxel_size``, ``padding`` or ``mask`` are invalid.
+
+        See Also
+        --------
+        get_bounding_box : Axis-aligned bounding box used to build the grid.
+        simulate_surface : Create a simulated surface.
+        map_volume_to_surface : Sample a volume onto this surface.
+
+        Notes
+        -----
+        The grid is axis aligned, and its affine is the diagonal matrix of the
+        voxel sizes translated to the padded corner of the bounding box, so voxel
+        centres coincide with the grid PyVista voxelizes into and the volume lands
+        exactly on the surface in world coordinates.
+
+        The 'interior' mask relies on ``vtkPolyDataToImageStencil`` through PyVista
+        and assumes a closed surface. A warning is issued when the surface has open
+        edges, since the result is then only as good as the algorithm's attempt to
+        close the contours slice by slice.
+
+        Examples
+        --------
+        >>> surf = Surface.simulate_surface('icosphere', radius=40, nsub=5, maps=None)
+        >>>
+        >>> # 3D volume shaped like the surface
+        >>> img = surf.simulate_image('/tmp/sim.nii.gz', n_volumes=1, random_seed=0)
+        >>> img.shape
+        (91, 91, 91)
+        >>>
+        >>> # 4D volume filling the whole bounding box, uniform values
+        >>> img = surf.simulate_image(
+        ...     '/tmp/sim4d.nii.gz', mask='box', n_volumes=10,
+        ...     distribution='uniform', low=0, high=100,
+        ... )
+        >>>
+        >>> # Coarser grid with a wider margin
+        >>> img = surf.simulate_image('/tmp/sim2mm.nii.gz', voxel_size=2.0, padding=10.0)
+        """
+
+        # Imported here, and not at the top of the module, to keep the import
+        # graph of surfacetools free of the image processing stack
+        from . import imagetools as cltimage
+
+        if not self.is_loaded() or self.mesh.n_points == 0:
+            raise RuntimeError("No surface data loaded. Load data first.")
+
+        if mask not in ("interior", "box"):
+            raise ValueError(f"mask must be 'interior' or 'box', got '{mask}'")
+
+        spacing = np.atleast_1d(np.asarray(voxel_size, dtype=np.float64)).ravel()
+        if spacing.size == 1:
+            spacing = np.repeat(spacing, 3)
+        elif spacing.size != 3:
+            raise ValueError(
+                "voxel_size must be a scalar or a sequence of three values, got "
+                f"{spacing.size} values"
+            )
+
+        if np.any(spacing <= 0) or not np.all(np.isfinite(spacing)):
+            raise ValueError(
+                f"voxel_size values must be finite and positive, got {voxel_size}"
+            )
+
+        padding = float(padding)
+        if padding < 0 or not np.isfinite(padding):
+            raise ValueError(f"padding must be finite and non-negative, got {padding}")
+
+        # ------------------------------------------------------------------ #
+        # Build the voxel grid from the bounding box of the surface
+        # ------------------------------------------------------------------ #
+        bounding_box = self.get_bounding_box()
+
+        origin = bounding_box[0] - padding
+        extent = (bounding_box[1] + padding) - origin
+        dimensions = np.ceil(extent / spacing).astype(int) + 1
+
+        if np.prod(dimensions.astype(np.float64)) > 512**3:
+            warnings.warn(
+                f"The requested grid has {np.prod(dimensions)} voxels "
+                f"({tuple(dimensions)}). Consider a larger voxel_size.",
+                stacklevel=2,
+            )
+
+        # The NIfTI affine maps voxel indices to world coordinates exactly the way
+        # PyVista places its grid points, so both stay aligned
+        affine = np.eye(4)
+        affine[:3, :3] = np.diag(spacing)
+        affine[:3, 3] = origin
+
+        # ------------------------------------------------------------------ #
+        # Derive the mask
+        # ------------------------------------------------------------------ #
+        if mask == "box":
+            mask_data = np.ones(tuple(dimensions), dtype=np.uint8)
+
+        else:
+            if not hasattr(self.mesh, "voxelize_binary_mask"):
+                raise RuntimeError(
+                    "mask='interior' requires PyVista 0.45 or newer, which "
+                    "provides PolyData.voxelize_binary_mask. Use mask='box' "
+                    "instead, or upgrade PyVista."
+                )
+
+            if self.mesh.n_open_edges > 0:
+                warnings.warn(
+                    f"The surface has {self.mesh.n_open_edges} open edges. The "
+                    "interior mask assumes a closed surface, so the result may be "
+                    "inaccurate. Use mask='box' to avoid the voxelization.",
+                    stacklevel=2,
+                )
+
+            reference_volume = pv.ImageData(
+                dimensions=tuple(int(value) for value in dimensions),
+                spacing=tuple(spacing),
+                origin=tuple(origin),
+            )
+
+            voxelized = self.mesh.voxelize_binary_mask(
+                reference_volume=reference_volume
+            )
+
+            # PyVista stores the mask as point data in Fortran order
+            mask_data = np.asarray(voxelized.point_data["mask"]).reshape(
+                voxelized.dimensions, order="F"
+            )
+
+            if not np.any(mask_data):
+                raise RuntimeError(
+                    "The interior mask is empty: no voxel of the grid lies inside "
+                    "the surface. This usually means the surface is not closed, or "
+                    "that it is too thin for the requested voxel_size. Use "
+                    "mask='box', a smaller voxel_size, or a closed surface."
+                )
+
+        # ------------------------------------------------------------------ #
+        # Let imagetools fill the masked voxels with random values
+        # ------------------------------------------------------------------ #
+        reference = nib.Nifti1Image(mask_data.astype(np.float32), affine)
+
+        # n_volumes is only forwarded when it was set, so that the default of
+        # imagetools.simulate_image applies in both the versions that accept None
+        # and the ones that expect a positive integer
+        if n_volumes is not None:
+            dist_params["n_volumes"] = n_volumes
+
+        return cltimage.simulate_image(
+            reference,
+            simulated_image=simulated_image,
+            distribution=distribution,
+            random_seed=random_seed,
+            **dist_params,
+        )
 
     ###############################################################################################
     def plot(
