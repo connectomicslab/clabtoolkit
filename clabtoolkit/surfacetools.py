@@ -4227,6 +4227,41 @@ class Surface:
         return self
 
     ###############################################################################################
+    def get_bounding_box(self) -> np.ndarray:
+        """
+        Get the axis-aligned bounding box of the surface mesh.
+
+        Returns
+        -------
+        np.ndarray
+            A 2x3 array where the first row contains the minimum x, y, z
+            coordinates and the second row contains the maximum x, y, z
+            coordinates.
+
+        Raises
+        ------
+        RuntimeError
+            If no surface data has been loaded, or if the mesh has no points.
+
+        Examples
+        --------
+        >>> surface = Surface('lh.pial')
+        >>> bbox = surface.get_bounding_box()
+        >>> print(bbox)
+        [[-70. -70. -70.]
+         [ 70.  70.  70.]]
+        >>>
+        >>> # Extent and centre of the surface
+        >>> extent = bbox[1] - bbox[0]
+        >>> centre = bbox.mean(axis=0)
+        """
+
+        if not self.is_loaded() or self.mesh.n_points == 0:
+            raise RuntimeError("No surface data loaded. Load data first.")
+
+        return np.vstack([self.mesh.points.min(axis=0), self.mesh.points.max(axis=0)])
+
+    ###############################################################################################
     def plot(
         self,
         overlay_name: str = None,
