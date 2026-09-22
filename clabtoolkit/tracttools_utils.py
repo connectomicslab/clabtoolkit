@@ -4,8 +4,9 @@ Utility functions supporting the tractogram simulation of :mod:`clabtoolkit.trac
 This module gathers the geometric primitives used to build synthetic tractograms:
 the extraction of the voxel-grid geometry of a reference image, a
 rotation-minimizing frame along a curve, smooth random deviation profiles, the
-generation of a bundle centroid and the growth of a streamline population around
-it. They are kept apart from ``tracttools`` so the main module stays focused on
+generation of a bundle centroid, the growth of a streamline population around it
+and the noise that turns the resulting ideal geometry into a noisy tractogram.
+They are kept apart from ``tracttools`` so the main module stays focused on
 loading, manipulating and saving tractograms.
 
 These functions work on plain numpy arrays and do not depend on the
@@ -29,6 +30,7 @@ from typing import Union
 import nibabel as nb
 import numpy as np
 from scipy.interpolate import CubicSpline
+from scipy.ndimage import gaussian_filter1d
 
 ###############################################################################################
 def get_reference_geometry(
@@ -436,6 +438,207 @@ def populate_bundle(
             t_new = np.linspace(0.0, 1.0, n_points)
             streamline = CubicSpline(t_centroid, streamline, axis=0)(t_new)
 
+        streamlines.append(streamline.astype(np.float32))
+
+    return streamlines
+
+
+###############################################################################################
+def add_noise_to_streamlines(
+    rng: np.random.Generator,
+    streamlines: Union[list[np.ndarray], np.ndarray],
+    noise_level: float,
+    noise_smoothness: float = 0.0,
+    fix_endpoints: bool = False,
+) -> Union[list[np.ndarray], np.ndarray]:
+    """
+    Adds a random displacement to every point of one or several streamlines.
+
+    The noise is isotropic in the three directions of the world space and its
+    amplitude is expressed in millimetres, so it can be related to the voxel size
+    of the acquisition. Two regimes are available. With `noise_smoothness` equal
+    to 0 every point is displaced independently, which produces the jagged,
+    high-frequency aspect of streamlines reconstructed from noisy diffusion data.
+    With a positive `noise_smoothness` the displacement is correlated along the
+    streamline, which produces a slowly wandering trajectory instead. In both
+    cases the amplitude is rescaled after the smoothing, so `noise_level` always
+    corresponds to the standard deviation actually applied.
+
+    Parameters
+    ----------
+    rng : np.random.Generator
+        Random number generator.
+
+    streamlines : list of np.ndarray, ArraySequence or np.ndarray
+        Streamlines to perturb. A single streamline can be passed as an array of
+        shape (n_points, 3), in which case a single array is returned.
+
+    noise_level : float
+        Standard deviation of the displacement in mm. Values of 0 or less leave
+        the streamlines untouched.
+
+    noise_smoothness : float, optional
+        Correlation length of the noise along the streamline, as a fraction of
+        its number of points. 0 produces independent noise at every point
+        (rough streamlines), while values around 0.05-0.2 produce smooth
+        deviations from the original trajectory. Must be in the range [0, 1].
+        Default is 0.
+
+    fix_endpoints : bool, optional
+        Whether to leave the first and the last point of each streamline
+        unchanged. Useful when the extremities must stay inside a mask or a
+        region of interest. Default is False.
+
+    Returns
+    -------
+    list of np.ndarray or np.ndarray
+        The perturbed streamlines. The return type matches the input: a single
+        array in, a single array out.
+
+    Raises
+    ------
+    ValueError
+        If `noise_smoothness` is outside the range [0, 1].
+
+    Examples
+    --------
+    >>> rng = np.random.default_rng(42)
+    >>> noisy = add_noise_to_streamlines(rng, streamlines, noise_level=0.8)
+
+    >>> # Smooth deviations instead of point-by-point roughness
+    >>> wavy = add_noise_to_streamlines(rng, streamlines, noise_level=2.0,
+    ...                                 noise_smoothness=0.1)
+    """
+
+    if not 0 <= noise_smoothness <= 1:
+        raise ValueError(
+            f"noise_smoothness must be in the range [0, 1], got {noise_smoothness}"
+        )
+
+    single_input = isinstance(streamlines, np.ndarray) and streamlines.ndim == 2
+    if single_input:
+        streamlines = [streamlines]
+
+    if noise_level <= 0:
+        return streamlines[0] if single_input else list(streamlines)
+
+    noisy_streamlines = []
+    for streamline in streamlines:
+        streamline = np.asarray(streamline, dtype=float)
+        n_points = len(streamline)
+
+        if n_points == 0:
+            noisy_streamlines.append(streamline.astype(np.float32))
+            continue
+
+        noise = rng.normal(0.0, 1.0, size=(n_points, 3))
+
+        if noise_smoothness > 0:
+            sigma = noise_smoothness * n_points
+            noise = gaussian_filter1d(noise, sigma=sigma, axis=0, mode="nearest")
+
+            # Smoothing shrinks the variance, so the amplitude is restored here
+            # to keep noise_level meaningful whatever the correlation length.
+            # The root mean square is used rather than the standard deviation:
+            # a strongly smoothed field has a non-zero mean, and normalizing by
+            # its standard deviation would overshoot the requested amplitude.
+            current_rms = float(np.sqrt(np.mean(noise**2)))
+            if current_rms > 1e-12:
+                noise = noise / current_rms
+
+        noise = noise * noise_level
+
+        if fix_endpoints and n_points > 1:
+            noise[0] = 0.0
+            noise[-1] = 0.0
+
+        noisy_streamlines.append((streamline + noise).astype(np.float32))
+
+    return noisy_streamlines[0] if single_input else noisy_streamlines
+
+
+###############################################################################################
+def simulate_noise_streamlines(
+    rng: np.random.Generator,
+    bbox_min: np.ndarray,
+    bbox_max: np.ndarray,
+    n_streamlines: int,
+    length_range: tuple[float, float],
+    curvature: float = 0.15,
+    n_points: int = 100,
+    margin: float = 0.12,
+    mask_coords: np.ndarray = None,
+) -> list[np.ndarray]:
+    """
+    Simulates isolated streamlines that do not belong to any bundle.
+
+    Real tractograms contain spurious streamlines that no bundle claims: broken
+    or wandering trajectories produced by the tracking algorithm. This function
+    generates them as independent centroids, each one with its own random
+    orientation, a length drawn from a wider range and a higher curvature than
+    the bundles, so they stand out as outliers rather than as a coherent
+    population.
+
+    Parameters
+    ----------
+    rng : np.random.Generator
+        Random number generator.
+
+    bbox_min, bbox_max : np.ndarray
+        Bounding box of the reference space, in world (RAS mm) coordinates.
+
+    n_streamlines : int
+        Number of spurious streamlines to generate.
+
+    length_range : tuple of float
+        Length range of the bundles in mm. The spurious streamlines are drawn
+        from a wider interval, going down to a third of the minimum length, so
+        short fragments are also produced.
+
+    curvature : float, optional
+        Bending of the spurious streamlines, as a fraction of their length.
+        Higher than the bundle default on purpose. Default is 0.15.
+
+    n_points : int, optional
+        Number of points of every simulated streamline. Default is 100.
+
+    margin : float, optional
+        Fraction of the bounding box kept free at each border. Default is 0.12.
+
+    mask_coords : np.ndarray, optional
+        World coordinates of the voxels of a mask. When provided, the
+        extremities of the spurious streamlines are drawn inside it.
+
+    Returns
+    -------
+    list of np.ndarray
+        The spurious streamlines, each one with shape (n_points, 3).
+
+    Examples
+    --------
+    >>> rng = np.random.default_rng(42)
+    >>> outliers = simulate_noise_streamlines(rng, bbox_min, bbox_max, 50, (50, 90))
+    """
+
+    wide_range = (max(length_range[0] / 3.0, 1e-3), length_range[1])
+
+    streamlines = []
+    for _ in range(int(n_streamlines)):
+
+        endpoints = None
+        if mask_coords is not None:
+            endpoints = sample_endpoints_in_mask(rng, mask_coords, wide_range)
+
+        streamline = simulate_centroid(
+            rng,
+            bbox_min,
+            bbox_max,
+            wide_range,
+            curvature=curvature,
+            n_points=n_points,
+            margin=margin,
+            endpoints=endpoints,
+        )
         streamlines.append(streamline.astype(np.float32))
 
     return streamlines

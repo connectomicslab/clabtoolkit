@@ -2927,6 +2927,10 @@ class Tractogram:
         fanning: float = 0.3,
         length_variability: float = 0.08,
         margin: float = 0.12,
+        noise: float = 0.0,
+        noise_smoothness: float = 0.0,
+        noise_fix_endpoints: bool = False,
+        n_noise_streamlines: int = 0,
         directions: Union[list, np.ndarray] = None,
         mask: Union[str, Path, np.ndarray, nb.Nifti1Image] = None,
         bundle_names: list[str] = None,
@@ -2952,6 +2956,12 @@ class Tractogram:
         coherent with its neighbours. The amount of bending is controlled by
         `curvature`, which is kept low by default so the bundles stay close to
         straight.
+
+        Two kinds of noise can be added on top of that ideal geometry: `noise`
+        displaces the points of every streamline, making the trajectories rough
+        or wandering instead of perfectly smooth, and `n_noise_streamlines` adds
+        spurious streamlines that belong to no bundle. Both are disabled by
+        default, so the simulation stays clean unless noise is asked for.
 
         Parameters
         ----------
@@ -3005,6 +3015,33 @@ class Tractogram:
             not touch the edges of the field of view. Ignored when a mask is
             supplied. Default is 0.12.
 
+        noise : float, optional
+            Standard deviation, in mm, of the random displacement added to every
+            point of every streamline once the bundles have been built. It makes
+            the streamlines noisy, as those reconstructed from real diffusion
+            data, instead of perfectly smooth splines. A value of 0 disables it,
+            and values of the order of a fraction of the voxel size are usually
+            enough. Default is 0.0.
+
+        noise_smoothness : float, optional
+            Correlation length of that noise along the streamline, as a fraction
+            of its number of points. 0 displaces every point independently and
+            produces rough, jagged streamlines, while values around 0.05-0.2
+            produce streamlines that wander smoothly away from their ideal
+            trajectory. Must be in the range [0, 1]. Default is 0.0.
+
+        noise_fix_endpoints : bool, optional
+            Whether the noise leaves the first and the last point of each
+            streamline untouched. Useful when the extremities must stay inside
+            the mask or inside a region of interest. Default is False.
+
+        n_noise_streamlines : int, optional
+            Number of spurious streamlines that do not belong to any bundle, to
+            mimic the false positives of a real tractogram. They are appended to
+            the tractogram with the identifier 0 and the name 'noise' in the
+            colortable of `map_name`, so they can be told apart from the bundles
+            or removed with `filter`. Default is 0.
+
         directions : list or np.ndarray, optional
             Main orientation of each bundle, given as a list of 3-element vectors in
             world coordinates (for example `[[1, 0, 0], [0, 1, 0]]`). Orientations
@@ -3042,7 +3079,9 @@ class Tractogram:
             A Tractogram object containing the simulated streamlines in world
             (RAS mm) coordinates. The bundle each streamline belongs to is stored in
             `data_per_streamline[map_name]` (identifiers starting at 1), together
-            with its associated colortable in `colortables[map_name]`.
+            with its associated colortable in `colortables[map_name]`. The
+            spurious streamlines requested with `n_noise_streamlines`, if any,
+            carry the identifier 0.
 
         Raises
         ------
@@ -3062,24 +3101,39 @@ class Tractogram:
           be inside it, but the body of a bundle may still leave a strongly concave
           mask. Use `filter_by_mask` afterwards if the bundles must be fully
           contained.
+        - The noise is applied once the bundles have been built, so it perturbs
+          the streamlines without changing the shape of their centroid. Because
+          it is added point by point, it also lengthens the streamlines slightly;
+          `compute_streamline_lengths` reports the noisy length.
 
         Examples
         --------
         >>> # Ten bundles of 150 streamlines each, in the space of an FA map
-        >>> tract = Tractogram.simulate('fa.nii.gz', n_bundles=10, n_streamlines=150, seed=42)
+        >>> tract = Tractogram.simulate_tractogram('fa.nii.gz', n_bundles=10,
+        ...                                        n_streamlines=150, seed=42)
         >>> print(len(tract.tracts))
         1500
 
         >>> # Almost straight bundles, restricted to a brain mask
-        >>> tract = Tractogram.simulate('fa.nii.gz', n_bundles=5, curvature=0.01,
-        ...                             mask='brain_mask.nii.gz', seed=0)
+        >>> tract = Tractogram.simulate_tractogram('fa.nii.gz', n_bundles=5, curvature=0.01,
+        ...                                        mask='brain_mask.nii.gz', seed=0)
         >>> tract.save_tractogram('simulated.trk', file_type='trk', overwrite=True)
 
         >>> # Bundles with a prescribed orientation
-        >>> tract = Tractogram.simulate('fa.nii.gz', n_bundles=2,
-        ...                             directions=[[1, 0, 0], [0, 1, 0]],
-        ...                             bundle_names=['left_right', 'front_back'])
+        >>> tract = Tractogram.simulate_tractogram('fa.nii.gz', n_bundles=2,
+        ...                                        directions=[[1, 0, 0], [0, 1, 0]],
+        ...                                        bundle_names=['left_right', 'front_back'])
         >>> tract.plot(overlay_name='bundle_id')
+
+        >>> # Rough streamlines, as reconstructed from noisy diffusion data
+        >>> tract = Tractogram.simulate_tractogram('fa.nii.gz', n_bundles=5, noise=0.8, seed=42)
+
+        >>> # Streamlines wandering smoothly away from their ideal trajectory,
+        >>> # plus 200 spurious streamlines belonging to no bundle
+        >>> tract = Tractogram.simulate_tractogram('fa.nii.gz', n_bundles=5, noise=2.0,
+        ...                                        noise_smoothness=0.1,
+        ...                                        n_noise_streamlines=200, seed=42)
+        >>> tract.filter(condition='bundle_id > 0')   # dropping the spurious ones
         """
 
         # --- Input validation ---
@@ -3113,6 +3167,19 @@ class Tractogram:
         if not 0 <= length_variability < 0.5:
             raise ValueError(
                 f"length_variability must be in the range [0, 0.5), got {length_variability}"
+            )
+
+        if noise < 0:
+            raise ValueError(f"noise cannot be negative, got {noise}")
+
+        if not 0 <= noise_smoothness <= 1:
+            raise ValueError(
+                f"noise_smoothness must be in the range [0, 1], got {noise_smoothness}"
+            )
+
+        if n_noise_streamlines < 0:
+            raise ValueError(
+                f"n_noise_streamlines cannot be negative, got {n_noise_streamlines}"
             )
 
         rng = np.random.default_rng(seed)
@@ -3164,12 +3231,22 @@ class Tractogram:
             )
 
         if colors is None:
-            colors = cltcol.create_distinguishable_colors(n_bundles)
+            # The seed is forwarded so the palette is reproducible too, not only
+            # the geometry of the bundles
+            colors = cltcol.create_distinguishable_colors(n_bundles, random_seed=seed)
 
         color_table = cltcol.colors_to_table(
             colors=colors, alpha_values=1, values=np.arange(n_bundles) + 1
         )
         color_table[:, 4] = np.arange(n_bundles) + 1
+
+        # The spurious streamlines get the identifier 0 and a neutral gray, so
+        # they stay visually in the background of the bundles when plotted
+        if n_noise_streamlines > 0:
+            bundle_names = ["noise"] + list(bundle_names)
+            color_table = np.vstack(
+                [np.array([[128.0, 128.0, 128.0, 1.0, 0.0]]), color_table]
+            )
 
         # --- Simulation of the bundles ---
         all_streamlines = []
@@ -3185,7 +3262,8 @@ class Tractogram:
             expand=True,
         ) as progress:
 
-            task = progress.add_task("Simulating bundles", total=n_bundles)
+            n_steps = n_bundles + (1 if n_noise_streamlines > 0 else 0)
+            task = progress.add_task("Simulating bundles", total=n_steps)
 
             for i in range(n_bundles):
                 progress.update(
@@ -3229,13 +3307,46 @@ class Tractogram:
                     n_points=n_points,
                 )
 
-                # Keeping every point inside the field of view of the reference image
-                bundle = [
-                    np.clip(st, bbox_min, bbox_max).astype(np.float32) for st in bundle
-                ]
-
                 all_streamlines.extend(bundle)
                 bundle_ids.extend([i + 1] * len(bundle))
+
+            # --- Spurious streamlines, belonging to no bundle ---
+            if n_noise_streamlines > 0:
+                progress.update(
+                    task,
+                    description=f"Simulating {n_noise_streamlines} noise streamlines",
+                    completed=n_steps,
+                )
+
+                spurious = tractutils.simulate_noise_streamlines(
+                    rng,
+                    bbox_min,
+                    bbox_max,
+                    n_noise_streamlines,
+                    length_range,
+                    n_points=n_points,
+                    margin=margin,
+                    mask_coords=mask_coords,
+                )
+
+                all_streamlines.extend(spurious)
+                bundle_ids.extend([0] * len(spurious))
+
+        # --- Noise on the coordinates, applied to every streamline at once ---
+        if noise > 0:
+            all_streamlines = tractutils.add_noise_to_streamlines(
+                rng,
+                all_streamlines,
+                noise_level=noise,
+                noise_smoothness=noise_smoothness,
+                fix_endpoints=noise_fix_endpoints,
+            )
+
+        # Keeping every point inside the field of view of the reference image
+        all_streamlines = [
+            np.clip(st, bbox_min, bbox_max).astype(np.float32)
+            for st in all_streamlines
+        ]
 
         # --- Building the TRK header from the reference image ---
         header = nb.streamlines.TrkFile.create_empty_header()
