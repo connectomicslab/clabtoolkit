@@ -650,7 +650,7 @@ class Tractogram:
         Examples
         --------
         >>> tractogram = Tractogram('input.trk')
-        >>> tractogram.explore_tractogram()
+        >>> tractogram.get_info()
         ╔════════════════════════════════════════════════════════════════╗
         ║                    TRACTOGRAM EXPLORATION                      ║
         ╠════════════════════════════════════════════════════════════════╣
