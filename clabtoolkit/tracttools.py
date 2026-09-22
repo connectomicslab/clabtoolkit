@@ -1734,127 +1734,74 @@ class Tractogram:
         range_color: tuple = (128, 128, 128, 255),
     ) -> ArraySequence:
         """
-        Compute streamlines colors for visualization based on the specified overlay.
+        Compute per-point colors for visualization based on the specified overlay.
 
-        This method processes the overlay data and creates appropriate point colors
-        for visualization, handling both scalar data (with colormaps) and
-        categorical data (with discrete color tables).
+        Handles both per-point overlays (data_per_point) and per-streamline
+        overlays (data_per_streamline). Per-streamline overlays are colored once
+        per streamline, then that single color is broadcast to every point of
+        that streamline so the returned structure always matches self.tracts.
 
         Parameters
         ----------
         overlay_name : str, optional
-            Name of the overlay to visualize. If None, the first available overlay is used.
-
+            Name of the overlay to visualize.
         colormap : str, optional
-            Colormap to use for scalar overlays. If None, uses parcellation color table
-            for categorical data or 'viridis' for scalar data.
-
-        vmin : np.float64, optional
-            Minimum value for scaling the colormap. If None, uses the minimum value of the overlay.
-
-        vmax : np.float64, optional
-            Maximum value for scaling the colormap. If None, uses the maximum value of the overlay.
-            If both vmin and vmax are None, the colormap will be applied to the full range of
-            the overlay values. If both are provided, they will be used to scale the colormap.
-
-        range_min : np.float64, optional
-            Minimum threshold for the overlay values. Values below this will be colored with
-            range_color. If None, no minimum threshold is applied.
-
-        range_max : np.float64, optional
-            Maximum threshold for the overlay values. Values above this will be colored with
-            range_color. If None, no maximum threshold is applied.
-
-        range_color : Tuple[int, int, int, int], optional
-            RGBA color to use for values outside the specified range (range_min, range_max).
-            Default is gray (128, 128, 128, 255).
+            Colormap to use for scalar overlays.
+        vmin, vmax : float, optional
+            Colormap scaling bounds. If both None, uses the full data range.
+        range_min, range_max : float, optional
+            Values outside this range are colored with `range_color`.
+        range_color : tuple, optional
+            RGBA color for out-of-range values. Default gray.
 
         Returns
         -------
         point_colors : ArraySequence
-            RGBA colors for each point in each streamline, in the same nested
-            structure as the tractogram's streamlines (one array per streamline).
+            One color array per streamline, one row per point in that streamline.
 
         Raises
         ------
         ValueError
-            If the specified overlay is not found among available point/streamline maps.
-
-        Notes
-        -----
-        Categorical overlays (those with an entry in `self.colortables`) are colored
-        using the associated discrete color table. Scalar overlays are colored using
-        `colormap` scaled by `vmin`/`vmax`.
-
-        Examples
-        --------
-        >>> tractogram = Tractogram('input.trk')
-        >>> # Colors for a categorical overlay (uses discrete colortable)
-        >>> point_colors = tractogram.get_pointwise_colors(overlay_name="cluster_id")
-        >>>
-        >>> # Colors for scalar data with a custom colormap
-        >>> point_colors = tractogram.get_pointwise_colors(overlay_name="fa", colormap="hot")
+            If the overlay is not found among available point/streamline maps.
         """
-
-        # Get the list of overlays
         map_list_dict = self.list_maps()
-
-        st_maps = map_list_dict["maps_per_streamline"]
-        pt_maps = map_list_dict["maps_per_point"]
-        overlays = []
-        if st_maps is not None:
-            overlays = overlays + st_maps
-
-        if pt_maps is not None:
-            overlays = overlays + pt_maps
+        st_maps = map_list_dict["maps_per_streamline"] or []
+        pt_maps = map_list_dict["maps_per_point"] or []
+        overlays = st_maps + pt_maps
 
         if overlay_name not in overlays:
             raise ValueError(
                 f"Overlay '{overlay_name}' not found. Available overlays: {', '.join(overlays)}"
             )
 
-        # Getting the values of the overlay
+        is_streamline_map = overlay_name in st_maps
 
-        if overlay_name in st_maps:
-            # Map the streamline values to points
-            data = self.data_per_streamline[overlay_name]
+        # Number of points per streamline always comes from the actual geometry,
+        # never from the overlay itself (a per-streamline map has 1 entry per
+        # streamline regardless of how many points that streamline has).
+        point_counts = [len(s) for s in self.tracts]
+        split_indices = np.cumsum(point_counts)[:-1]
 
-        if overlay_name in pt_maps:
-            data = self.data_per_point[overlay_name]
-
-        # Concatenate all arrays into a single array for color mapping
-        all_data = np.concatenate(data)
-        lengths = [len(arr) for arr in data]
-
-        # Calculate split indices (cumulative sum of lengths, excluding the last one)
-        split_indices = np.cumsum(lengths)[:-1]
-
-        # if colortables is an attribute of the class, use it
-        if hasattr(self, "colortables"):
-            dict_ctables = self.colortables
-
-            # Check if the overlay is on the colortables
-            if overlay_name in dict_ctables.keys():
-                # Use the colortable associated with the parcellation
-
-                point_colors = cltcol.get_colors_from_colortable(
-                    all_data, self.colortables[overlay_name]["color_table"]
-                )
-            else:
-                # Use the colormap for scalar data
-                point_colors = cltcol.values2colors(
-                    all_data,
-                    cmap=colormap,
-                    output_format="rgb",
-                    vmin=vmin,
-                    vmax=vmax,
-                    range_min=range_min,
-                    range_max=range_max,
-                    range_color=range_color,
-                )
+        if is_streamline_map:
+            # One value (or one row of values) per streamline.
+            values = np.asarray(self.data_per_streamline[overlay_name])
+            if values.ndim > 1:
+                values = values.reshape(len(self.tracts), -1)
+                if values.shape[1] == 1:
+                    values = values.ravel()
+            color_input = values  # one entry per streamline
         else:
-            point_colors = cltcol.values2colors(
-                all_data,
+            data = self.data_per_point[overlay_name]
+            color_input = np.concatenate(data)  # one entry per point
+
+        # --- Map values -> colors ---
+        if hasattr(self, "colortables") and overlay_name in self.colortables:
+            colors = cltcol.get_colors_from_colortable(
+                color_input, self.colortables[overlay_name]["color_table"]
+            )
+        else:
+            colors = cltcol.values2colors(
+                color_input,
                 cmap=colormap,
                 output_format="rgb",
                 vmin=vmin,
@@ -1864,11 +1811,16 @@ class Tractogram:
                 range_color=range_color,
             )
 
-        # Split array_all back into a list of arrays
-        point_colors = np.split(point_colors, split_indices)
-        point_colors = ArraySequence(point_colors)
+        if is_streamline_map:
+            # Broadcast each streamline's single color to all of its points.
+            point_colors = [
+                np.repeat(colors[i][np.newaxis, :], point_counts[i], axis=0)
+                for i in range(len(self.tracts))
+            ]
+        else:
+            point_colors = np.split(colors, split_indices)
 
-        return point_colors
+        return ArraySequence(point_colors)
 
     ###############################################################################################
     def reduce_streamlines(self, percentage: float = 50) -> None:
@@ -2729,6 +2681,20 @@ class Tractogram:
                 file_type == "tck" and current_ext == ".tck"
             ):
                 header = self.header
+
+            elif (
+                file_type == "trk"
+                and isinstance(self.header, dict)
+                and "voxel_to_rasmm" in self.header
+                and "dimensions" in self.header
+            ):
+                # The tractogram was not read from a TRK file, but it already
+                # carries a TRK-style header describing the voxel grid (this is
+                # the case for objects built with 'from_components' or with
+                # simulate_tractogram). Reusing it preserves the geometry, which
+                # would otherwise be lost in the output file.
+                header = self.header
+
             else:
                 header = {}
 
