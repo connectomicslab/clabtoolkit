@@ -29,6 +29,7 @@ from . import misctools as cltmisc
 from . import parcellationtools as cltparc
 from . import pointstools as cltpts
 from . import freesurfertools as cltfree
+from . import tracttools_utils as tractutils
 
 
 ####################################################################################################
@@ -2945,6 +2946,359 @@ class Tractogram:
             save_path=save_path,
         )
 
+    ###############################################################################################
+    @classmethod
+    def simulate_tractogram(
+        cls,
+        ref_image: Union[str, Path, nb.Nifti1Image],
+        n_bundles: int = 5,
+        n_streamlines: Union[int, list[int]] = 100,
+        n_points: int = 100,
+        bundle_length: Union[float, tuple[float, float]] = None,
+        bundle_radius: Union[float, tuple[float, float]] = 4.0,
+        curvature: float = 0.05,
+        spread: float = 0.35,
+        fanning: float = 0.3,
+        length_variability: float = 0.08,
+        margin: float = 0.12,
+        directions: Union[list, np.ndarray] = None,
+        mask: Union[str, Path, np.ndarray, nb.Nifti1Image] = None,
+        bundle_names: list[str] = None,
+        colors: Union[list, np.ndarray] = None,
+        map_name: str = "bundle_id",
+        seed: int = None,
+        name: str = "simulated",
+    ) -> "Tractogram":
+        """
+        Simulates a synthetic tractogram inside the space of a reference image.
+
+        The reference NIfTI image defines the geometry of the simulation: its affine
+        matrix and its bounding box are used to place the streamlines in world
+        (RAS mm) coordinates, and its voxel grid is stored in the header of the
+        resulting tractogram. The simulated tractogram can therefore be saved as a
+        valid TRK file, interpolated with `interpolate_on_tractogram`, filtered with
+        `filter_by_mask` or plotted exactly like a real one.
+
+        Each bundle is generated in two steps. First a single, gently curved
+        streamline is simulated and used as the centroid of the bundle. Then a
+        population of streamlines is grown around that centroid by displacing it in
+        the plane perpendicular to it, which keeps every streamline of a bundle
+        coherent with its neighbours. The amount of bending is controlled by
+        `curvature`, which is kept low by default so the bundles stay close to
+        straight.
+
+        Parameters
+        ----------
+        ref_image : str, Path or nibabel image
+            Reference NIfTI image defining the space of the simulation. Its bounding
+            box constrains where the bundles are placed, and its affine, dimensions
+            and voxel sizes are copied into the header of the tractogram.
+
+        n_bundles : int, optional
+            Number of bundle populations to simulate. Default is 5.
+
+        n_streamlines : int or list of int, optional
+            Number of streamlines per bundle. A single integer applies the same
+            number to every bundle, while a list specifies it bundle by bundle.
+            Default is 100.
+
+        n_points : int, optional
+            Number of points of every simulated streamline. Default is 100.
+
+        bundle_length : float or tuple of float, optional
+            Length of the bundles in mm. A single value fixes the length of every
+            bundle, while a tuple `(min, max)` draws it randomly in that range.
+            If None, it is derived from the reference image as 35% to 65% of the mean
+            extent of the usable field of view. Default is None.
+
+        bundle_radius : float or tuple of float, optional
+            Radius of the cross-section of the bundles in mm. A tuple `(min, max)`
+            draws a different radius for each bundle. Default is 4.0.
+
+        curvature : float, optional
+            Bending of the centroid of each bundle, as a fraction of its length.
+            Values around 0.02-0.08 produce gently curved bundles, and 0 produces
+            perfectly straight ones. Default is 0.05.
+
+        spread : float, optional
+            Amplitude of the random wandering of the streamlines around their
+            centroid, as a fraction of `bundle_radius`. Larger values produce less
+            coherent, more dispersed bundles. Default is 0.35.
+
+        fanning : float, optional
+            Relative widening of the bundles towards their extremities. A value of 0
+            produces perfect tubes. Default is 0.3.
+
+        length_variability : float, optional
+            Maximum fraction of the centroid trimmed at each extremity, so the
+            streamlines of a bundle do not all start and end at the same place.
+            Default is 0.08.
+
+        margin : float, optional
+            Fraction of the bounding box kept free at each border, so the bundles do
+            not touch the edges of the field of view. Ignored when a mask is
+            supplied. Default is 0.12.
+
+        directions : list or np.ndarray, optional
+            Main orientation of each bundle, given as a list of 3-element vectors in
+            world coordinates (for example `[[1, 0, 0], [0, 1, 0]]`). Orientations
+            are recycled if fewer than `n_bundles` are supplied. If None, random
+            orientations are drawn. Ignored when a mask is supplied.
+
+        mask : str, Path, np.ndarray or nibabel image, optional
+            Mask restricting where the bundles are placed. When it is supplied, the
+            extremities of the centroids are drawn among its non-zero voxels instead
+            of inside the bounding box of the reference image. Useful to simulate
+            tractograms that stay inside a brain or a white-matter mask.
+
+        bundle_names : list of str, optional
+            Names of the bundles, used in the colortable of `map_name`. If None,
+            they are named `bundle_00`, `bundle_01` and so on.
+
+        colors : list or np.ndarray, optional
+            Colors assigned to the bundles. If None, a set of distinguishable colors
+            is generated automatically.
+
+        map_name : str, optional
+            Name of the per-streamline map holding the bundle identifier.
+            Default is 'bundle_id'.
+
+        seed : int, optional
+            Seed of the random number generator. Supply it to obtain a reproducible
+            tractogram. Default is None.
+
+        name : str, optional
+            Name given to the resulting Tractogram object. Default is 'simulated'.
+
+        Returns
+        -------
+        Tractogram
+            A Tractogram object containing the simulated streamlines in world
+            (RAS mm) coordinates. The bundle each streamline belongs to is stored in
+            `data_per_streamline[map_name]` (identifiers starting at 1), together
+            with its associated colortable in `colortables[map_name]`.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the reference image or the mask does not exist.
+        ValueError
+            If the simulation parameters are inconsistent (for example a negative
+            number of bundles, or a mask without non-zero voxels).
+
+        Notes
+        -----
+        - The streamlines are generated directly in world (RAS mm) coordinates, which
+          is the convention nibabel uses when loading a tractogram, so the affine of
+          the returned object is the identity matrix and the voxel grid travels in
+          the header. This is the same convention followed by `tck2trk`.
+        - When a mask is supplied the extremities of the centroids are guaranteed to
+          be inside it, but the body of a bundle may still leave a strongly concave
+          mask. Use `filter_by_mask` afterwards if the bundles must be fully
+          contained.
+
+        Examples
+        --------
+        >>> # Ten bundles of 150 streamlines each, in the space of an FA map
+        >>> tract = Tractogram.simulate('fa.nii.gz', n_bundles=10, n_streamlines=150, seed=42)
+        >>> print(len(tract.tracts))
+        1500
+
+        >>> # Almost straight bundles, restricted to a brain mask
+        >>> tract = Tractogram.simulate('fa.nii.gz', n_bundles=5, curvature=0.01,
+        ...                             mask='brain_mask.nii.gz', seed=0)
+        >>> tract.save_tractogram('simulated.trk', file_type='trk', overwrite=True)
+
+        >>> # Bundles with a prescribed orientation
+        >>> tract = Tractogram.simulate('fa.nii.gz', n_bundles=2,
+        ...                             directions=[[1, 0, 0], [0, 1, 0]],
+        ...                             bundle_names=['left_right', 'front_back'])
+        >>> tract.plot(overlay_name='bundle_id')
+        """
+
+        # --- Input validation ---
+        if not isinstance(n_bundles, (int, np.integer)) or n_bundles < 1:
+            raise ValueError(f"n_bundles must be a positive integer, got {n_bundles}")
+
+        if not isinstance(n_points, (int, np.integer)) or n_points < 2:
+            raise ValueError(
+                f"n_points must be an integer greater than 1, got {n_points}"
+            )
+
+        if isinstance(n_streamlines, (int, np.integer)):
+            streamlines_per_bundle = [int(n_streamlines)] * n_bundles
+        else:
+            streamlines_per_bundle = [int(v) for v in n_streamlines]
+            if len(streamlines_per_bundle) != n_bundles:
+                raise ValueError(
+                    f"n_streamlines must be an integer or a list of {n_bundles} integers, "
+                    f"got {len(streamlines_per_bundle)} values"
+                )
+
+        if any(v < 1 for v in streamlines_per_bundle):
+            raise ValueError("Every bundle must contain at least one streamline")
+
+        if not 0 <= margin < 0.5:
+            raise ValueError(f"margin must be in the range [0, 0.5), got {margin}")
+
+        if curvature < 0:
+            raise ValueError(f"curvature cannot be negative, got {curvature}")
+
+        if not 0 <= length_variability < 0.5:
+            raise ValueError(
+                f"length_variability must be in the range [0, 0.5), got {length_variability}"
+            )
+
+        rng = np.random.default_rng(seed)
+
+        # --- Geometry of the reference space ---
+        affine, dims, zooms, bbox_min, bbox_max = tractutils.get_reference_geometry(
+            ref_image
+        )
+
+        inner_extents = (1.0 - 2.0 * margin) * (bbox_max - bbox_min)
+
+        if bundle_length is None:
+            length_range = (
+                0.35 * float(inner_extents.mean()),
+                0.65 * float(inner_extents.mean()),
+            )
+        elif isinstance(bundle_length, (int, float, np.number)):
+            length_range = (float(bundle_length), float(bundle_length))
+        else:
+            length_range = (float(bundle_length[0]), float(bundle_length[1]))
+
+        if length_range[0] <= 0 or length_range[1] < length_range[0]:
+            raise ValueError(f"Invalid bundle_length: {bundle_length}")
+
+        if isinstance(bundle_radius, (int, float, np.number)):
+            radius_range = (float(bundle_radius), float(bundle_radius))
+        else:
+            radius_range = (float(bundle_radius[0]), float(bundle_radius[1]))
+
+        if radius_range[0] <= 0 or radius_range[1] < radius_range[0]:
+            raise ValueError(f"Invalid bundle_radius: {bundle_radius}")
+
+        # --- Orientations and mask ---
+        if directions is not None:
+            directions = np.atleast_2d(np.asarray(directions, dtype=float))
+            if directions.shape[1] != 3:
+                raise ValueError("directions must be a list of 3-element vectors")
+
+        mask_coords = None
+        if mask is not None:
+            mask_coords = tractutils.mask_world_coordinates(mask, affine, rng=rng)
+
+        # --- Names and colors of the bundles ---
+        if bundle_names is None:
+            bundle_names = [f"bundle_{i:02d}" for i in range(n_bundles)]
+        elif len(bundle_names) != n_bundles:
+            raise ValueError(
+                f"bundle_names must contain {n_bundles} names, got {len(bundle_names)}"
+            )
+
+        if colors is None:
+            colors = cltcol.create_distinguishable_colors(n_bundles)
+
+        color_table = cltcol.colors_to_table(
+            colors=colors, alpha_values=1, values=np.arange(n_bundles) + 1
+        )
+        color_table[:, 4] = np.arange(n_bundles) + 1
+
+        # --- Simulation of the bundles ---
+        all_streamlines = []
+        bundle_ids = []
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}", justify="right"),
+            BarColumn(bar_width=None),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            expand=True,
+        ) as progress:
+
+            task = progress.add_task("Simulating bundles", total=n_bundles)
+
+            for i in range(n_bundles):
+                progress.update(
+                    task,
+                    description=f"Simulating bundles: {i + 1}/{n_bundles}",
+                    completed=i + 1,
+                )
+
+                endpoints = None
+                direction = None
+
+                if mask_coords is not None:
+                    endpoints = tractutils.sample_endpoints_in_mask(
+                        rng, mask_coords, length_range
+                    )
+                elif directions is not None:
+                    direction = directions[i % len(directions)]
+
+                centroid = tractutils.simulate_centroid(
+                    rng,
+                    bbox_min,
+                    bbox_max,
+                    length_range,
+                    curvature=curvature,
+                    n_points=n_points,
+                    margin=margin,
+                    direction=direction,
+                    endpoints=endpoints,
+                )
+
+                radius = float(rng.uniform(*radius_range))
+
+                bundle = tractutils.populate_bundle(
+                    rng,
+                    centroid,
+                    streamlines_per_bundle[i],
+                    radius,
+                    spread=spread,
+                    fanning=fanning,
+                    length_variability=length_variability,
+                    n_points=n_points,
+                )
+
+                # Keeping every point inside the field of view of the reference image
+                bundle = [
+                    np.clip(st, bbox_min, bbox_max).astype(np.float32) for st in bundle
+                ]
+
+                all_streamlines.extend(bundle)
+                bundle_ids.extend([i + 1] * len(bundle))
+
+        # --- Building the TRK header from the reference image ---
+        header = nb.streamlines.TrkFile.create_empty_header()
+        header["voxel_sizes"] = np.array(zooms, dtype=np.float32)
+        header["dimensions"] = np.array(dims, dtype=np.int16)
+        header["voxel_to_rasmm"] = np.array(affine, dtype=np.float32)
+        header["voxel_order"] = "".join(nb.aff2axcodes(affine))
+        header["nb_streamlines"] = len(all_streamlines)
+
+        # The streamlines are already in world coordinates, so no extra transform is
+        # needed to reach RAS mm. This matches what nibabel returns when a TRK file
+        # is loaded, and what tck2trk writes.
+        tract_obj = cls(
+            tracts=ArraySequence(all_streamlines),
+            affine=np.eye(4),
+            header=header,
+            name=name,
+        )
+        tract_obj.tract_file = "from_simulation"
+
+        tract_obj.data_per_streamline[map_name] = np.asarray(bundle_ids).reshape(-1, 1)
+        tract_obj.colortables[map_name] = {
+            "names": list(bundle_names),
+            "color_table": color_table,
+            "lookup_table": None,
+        }
+
+        return tract_obj
+
 
 ################################# Helper Functions ################################
 def resample_streamlines(
@@ -3407,3 +3761,28 @@ def tck2trk(
     nb.streamlines.save(trk_file, out_trk)
 
     return Tractogram(out_trk)
+
+
+###############################################################################################
+def simulate_tractogram(*args, **kwargs) -> "Tractogram":
+    """
+    Simulates a synthetic tractogram inside the space of a reference image.
+
+    This is a convenience wrapper around :meth:`Tractogram.simulate_tractogram`, kept so the
+    simulation can also be called without referring to the class. Every argument
+    is forwarded unchanged, so see :meth:`Tractogram.simulate` for the full
+    description of the parameters and of the returned object.
+
+    Returns
+    -------
+    Tractogram
+        The simulated tractogram.
+
+    Examples
+    --------
+    >>> tract = simulate_tractogram('fa.nii.gz', n_bundles=10, n_streamlines=150, seed=42)
+    >>> print(len(tract.tracts))
+    1500
+    """
+
+    return Tractogram.simulate_tractogram(*args, **kwargs)
