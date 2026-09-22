@@ -2083,7 +2083,7 @@ def simulate_image(
         - If n_volumes == 1: creates a 3D image, always collapsed to pure
         spatial dimensions even if the reference itself was 4D.
         - If n_volumes > 1: creates a 4D image with n_volumes timepoints.
-        - If None (default): uses 3, unless `reference` is a length-4 shape,
+        - If None (default): uses 1, unless `reference` is a length-4 shape,
         in which case its last value is used instead. If both a length-4
         shape and an explicit n_volumes are given and they disagree, the
         explicit n_volumes wins and a warning is raised.
@@ -2246,9 +2246,9 @@ def simulate_image(
     if affine is not None and not np.array_equal(input_img.affine, affine):
         input_img = nib.Nifti1Image(input_img.get_fdata(), affine, input_img.header)
 
-    # --- Resolve n_volumes: explicit > shape-implied > default (3) ---
+    # --- Resolve n_volumes: explicit > shape-implied > default (1) ---
     if n_volumes is None:
-        n_volumes = implied_n_volumes if implied_n_volumes is not None else 3
+        n_volumes = implied_n_volumes if implied_n_volumes is not None else 1
     elif implied_n_volumes is not None and n_volumes != implied_n_volumes:
         warnings.warn(
             f"reference's shape implies n_volumes={implied_n_volumes}, but "
