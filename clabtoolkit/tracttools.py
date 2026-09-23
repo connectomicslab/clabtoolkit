@@ -798,6 +798,104 @@ class Tractogram:
         print("╚" + "═" * width + "╝")
 
     ####################################################################################################
+    def set_color(
+        self,
+        color: Union[str, tuple, list, np.ndarray],
+        alpha: float = None,
+    ) -> None:
+        """
+        Sets the color used to display the whole tractogram.
+
+        The color of a tractogram lives in three places that must stay
+        consistent: the `color` attribute, the 'default' colortable, and the
+        'default' map of `data_per_streamline`, which holds the encoded color of
+        every streamline. This method updates the three of them at once, so the
+        tractogram is drawn with the new color the next time it is plotted.
+
+        Only the 'default' colortable is touched. The colortables attached to
+        categorical maps such as 'cluster_id' or 'bundle_id' are left untouched,
+        and so are the streamlines themselves.
+
+        Parameters
+        ----------
+        color : str, tuple, list or np.ndarray
+            New color of the tractogram. It accepts a hexadecimal string
+            ('#1f77b4'), a named color ('red'), or an RGB triplet given as a
+            tuple, a list or a numpy array, with the components in the range
+            [0, 255].
+
+        alpha : float, optional
+            Opacity of the tractogram, in the range [0, 1]. If None, the current
+            opacity is kept. Default is None.
+
+        Returns
+        -------
+        None
+            The method modifies the tractogram in place.
+
+        Raises
+        ------
+        ValueError
+            If more than one color is supplied, or if `alpha` is outside the
+            range [0, 1].
+
+        Examples
+        --------
+        >>> tractogram = Tractogram('input.trk')
+        >>> tractogram.set_color('#d62728')
+        >>> print(tractogram.color)
+        [[214  39  40]]
+
+        >>> # The same color given as an RGB triplet, half transparent
+        >>> tractogram.set_color([214, 39, 40], alpha=0.5)
+        >>> tractogram.plot()
+        """
+
+        color = cltcol.harmonize_colors(color)
+
+        # Keeping the current opacity unless a new one is requested
+        if alpha is None:
+            alpha = getattr(self, "alpha", None)
+
+            if alpha is None and self.colortables.get("default") is not None:
+                alpha = float(self.colortables["default"]["color_table"][0, 3])
+
+            if alpha is None:
+                alpha = 1.0
+
+        if isinstance(alpha, (int, np.integer)):
+            alpha = float(alpha)
+
+        if not 0 <= alpha <= 1:
+            raise ValueError(f"Alpha value must be in the range [0, 1], got {alpha}")
+
+        color_table = cltcol.colors_to_table(colors=color, alpha_values=alpha)
+
+        self.color = color
+        self.alpha = alpha
+
+        if not hasattr(self, "colortables") or self.colortables is None:
+            self.colortables = {}
+
+        # The name of the colortable is preserved if it was customized before
+        previous = self.colortables.get("default", {})
+        self.colortables["default"] = {
+            "names": previous.get("names", ["default"]),
+            "color_table": color_table,
+            "lookup_table": previous.get("lookup_table", None),
+        }
+
+        # Every streamline carries the encoded value of the new color, so the
+        # 'default' overlay resolves against the colortable that was just built
+        if not hasattr(self, "data_per_streamline") or self.data_per_streamline is None:
+            self.data_per_streamline = {}
+
+        if self.tracts is not None and len(self.tracts) > 0:
+            self.data_per_streamline["default"] = np.full(
+                (len(self.tracts), 1), int(color_table[0, 4]), dtype=int
+            )
+
+    ####################################################################################################
     def streamline_to_points(
         self, map_name: str, point_map_name: str = None
     ) -> ArraySequence:
@@ -1031,14 +1129,105 @@ class Tractogram:
         merged_colortables = {}
 
         # Create a new colortable entry for tract IDs
+        # Every tractogram already carries its own color in the 'color'
+        # attribute, so the merged tractogram is drawn with the colors the
+        # sources had. A color is generated only for the tractograms that do
+        # not carry one, and it is kept distinguishable from those already used.
         n_tractograms = len(all_tractograms)
-        tract_id_colors = cltcol.create_distinguishable_colors(n_tractograms)
+
+        tract_id_colors = [None] * n_tractograms
+        tract_id_alphas = np.ones(n_tractograms)
+
+        for id, tractogram in enumerate(all_tractograms):
+            color = getattr(tractogram, "color", None)
+            if color is not None:
+                tract_id_colors[id] = np.atleast_2d(
+                    np.asarray(cltcol.harmonize_colors(color, output_format="rgb"))
+                )[0]
+
+            alpha = getattr(tractogram, "alpha", None)
+            if alpha is not None:
+                tract_id_alphas[id] = float(alpha)
+
+        missing_colors = [id for id, c in enumerate(tract_id_colors) if c is None]
+        if missing_colors:
+            already_taken = [
+                np.asarray(c, dtype=float) for c in tract_id_colors if c is not None
+            ]
+
+            # A wider palette than strictly needed is generated, so there is room
+            # to pick the colors that sit farthest from the ones already in use.
+            # The exclude_colors argument of create_distinguishable_colors is a
+            # documented placeholder and does nothing, hence the explicit search.
+            palette = np.atleast_2d(
+                np.asarray(
+                    cltcol.create_distinguishable_colors(
+                        max(n_tractograms, 2 * len(missing_colors) + len(already_taken))
+                    ),
+                    dtype=float,
+                )
+            )
+
+            for id in missing_colors:
+                if already_taken:
+                    distances = np.linalg.norm(
+                        palette[:, None, :] - np.asarray(already_taken)[None, :, :],
+                        axis=2,
+                    ).min(axis=1)
+                    chosen = int(np.argmax(distances))
+                else:
+                    chosen = 0
+
+                tract_id_colors[id] = palette[chosen].astype(int)
+                already_taken.append(palette[chosen])
+                palette = np.delete(palette, chosen, axis=0)
+
+        tmp_merged_colortable = cltcol.colors_to_table(
+            np.vstack(tract_id_colors),
+            alpha_values=tract_id_alphas,
+            values=np.arange(n_tractograms),
+        )
 
         merged_colortables["tract_id"] = {
             "names": [f"Tractogram_{i}" for i in range(n_tractograms)],
-            "color_table": tract_id_colors,
+            "color_table": tmp_merged_colortable,
             "lookup_table": None,
         }
+
+        # The 'default' colortable is not a categorical map shared by the
+        # tractograms: each one holds a single row encoding its own color, and
+        # its data_per_streamline['default'] repeats that value streamline by
+        # streamline. Keeping only the first row, as done below for the other
+        # colortables, would leave the streamlines of the remaining tractograms
+        # pointing at a value that no row can resolve, so the individual
+        # colortables are concatenated instead.
+        default_rows = []
+        default_names = []
+
+        for id, tractogram in enumerate(all_tractograms):
+            ctable = tractogram.colortables.get("default")
+            if ctable is None:
+                continue
+
+            rows = np.atleast_2d(ctable["color_table"])
+            names = list(ctable["names"])
+
+            for row_id, row in enumerate(rows):
+                name = names[row_id] if row_id < len(names) else "default"
+
+                # The generic name is replaced so the entries stay tellable apart
+                if name == "default":
+                    name = f"Tractogram_{id}"
+
+                default_rows.append(row)
+                default_names.append(name)
+
+        if default_rows:
+            merged_colortables["default"] = {
+                "names": default_names,
+                "color_table": np.vstack(default_rows),
+                "lookup_table": None,
+            }
 
         for id, tractogram in enumerate(all_tractograms):
             merged_streamlines.extend(tractogram.tracts)
@@ -1057,8 +1246,9 @@ class Tractogram:
                 )
 
             for key, value in tractogram.colortables.items():
-                if key in merged_colortables:
-                    # If key already exists, keep the first one encountered
+                if key == "default" or key in merged_colortables:
+                    # 'default' was concatenated above, and if the key already
+                    # exists the first one encountered is kept
                     continue
                 else:
                     # Deep copy the colortable data to avoid reference issues
@@ -3344,8 +3534,7 @@ class Tractogram:
 
         # Keeping every point inside the field of view of the reference image
         all_streamlines = [
-            np.clip(st, bbox_min, bbox_max).astype(np.float32)
-            for st in all_streamlines
+            np.clip(st, bbox_min, bbox_max).astype(np.float32) for st in all_streamlines
         ]
 
         # --- Building the TRK header from the reference image ---
