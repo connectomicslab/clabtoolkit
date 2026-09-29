@@ -1830,6 +1830,9 @@ def create_temporary_filename(
             f"The specified temporary directory is not writable: {tmp_dir}"
         )
 
+    if not extension.startswith("."):
+        extension = f".{extension}"
+
     # Only use prefix/suffix if they are valid, non-empty strings
     valid_prefix = isinstance(prefix, str) and len(prefix) > 0
     valid_suffix = isinstance(suffix, str) and len(suffix) > 0
