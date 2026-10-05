@@ -55,5 +55,23 @@
         "diamond_fraction_intra": "au",
         "diamond_fraction_extra": "au",
         "diamond_fraction_csf": "au"
+    },
+    "network_metrics": {
+        "binary": [
+            "glob_efficiency", "transitivity", "density_coeff", "char_path_length",
+            "radius", "diameter", "assortativity", "modularity",
+            "degree", "clustering_coeff", "betw_centrality", "loc_efficiency",
+            "eigenvector_centrality", "pagerank_centrality", "subgraph_centrality",
+            "kcoreness_centrality", "eccentricity", "participation_coeff",
+            "within_module_zscore"
+        ],
+        "weighted": [
+            "glob_efficiency_wei", "transitivity_wei", "density_coeff",
+            "char_path_length_wei", "radius_wei", "diameter_wei", "assortativity_wei",
+            "modularity",
+            "degree", "strength", "clustering_coeff_wei", "betw_centrality_wei",
+            "loc_efficiency_wei", "eigenvector_centrality", "pagerank_centrality",
+            "eccentricity_wei", "participation_coeff", "within_module_zscore"
+        ]
     }
 }
