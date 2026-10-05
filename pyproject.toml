@@ -87,7 +87,7 @@ include = ["clabtoolkit", "clabtoolkit.*"]
 exclude = ["clabtoolkit.tests", "clabtoolkit.tests.*"]
 
 [tool.setuptools.package-data]
-clabtoolkit = ["config/*"]
+clabtoolkit = ["config/*", "data/*", "data/*/*"]
 
 [tool.ruff]
 line-length = 88
