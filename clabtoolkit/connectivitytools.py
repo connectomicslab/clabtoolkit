@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
 from scipy.sparse import csr_matrix, issparse
+import pandas as pd
 
 from . import colorstools as cltcol
 from . import misctools as cltmisc
@@ -1044,6 +1045,7 @@ class Connectome:
 
         return n_connections / n_possible if n_possible > 0 else 0.0
 
+    #################################################################################
     def get_connectivity_stats(self) -> dict:
         """
         Calculate basic connectivity statistics.
@@ -1083,6 +1085,28 @@ class Connectome:
             }
 
         return stats
+
+    #################################################################################
+    def get_graph_metrics(self, output_table: str | Path = None) -> pd.DataFrame:
+        """
+        Calculate basic graph metrics for the connectivity matrix.
+
+        Parameters:
+        ----------
+        output_table : str or Path, optional
+            Path to save the output table (default: None)
+
+        Returns:
+        --------
+        pd.DataFrame : DataFrame with graph metrics for each node
+        """
+
+        from . import morphometrytools as cltmorpho
+
+        # Compute graph metrics using morphometrytools function
+        metrics = cltmorpho.network_metrics_to_table(self, output_table=output_table)
+
+        return metrics
 
     #################################################################################
     def set_diagonal_to_zero(self):
