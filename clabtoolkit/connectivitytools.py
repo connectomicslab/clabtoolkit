@@ -1172,6 +1172,19 @@ class Connectome:
         return metrics
 
     #################################################################################
+    def binarize(self) -> None:
+        """
+        Convert the connectivity matrix to a binary matrix (in place).
+
+        Every non-zero entry becomes 1. The ``weighting`` property then reports
+        'binary' automatically, since it is derived from the matrix.
+        """
+        if self.matrix is None:
+            raise ValueError("No connectivity matrix available")
+
+        self.matrix[self.matrix != 0] = 1
+
+    #################################################################################
     def set_diagonal_to_zero(self):
         """
         Set the diagonal elements of the connectivity matrix to zero.
