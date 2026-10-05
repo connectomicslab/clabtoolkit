@@ -1166,7 +1166,7 @@ class Connectome:
 
         # Compute graph metrics using morphometrytools function
         metrics, _ = cltmorpho.network_metrics_to_table(
-            self, output_table=output_table, cmat_met=self.modality
+            self, output_table=output_table, cmat_met=self.weighting
         )
 
         return metrics
@@ -1726,7 +1726,8 @@ class Connectome:
             (n_regions, 3) coordinates. Auto-generated on a sphere when None.
             Required by (and drives) the 'distance' method.
         modality : str
-            Stored connectivity type. Default 'unknown'.
+            Stored connectivity type. Default 'unknown'. It can be any string
+            describing the type of connectivity, e.g., 'structural' or 'functional'.
         name : str, optional
             Name for the connectome. Defaults to 'synthetic_<method>_<n_regions>'.
         symmetric : bool
