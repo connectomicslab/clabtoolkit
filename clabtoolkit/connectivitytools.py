@@ -33,8 +33,12 @@ class Connectome:
     region_index : list[int]
         Index codes for each region. Always stored as a plain list of ints,
         regardless of whether a list, tuple, or numpy array was supplied.
-    connectivity_type : str
+    modality : str
         Type of connectivity ('unknown', 'structural', 'functional', 'effective', etc.)
+    weighting : str or None
+        Matrix value type, detected automatically from the matrix: 'binary' when the
+        matrix holds a single distinct non-zero value, 'weighted' otherwise, and None
+        when no matrix is loaded. Read-only (derived from ``matrix``).
     affine : np.ndarray
         4x4 affine transformation matrix
     n_regions : int
@@ -50,7 +54,7 @@ class Connectome:
         region_names: list[str] | None = None,
         region_index: np.ndarray | list | tuple | None = None,
         region_colors: np.ndarray | list | None = None,
-        connectivity_type: str = "unknown",
+        modality: str = "unknown",
         affine: np.ndarray | None = None,
     ):
         """
@@ -73,7 +77,7 @@ class Connectome:
             Index codes for each region. Coerced to list[int] internally.
         region_colors : np.ndarray or List, optional
             RGB color values or hex strings for each region
-        connectivity_type : str, optional
+        modality : str, optional
             Type of connectivity (default: 'unknown')
         affine : np.ndarray, optional
             4x4 affine transformation matrix
@@ -90,7 +94,7 @@ class Connectome:
         >>> # Empty connectome
         >>> conn = Connectome(name='my_network')
         """
-        self.type = connectivity_type
+        self.modality = modality
 
         # Handle different input types for data
         load_from_file = False
@@ -185,6 +189,58 @@ class Connectome:
 
     #################################################################################
     @staticmethod
+    def _detect_weighting(matrix: np.ndarray | None) -> str | None:
+        """
+        Detect whether a connectivity matrix is binary or weighted.
+
+        A matrix is considered binary when all of its non-zero entries share the
+        same value (the usual 0/1 case, but also a constant-valued mask), and
+        weighted as soon as two different non-zero values are present.
+
+        Parameters:
+        -----------
+        matrix : np.ndarray or None
+            Connectivity matrix to inspect
+
+        Returns:
+        --------
+        str or None
+            'binary', 'weighted', or None when no matrix is available
+
+        Examples:
+        ---------
+        >>> Connectome._detect_weighting(np.array([[0, 1], [1, 0]]))
+        'binary'
+        >>> Connectome._detect_weighting(np.array([[0, 0.3], [2.1, 0]]))
+        'weighted'
+        """
+        if matrix is None:
+            return None
+
+        nonzero = np.asarray(matrix)[np.asarray(matrix) != 0]
+
+        if nonzero.size == 0:
+            # Empty network: no weights to distinguish, treat as binary
+            return "binary"
+
+        return "binary" if bool(np.all(nonzero == nonzero.flat[0])) else "weighted"
+
+    #################################################################################
+    @property
+    def weighting(self) -> str | None:
+        """
+        Matrix value type, derived from the connectivity matrix.
+
+        Returns:
+        --------
+        str or None
+            'binary' if the matrix holds a single distinct non-zero value,
+            'weighted' otherwise, and None when no matrix is loaded.
+        """
+        return self._detect_weighting(self.matrix)
+
+    #################################################################################
+    @staticmethod
     def _normalize_region_index(
         indices: list | np.ndarray | tuple | None,
         n_regions: int | None = None,
@@ -266,7 +322,7 @@ class Connectome:
         **kwargs
             Additional keyword arguments passed to Connectome.__init__
             (region_coords, region_names, region_index, region_colors,
-            connectivity_type, affine).
+            modality, affine).
 
         Returns:
         --------
@@ -297,7 +353,7 @@ class Connectome:
         region_names: list[str] | None = None,
         region_index: np.ndarray | list | tuple | None = None,
         region_colors: np.ndarray | list | None = None,
-        connectivity_type: str = "unknown",
+        modality: str = "unknown",
         affine: np.ndarray | None = None,
     ) -> "Connectome":
         """
@@ -317,7 +373,7 @@ class Connectome:
             Index codes for each region. Coerced to list[int] internally.
         region_colors : np.ndarray or List, optional
             RGB color values or hex strings for each region
-        connectivity_type : str, optional
+        modality : str, optional
             Type of connectivity (default: 'unknown')
         affine : np.ndarray, optional
             4x4 affine transformation matrix
@@ -340,7 +396,7 @@ class Connectome:
             region_names,
             region_index,
             region_colors,
-            connectivity_type,
+            modality,
             affine,
         )
         return connectome
@@ -448,7 +504,7 @@ class Connectome:
         region_names: list[str] | None = None,
         region_index: np.ndarray | list | tuple | None = None,
         region_colors: np.ndarray | list | None = None,
-        connectivity_type: str = "unknown",
+        modality: str = "unknown",
         affine: np.ndarray | None = None,
     ) -> None:
         """
@@ -468,7 +524,7 @@ class Connectome:
             Index codes for each region. Coerced to list[int] internally.
         region_colors : np.ndarray or List, optional
             RGB color values or hex strings for each region
-        connectivity_type : str, optional
+        modality : str, optional
             Type of connectivity (default: 'unknown')
         affine : np.ndarray, optional
             4x4 affine transformation matrix
@@ -536,7 +592,7 @@ class Connectome:
         else:
             self.name = filename.stem
 
-        self.type = connectivity_type if connectivity_type is not None else "unknown"
+        self.modality = modality if modality is not None else "unknown"
 
     #################################################################################
     def load_h5(self, filename: str | Path) -> None:
@@ -655,11 +711,13 @@ class Connectome:
                 else:
                     self.affine = np.eye(4)
 
-                # Load connectivity type (optional)
-                if "type" in data_group.attrs:
-                    self.type = data_group.attrs["type"]
-                    if isinstance(self.type, bytes):
-                        self.type = self.type.decode("utf-8")
+                # Load modality (optional). The weighting is not read: it is
+                # always derived from the matrix.
+                if "modality" in data_group.attrs:
+                    modality = data_group.attrs["modality"]
+                    if isinstance(modality, bytes):
+                        modality = modality.decode("utf-8")
+                    self.modality = modality
 
         except Exception as e:
             raise RuntimeError(f"Error loading HDF5 file: {e}") from e
@@ -751,7 +809,10 @@ class Connectome:
             grp.create_dataset("affine", data=self.affine)
 
             # Save metadata
-            grp.attrs["type"] = self.type
+            grp.attrs["modality"] = (
+                self.modality if self.modality is not None else "unknown"
+            )
+            grp.attrs["weighting"] = self.weighting or "unknown"
             grp.attrs["n_regions"] = self.n_regions
             grp.attrs["density"] = self.get_density()
             grp.attrs["matrix_format"] = "csr" if use_sparse else "dense"
@@ -1104,7 +1165,9 @@ class Connectome:
         from . import morphometrytools as cltmorpho
 
         # Compute graph metrics using morphometrytools function
-        metrics = cltmorpho.network_metrics_to_table(self, output_table=output_table)
+        metrics, _ = cltmorpho.network_metrics_to_table(
+            self, output_table=output_table, cmat_met=self.modality
+        )
 
         return metrics
 
@@ -1237,7 +1300,7 @@ class Connectome:
                 region_index=(
                     list(self.region_index) if self.region_index is not None else None
                 ),
-                connectivity_type=self.type,
+                modality=self.modality,
                 affine=self.affine.copy(),
             )
         else:
@@ -1301,7 +1364,7 @@ class Connectome:
                 region_colors=sub_colors,
                 region_names=sub_names,
                 region_index=sub_index,
-                connectivity_type=self.type,
+                modality=self.modality,
                 affine=self.affine.copy(),
             )
         else:
@@ -1339,7 +1402,7 @@ class Connectome:
             region_index=(
                 list(self.region_index) if self.region_index is not None else None
             ),
-            connectivity_type=self.type,
+            modality=self.modality,
             affine=self.affine.copy(),
         )
 
@@ -1620,7 +1683,7 @@ class Connectome:
         region_names: list[str] | None = None,
         region_colors: np.ndarray | list | None = None,
         region_coords: np.ndarray | None = None,
-        connectivity_type: str = "unknown",
+        modality: str = "unknown",
         name: str | None = None,
         symmetric: bool = True,
         n_modules: int = 4,
@@ -1662,7 +1725,7 @@ class Connectome:
         region_coords : np.ndarray, optional
             (n_regions, 3) coordinates. Auto-generated on a sphere when None.
             Required by (and drives) the 'distance' method.
-        connectivity_type : str
+        modality : str
             Stored connectivity type. Default 'unknown'.
         name : str, optional
             Name for the connectome. Defaults to 'synthetic_<method>_<n_regions>'.
@@ -1804,7 +1867,7 @@ class Connectome:
             region_coords=region_coords,
             region_names=region_names,
             region_colors=region_colors,
-            connectivity_type=connectivity_type,
+            modality=modality,
         )
 
     #################################################################################
@@ -1991,12 +2054,12 @@ class Connectome:
         """
         Display comprehensive information about the connectome.
 
-        Provides a formatted overview including region count, connectivity type,
+        Provides a formatted overview including region count, modality, weighting,
         matrix statistics, coordinate ranges, and availability of optional data
         (colors, names, index). Useful for quick inspection and validation.
 
         The method displays:
-            - Basic identification (name, type, number of regions)
+            - Basic identification (name, modality, weighting, number of regions)
             - Matrix statistics (min, max, mean ± SD, density)
             - Coordinate ranges per axis (if available)
             - Availability and shape of optional attributes
@@ -2013,9 +2076,10 @@ class Connectome:
         ╔════════════════════════════════════════════════════════════════╗
         ║                     CONNECTOME OVERVIEW                        ║
         ╠════════════════════════════════════════════════════════════════╣
-        ║ Name: my_connectome                                            ║
-        ║ Type: structural                                               ║
-        ║ Regions: 84                                                    ║
+        ║ Name:      my_connectome                                       ║
+        ║ Modality:  structural                                          ║
+        ║ Weighting: weighted                                            ║
+        ║ Regions:   84                                                  ║
         ╠════════════════════════════════════════════════════════════════╣
         ║ MATRIX STATISTICS                                              ║
         ║   Shape:      84 × 84                                          ║
@@ -2044,15 +2108,18 @@ class Connectome:
         print("╠" + "═" * width + "╣")
 
         # Basic identification
-        print_line(f" Name:    {self.name if self.name else 'N/A'}")
-        print_line(f" Type:    {self.type}")
+        print_line(f" Name:      {self.name if self.name else 'N/A'}")
+        print_line(f" Modality:  {self.modality}")
+        print_line(
+            f" Weighting: {self.weighting if self.weighting is not None else 'n/a'}"
+        )
 
         if self.matrix is None:
             print_line(" No connectivity matrix loaded.")
             print("╚" + "═" * width + "╝")
             return
 
-        print_line(f" Regions: {self.n_regions:,}")
+        print_line(f" Regions:   {self.n_regions:,}")
 
         # Matrix statistics
         print("╠" + "═" * width + "╣")
@@ -2122,4 +2189,8 @@ class Connectome:
         """String representation of the Connectome object."""
         if self.matrix is None:
             return f"Connectome(name='{self.name}', no data loaded)"
-        return f"Connectome(name='{self.name}', type='{self.type}', n_regions={self.n_regions}, density={self.get_density():.3f})"
+        return (
+            f"Connectome(name='{self.name}', "
+            f"modality='{self.modality}', weighting='{self.weighting}', "
+            f"n_regions={self.n_regions}, density={self.get_density():.3f})"
+        )
