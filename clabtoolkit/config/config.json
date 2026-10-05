@@ -2,8 +2,8 @@
     "metrics_units": {
         "thickness": "mm",
         "nvertices": "au",
-        "area": "cm2",
-        "volume": "cm3",
+        "area": "mm2",
+        "volume": "mm3",
         "curv": "mm-1",
         "sulc": "au",
         "lgi": "au",
