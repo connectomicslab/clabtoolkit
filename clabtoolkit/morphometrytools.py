@@ -19,6 +19,7 @@ from . import freesurfertools as cltfree
 from . import misctools as cltmisc
 from . import parcellationtools as cltparc
 from . import surfacetools as cltsurf
+from . import connectivitytools as cltconn
 
 # Regions of an annotation that are not anatomical cortical regions
 _UNKNOWN_SUBSTRINGS = ["medialwall", "unknown", "corpuscallosum"]
@@ -1315,37 +1316,109 @@ def get_stats_dictionary(region_level: str = "global") -> dict:
 ####################################################################################################
 ####################################################################################################
 def network_metrics_to_table(
-    conn_mat: np.ndarray,
+    conn_mat: np.ndarray | cltconn.Connectome,
     lut_file: str | Path | dict = None,
     cmat_met: str | list[str] = "weight",
-) -> pd.DataFrame:
+    metrics: str | list[str] = None,
+    output_table: str | Path = None,
+    table_type: str = "metric",
+    include_global: bool = True,
+    add_bids_entities: bool = True,
+    source_file: str | Path = None,
+    region_prefix: str = "supra-side",
+    seed: int = None,
+) -> tuple[pd.DataFrame, str | None]:
     """
     Compute graph theory metrics from a connectivity matrix.
 
-    Uses the Brain Connectivity Toolbox (bctpy, imported as ``bct``).
+    Nodal metrics are computed for every region. Global metrics are reported for the
+    "brain-brain-wholebrain" region only. The name of each metric is stored in the
+    Metric column, and the connectivity matrix type in the Source column. Uses the
+    Brain Connectivity Toolbox (bctpy, imported as ``bct``).
+
+    Binary metrics use the binarized matrix (weights > 0). Weighted metrics ("_wei")
+    use the weights normalized to [0, 1] (clustering, efficiency, transitivity) or
+    converted to lengths as 1/weight (betweenness, path length, eccentricity).
+
+    Available metrics
+    -----------------
+    Nodal:
+        degree, strength, clustering_coeff, clustering_coeff_wei, betw_centrality,
+        betw_centrality_wei, loc_efficiency, loc_efficiency_wei,
+        eigenvector_centrality, pagerank_centrality, subgraph_centrality,
+        kcoreness_centrality, eccentricity, eccentricity_wei, participation_coeff,
+        within_module_zscore
+
+    Global:
+        glob_efficiency, glob_efficiency_wei, transitivity, transitivity_wei,
+        density_coeff, char_path_length, char_path_length_wei, radius, diameter,
+        assortativity, assortativity_wei, modularity
 
     Parameters
     ----------
-    conn_mat : np.ndarray
-        Square, undirected connectivity matrix.
+    conn_mat : np.ndarray or cltconn.Connectome
+        Square, undirected connectivity matrix or Connectome object. Self-connections
+        (diagonal) are removed before computing the metrics.
 
     lut_file : str, Path or dict, optional
-        Lookup table (file or dict with 'index' and 'name') naming the regions. If
-        None, generic names are used.
+        Lookup table (file or dict with 'index' and 'name') naming the regions, in
+        the order of the matrix rows. If given, it overrides the region names
+        stored in a Connectome object. If None, the Connectome names are used
+        when available; otherwise names are generated from region_prefix.
 
     cmat_met : str or list of str, default="weight"
-        Label of the connectivity matrix type. A list is joined with "-".
+        Label of the connectivity matrix type, stored in the Source column as
+        "conn_matrix_<cmat_met>". A list is joined with "-".
+
+    metrics : str or list of str, optional
+        Metrics to compute (case-insensitive), in the order given. If None, all the
+        available metrics are computed.
+
+    output_table : str or Path, optional
+        Path to save the table as TSV. If None, the table is not saved.
+
+    table_type : {"metric", "region"}, default="metric"
+        "metric": one row per region and metric. "region": one row per metric,
+        one column per region.
+
+    include_global : bool, default=True
+        Compute the global metrics. If False, global metrics are skipped even if
+        they are listed in metrics.
+
+    add_bids_entities : bool, default=True
+        Add BIDS entities extracted from source_file.
+
+    source_file : str or Path, optional
+        File the connectivity matrix comes from. Stored in the MetricFile column and
+        used to extract the BIDS entities.
+
+    region_prefix : str, default="supra-side"
+        Prefix of the names generated when no region names are available.
+
+    seed : int, optional
+        Random seed of the Louvain community detection used by participation_coeff,
+        within_module_zscore and modularity. Set it for reproducible results.
 
     Returns
     -------
-    pd.DataFrame
-        One row per metric, one column per region plus a "total_brain" column
-        for the global metrics.
+    df : pd.DataFrame
+        Network metrics.
+
+    output_path : str or None
+        Path of the saved table, or None.
+
+    Raises
+    ------
+    ValueError
+        If the matrix is not square, an unknown metric is requested, no metric is
+        left to compute, fewer region names than nodes are available, or two
+        regions share the same name.
 
     Examples
     --------
     >>> conn_mat = np.array([[0, 1, 2], [1, 0, 3], [2, 3, 0]])
-    >>> df = network_metrics_to_table(conn_mat)
+    >>> df, _ = network_metrics_to_table(conn_mat, cmat_met="nstreamlines")
+    >>> df, _ = network_metrics_to_table(conn_mat, metrics=["degree", "strength"])
     """
     try:
         import bct
@@ -1354,75 +1427,213 @@ def network_metrics_to_table(
             "bctpy is required for network_metrics_to_table. Install it with `pip install bctpy`."
         ) from err
 
-    conn_mat = np.asarray(conn_mat, dtype=np.float64)
+    _validate_table_type(table_type)
+    output_table = _check_output_table(output_table)
+
+    conn_names = None
+    if isinstance(conn_mat, cltconn.Connectome):
+        if conn_mat.region_names is not None and len(conn_mat.region_names) > 0:
+            conn_names = [str(n) for n in conn_mat.region_names]
+        conn_mat = conn_mat.matrix
+
+    # Copy, so the caller's matrix is never modified
+    conn_mat = np.array(conn_mat, dtype=np.float64, copy=True)
     if conn_mat.ndim != 2 or conn_mat.shape[0] != conn_mat.shape[1]:
         raise ValueError(
             f"conn_mat must be a square matrix, got shape {conn_mat.shape}"
         )
+    if not np.allclose(conn_mat, conn_mat.T, equal_nan=True):
+        warnings.warn(
+            "conn_mat is not symmetric; it is treated as undirected.", stacklevel=2
+        )
+    if np.any(np.diag(conn_mat) != 0):
+        warnings.warn(
+            "conn_mat has self-connections; the diagonal is set to 0.", stacklevel=2
+        )
+        np.fill_diagonal(conn_mat, 0)
 
+    n_nodes = conn_mat.shape[0]
+
+    # Region names: the lookup table takes precedence over the Connectome names
     if lut_file is not None:
         if isinstance(lut_file, (str, Path)):
             if not os.path.exists(lut_file):
-                raise ValueError("The lut file does not exist")
+                raise FileNotFoundError(f"Lookup table not found: {lut_file}")
             col_dict = cltcol.ColorTableLoader.load_colortable(lut_file)
         elif isinstance(lut_file, dict):
             col_dict = copy.deepcopy(lut_file)
         else:
-            raise TypeError("lut_file must be a file path or a dictionary")
-
-        st_names = list(col_dict["name"])
+            raise TypeError(
+                f"lut_file must be a string, Path or dictionary, got {type(lut_file)}"
+            )
+        st_names = [str(n) for n in col_dict["name"]]
+        names_source = "lookup table"
+    elif conn_names is not None:
+        st_names = conn_names
+        names_source = "Connectome object"
     else:
-        st_names = cltmisc.create_names_from_indices(
-            list(range(1, conn_mat.shape[0] + 1))
-        )
+        st_names = None
+
+    if st_names is not None:
+        if len(st_names) < n_nodes:
+            raise ValueError(
+                f"The {names_source} names {len(st_names)} regions but the matrix has "
+                f"{n_nodes} nodes."
+            )
+        if len(st_names) > n_nodes:
+            warnings.warn(
+                f"The {names_source} names {len(st_names)} regions but the matrix has "
+                f"{n_nodes} nodes. Only the first {n_nodes} names are used.",
+                stacklevel=2,
+            )
+            st_names = st_names[:n_nodes]
+    else:
+        st_names = [
+            str(n)
+            for n in cltmisc.create_names_from_indices(
+                list(range(1, n_nodes + 1)), prefix=region_prefix
+            )
+        ]
+
+    _check_unique_names(st_names)
 
     if isinstance(cmat_met, (list, tuple)):
         cmat_met = "-".join(str(m) for m in cmat_met)
+    source = f"conn_matrix_{cmat_met}"
+    source_file = str(source_file) if source_file is not None else ""
 
-    net_metrics = [
-        "degree",
-        "strength",
-        "clustering_coeff",
-        "betw_centrality",
-        "loc_efficiency",
-        "glob_efficiency",
-        "transitivity",
-        "density_coeff",
-    ]
+    # Intermediate matrices, computed only when a requested metric needs them
+    cache = {}
 
-    cmat_bin = (conn_mat > 0).astype(np.float64)
-    deg_coeff = bct.degrees_und(cmat_bin)
-    str_coeff = bct.strengths_und(conn_mat)
-    clu_coeff = bct.clustering_coef_bu(cmat_bin)
-    btw_cent = bct.betweenness_bin(cmat_bin)
-    loc_eff = bct.efficiency_bin(cmat_bin, local=True)
+    def _get(key, func):
+        if key not in cache:
+            cache[key] = func()
+        return cache[key]
 
-    trans_coeff_g = bct.transitivity_bu(cmat_bin)
-    glob_eff_g = bct.efficiency_bin(cmat_bin)
-    den_coeff_g = bct.density_und(cmat_bin)[0]
+    def w_bin():
+        return _get("bin", lambda: (conn_mat > 0).astype(np.float64))
 
-    dict_of_cols = {
-        "metric": [f"conn_matrix_{cmat_met}"] * len(net_metrics),
-        "value": net_metrics,
-        "units": ["au"] * len(net_metrics),
-        "total_brain": [""] * 5 + [glob_eff_g, trans_coeff_g, den_coeff_g],
+    def w_norm():
+        return _get("norm", lambda: bct.weight_conversion(conn_mat, "normalize"))
+
+    def w_len():
+        return _get("len", lambda: bct.weight_conversion(conn_mat, "lengths"))
+
+    def charpath_bin():
+        # (char. path length, efficiency, eccentricity, radius, diameter);
+        # disconnected node pairs are excluded
+        return _get(
+            "cp_bin",
+            lambda: bct.charpath(
+                bct.distance_bin(w_bin()),
+                include_diagonal=False,
+                include_infinite=False,
+            ),
+        )
+
+    def charpath_wei():
+        return _get(
+            "cp_wei",
+            lambda: bct.charpath(
+                bct.distance_wei(w_len())[0],
+                include_diagonal=False,
+                include_infinite=False,
+            ),
+        )
+
+    def communities():
+        # (community assignment, modularity Q)
+        return _get("ci", lambda: bct.community_louvain(conn_mat, seed=seed))
+
+    nodal_funcs = {
+        "degree": lambda: bct.degrees_und(w_bin()),
+        "strength": lambda: bct.strengths_und(conn_mat),
+        "clustering_coeff": lambda: bct.clustering_coef_bu(w_bin()),
+        "clustering_coeff_wei": lambda: bct.clustering_coef_wu(w_norm()),
+        "betw_centrality": lambda: bct.betweenness_bin(w_bin()),
+        "betw_centrality_wei": lambda: bct.betweenness_wei(w_len()),
+        "loc_efficiency": lambda: bct.efficiency_bin(w_bin(), local=True),
+        "loc_efficiency_wei": lambda: bct.efficiency_wei(w_norm(), local=True),
+        "eigenvector_centrality": lambda: bct.eigenvector_centrality_und(conn_mat),
+        "pagerank_centrality": lambda: bct.pagerank_centrality(conn_mat, d=0.85),
+        "subgraph_centrality": lambda: bct.subgraph_centrality(w_bin()),
+        "kcoreness_centrality": lambda: bct.kcoreness_centrality_bu(w_bin())[0],
+        "eccentricity": lambda: charpath_bin()[2],
+        "eccentricity_wei": lambda: charpath_wei()[2],
+        "participation_coeff": lambda: bct.participation_coef(
+            conn_mat, communities()[0]
+        ),
+        "within_module_zscore": lambda: bct.module_degree_zscore(
+            conn_mat, communities()[0], flag=0
+        ),
     }
 
-    n_nodes = conn_mat.shape[0]
-    for i, name in enumerate(st_names):
-        if i < n_nodes:
-            dict_of_cols[name] = [
-                deg_coeff[i],
-                str_coeff[i],
-                clu_coeff[i],
-                btw_cent[i],
-                loc_eff[i],
-            ] + [""] * 3
-        else:
-            dict_of_cols[name] = [""] * len(net_metrics)
+    global_funcs = {
+        "glob_efficiency": lambda: bct.efficiency_bin(w_bin()),
+        "glob_efficiency_wei": lambda: bct.efficiency_wei(w_norm()),
+        "transitivity": lambda: bct.transitivity_bu(w_bin()),
+        "transitivity_wei": lambda: bct.transitivity_wu(w_norm()),
+        "density_coeff": lambda: bct.density_und(w_bin())[0],
+        "char_path_length": lambda: charpath_bin()[0],
+        "char_path_length_wei": lambda: charpath_wei()[0],
+        "radius": lambda: charpath_bin()[3],
+        "diameter": lambda: charpath_bin()[4],
+        "assortativity": lambda: bct.assortativity_bin(w_bin(), flag=0),
+        "assortativity_wei": lambda: bct.assortativity_wei(conn_mat, flag=0),
+        "modularity": lambda: communities()[1],
+    }
 
-    df = pd.DataFrame.from_dict(dict_of_cols)
-    return cltmisc.drop_empty_columns(df)
+    # Metric selection
+    available = list(global_funcs) + list(nodal_funcs)
+    if metrics is None:
+        selected = available
+    else:
+        if isinstance(metrics, str):
+            metrics = [metrics]
+        if not isinstance(metrics, (list, tuple)):
+            raise TypeError(
+                f"metrics must be a string, list or None, got {type(metrics)}"
+            )
+        selected = list(dict.fromkeys(str(m).strip().lower() for m in metrics))
+        unknown = [m for m in selected if m not in available]
+        if unknown:
+            raise ValueError(
+                f"Unknown metrics: {', '.join(unknown)}. "
+                f"Available: {', '.join(available)}"
+            )
+
+    if not include_global:
+        skipped = [m for m in selected if m in global_funcs]
+        if skipped and metrics is not None:
+            warnings.warn(
+                f"include_global=False: skipping global metrics {skipped}.",
+                stacklevel=2,
+            )
+        selected = [m for m in selected if m not in global_funcs]
+
+    if not selected:
+        raise ValueError("No metrics left to compute.")
+
+    # One block per metric, concatenated into a single table
+    tables = []
+    for metric_name in selected:
+        if metric_name in global_funcs:
+            dict_of_cols = {
+                "brain-brain-wholebrain": [float(global_funcs[metric_name]())]
+            }
+        else:
+            metric_values = np.asarray(
+                nodal_funcs[metric_name](), dtype=np.float64
+            ).ravel()
+            dict_of_cols = {
+                name: [float(metric_values[i])] for i, name in enumerate(st_names)
+            }
+
+        df_metric = _format_table(dict_of_cols, ["Value"], table_type)
+        tables.append(_add_metadata(df_metric, source, metric_name, "au", source_file))
+
+    df = pd.concat(tables, ignore_index=True)
+    return _finalize_table(df, source_file, add_bids_entities, output_table)
 
 
 ####################################################################################################
