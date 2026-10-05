@@ -19,6 +19,7 @@ include environment-mac.yaml
 # Include package source code
 recursive-include clabtoolkit *.py
 recursive-include clabtoolkit/config *.json
+recursive-include clabtoolkit/data *
 
 # Include documentation
 recursive-include docs *.rst *.py *.bat *.png *.ico
