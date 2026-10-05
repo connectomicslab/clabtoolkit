@@ -1318,8 +1318,9 @@ def get_stats_dictionary(region_level: str = "global") -> dict:
 def network_metrics_to_table(
     conn_mat: np.ndarray | cltconn.Connectome,
     lut_file: str | Path | dict = None,
-    cmat_met: str | list[str] = "weight",
+    cmat_met: str | list[str] = None,
     metrics: str | list[str] = None,
+    weighting: str = "auto",
     output_table: str | Path = None,
     table_type: str = "metric",
     include_global: bool = True,
@@ -1336,9 +1337,23 @@ def network_metrics_to_table(
     Metric column, and the connectivity matrix type in the Source column. Uses the
     Brain Connectivity Toolbox (bctpy, imported as ``bct``).
 
+    The graph is classified as binary (all non-zero off-diagonal entries share one
+    value) or weighted. When ``metrics`` is None, the default metrics for that
+    weighting are computed. The defaults are read from the "network_metrics" entry
+    of the package config.json, which has a "binary" and a "weighted" list:
+
+        "network_metrics": {
+            "binary":   ["glob_efficiency", ..., "degree", ...],
+            "weighted": ["glob_efficiency_wei", ..., "strength", ...]
+        }
+
+    Edit these lists to change the defaults; their order is the order of the
+    metrics in the output table.
+
     Binary metrics use the binarized matrix (weights > 0). Weighted metrics ("_wei")
     use the weights normalized to [0, 1] (clustering, efficiency, transitivity) or
-    converted to lengths as 1/weight (betweenness, path length, eccentricity).
+    converted to lengths as 1/weight (betweenness, path length, eccentricity, radius,
+    diameter).
 
     Available metrics
     -----------------
@@ -1351,8 +1366,8 @@ def network_metrics_to_table(
 
     Global:
         glob_efficiency, glob_efficiency_wei, transitivity, transitivity_wei,
-        density_coeff, char_path_length, char_path_length_wei, radius, diameter,
-        assortativity, assortativity_wei, modularity
+        density_coeff, char_path_length, char_path_length_wei, radius, radius_wei,
+        diameter, diameter_wei, assortativity, assortativity_wei, modularity
 
     Parameters
     ----------
@@ -1366,13 +1381,20 @@ def network_metrics_to_table(
         stored in a Connectome object. If None, the Connectome names are used
         when available; otherwise names are generated from region_prefix.
 
-    cmat_met : str or list of str, default="weight"
+    cmat_met : str or list of str, optional
         Label of the connectivity matrix type, stored in the Source column as
-        "conn_matrix_<cmat_met>". A list is joined with "-".
+        "conn_matrix_<cmat_met>". A list is joined with "-". If None, the
+        weighting of the graph is used ("binary" or "weighted").
 
     metrics : str or list of str, optional
-        Metrics to compute (case-insensitive), in the order given. If None, all the
-        available metrics are computed.
+        Metrics to compute (case-insensitive), in the order given. If None, the
+        default metrics for the graph weighting are computed (config.json,
+        "network_metrics"). An explicit list is always honored; a warning is issued
+        if it contains metrics that are not in the defaults for that weighting.
+
+    weighting : {"auto", "binary", "weighted"}, default="auto"
+        Weighting used to select the default metrics. "auto" detects it from the
+        matrix.
 
     output_table : str or Path, optional
         Path to save the table as TSV. If None, the table is not saved.
@@ -1410,14 +1432,15 @@ def network_metrics_to_table(
     Raises
     ------
     ValueError
-        If the matrix is not square, an unknown metric is requested, no metric is
-        left to compute, fewer region names than nodes are available, or two
-        regions share the same name.
+        If the matrix is not square, weighting is invalid, an unknown metric is
+        requested or listed in config.json, no metric is left to compute, fewer
+        region names than nodes are available, or two regions share the same name.
 
     Examples
     --------
     >>> conn_mat = np.array([[0, 1, 2], [1, 0, 3], [2, 3, 0]])
-    >>> df, _ = network_metrics_to_table(conn_mat, cmat_met="nstreamlines")
+    >>> df, _ = network_metrics_to_table(conn_mat)               # weighted metrics
+    >>> df, _ = network_metrics_to_table(conn_mat > 0)           # binary metrics
     >>> df, _ = network_metrics_to_table(conn_mat, metrics=["degree", "strength"])
     """
     try:
@@ -1429,6 +1452,11 @@ def network_metrics_to_table(
 
     _validate_table_type(table_type)
     output_table = _check_output_table(output_table)
+
+    if weighting not in ("auto", "binary", "weighted"):
+        raise ValueError(
+            f"Invalid weighting: '{weighting}'. Expected 'auto', 'binary' or 'weighted'."
+        )
 
     conn_names = None
     if isinstance(conn_mat, cltconn.Connectome):
@@ -1451,6 +1479,9 @@ def network_metrics_to_table(
             "conn_mat has self-connections; the diagonal is set to 0.", stacklevel=2
         )
         np.fill_diagonal(conn_mat, 0)
+
+    if weighting == "auto":
+        weighting = _detect_weighting(conn_mat)
 
     n_nodes = conn_mat.shape[0]
 
@@ -1497,7 +1528,9 @@ def network_metrics_to_table(
 
     _check_unique_names(st_names)
 
-    if isinstance(cmat_met, (list, tuple)):
+    if cmat_met is None:
+        cmat_met = weighting
+    elif isinstance(cmat_met, (list, tuple)):
         cmat_met = "-".join(str(m) for m in cmat_met)
     source = f"conn_matrix_{cmat_met}"
     source_file = str(source_file) if source_file is not None else ""
@@ -1577,16 +1610,30 @@ def network_metrics_to_table(
         "char_path_length": lambda: charpath_bin()[0],
         "char_path_length_wei": lambda: charpath_wei()[0],
         "radius": lambda: charpath_bin()[3],
+        "radius_wei": lambda: charpath_wei()[3],
         "diameter": lambda: charpath_bin()[4],
+        "diameter_wei": lambda: charpath_wei()[4],
         "assortativity": lambda: bct.assortativity_bin(w_bin(), flag=0),
         "assortativity_wei": lambda: bct.assortativity_wei(conn_mat, flag=0),
         "modularity": lambda: communities()[1],
     }
 
-    # Metric selection
+    # Metric selection: the defaults for each weighting come from config.json
     available = list(global_funcs) + list(nodal_funcs)
+    default_metrics = _default_network_metrics()
+
+    unknown_cfg = sorted(
+        {m for names in default_metrics.values() for m in names if m not in available}
+    )
+    if unknown_cfg:
+        raise ValueError(
+            f"Unknown metrics in config.json 'network_metrics': {', '.join(unknown_cfg)}. "
+            f"Available: {', '.join(available)}"
+        )
+    weighting_defaults = default_metrics[weighting]
+
     if metrics is None:
-        selected = available
+        selected = list(weighting_defaults)
     else:
         if isinstance(metrics, str):
             metrics = [metrics]
@@ -1600,6 +1647,14 @@ def network_metrics_to_table(
             raise ValueError(
                 f"Unknown metrics: {', '.join(unknown)}. "
                 f"Available: {', '.join(available)}"
+            )
+        mismatched = [m for m in selected if m not in weighting_defaults]
+        if mismatched:
+            warnings.warn(
+                f"The graph is {weighting}, but {mismatched} are not among the "
+                f"default {weighting} metrics (config.json 'network_metrics'). "
+                "They are computed anyway.",
+                stacklevel=2,
             )
 
     if not include_global:
@@ -1854,6 +1909,65 @@ def _default_units_lookup() -> dict:
         raise ValueError(f"Error loading default configuration: {str(e)}") from e
 
     return {k.lower(): v for k, v in config_data.get("metrics_units", {}).items()}
+
+
+@lru_cache(maxsize=1)
+def _default_network_metrics() -> dict[str, tuple[str, ...]]:
+    """
+    Read the default graph metrics for binary and weighted graphs.
+
+    The lists come from the "network_metrics" entry of the package config.json,
+    which has one key per weighting ("binary" and "weighted"). The order of each
+    list is the order of the metrics in the output table.
+
+    Returns
+    -------
+    dict
+        {"binary": (...), "weighted": (...)}, with lower-case metric names.
+
+    Raises
+    ------
+    FileNotFoundError
+        If config.json is not found.
+    ValueError
+        If config.json is not valid JSON, or "network_metrics" is missing or
+        malformed.
+    """
+    config_file = os.path.join(os.path.dirname(__file__), "config", "config.json")
+    try:
+        with open(config_file, encoding="utf-8") as f:
+            config = json.load(f)
+    except FileNotFoundError as err:
+        raise FileNotFoundError(f"Configuration file not found: {config_file}") from err
+    except json.JSONDecodeError as err:
+        raise ValueError(f"Invalid JSON in {config_file}: {err}") from err
+
+    network_metrics = config.get("network_metrics")
+    if not isinstance(network_metrics, dict):
+        raise ValueError(f"'network_metrics' dictionary not found in {config_file}")
+
+    defaults = {}
+    for weighting in ("binary", "weighted"):
+        names = network_metrics.get(weighting)
+        if not isinstance(names, list) or not names:
+            raise ValueError(
+                f"'network_metrics' in {config_file} needs a non-empty "
+                f"'{weighting}' list of metric names."
+            )
+        # Tuples, so the cached value cannot be modified by the caller
+        defaults[weighting] = tuple(
+            dict.fromkeys(str(m).strip().lower() for m in names)
+        )
+    return defaults
+
+
+def _detect_weighting(conn_mat: np.ndarray) -> str:
+    """'binary' if all non-zero off-diagonal entries share one value, else 'weighted'."""
+    off_diag = conn_mat[~np.eye(conn_mat.shape[0], dtype=bool)]
+    nonzero = off_diag[off_diag != 0]
+    if nonzero.size == 0 or np.all(nonzero == nonzero[0]):
+        return "binary"
+    return "weighted"
 
 
 def _mm_power_per_unit(unit: str, power: int) -> float:
