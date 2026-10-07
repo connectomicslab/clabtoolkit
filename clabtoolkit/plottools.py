@@ -31,7 +31,22 @@ def get_screen_size() -> tuple[int, int]:
 
 #####################################################################################################
 def get_current_monitor_size() -> tuple[int, int]:
-    """Get the size of the monitor where the mouse cursor is located."""
+    """
+    Get the size of the monitor where the mouse cursor is located.
+
+    If the cursor is not found on any monitor, the size of the primary monitor
+    is returned.
+
+    Returns
+    -------
+    tuple of int
+        Monitor width and height in pixels (width, height).
+
+    Examples
+    --------
+    >>> width, height = get_current_monitor_size()
+    >>> print(f"Current monitor size: {width}x{height}")
+    """
     import tkinter as tk
 
     import screeninfo
@@ -78,10 +93,13 @@ def estimate_monitor_dpi(screen_width: int, screen_height: int) -> float:
     Examples
     --------
     >>> estimate_monitor_dpi(1920, 1080)
-    96.0
+    130
     >>>
     >>> estimate_monitor_dpi(2560, 1440)
-    109.0
+    109
+    >>>
+    >>> estimate_monitor_dpi(1280, 1024)  # Not a known resolution
+    78.1
     """
 
     # Common monitor configurations: (width, height): typical_dpi
@@ -164,7 +182,9 @@ def estimate_monitor_dpi(screen_width: int, screen_height: int) -> float:
 
 
 ###############################################################################################
-def calculate_optimal_subplots_grid(num_views: int) -> list[int]:
+def calculate_optimal_subplots_grid(
+    num_views: int,
+) -> tuple[list[int], list[tuple[int, int]]]:
     """
     Calculate optimal grid dimensions for a given number of views.
 
@@ -175,19 +195,30 @@ def calculate_optimal_subplots_grid(num_views: int) -> list[int]:
 
     Returns
     -------
-    List[int]
+    grid_size : list of int
         [rows, columns] for optimal grid layout.
+
+    positions : list of tuple of int
+        (row, column) position of each view in the grid, in row-major order.
+        It contains exactly `num_views` positions.
+
+    Notes
+    -----
+    Up to 8 views, and for exactly 16 views, fixed grids are used. For any other
+    number of views the grid follows the screen proportions, which requires a
+    graphical display to detect the screen size.
 
     Examples
     --------
     >>> calculate_optimal_subplots_grid(4)
-    [2, 2]
+    ([2, 2], [(0, 0), (0, 1), (1, 0), (1, 1)])
     >>>
-    >>> calculate_optimal_subplots_grid(6)
+    >>> grid_size, positions = calculate_optimal_subplots_grid(6)
+    >>> grid_size
     [2, 3]
     >>>
     >>> calculate_optimal_subplots_grid(1)
-    [1, 1]
+    ([1, 1], [(0, 0)])
     """
 
     # Calculate optimal grid dimensions based on number of views
@@ -215,17 +246,19 @@ def calculate_optimal_subplots_grid(num_views: int) -> list[int]:
     elif num_views <= 6:
         # For 5 or 6 views, arrange in a 2x3 grid
         grid_size = [2, 3]
-        position = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]
+        position = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)][:num_views]
         return grid_size, position
 
     elif num_views <= 8:
         # For 7 or 8 views, arrange in a 2x4 grid
         grid_size = [2, 4]
-        position = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3)]
+        position = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3)][
+            :num_views
+        ]
         return grid_size, position
 
     elif num_views == 16:
-        # For 9 or 10 views, arrange in a 3x4 grid
+        # For 16 views, arrange in a 4x4 grid
         grid_size = [4, 4]
         position = [
             (0, 0),
@@ -270,25 +303,40 @@ def calculate_subplot_layout(
     n_plots, screen_width=None, screen_height=None, target_aspect_ratio=None
 ):
     """
-    Calculate optimal rows and columns for subplots based on screen proportions
+    Calculate optimal rows and columns for subplots based on screen proportions.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     n_plots : int
-        Number of subplots needed
+        Number of subplots needed.
 
     screen_width : int, optional
-        Screen width in pixels (auto-detected if not provided)
+        Screen width in pixels (auto-detected if not provided).
 
     screen_height : int, optional
-        Screen height in pixels (auto-detected if not provided)
+        Screen height in pixels (auto-detected if not provided).
 
     target_aspect_ratio : float, optional
-        Target aspect ratio (width/height). If provided, overrides screen detection
+        Target aspect ratio (width/height). If provided, overrides screen detection.
 
-    Returns:
+    Returns
+    -------
+    rows : int
+        Number of rows of the layout.
+
+    cols : int
+        Number of columns of the layout.
+
+    aspect_ratio : float
+        Aspect ratio (width/height) used to compute the layout.
+
+    Examples
     --------
-    tuple: (rows, cols, aspect_ratio_used)
+    >>> calculate_subplot_layout(10, screen_width=1920, screen_height=1080)
+    (3, 4, 1.7777777777777777)
+    >>>
+    >>> calculate_subplot_layout(12, target_aspect_ratio=1.0)
+    (4, 3, 1.0)
     """
 
     if target_aspect_ratio is None:
@@ -331,22 +379,39 @@ def calculate_subplot_layout(
 #####################################################################################################
 def create_proportional_subplots(n_plots, figsize_base=4, **layout_kwargs):
     """
-    Create a figure with subplots arranged according to screen proportions
+    Create a figure with subplots arranged according to screen proportions.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     n_plots : int
-        Number of subplots
+        Number of subplots.
 
-    figsize_base : float
-        Base size for figure scaling
+    figsize_base : float, optional
+        Base size in inches for figure scaling (width of each column), by default 4.
 
-    **layout_kwargs :
-        Additional arguments for calculate_subplot_layout()
+    **layout_kwargs
+        Additional arguments for calculate_subplot_layout() (screen_width,
+        screen_height, target_aspect_ratio).
 
-    Returns:
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The created figure.
+
+    axes : list or numpy.ndarray of matplotlib.axes.Axes
+        Flattened subplot axes. The axes beyond n_plots are hidden.
+
+    layout_info : dict
+        Layout information with the keys 'rows', 'cols', 'aspect_ratio',
+        'total_subplots' and 'used_subplots'.
+
+    Examples
     --------
-    tuple: (fig, axes, layout_info)
+    >>> fig, axes, layout_info = create_proportional_subplots(
+    ...     7, figsize_base=3, screen_width=1920, screen_height=1080
+    ... )
+    >>> layout_info["rows"], layout_info["cols"]
+    (2, 4)
     """
 
     rows, cols, aspect_ratio = calculate_subplot_layout(n_plots, **layout_kwargs)
@@ -486,33 +551,34 @@ def calculate_font_sizes(
 
     Examples
     --------
-    Basic usage with automatic monitor detection:
+    Basic usage with automatic monitor detection (values depend on the monitor):
 
     >>> fonts = calculate_font_sizes(6, 4)
-    >>> print(f"Title: {fonts['title']}, Colorbar title: {fonts['colorbar_title']}")
-    Title: 14.2, Colorbar title: 11.4
 
     Specify monitor dimensions manually:
 
+    >>> fonts = calculate_font_sizes(6, 4, screen_width=1920, screen_height=1080)
+    >>> print(f"Title: {fonts['title']}, Colorbar title: {fonts['colorbar_title']}")
+    Title: 19.0, Colorbar title: 8.9
     >>> fonts = calculate_font_sizes(6, 4, screen_width=2560, screen_height=1440)
     >>> fonts['_monitor_info']['estimated_dpi']
-    109.0
+    109
 
     Small subplot with horizontal colorbar on high-DPI display:
 
     >>> fonts = calculate_font_sizes(3, 2,
     ...                             screen_width=3840, screen_height=2160,
     ...                             colorbar_orientation='horizontal')
-    >>> fonts['colorbar_title']  # Scaled up for high DPI
-    10.2
+    >>> fonts['colorbar_title']
+    8.9
 
     Disable auto-detection for headless environments:
 
     >>> fonts = calculate_font_sizes(12, 8,
     ...                             screen_width=1920, screen_height=1080,
     ...                             auto_detect_monitor=False)
-    >>> fonts['title']
-    19.1
+    >>> fonts['title']  # Capped at the 28 pt maximum
+    28
 
     Custom colorbar dimensions:
 
@@ -710,52 +776,47 @@ def generate_spherical_coords(
     n_regions: int, rng: np.random.Generator, radius: float = 50.0
 ) -> np.ndarray:
     """
-        Sample `n_regions` points uniformly inside a sphere of the given radius.
+    Sample `n_regions` points uniformly inside a sphere of the given radius.
 
-        Returns an (n_regions, 3) array, giving a brain-like point cloud for the
-        3D / circular visualizations.
+    Returns an (n_regions, 3) array, giving a brain-like point cloud for the
+    3D / circular visualizations.
 
-        Parameters
-    -   ---------
-        n_regions : int
-            Number of points to sample
+    Parameters
+    ----------
+    n_regions : int
+        Number of points to sample.
 
-        rng : np.random.Generator
-            Random number generator to use for sampling
+    rng : np.random.Generator
+        Random number generator to use for sampling.
 
-        radius : float, optional
-            Radius of the sphere (default: 50.0)
+    radius : float, optional
+        Radius of the sphere (default: 50.0).
 
-        Returns
-        -------
-        np.ndarray
-            An (n_regions, 3) array of points uniformly distributed inside a sphere of the given radius.
+    Returns
+    -------
+    np.ndarray
+        An (n_regions, 3) array of points uniformly distributed inside a sphere of the given radius.
 
-        Notes
-        -----
-        - The function generates random directions by sampling from a normal distribution and normalizing the vectors.
-        - The radii are sampled using the cube root of a uniform distribution to ensure uniform density within
-        the sphere.
+    Notes
+    -----
+    - The function generates random directions by sampling from a normal distribution and normalizing the vectors.
+    - The radii are sampled using the cube root of a uniform distribution to ensure uniform density within
+      the sphere.
 
-        Examples
-        --------
-        >>> rng = np.random.default_rng(seed=42)
-        >>> coords = generate_spherical_coords(5, rng, radius=50.0)
-        >>> print(coords)
-        [[ 14.96714153  -9.65848377  24.96888508]
-        [  3.65846528  48.61735699  14.65848377]
-        [  9.65848377  24.96888508  14.96714153]
-        [ 48.61735699  14.65848377   3.65846528]
-        [ 24.96888508  14.96714153   9.65848377]]
-
-        >>> rng = np.random.default_rng(seed=123)
-        >>> coords = generate_spherical_coords(3, rng, radius=30.0)
-        >>> print(coords)
-        [[  5.12345678  -2.34567890  10.12345678]
-        [ -3.45678901  15.67890123  -5.67890123]
-        [ 12.34567890  -7.89012345   3.45678901]]
-        (Note: actual values will differ due to randomness)
-
+    Examples
+    --------
+    >>> rng = np.random.default_rng(seed=42)
+    >>> coords = generate_spherical_coords(3, rng, radius=50.0)
+    >>> np.round(coords, 2)
+    array([[  8.86, -30.24,  21.82],
+           [ 13.37, -27.73, -18.51],
+           [ 18.25, -45.14,  -2.4 ]])
+    >>>
+    >>> coords = generate_spherical_coords(1000, np.random.default_rng(seed=1), radius=30.0)
+    >>> coords.shape
+    (1000, 3)
+    >>> bool((np.linalg.norm(coords, axis=1) <= 30.0).all())
+    True
     """
     directions = rng.normal(size=(n_regions, 3))
     norms = np.linalg.norm(directions, axis=1, keepdims=True)
