@@ -52,9 +52,9 @@ def adjacency_matrix_to_csr(adj_matrix: np.ndarray) -> csr_matrix:
     >>> csr_graph = adjacency_matrix_to_csr(adj)
     >>> print(csr_graph.toarray())
     [[0 1 1 0]
-    [1 0 1 1]
-    [1 1 0 1]
-    [0 1 1 0]]
+     [1 0 1 1]
+     [1 1 0 1]
+     [0 1 1 0]]
 
     >>> # With weighted edges
     >>> adj_weighted = np.array([[0, 2.5, 1.0, 0],
@@ -125,27 +125,23 @@ def triangulated_mesh_to_csr(
     ...                   [0, 2, 3],
     ...                   [1, 2, 3]])
     >>> csr_graph = triangulated_mesh_to_csr(faces)
-    >>> print("Adjacency matrix:")
     >>> print(csr_graph.toarray())
-    Adjacency matrix:
     [[0 1 1 1]
-    [1 0 1 1]
-    [1 1 0 1]
-    [1 1 1 0]]
+     [1 0 1 1]
+     [1 1 0 1]
+     [1 1 1 0]]
 
-    >>> # Triangle mesh with explicit vertex count
+    >>> # Triangle mesh with explicit vertex count (vertices 3 and 4 are isolated)
     >>> faces_triangle = np.array([[0, 1, 2]])
     >>> csr_triangle = triangulated_mesh_to_csr(faces_triangle, n_vertices=5)
-    >>> print(f"Shape: {csr_triangle.shape}")
-    >>> print("Connections for triangle [0,1,2]:")
+    >>> csr_triangle.shape
+    (5, 5)
     >>> print(csr_triangle.toarray())
-    Shape: (5, 5)
-    Connections for triangle [0,1,2]:
     [[0 1 1 0 0]
-    [1 0 1 0 0]
-    [1 1 0 0 0]
-    [0 0 0 0 0]
-    [0 0 0 0 0]]
+     [1 0 1 0 0]
+     [1 1 0 0 0]
+     [0 0 0 0 0]
+     [0 0 0 0 0]]
     """
     if not isinstance(faces, np.ndarray):
         raise TypeError("Faces must be a numpy array")
@@ -220,9 +216,10 @@ def edges_to_csr(
         A 2D numpy array of shape (n_edges, 2) where each row contains the
         indices of two connected vertices. Vertex indices should be non-negative integers.
 
-    edge_values : np.ndarray
+    edge_values : np.ndarray, optional
         A 1D numpy array of length n_edges containing the weight/value for each edge.
-        Values can be any numeric type (int, float, etc.).
+        Values can be any numeric type (int, float, etc.). If None (default), all
+        the edges get a value of 1, giving a binary graph.
 
     n_vertices : int, optional
         Total number of vertices in the graph. If None, it will be inferred
@@ -259,33 +256,33 @@ def edges_to_csr(
     ...                   [0, 2]])
     >>> values = np.array([2.5, 1.0, 3.2])
     >>> csr_graph = edges_to_csr(edges, values)
-    >>> print("Symmetric weighted graph:")
     >>> print(csr_graph.toarray())
-    Symmetric weighted graph:
     [[0.  2.5 3.2]
-    [2.5 0.  1. ]
-    [3.2 1.  0. ]]
+     [2.5 0.  1. ]
+     [3.2 1.  0. ]]
 
     >>> # Directed graph example
     >>> edges_directed = np.array([[0, 1], [1, 2]])
     >>> values_directed = np.array([0.8, 1.5])
     >>> csr_directed = edges_to_csr(edges_directed, values_directed, symmetric=False)
-    >>> print("Directed graph:")
     >>> print(csr_directed.toarray())
-    Directed graph:
     [[0.  0.8 0. ]
-    [0.  0.  1.5]
-    [0.  0.  0. ]]
+     [0.  0.  1.5]
+     [0.  0.  0. ]]
+
+    >>> # Binary graph (no edge values)
+    >>> print(edges_to_csr(edges_directed).toarray())
+    [[0. 1. 0.]
+     [1. 0. 1.]
+     [0. 1. 0.]]
 
     >>> # Handle duplicate edges (values are summed)
     >>> edges_dup = np.array([[0, 1], [0, 1], [1, 0]])
     >>> values_dup = np.array([1.0, 2.0, 0.5])
     >>> csr_dup = edges_to_csr(edges_dup, values_dup)
-    >>> print("Duplicate edges (summed):")
     >>> print(csr_dup.toarray())
-    Duplicate edges (summed):
     [[0.  3.5]
-    [3.5 0. ]]
+     [3.5 0. ]]
     """
     if not isinstance(edges, np.ndarray):
         raise TypeError("Edges must be a numpy array")
@@ -360,23 +357,51 @@ def edges_to_components(edges: np.ndarray, verbose: bool = True):
     Compute connected components from an edge array of arbitrary vertex indices.
     Components are labelled in decreasing order of size (0 = largest).
 
+    Only the vertices that appear in at least one edge are considered, so
+    isolated vertices are not reported.
+
     Parameters
     ----------
     edges : np.ndarray, shape (n_edges, 2)
         Array of vertex index pairs. Indices can be global/non-contiguous.
 
-    verbose : bool
-            If True, print component sizes to the console.
-            If False, suppress output.
+    verbose : bool, optional
+        If True (default), print component sizes to the console.
+        If False, suppress output.
 
     Returns
     -------
     n_components : int
         Number of connected components.
+
     labels : np.ndarray, shape (n_vert, 2)
         Column 0: original vertex index. Column 1: component label (0 = largest).
+        Rows are sorted by vertex index.
+
     sizes : dict
         {component_label: size} sorted by decreasing size.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> # Edges with non-contiguous vertex indices: [10-12], [50-51], [100-103]
+    >>> edges = np.array([[10, 11], [11, 12],
+    ...                   [50, 51],
+    ...                   [100, 101], [101, 102], [102, 103]])
+    >>> n_components, labels, sizes = edges_to_components(edges)
+    Components : 3
+      └─ Component   0 : 4 vertices
+      └─ Component   1 : 3 vertices
+      └─ Component   2 : 2 vertices
+    >>> sizes
+    {0: 4, 1: 3, 2: 2}
+    >>> labels[:, 1]
+    array([1, 1, 1, 2, 2, 0, 0, 0, 0])
+
+    >>> # Vertices of the largest component, without printing the summary
+    >>> n_components, labels, sizes = edges_to_components(edges, verbose=False)
+    >>> labels[labels[:, 1] == 0, 0]
+    array([100, 101, 102, 103])
     """
     unique_verts = np.unique(edges)
     n_vert = len(unique_verts)
@@ -416,10 +441,9 @@ def connected_components(
         Should be square with shape (n_vertices, n_vertices). For undirected graphs,
         the matrix should be symmetric. Non-zero entries represent connections.
 
-    verbose : bool
-        If True, print the number of components and their sizes to the console.
+    verbose : bool, optional
+        If True (default), print the number of components and their sizes to the console.
         If False, suppress output.
-
 
     Returns
     -------
@@ -437,11 +461,15 @@ def connected_components(
     ------
     TypeError
         If csr_graph is not a scipy csr_matrix.
+
     ValueError
-        If csr_graph is not square, method is not recognized, or graph is empty.
+        If csr_graph is not square or the graph is empty.
+
+    Warns
+    -----
     UserWarning
-        If the graph appears to be directed (non-symmetric) when undirected
-        behavior is expected.
+        If the graph appears to be directed (non-symmetric). Weakly connected
+        components are computed in that case.
 
     Examples
     --------
@@ -454,35 +482,26 @@ def connected_components(
     >>> data = np.ones(len(row))
     >>> graph = csr_matrix((data, (row, col)), shape=(6, 6))
     >>>
-    >>> components = connected_components(graph)
-    >>> print("Connected components:")
-    >>> for i, comp in enumerate(components):
-    ...     print(f"  Component {i}: {comp}")
-    Connected components:
-      Component 0: [0, 1]
-      Component 1: [2, 3, 4]
-      Component 2: [5]
-
-    >>> # Get component labels as well
-    >>> components, labels = connected_components(graph, return_labels=True)
-    >>> print(f"Component labels: {labels}")
-    >>> print(f"Vertex 3 belongs to component: {labels[3]}")
-    Component labels: [0 0 1 1 1 2]
-    Vertex 3 belongs to component: 1
-
-    >>> # Using different algorithms
-    >>> comp_bfs = connected_components(graph, method="bfs")
-    >>> comp_dfs = connected_components(graph, method="dfs")
-    >>> # All methods should give the same result (possibly in different order)
+    >>> n_components, labels, sizes = connected_components(graph)
+    Components : 3
+      └─ Component   0 : 3 vertices
+      └─ Component   1 : 2 vertices
+      └─ Component   2 : 1 vertices
+    >>> sizes
+    {0: 3, 1: 2, 2: 1}
+    >>> labels[:, 1]  # Component label of each vertex (0 = largest)
+    array([1, 1, 0, 0, 0, 2])
+    >>> int(labels[3, 1])  # Vertex 3 belongs to the largest component
+    0
 
     >>> # Example with weighted edges (weights are ignored for connectivity)
     >>> weighted_graph = edges_to_csr(
     ...     np.array([[0, 1], [1, 2]]),
     ...     np.array([2.5, 3.0])
     ... )
-    >>> components = connected_components(weighted_graph)
-    >>> print(f"Weighted graph components: {components}")
-    Weighted graph components: [[0, 1, 2]]
+    >>> n_components, labels, sizes = connected_components(weighted_graph, verbose=False)
+    >>> n_components
+    1
 
     Notes
     -----
