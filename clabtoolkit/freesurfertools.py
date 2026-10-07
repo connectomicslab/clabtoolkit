@@ -194,10 +194,7 @@ class AnnotParcellation:
         if self.name.endswith(".gii"):
             annot_file = AnnotParcellation.gii2annot(
                 self.filename,
-                ref_surf=ref_surf,
                 annot_file=self.filename.replace(".gii", ".annot"),
-                cont_tech=cont_tech,
-                cont_image=cont_image,
             )
             booldel = True
         elif self.name.endswith(".annot"):
@@ -2150,60 +2147,88 @@ class AnnotParcellation:
     ####################################################################################################
     @staticmethod
     def annot2gii(
-        annot_file: str,
-        gii_file: str = None,
+        annot_file: "str | Path | AnnotParcellation",
+        gii_file: str | Path = None,
+        complete_table: bool = False,
+        overwrite: bool = True,
     ) -> str:
         """
-        Convert a FreeSurfer annotation file (.annot) to a GIFTI label file
-        (.label.gii) using nibabel, without requiring a FreeSurfer installation.
+        Convert a FreeSurfer annotation to a GIFTI label file (.label.gii) using
+        nibabel, without requiring a FreeSurfer installation.
 
         Parameters
         ----------
-        annot_file : str
-            Path to the input FreeSurfer annotation file. The file must contain
-            a valid per-vertex label array and a colour table.
+        annot_file : str, Path or AnnotParcellation
+            Annotation to convert. It can be the path to a FreeSurfer .annot file
+            or an AnnotParcellation object (for example one created in memory with
+            ``simulate_annotation``, ``create_from_data`` or ``group_into_lobes``).
 
-        gii_file : str, optional
-            Path for the output GIFTI label file. If None, the output is placed
-            in the same directory as the input with the ``.annot`` extension
-            replaced by ``.label.gii``. Default is None.
+        gii_file : str or Path, optional
+            Path of the output GIFTI label file. If None, the output is written next
+            to the annotation file with the ``.annot`` extension replaced by
+            ``.label.gii``. When ``annot`` is an AnnotParcellation that was never
+            saved to disk (no filename), ``gii_file`` is required.
+
+        complete_table : bool, optional
+            If True, the annotation's color table is completed before conversion.
+            Default is False. Missing entries in the color table will be filled if this is set to True.
+
+        overwrite : bool, optional
+            Overwrite ``gii_file`` if it already exists. Default is True.
 
         Returns
         -------
         gii_file : str
-            Absolute path to the created ``.label.gii`` file.
+            Path to the created ``.label.gii`` file.
 
         Raises
         ------
+        TypeError
+            If ``annot`` is not a str, Path or AnnotParcellation.
         ValueError
-            If ``annot_file`` does not exist.
+            If the annotation file does not exist, the AnnotParcellation object holds
+            no data, or no output path can be derived.
+        FileExistsError
+            If ``gii_file`` exists and ``overwrite`` is False.
 
         Notes
         -----
-        FreeSurfer annotation format
-            Each vertex stores a packed integer code ``R + G*256 + B*65536``.
-            The ctab is an ``(n_regions, 5)`` int32 array with columns
-            ``[R, G, B, A, code]``.
+        Label keys
+            Each region of the color table gets the key equal to its row index, so
+            the file can be converted back with :meth:`gii2annot`. Vertices whose
+            code is not present in the color table (e.g. -1 or 0 for unlabeled
+            vertices) receive an extra label called 'unknown', with a transparent
+            color, and a warning is issued.
+
+        Hemisphere
+            If the hemisphere is known ('lh' or 'rh'), the data array is tagged with
+            the ``AnatomicalStructurePrimary`` metadata (CortexLeft / CortexRight)
+            used by Connectome Workbench.
 
         GIFTI colour range
-            ``GiftiLabel`` RGBA attributes are floats in ``[0, 1]``. This method
-            divides the uint8 ctab values by 255.
-
-        Region names
-            nibabel may return names as bytes or strings depending on the file.
-            Both are handled and decoded to plain strings in the LabelTable.
+            ``GiftiLabel`` RGBA attributes are floats in ``[0, 1]``; the uint8 ctab
+            values are divided by 255.
 
         Examples
         --------
-        >>> gii = AnnotParcellation.annot2gii(
-        ...     annot_file='lh.aparc.annot'
-        ... )
+        From a file:
+
+        >>> gii = AnnotParcellation.annot2gii('lh.aparc.annot')
         >>> print(gii)            # lh.aparc.label.gii
 
-        >>> gii = AnnotParcellation.annot2gii(
-        ...     annot_file='/path/to/rh.Destrieux.annot',
-        ...     gii_file='/output/rh.Destrieux.label.gii',
-        ... )
+        From an AnnotParcellation object:
+
+        >>> annot_parc = AnnotParcellation('/path/to/rh.aparc.a2009s.annot')
+        >>> gii = AnnotParcellation.annot2gii(annot_parc, gii_file='/tmp/rh.destrieux.label.gii')
+
+        From an object that only exists in memory:
+
+        >>> lobar_parc = annot_parc.group_into_lobes(grouping='desikan')
+        >>> gii = AnnotParcellation.annot2gii(lobar_parc, gii_file='/tmp/rh.lobes.label.gii')
+
+        Called from an instance, the object must still be passed explicitly:
+
+        >>> gii = annot_parc.annot2gii(annot_parc, gii_file='/tmp/rh.aparc.label.gii')
 
         See Also
         --------
@@ -2211,74 +2236,131 @@ class AnnotParcellation:
         """
 
         # ------------------------------------------------------------------ #
-        #  Input validation                                                    #
+        #  Resolve the input as an AnnotParcellation object                  #
         # ------------------------------------------------------------------ #
-        if not os.path.exists(annot_file):
-            raise ValueError(f"The annotation file does not exist: {annot_file}")
+        if isinstance(annot_file, (str, Path)):
+            if not os.path.isfile(str(annot_file)):
+                raise ValueError(f"The annotation file does not exist: {annot_file}")
+            # load_from_file reads with orig_ids=True, so codes are packed RGB values
+            annot_obj = AnnotParcellation(parc_file=str(annot_file))
 
-        # ------------------------------------------------------------------ #
-        #  Read annotation                                                     #
-        # ------------------------------------------------------------------ #
-        # vertex_codes : (n_vertices,) packed color codes
-        # ctab         : (n_regions, 5)  [R, G, B, A, code]
-        # names        : list of bytes or str, one per region
-        vertex_codes, ctab, names = nib.freesurfer.io.read_annot(annot_file)
+        elif isinstance(annot_file, AnnotParcellation):
+            if not annot_file.is_loaded() or annot_file.regtable is None:
+                raise ValueError(
+                    "The AnnotParcellation object does not contain any data."
+                )
+            annot_obj = annot_file
 
-        # ------------------------------------------------------------------ #
-        #  Build code → row-index lookup and GiftiLabelTable                  #
-        # ------------------------------------------------------------------ #
-        label_table = nib.gifti.GiftiLabelTable()
-        code_to_row: dict[int, int] = {}
-
-        for row_idx, (row, name) in enumerate(zip(ctab, names, strict=False)):
-            r, g, b, a, code = (
-                int(row[0]),
-                int(row[1]),
-                int(row[2]),
-                int(row[3]),
-                int(row[4]),
+        else:
+            raise TypeError(
+                "annot_file must be a path (str or Path) or an AnnotParcellation object, "
+                f"got {type(annot_file).__name__}"
             )
 
-            code_to_row[code] = row_idx
+        # Give every vertex code a table entry, without modifying the caller's object
+        if complete_table:
+            annot_obj = annot_obj.complete_table(inplace=False)
 
-            region_name = name.decode() if isinstance(name, bytes) else name
+        vertex_codes = np.asarray(annot_obj.codes).ravel()
+        ctab = np.asarray(annot_obj.regtable)
+        names = [
+            str(n) for n in annot_obj.regnames
+        ]  # load_from_file already decodes bytes
+        hemi = annot_obj.hemi
+        src_file = annot_obj.filename
+
+        # ------------------------------------------------------------------ #
+        #  Resolve the output path                                           #
+        # ------------------------------------------------------------------ #
+        if gii_file is None:
+            if src_file is None:
+                raise ValueError(
+                    "The AnnotParcellation object has no associated file. "
+                    "Please provide gii_file."
+                )
+            base = os.path.basename(src_file)
+            base = (
+                base[: -len(".annot")]
+                if base.endswith(".annot")
+                else os.path.splitext(base)[0]
+            )
+            gii_file = os.path.join(os.path.dirname(src_file), base + ".label.gii")
+
+        gii_file = str(gii_file)
+        if os.path.exists(gii_file) and not overwrite:
+            raise FileExistsError(
+                f"{gii_file} already exists. Use overwrite=True to replace it."
+            )
+
+        out_dir = os.path.dirname(gii_file)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+
+        # ------------------------------------------------------------------ #
+        #  Build the GIFTI label table (key = ctab row index)                #
+        # ------------------------------------------------------------------ #
+        label_table = nib.gifti.GiftiLabelTable()
+        code_to_key = {}
+
+        for key, (row, name) in enumerate(zip(ctab, names)):
+            r, g, b, a, code = (int(v) for v in row[:5])
+            code_to_key[code] = key
 
             lbl = nib.gifti.GiftiLabel(
-                key=row_idx,
+                key=key,
                 red=r / 255.0,
                 green=g / 255.0,
                 blue=b / 255.0,
-                alpha=a / 255.0,
+                alpha=1.0 - a / 255.0,  # FreeSurfer stores transparency, GIFTI opacity
             )
-            lbl.label = region_name
+            lbl.label = name
             label_table.labels.append(lbl)
 
         # ------------------------------------------------------------------ #
-        #  Map per-vertex packed codes → row indices                          #
+        #  Map per-vertex packed codes to label keys                         #
         # ------------------------------------------------------------------ #
-        vertex_keys = np.vectorize(
-            lambda c: code_to_row.get(int(c), 0), otypes=[np.int32]
-        )(vertex_codes)
+        vertex_keys = np.full(vertex_codes.shape, -1, dtype=np.int32)
+        for code, key in code_to_key.items():
+            vertex_keys[vertex_codes == code] = key
+
+        unmatched = vertex_keys < 0
+        if np.any(unmatched):
+            # Reuse an existing 'unknown' region if the table has one
+            lower_names = [n.lower() for n in names]
+            if "unknown" in lower_names:
+                unknown_key = lower_names.index("unknown")
+            else:
+                unknown_key = len(ctab)
+                lbl = nib.gifti.GiftiLabel(
+                    key=unknown_key, red=0.0, green=0.0, blue=0.0, alpha=0.0
+                )
+                lbl.label = "unknown"
+                label_table.labels.append(lbl)
+
+            warnings.warn(
+                f"{int(unmatched.sum())} vertices have codes that are not in the color "
+                f"table. They are labeled as 'unknown' (key {unknown_key}).",
+                stacklevel=2,
+            )
+            vertex_keys[unmatched] = unknown_key
 
         # ------------------------------------------------------------------ #
-        #  Build GIFTI image and write                                        #
+        #  Build the GIFTI image and save it                                 #
         # ------------------------------------------------------------------ #
+        meta = {}
+        if hemi in ("lh", "rh"):
+            meta["AnatomicalStructurePrimary"] = (
+                "CortexLeft" if hemi == "lh" else "CortexRight"
+            )
+
         darray = nib.gifti.GiftiDataArray(
             data=vertex_keys,
             intent=nib.nifti1.intent_codes["NIFTI_INTENT_LABEL"],
             datatype="NIFTI_TYPE_INT32",
+            meta=nib.gifti.GiftiMetaData(meta),
         )
 
-        img = nib.gifti.GiftiImage(darrays=[darray])
-        img.labeltable = label_table
-
-        # ------------------------------------------------------------------ #
-        #  Resolve output path and save                                       #
-        # ------------------------------------------------------------------ #
-        if gii_file is None:
-            basename = os.path.basename(annot_file).replace(".annot", ".label.gii")
-            gii_file = os.path.join(os.path.dirname(annot_file), basename)
-
+        img = nib.gifti.GiftiImage(darrays=[darray], labeltable=label_table)
         nib.save(img, gii_file)
 
         return gii_file
