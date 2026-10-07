@@ -6,16 +6,6 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-# Utility function for interpolating streamline values
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeRemainingColumn,
-)
-
 from . import colorstools as cltcol
 
 # Importing local modules
@@ -520,16 +510,16 @@ class PointCloud:
         >>> pc.add_point_data(np.random.rand(1000), name="intensity")
 
         >>> # Filter by coordinate
-        >>> pc.filter_points('X > 50')  # Keep points with X > 50
+        >>> pc.filter('X > 50')  # Keep points with X > 50
 
         >>> # Filter by point_data attribute
-        >>> pc.filter_points('intensity > 0.5')  # Keep high intensity points
+        >>> pc.filter('intensity > 0.5')  # Keep high intensity points
 
         >>> # Filter by range
-        >>> pc.filter_points('20 <= Z <= 80')  # Keep points in Z range
+        >>> pc.filter('20 <= Z <= 80')  # Keep points in Z range
 
         >>> # Create new filtered point cloud
-        >>> pc_filtered = pc.filter_points('Y < 30', inplace=False)
+        >>> pc_filtered = pc.filter('Y < 30', inplace=False)
         """
         if self.coords is None:
             raise ValueError("Cannot filter an empty point cloud")
@@ -798,7 +788,10 @@ class PointCloud:
                 "name": self.name,
             }
             save_dict.update(self.point_data)
-            np.savez(filename, **save_dict)
+            # Writing through a file handle keeps the filename as given
+            # (np.savez would append a .npz extension to it)
+            with open(filename, "wb") as f:
+                np.savez(f, **save_dict)
 
         elif format in ["csv", "txt"]:
             df = self.to_dataframe(
@@ -1576,63 +1569,84 @@ class PointCloud:
 
 ###############################################################################################
 def merge_pointclouds(
-    tractograms: list[str | Path | PointCloud],
+    pointclouds: list[str | Path | PointCloud],
     color_table: dict = None,
     map_name: str = "point_id",
 ) -> PointCloud | None:
     """
-    Merges multiple point clouds into a single tractogram.
+    Merges multiple point clouds into a single point cloud.
 
     It combines all points and associated data from the input point clouds
-    into a new Point object. Each point cloud's points are assigned unique IDs
-    in the merged object, and a color table is created to differentiate them.
+    into a new PointCloud object. The points of each input point cloud are
+    labelled with a unique ID stored in the map `map_name`, and a color table
+    is created to differentiate them.
 
-        color_table : dict, optional
-            A dictionary defining the color table for the merged tractogram. If None, a default color table will be created.
+    Parameters
+    ----------
+    pointclouds : list of PointCloud, str or Path
+        Point clouds to merge. File paths are loaded with PointCloud.load
+        (npy format).
 
-            The dictionary should contain:
-                - 'tractograms_names': List of names for each tractogram.
-                - 'color_table': numpy.ndarray of shape (n_tractograms, 5) with RGBA colors and values.
-                - 'lookup_table': Optional, can be None.
+    color_table : dict, optional
+        A dictionary defining the color table of the merged point clouds. If None,
+        a color table with distinguishable colors is created, using the names of
+        the point clouds (or "pointcloud_1", "pointcloud_2", ... if the names are
+        not unique). The dictionary should contain:
+            - 'names': List of names, one per point cloud.
+            - 'color_table': numpy.ndarray of shape (n_pointclouds, 5) with the RGBA
+              colors (0-1 range) and the ID value of each point cloud.
+            - 'lookup_table': Optional, can be None.
 
-        map_name : str, optional
-            Name of the map to store tract IDs in the merged tractogram. Default is 'tract_id'.
+    map_name : str, optional
+        Name of the map storing the ID of the point cloud each point comes from.
+        Default is 'point_id'.
 
-    Returns:
-    --------
-        merged_tractogram : Tractogram
-            A new Tractogram object containing all streamlines and associated data
-            from the input tractograms.
-
-    Raises:
+    Returns
     -------
-        ValueError: If the input list is empty or contains non-Tractogram objects.
+    PointCloud or None
+        A new PointCloud containing all the points and associated data of the
+        input point clouds. None if the input list is empty.
 
-    Examples:
-    ---------
-        >>> tract1 = Tractogram('tract1.trk')
-        >>> tract2 = Tractogram('tract2.trk')
-        >>> merged_tract = merge_tractograms([tract1, tract2])
-        >>> print(f"Merged tractogram has {len(merged_tract.tracts)} streamlines")
+    Raises
+    ------
+    TypeError
+        If pointclouds is not a list, contains items that are not PointCloud
+        objects or file paths, or if color_table is not a dictionary.
+
+    ValueError
+        If color_table does not contain the required keys or its size does not
+        match the number of point clouds.
+
+    Examples
+    --------
+    >>> pc1 = PointCloud(points=np.random.rand(100, 3), name="left")
+    >>> pc2 = PointCloud(points=np.random.rand(50, 3), name="right")
+    >>> merged = merge_pointclouds([pc1, pc2])
+    >>> len(merged)
+    150
+    >>> merged.colortables["point_id"]["names"]
+    ['left', 'right']
     """
 
-    if not isinstance(tractograms, list):
-        raise TypeError("tractograms must be a list")
+    if not isinstance(pointclouds, list):
+        raise TypeError("pointclouds must be a list")
 
-    if any(not isinstance(surf, (str, Path, PointCloud)) for surf in tractograms):
+    if any(not isinstance(pc, (str, Path, PointCloud)) for pc in pointclouds):
         raise TypeError(
-            "All items in tractograms must be Tractogran objects, file paths, or Path objects"
+            "All items in pointclouds must be PointCloud objects, file paths, or Path objects"
         )
 
     # If the list is empty, return None
-    if not tractograms:
+    if not pointclouds:
         return None
 
-    # If there's only one surface, return it as is
-    if len(tractograms) == 1:
-        return PointCloud(tractograms[0])
+    # Load the point clouds supplied as files
+    pointclouds = [
+        PointCloud.load(pc) if isinstance(pc, (str, Path)) else pc
+        for pc in pointclouds
+    ]
+    n_clouds = len(pointclouds)
 
-    n_tracts = len(tractograms)
     if color_table is not None:
         if not isinstance(color_table, dict):
             raise TypeError("color_table must be a dictionary")
@@ -1640,85 +1654,53 @@ def merge_pointclouds(
         required_keys = ["names", "color_table"]
         if not all(key in color_table for key in required_keys):
             raise ValueError(f"color_table must contain the keys: {required_keys}")
-        if len(color_table["names"]) != n_tracts:
+        if len(color_table["names"]) != n_clouds:
             raise ValueError(
-                "Length of 'names' in color_table must match number of tractograms"
+                "Length of 'names' in color_table must match number of point clouds"
             )
-        if color_table["color_table"].shape[0] != n_tracts:
+        if color_table["color_table"].shape[0] != n_clouds:
             raise ValueError(
-                "Number of rows in 'color_table' must match number of tractograms"
+                "Number of rows in 'color_table' must match number of point clouds"
             )
 
-    # Creating a colortable in case it is not provided
-    if color_table is None:
-        colors = cltcol.create_distinguishable_colors(n_tracts)
-        color_table = cltcol.colors_to_table(
-            colors=colors, alpha_values=1, values=range(n_tracts)
-        )
-        color_table[:, :3] = (
-            color_table[:, :3] / 255
-        )  # Ensure colors are between 0 and 1
-        color_table[:, 4] = np.arange(n_tracts) + 1  # Set the value column
-        bundle_names = [f"tract_{i}" for i in range(n_tracts)]
         color_table_dict = {
-            "names": bundle_names,
-            "color_table": color_table,
+            "names": list(color_table["names"]),
+            "color_table": np.array(color_table["color_table"]),
+            "lookup_table": color_table.get("lookup_table", None),
+        }
+
+    # Creating a colortable in case it is not provided
+    else:
+        colors = cltcol.create_distinguishable_colors(n_clouds)
+        ctable = cltcol.colors_to_table(
+            colors=colors, alpha_values=1, values=np.arange(1, n_clouds + 1)
+        )
+        ctable[:, :3] = ctable[:, :3] / 255  # Ensure colors are between 0 and 1
+
+        cloud_names = [pc.name for pc in pointclouds]
+        if len(set(cloud_names)) != n_clouds:
+            cloud_names = [f"pointcloud_{i + 1}" for i in range(n_clouds)]
+
+        color_table_dict = {
+            "names": cloud_names,
+            "color_table": ctable,
             "lookup_table": None,
         }
 
-    # Initialize lists to hold merged data
+    cloud_values = color_table_dict["color_table"][:, 4].astype(int)
 
-    # Add Rich progress bar around the main loop
-    n_bundles = len(tractograms)
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]{task.description}", justify="right"),
-        BarColumn(bar_width=None),
-        MofNCompleteColumn(),
-        TextColumn("•"),
-        TimeRemainingColumn(),
-        expand=True,
-    ) as progress:
+    # Concatenate the point clouds and label the points of each one with its ID
+    merged = pointclouds[0].copy()
+    point_ids = [np.full(len(pointclouds[0]), cloud_values[0], dtype=int)]
 
-        task = progress.add_task("Merging tractograms", total=n_bundles)
+    for i, pc in enumerate(pointclouds[1:], start=1):
+        merged.append(pc, inplace=True, handle_colortable_conflicts="skip")
+        point_ids.append(np.full(len(pc), cloud_values[i], dtype=int))
 
-        for i, t in enumerate(tractograms):
-            progress.update(
-                task,
-                description=f"Merging tractograms: {i + 1}/{n_bundles}",
-                completed=i + 1,
-            )
+    merged.point_data[map_name] = np.concatenate(point_ids)
+    merged.colortables[map_name] = color_table_dict
 
-            if isinstance(t, (str, Path)):
-                # Imported here because tracttools imports this module.
-                from .tracttools import Tractogram
-
-                t = Tractogram(t)
-
-            if i == 0:
-                merged_tractogram = copy.deepcopy(t)
-                bundle_ids = np.full(
-                    (len(merged_tractogram.tracts), 1), color_table[i, 4]
-                )
-
-            else:
-                merged_tractogram = merged_tractogram.add_tractogram(t)
-                bundle_ids = np.vstack(
-                    (
-                        bundle_ids,
-                        np.full(
-                            (len(merged_tractogram.tracts) - len(bundle_ids), 1),
-                            color_table[i, 4],
-                        ),
-                    )
-                )
-
-    merged_tractogram.data_per_streamline[map_name] = bundle_ids.reshape(
-        -1, 1
-    )  # Reshape to be a column vector
-    merged_tractogram.colortables[map_name] = color_table_dict
-
-    return merged_tractogram
+    return merged
 
 
 ######################################################################################################
@@ -1760,8 +1742,8 @@ def smooth_curve_coordinates(points, sigma=1.0, iterations=1, window_size=5):
             w_start = half_window - (i - start)
             w_end = w_start + (end - start)
 
-            local_weights = weights[w_start:w_end]
-            local_weights /= local_weights.sum()
+            # Renormalize a copy, so the edge points do not modify the shared weights
+            local_weights = weights[w_start:w_end] / weights[w_start:w_end].sum()
 
             new_points[i] = np.sum(smoothed[start:end] * local_weights[:, None], axis=0)
 
