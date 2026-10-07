@@ -4615,6 +4615,7 @@ class Surface:
             colorbar_titles=colorbar_title,
             colorbar_position=colorbar_position,
             save_path=save_path,
+            config_file=config,
         )
 
 
