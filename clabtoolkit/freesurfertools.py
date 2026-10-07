@@ -4177,7 +4177,7 @@ class FreeSurferSubject:
             # Load parcellation and compute volume table
             vol_parc = parc.Parcellation(parc_file=parc_file)
             vol_parc.load_colortable()
-            df = vol_parc.compute_volume_table()
+            df, _ = vol_parc.compute_volume_table(add_bids_entities=False)
 
             # Add identifying columns
             df.insert(4, "Atlas", volparc)
