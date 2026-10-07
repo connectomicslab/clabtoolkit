@@ -2722,7 +2722,7 @@ class Parcellation:
             region_names=node_names,
             region_index=node_codes,
             region_colors=node_colors,
-            connectivity_type="adjacency-weighted" if weighted else "adjacency",
+            modality="adjacency-weighted" if weighted else "adjacency",
             affine=temp_parc.affine,
         )
 
@@ -5707,7 +5707,7 @@ class Parcellation:
             region_names=temp_parc.name,
             region_index=temp_parc.index,
             region_colors=temp_parc.color,
-            connectivity_type="functional",
+            modality="functional",
         )
 
         return fc_connectome
