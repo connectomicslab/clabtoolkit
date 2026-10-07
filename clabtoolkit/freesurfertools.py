@@ -5440,24 +5440,32 @@ def create_subject_stats_table(
     subjs_dir: str | Path = None,
     out_tab_file: str | Path = None,
     add_bids_entities: bool = False,
+    overwrite: bool = False,
 ) -> pd.DataFrame:
     """
-    Create a dataset table from the subjects in the given directory.
+    Create the morphometry stats table of a single FreeSurfer subject.
+
     Parameters
     ----------
     subj_id : str
-        The subject ID for which to create the dataset table.
+        The subject ID for which to create the table.
 
     subjs_dir : str or Path, optional
-        The directory containing the FreeSurfer subjects. If None, uses the
-        FREESURFER_HOME environment variable to locate the subjects directory.
+        The directory containing the FreeSurfer subjects. If None, the
+        SUBJECTS_DIR environment variable is used.
 
-    out_tab_file : str, optional
-        If provided, the path to save the dataset table as a TSV file.
-        If None, the table is not saved to disk.
+    out_tab_file : str or Path, optional
+        If provided, the path where the table is saved. If None, the table is
+        not saved to disk.
 
     add_bids_entities : bool, optional
-        If True, adds BIDS entities to the dataset table. Default is False.
+        If True, adds BIDS entities to the table. Default is False.
+
+    overwrite : bool, optional
+        What to do when ``out_tab_file`` already exists. If False (default), the
+        existing table is loaded and returned without recomputing it, and the
+        subject folder is not checked. If True, the table is recomputed and the
+        file is overwritten. Ignored when ``out_tab_file`` is None.
 
     Returns
     -------
@@ -5467,54 +5475,68 @@ def create_subject_stats_table(
     Raises
     ------
     ValueError
-        If the provided subjs_dir is not a valid directory.
+        If no subjects directory is available, if it is not a valid directory,
+        or if the subject is not a valid FreeSurfer subject.
 
+    Examples
+    --------
+    >>> df = create_subject_stats_table('bert', '/opt/freesurfer/subjects')
+    >>> df = create_subject_stats_table(
+    ...     'sub-01_ses-M00',
+    ...     '/data/freesurfer',
+    ...     out_tab_file='/data/stats/sub-01_ses-M00_desc-statstable_morphometry.csv',
+    ...     add_bids_entities=True,
+    ...     overwrite=True,
+    ... )
     """
-    # Check if subjs_dir is provided, otherwise use the default
+    # Resolve the output file and reuse an existing table unless overwrite is True.
+    # This is done first, so an existing table can be loaded even when the
+    # FreeSurfer subject folder is not available.
+    if out_tab_file is not None:
+        if not isinstance(out_tab_file, (str, Path)):
+            raise ValueError(
+                "out_tab_file should be a string or Path representing the file path."
+            )
+        out_tab_file = str(out_tab_file)
+
+        if os.path.isfile(out_tab_file) and not overwrite:
+            return pd.read_csv(out_tab_file, sep=None, engine="python")
+
+    # Resolve the subjects directory
     if subjs_dir is None:
         subjs_dir = os.environ.get("SUBJECTS_DIR")
-
-    else:
-        if isinstance(subjs_dir, Path):
-            subjs_dir = str(subjs_dir)
-
-        if not os.path.isdir(subjs_dir):
+        if subjs_dir is None:
             raise ValueError(
-                f"The provided subjs_dir '{subjs_dir}' is not a valid directory."
+                "Pass subjs_dir or set the SUBJECTS_DIR environment variable."
             )
+    subjs_dir = str(subjs_dir)
 
-    if out_tab_file is not None:
-        if isinstance(out_tab_file, Path):
-            out_tab_file = str(out_tab_file)
+    if not os.path.isdir(subjs_dir):
+        raise ValueError(
+            f"The provided subjs_dir '{subjs_dir}' is not a valid directory."
+        )
 
-        if isinstance(out_tab_file, str):
-            out_dir = os.path.dirname(out_tab_file)
-            if out_dir and not os.path.exists(out_dir):
-                os.makedirs(out_dir)
-        else:
-            raise ValueError(
-                "out_tab_file should be a string representing the file path."
-            )
-
+    # Check the subject
     if not isinstance(subj_id, str):
         raise ValueError("subj_id should be a string representing the subject ID.")
-    else:
-        # Check if the subject directory exists
-        subj_path = os.path.join(
-            subjs_dir,
-            subj_id,
-        )
-        if not os.path.isdir(subj_path):
-            raise ValueError(
-                f"The subject ID '{subj_id}' does not exist in the directory '{subjs_dir}'."
-            )
-        else:
-            if not os.path.isdir(os.path.join(subj_path, "mri")):
-                raise ValueError(
-                    f"The subject ID '{subj_id}' is not a valid FreeSurfer directory."
-                )
 
-    # Load the Subject object
+    subj_path = os.path.join(subjs_dir, subj_id)
+    if not os.path.isdir(subj_path):
+        raise ValueError(
+            f"The subject ID '{subj_id}' does not exist in the directory '{subjs_dir}'."
+        )
+    if not os.path.isdir(os.path.join(subj_path, "mri")):
+        raise ValueError(
+            f"The subject ID '{subj_id}' is not a valid FreeSurfer directory."
+        )
+
+    # Create the output folder
+    if out_tab_file is not None:
+        out_dir = os.path.dirname(out_tab_file)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+
+    # Load the Subject object and create the table
     subject = FreeSurferSubject(subj_id, subjs_dir)
     df = subject.create_stats_table(
         output_file=out_tab_file, add_bids_entities=add_bids_entities
@@ -5524,58 +5546,80 @@ def create_subject_stats_table(
 
 #####################################################################################################
 def process_subject(
-    fs_fullid: str, fs_subject_dir: str | Path, out_folder: str | Path
+    fs_fullid: str,
+    fs_subject_dir: str | Path,
+    out_folder: str | Path,
+    overwrite: bool = False,
 ) -> tuple:
     """
     Process a single subject and return the result.
 
+    The output folder follows the BIDS entities found in the subject ID:
+
+    - ``sub-01_ses-M00`` -> ``<out_folder>/sub-01/ses-M00/stats/``
+    - ``sub-01``         -> ``<out_folder>/sub-01/stats/``
+    - ``bert``           -> ``<out_folder>/bert/stats/``
+
+    The table is named ``<fs_fullid>_desc-statstable_morphometry.csv``. BIDS
+    entities are added to the table only when the subject ID is BIDS-formatted.
+
     Parameters
     ----------
     fs_fullid : str
-        The full subject ID
+        The full subject ID (BIDS-formatted or not).
 
     fs_subject_dir : str or Path
-        The FreeSurfer subjects directory
+        The FreeSurfer subjects directory.
 
     out_folder : str or Path
-        The output folder for stats tables
+        The output folder for stats tables.
+
+    overwrite : bool, optional
+        If False (default), subjects whose table already exists are skipped.
+        If True, their table is recomputed and overwritten.
 
     Returns
     -------
     tuple
-        (subject_id, success_status, error_message_if_any)
+        (subject_id, success_status, message). The message is None when the
+        table was created, 'File already exists - skipped' when an existing
+        table was kept, 'Overwritten' when an existing table was recomputed,
+        and the error description when processing failed.
     """
-    if isinstance(fs_subject_dir, Path):
-        fs_subject_dir = str(fs_subject_dir)
-
-    if isinstance(out_folder, Path):
-        out_folder = str(out_folder)
+    fs_subject_dir = str(fs_subject_dir)
+    out_folder = str(out_folder)
 
     try:
-        sub_entity = cltbids.str2entity(fs_fullid)
-        file_name = fs_fullid + "_desc-statstable_morphometry.csv"
-        out_flder = os.path.join(
-            out_folder,
-            "freesurfer",
-            "sub-" + sub_entity["sub"],
-            "ses-" + sub_entity["ses"],
-            "stats",
-        )
-        out_tab_file = os.path.join(out_flder, file_name)
+        entities = cltbids.str2entity(fs_fullid) or {}
+        is_bids = "sub" in entities
 
-        if not os.path.isfile(out_tab_file):
-            create_subject_stats_table(
-                fs_fullid,
-                fs_subject_dir,
-                out_tab_file=out_tab_file,
-                add_bids_entities=True,
-            )
-            return (fs_fullid, True, None)
+        if is_bids:
+            path_parts = ["sub-" + entities["sub"]]
+            if "ses" in entities:
+                path_parts.append("ses-" + entities["ses"])
         else:
+            path_parts = [fs_fullid]
+
+        subj_out_folder = os.path.join(out_folder, *path_parts, "stats")
+        out_tab_file = os.path.join(
+            subj_out_folder, fs_fullid + "_desc-statstable_morphometry.csv"
+        )
+
+        file_exists = os.path.isfile(out_tab_file)
+        if file_exists and not overwrite:
             return (fs_fullid, True, "File already exists - skipped")
 
+        create_subject_stats_table(
+            fs_fullid,
+            fs_subject_dir,
+            out_tab_file=out_tab_file,
+            add_bids_entities=is_bids,
+            overwrite=overwrite,
+        )
+        return (fs_fullid, True, "Overwritten" if file_exists else None)
+
     except Exception as e:
-        return (fs_fullid, False, str(e))
+        return (fs_fullid, False, f"{type(e).__name__}: {e}")
 
 
 #####################################################################################################
@@ -5584,47 +5628,70 @@ def create_cohort_stats_table(
     ids_file: str | list[str] = None,
     fs_subject_dir: str | Path = None,
     max_workers: int = 1,
+    overwrite: bool = False,
 ):
     """
     Create FreeSurfer stats tables for multiple subjects in parallel.
+
+    One table is written per subject, following the folder layout described
+    in :func:`process_subject`.
 
     Parameters
     ----------
     out_folder : str or Path
         The output folder for stats tables.
 
-    ids_file : str or List[str], optional
-        A text file containing subject IDs (one per line) or a list of subject IDs.
-        If None, an error is raised.
+    ids_file : str or list of str, optional
+        A text file containing subject IDs (one per line) or a list of subject
+        IDs. If None, every folder starting with 'sub-' in the subjects
+        directory is processed.
 
     fs_subject_dir : str or Path, optional
-        The FreeSurfer subjects directory. If None, uses the SUBJECTS_DIR environment variable.
+        The FreeSurfer subjects directory. If None, the SUBJECTS_DIR
+        environment variable is used.
 
     max_workers : int, optional
-        The maximum number of worker threads to use for parallel processing. Default is 1 (non-parallel).
+        The maximum number of worker threads to use for parallel processing.
+        Default is 1 (non-parallel).
+
+    overwrite : bool, optional
+        If False (default), subjects whose table already exists are skipped.
+        If True, their tables are recomputed and overwritten.
 
     Returns
     -------
     None
 
+    Raises
+    ------
+    ValueError
+        If no subjects directory is available or it does not exist.
+
     Notes
     -----
-    This function processes each subject in parallel using ThreadPoolExecutor and displays a progress bar.
-    It handles errors gracefully and provides a summary of completed and failed subjects.
+    This function processes each subject in parallel using ThreadPoolExecutor
+    and displays a progress bar. Errors are handled per subject, and a summary
+    of created, overwritten, skipped and failed subjects is printed at the end.
 
     Example
     -------
-    >>> create_cohort_stats_table("/path/to/output", "/path/to/ids.txt", "/path/to/freesurfer/subjects", max_workers=4)
-
+    >>> create_cohort_stats_table(
+    ...     "/path/to/output",
+    ...     "/path/to/ids.txt",
+    ...     "/path/to/freesurfer/subjects",
+    ...     max_workers=4,
+    ...     overwrite=True,
+    ... )
     """
-    if isinstance(out_folder, Path):
-        out_folder = str(out_folder)
+    out_folder = str(out_folder)
 
     if fs_subject_dir is None:
         fs_subject_dir = os.environ.get("SUBJECTS_DIR")
-
-    elif isinstance(fs_subject_dir, Path):
-        fs_subject_dir = str(fs_subject_dir)
+        if fs_subject_dir is None:
+            raise ValueError(
+                "Pass fs_subject_dir or set the SUBJECTS_DIR environment variable."
+            )
+    fs_subject_dir = str(fs_subject_dir)
 
     # Check that the folder exists
     if not os.path.isdir(fs_subject_dir):
@@ -5633,14 +5700,12 @@ def create_cohort_stats_table(
         )
 
     if ids_file is None:
-        subject_ids = []
-        subj_dirs = os.listdir(fs_subject_dir)
-
-        subject_ids = []
-        for subj_dir in subj_dirs:
-            if subj_dir.startswith("sub-"):
-                subject_ids.append(subj_dir)
-
+        subject_ids = sorted(
+            subj_dir
+            for subj_dir in os.listdir(fs_subject_dir)
+            if subj_dir.startswith("sub-")
+            and os.path.isdir(os.path.join(fs_subject_dir, subj_dir))
+        )
     else:
         # Use cltpipe.get_ids2process to handle both list and file input
         subject_ids = cltpipe.get_ids2process(ids_file)
@@ -5651,7 +5716,8 @@ def create_cohort_stats_table(
         Panel.fit(
             f"[bold green]FreeSurfer Stats Processing (Parallel)[/bold green]\n"
             f"[blue]Total subjects to process: {len(subject_ids)}[/blue]\n"
-            f"[blue]Max workers: {max_workers}[/blue]",
+            f"[blue]Max workers: {max_workers}[/blue]\n"
+            f"[blue]Overwrite existing tables: {overwrite}[/blue]",
             style="cyan",
         )
     )
@@ -5669,7 +5735,9 @@ def create_cohort_stats_table(
     )
 
     # Process subjects with ThreadPoolExecutor and progress bar
-    completed_subjects = []
+    created_subjects = []
+    overwritten_subjects = []
+    skipped_subjects = []
     failed_subjects = []
 
     with progress:
@@ -5679,7 +5747,7 @@ def create_cohort_stats_table(
             # Submit all tasks
             future_to_subject = {
                 executor.submit(
-                    process_subject, fs_fullid, fs_subject_dir, out_folder
+                    process_subject, fs_fullid, fs_subject_dir, out_folder, overwrite
                 ): fs_fullid
                 for fs_fullid in subject_ids
             }
@@ -5688,28 +5756,35 @@ def create_cohort_stats_table(
             for future in as_completed(future_to_subject):
                 subject_id = future_to_subject[future]
                 try:
-                    result = future.result()
-                    subject_id, success, error_msg = result
+                    subject_id, success, message = future.result()
 
-                    if success:
-                        completed_subjects.append(subject_id)
-                        if error_msg:
-                            progress.update(
-                                task,
-                                description=f"Skipped: [yellow]{subject_id}[/yellow] ({error_msg})",
-                            )
-                        else:
-                            progress.update(
-                                task,
-                                description=f"Completed: [green]{subject_id}[/green]",
-                            )
-                    else:
-                        failed_subjects.append((subject_id, error_msg))
+                    if not success:
+                        failed_subjects.append((subject_id, message))
                         progress.update(
                             task, description=f"Failed: [red]{subject_id}[/red]"
                         )
                         console.print(
-                            f"[red]Error processing {subject_id}: {error_msg}[/red]"
+                            f"[red]Error processing {subject_id}: {message}[/red]"
+                        )
+
+                    elif message == "Overwritten":
+                        overwritten_subjects.append(subject_id)
+                        progress.update(
+                            task,
+                            description=f"Overwritten: [green]{subject_id}[/green]",
+                        )
+
+                    elif message:
+                        skipped_subjects.append(subject_id)
+                        progress.update(
+                            task,
+                            description=f"Skipped: [yellow]{subject_id}[/yellow] ({message})",
+                        )
+
+                    else:
+                        created_subjects.append(subject_id)
+                        progress.update(
+                            task, description=f"Completed: [green]{subject_id}[/green]"
                         )
 
                 except Exception as exc:
@@ -5728,7 +5803,9 @@ def create_cohort_stats_table(
     console.print(
         Panel.fit(
             f"[bold green]✓ Processing Complete![/bold green]\n"
-            f"[green]Successfully processed: {len(completed_subjects)}[/green]\n"
+            f"[green]Created: {len(created_subjects)}[/green]\n"
+            f"[green]Overwritten: {len(overwritten_subjects)}[/green]\n"
+            f"[yellow]Skipped (already existed): {len(skipped_subjects)}[/yellow]\n"
             f"[red]Failed: {len(failed_subjects)}[/red]",
             style="green",
         )
