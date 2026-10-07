@@ -20,8 +20,11 @@
         "mesh_smooth_shading": true
     },
     "objs_conf": {
-            "surface":{"smooth": true,
-                        "smooth_iterations": 10
+            "surface":{"smooth": false,
+                        "smooth_iterations": 10,
+                        "show_edges": false,
+                        "edge_color": "#000000",
+                        "line_width": 0.5
             },
             "tracts":{"tubes": true,
                 "tube_radius": 0.1,

@@ -400,8 +400,24 @@ class BrainPlotter:
                 mesh.point_data["rgba"] = self._prepare_rgba(
                     mesh.point_data["rgba"], use_opacity, opacity
                 )
+            if self.objs_conf["surface"]["smooth"]:
+                smooth_iterations = self.objs_conf["surface"]["smooth_iterations"]
+                mesh = mesh.smooth_taubin(n_iter=smooth_iterations, pass_band=0.1)
 
-            plotter.add_mesh(mesh, scalars="rgba", rgb=True, **mesh_kwargs)
+            edge_color_rgb = cltcol.harmonize_colors(
+                self.objs_conf["surface"]["edge_color"], output_format="rgb"
+            )
+            edge_color_rgb = tuple(np.asarray(edge_color_rgb).ravel().tolist())
+
+            plotter.add_mesh(
+                mesh,
+                scalars="rgba",
+                show_edges=self.objs_conf["surface"]["show_edges"],
+                edge_color=edge_color_rgb,
+                line_width=self.objs_conf["surface"]["line_width"],
+                rgb=True,
+                **mesh_kwargs,
+            )
 
         else:
             raise TypeError(
