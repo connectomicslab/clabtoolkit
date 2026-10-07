@@ -223,7 +223,9 @@ def get_indices_by_condition(condition: str, **kwargs):
 
     def rewrite_chained_comparisons(expr: str) -> str:
         # Replace "a <= b <= c" with "(a <= b) & (b <= c)"
-        pattern = r"(\b\w+\b)(<=|<|>=|>)(\b\w+\b)(<=|<|>=|>)(\b\w+\b)"
+        # Operands can be names or numbers, including decimals and negative values
+        operand = r"(-?[\w.]+)"
+        pattern = operand + r"(<=|<|>=|>)" + operand + r"(<=|<|>=|>)" + operand
         while True:
             match = re.search(pattern, expr)
             if not match:
@@ -533,8 +535,12 @@ def parse_condition(condition: str) -> tuple[str | None, list[str]]:
 
     # Define comparison operators (order matters - longer operators first)
 
+    # Operands can be names or numbers, including decimals and negative values
+    operand = r"(-?[\w.]+)"
+    operator = r"\s*(<=|>=|<|>|==|!=)\s*"
+
     # Pattern to match chained comparison: limit1 op1 var op2 limit2
-    chained_pattern = r"(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)"
+    chained_pattern = operand + operator + operand + operator + operand
 
     # Check for chained comparison first
     chained_match = re.match(chained_pattern, condition)
@@ -543,7 +549,7 @@ def parse_condition(condition: str) -> tuple[str | None, list[str]]:
         return var, [limit1, limit2]
 
     # Pattern for simple comparison: var op limit or limit op var
-    simple_pattern = r"(\w+)\s*(<=|>=|<|>|==|!=)\s*(\w+)"
+    simple_pattern = operand + operator + operand
     simple_match = re.match(simple_pattern, condition)
 
     if simple_match:
