@@ -1294,11 +1294,12 @@ class PointCloud:
         range_color: tuple = (128, 128, 128, 255),
     ) -> np.ndarray:
         """
-        Compute streamlines colors for visualization based on the specified overlay.
+        Compute the point colors for visualization based on the specified overlay.
 
         This method processes the overlay data and creates appropiate point colors
         for visualization, handling both scalar data (with colormaps) and
-        categorical data (with discrete color tables).
+        categorical data (with discrete color tables). The colors are always returned
+        as RGBA values in the 0-255 range, whatever the type of the map.
 
         Parameters
         ----------
@@ -1331,32 +1332,24 @@ class PointCloud:
 
         Returns
         -------
-        point_colors : ArraySequence
-            Array of RGBA colors for each point in the tractogram.
+        point_colors : np.ndarray
+            Array of shape (n_points, 4) and dtype uint8 with the RGBA color
+            (0-255 range) of each point.
 
         Raises
         ------
         ValueError
-            If the specified overlay is not found in the mesh point data
-
-        ValueError
-            If no overlays are available
-
-        Notes
-        -----
-        This method sets the vertices colors based on the specified overlay.
-
+            If the specified overlay is not found in the point data
 
         Examples
         --------
-        >>> # Prepare colors for a parcellation (uses discrete colors)
-        >>> tractogram.get_vertexwise_colors(map_name="aparc")
+        >>> # Colors of a map with a colortable (uses its discrete colors)
+        >>> colors = pc.get_pointwise_colors(map_name="default")
         >>>
-        >>> # Prepare colors for scalar data with custom colormap
-        >>> tractogram.get_vertexwise_colors(map_name="thickness", colormap="hot")
-        >>>
-        >>> # Prepare colors for the tractogram overlay
-        >>> tractogram.get_vertexwise_colors()
+        >>> # Colors of a scalar map with a custom colormap
+        >>> colors = pc.get_pointwise_colors(map_name="intensity", colormap="hot")
+        >>> colors.shape, colors.dtype
+        ((1000, 4), dtype('uint8'))
         """
 
         # Get the list of overlays
@@ -1370,20 +1363,22 @@ class PointCloud:
         # Getting the values of the overlay
         data = self.point_data[map_name]
 
-        # if colortables is an attribute of the class, use it
-        if hasattr(self, "colortables"):
-            dict_ctables = self.colortables
-
-            # Check if the overlay is on the colortables
-            if map_name in dict_ctables.keys():
-                # Use the colortable associated with the parcellation
-
-                point_colors = cltcol.get_colors_from_colortable(
+        if map_name in getattr(self, "colortables", {}):
+            # Use the colortable associated with the map. The colortables store the
+            # colors and the opacity in the 0-1 range
+            point_colors = np.asarray(
+                cltcol.get_colors_from_colortable(
                     data, self.colortables[map_name]["color_table"]
-                )
-            else:
-                # Use the colormap for scalar data
-                point_colors = cltcol.values2colors(
+                ),
+                dtype=float,
+            )
+            if point_colors[:, :3].max(initial=0) <= 1.0:
+                point_colors[:, :3] *= 255
+
+        else:
+            # Use the colormap for scalar data (RGB in the 0-255 range)
+            point_colors = np.asarray(
+                cltcol.values2colors(
                     data,
                     cmap=colormap,
                     output_format="rgb",
@@ -1392,20 +1387,18 @@ class PointCloud:
                     range_min=range_min,
                     range_max=range_max,
                     range_color=range_color,
-                )
-        else:
-            point_colors = cltcol.values2colors(
-                data,
-                cmap=colormap,
-                output_format="rgb",
-                vmin=vmin,
-                vmax=vmax,
-                range_min=range_min,
-                range_max=range_max,
-                range_color=range_color,
+                ),
+                dtype=float,
             )
 
-        return point_colors
+        # Always return RGBA colors in the 0-255 range
+        if point_colors.shape[1] == 3:
+            alpha = np.full((point_colors.shape[0], 1), 255.0)
+            point_colors = np.hstack([point_colors, alpha])
+        elif point_colors[:, 3].max(initial=0) <= 1.0:
+            point_colors[:, 3] *= 255
+
+        return np.clip(np.round(point_colors), 0, 255).astype(np.uint8)
 
     ###############################################################################################
     def list_maps(self) -> list[str]:
@@ -1502,7 +1495,8 @@ class PointCloud:
             Whether to render the plot in a Jupyter notebook.
 
         show_colorbar : bool, default False
-            Whether to display the colorbar.
+            Whether to display the colorbar. It is ignored for maps colored with
+            their own colortable (cmap=None).
 
         colorbar_title : str, optional
             Title for the colorbar.
@@ -1540,16 +1534,11 @@ class PointCloud:
 
         if views is None:
             views = ["lateral"]
-        dict_ctables = self.colortables
-        if cmap is None:
-            if maps in dict_ctables.keys():
-                show_colorbar = False
 
-            else:
-                show_colorbar = True
-
-        else:
-            show_colorbar = True
+        # Maps drawn with their own colortable (cmap=None) have no colorbar
+        map_list = [maps] if isinstance(maps, str) else list(maps)
+        if cmap is None and all(m in self.colortables for m in map_list):
+            show_colorbar = False
 
         from . import visualizationtools as cltvis
         from . import visualization_utils as visutils
