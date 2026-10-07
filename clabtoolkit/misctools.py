@@ -725,10 +725,10 @@ def get_indexes_by_substring(
     input_list : list
         List of string elements
 
-    or_filter : str or list
+    or_filter : str or list or None
         Substring to filter. It can be a string or a list of strings.
         It functions as an OR filter, meaning that if any of the substrings are found in the element,
-        its index will be included.
+        its index will be included. If None, no OR filter is applied.
 
     and_filter : str or list, optional
         Substring to filter. It can be a string or a list of strings.
@@ -802,15 +802,18 @@ def get_indexes_by_substring(
             else:
                 return substring.lower() in element.lower()
 
-    # Get indexes of elements that match OR filter
-    indexes = [
-        i
-        for i, element in enumerate(input_list)
-        if any(
-            contains_substring(element, substr, bool_case, match_entire_word)
-            for substr in or_filter
-        )
-    ]
+    # Get indexes of elements that match OR filter (all the elements if there is no OR filter)
+    if or_filter is None:
+        indexes = list(range(len(input_list)))
+    else:
+        indexes = [
+            i
+            for i, element in enumerate(input_list)
+            if any(
+                contains_substring(element, substr, bool_case, match_entire_word)
+                for substr in or_filter
+            )
+        ]
 
     # Apply AND filter if provided
     if and_filter is not None:
@@ -852,10 +855,10 @@ def filter_by_substring(
     input_list : list
         List of string elements
 
-    or_filter : str or list
+    or_filter : str or list or None
         Substring to filter. It can be a string or a list of strings.
         It functions as an OR filter, meaning that if any of the substrings are found in the element,
-        it will be included in the filtered list.
+        it will be included in the filtered list. If None, no OR filter is applied.
 
     and_filter : str or list, optional
         Substring to filter. It can be a string or a list of strings.
