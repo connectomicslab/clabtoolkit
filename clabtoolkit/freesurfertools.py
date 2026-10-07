@@ -5435,7 +5435,7 @@ class FreeSurferSubject:
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def create_individual_freesurfer_table(
+def create_subject_stats_table(
     subj_id: str,
     subjs_dir: str | Path = None,
     out_tab_file: str | Path = None,
@@ -5564,7 +5564,7 @@ def process_subject(
         out_tab_file = os.path.join(out_flder, file_name)
 
         if not os.path.isfile(out_tab_file):
-            create_individual_freesurfer_table(
+            create_subject_stats_table(
                 fs_fullid,
                 fs_subject_dir,
                 out_tab_file=out_tab_file,
@@ -5579,7 +5579,7 @@ def process_subject(
 
 
 #####################################################################################################
-def create_freesurfer_table(
+def create_cohort_stats_table(
     out_folder: str | Path,
     ids_file: str | list[str] = None,
     fs_subject_dir: str | Path = None,
@@ -5614,7 +5614,7 @@ def create_freesurfer_table(
 
     Example
     -------
-    >>> create_freesurfer_table("/path/to/output", "/path/to/ids.txt", "/path/to/freesurfer/subjects", max_workers=4)
+    >>> create_cohort_stats_table("/path/to/output", "/path/to/ids.txt", "/path/to/freesurfer/subjects", max_workers=4)
 
     """
     if isinstance(out_folder, Path):
