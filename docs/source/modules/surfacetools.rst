@@ -74,7 +74,7 @@ Basic surface visualization::
 
     # Load scalar data and plot it as an overlay
     surface.load_scalar_maps("/path/to/lh.thickness", maps_names="Thickness")
-    surface.plot(overlay_name="Thickness", cmap="viridis")
+    surface.plot(maps="Thickness", cmap="viridis")
 
 Working with annotations::
 
@@ -83,7 +83,7 @@ Working with annotations::
     surface.load_annotation("/path/to/lh.aparc.annot", parc_name="aparc")
 
     # Plot the parcellation
-    surface.plot(overlay_name="aparc")
+    surface.plot(maps="aparc")
 
     # Inspect the available overlays and pull one region out
     surface.list_overlays()
@@ -93,7 +93,7 @@ Multi-view visualization::
 
     # Create multiple views of the same surface
     surface.plot(
-        overlay_name="Thickness",
+        maps="Thickness",
         views=["lateral", "medial", "dorsal"],
         views_orientation="grid",
         cmap="jet",
@@ -126,7 +126,7 @@ Volume-to-surface mapping::
         image="/path/to/functional_4d.nii.gz",
         method="custom",
         interp_method="linear",
-        overlay_name="activation"
+        maps="activation"
     )
 
 Export::

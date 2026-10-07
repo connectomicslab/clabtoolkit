@@ -91,7 +91,7 @@ Colortables and visualization::
 
     # Attach a colortable to a categorical map and render
     pc.load_colortable("/path/to/lookup_table.lut", map_name="region")
-    pc.plot(overlay_name="fa", cmap="viridis")
+    pc.plot(maps="fa", cmap="viridis")
 
 Export and merging::
 

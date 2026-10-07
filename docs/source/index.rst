@@ -48,7 +48,7 @@ Surface Visualization
 
     # Loading scalar maps
     surf_lh.load_scalar_maps("/opt/freesurfer/subjects/fsaverage/surf/lh.thickness", maps_names="Thickness")
-    surf_lh.plot(overlay_name="Thickness", 
+    surf_lh.plot(maps="Thickness", 
                 views="4_views", 
                 cmap= "jet", 
                 colorbar_position="right")

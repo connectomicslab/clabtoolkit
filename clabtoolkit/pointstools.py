@@ -1292,7 +1292,7 @@ class PointCloud:
     ###################################################################################################
     def get_pointwise_colors(
         self,
-        overlay_name: str = "default",
+        map_name: str = "default",
         colormap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
@@ -1309,7 +1309,7 @@ class PointCloud:
 
         Parameters
         ----------
-        overlay_name : str, optional
+        map_name : str, optional
             Name of the overlay to visualize. If None, the first available overlay is used.
 
         colormap : str, optional
@@ -1357,10 +1357,10 @@ class PointCloud:
         Examples
         --------
         >>> # Prepare colors for a parcellation (uses discrete colors)
-        >>> tractogram.get_vertexwise_colors(overlay_name="aparc")
+        >>> tractogram.get_vertexwise_colors(map_name="aparc")
         >>>
         >>> # Prepare colors for scalar data with custom colormap
-        >>> tractogram.get_vertexwise_colors(overlay_name="thickness", colormap="hot")
+        >>> tractogram.get_vertexwise_colors(map_name="thickness", colormap="hot")
         >>>
         >>> # Prepare colors for the tractogram overlay
         >>> tractogram.get_vertexwise_colors()
@@ -1369,24 +1369,24 @@ class PointCloud:
         # Get the list of overlays
         maps_list = self.list_maps()
 
-        if overlay_name not in maps_list:
+        if map_name not in maps_list:
             raise ValueError(
-                f"Overlay '{overlay_name}' not found. Available overlays: {', '.join(maps_list)}"
+                f"Overlay '{map_name}' not found. Available overlays: {', '.join(maps_list)}"
             )
 
         # Getting the values of the overlay
-        data = self.point_data[overlay_name]
+        data = self.point_data[map_name]
 
         # if colortables is an attribute of the class, use it
         if hasattr(self, "colortables"):
             dict_ctables = self.colortables
 
             # Check if the overlay is on the colortables
-            if overlay_name in dict_ctables.keys():
+            if map_name in dict_ctables.keys():
                 # Use the colortable associated with the parcellation
 
                 point_colors = cltcol.get_colors_from_colortable(
-                    data, self.colortables[overlay_name]["color_table"]
+                    data, self.colortables[map_name]["color_table"]
                 )
             else:
                 # Use the colormap for scalar data
@@ -1444,7 +1444,7 @@ class PointCloud:
     ###############################################################################################
     def plot(
         self,
-        overlay_name: str = "default",
+        maps: str | list[str] = "default",
         cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
@@ -1470,12 +1470,13 @@ class PointCloud:
 
         Parameters
         ----------
-        overlay_name : str, default "default"
+        maps : str | list[str], default "default"
             Name of the overlay to visualize from the tractogram's point data.
 
-        cmap : str, optional
+        cmap : str, default "viridis"
             Colormap for scalar data. If None, uses parcellation colors for
             categorical data or 'viridis' for scalar data.
+            If a list of maps is provided, the same colormap will be applied to all.
 
         vmin : float, optional
             Minimum value for colormap scaling. If None, uses data minimum.
@@ -1483,44 +1484,42 @@ class PointCloud:
         vmax : float, optional
             Maximum value for colormap scaling. If None, uses data maximum.
 
-        views : str or List[str], default ["lateral"]
-            Camera view(s): 'lateral', 'medial', 'dorsal', 'ventral', 'anterior',
-            'posterior', or multiple views like ['lateral', 'medial']. Also supports
-            preset layouts: '4_views', '6_views', '8_views' with optional orientation.
+        range_min : float, optional
+            Minimum value for the display range. If None, uses data minimum.
+
+        range_max : float, optional
+            Maximum value for the display range. If None, uses data maximum.
+
+        range_color : tuple, default (128, 128, 128, 255)
+            RGBA color for values outside the specified range.
+
+        views : str | list[str], optional
+            Camera views for the visualization. Can be a single view or a list of views.
+            If None, defaults to ["lateral"].
 
         hemi : str, default "lh"
-            Hemisphere to visualize: 'lh' (left) or 'rh' (right).
+            Hemisphere to visualize ("lh" for left hemisphere, "rh" for right hemisphere).
 
         use_opacity : bool, default True
-            Whether to use opacity settings from the tractogram overlays.
-
-        plot_style : str, default "tube"
-            Style for rendering streamlines: 'tube' or 'line'.
-
-        vis_percentage : float, default 100
-            Percentage of streamlines to visualize (0-100). Reduces number for
-            faster rendering if less than 100.
-
-        force_reduction : bool, default True
-            Whether to force reduction of streamlines when vis_percentage < 100.
+            Whether to use opacity in the visualization.
 
         notebook : bool, default False
-            Whether to display in Jupyter notebook. If False, opens interactive window.
+            Whether to render the plot in a Jupyter notebook.
 
         show_colorbar : bool, default False
-            Whether to display colorbar. Automatically determined if None.
+            Whether to display the colorbar.
 
         colorbar_title : str, optional
-            Title for the colorbar. Uses overlay name if None.
+            Title for the colorbar.
 
         colorbar_position : str, default "bottom"
-            Colorbar position: 'bottom', 'top', 'left', or 'right'.
+            Position of the colorbar ("bottom", "top", "left", "right").
 
         save_path : str, optional
-            Path to save plot as image. If None, displays interactively.
+            Path to save the rendered plot. If None, the plot is not saved.
 
-        config : str, Path or Dict, optional
-            Configuration for visualization settings. Can be a file path or dictionary.
+        config : str | Path | dict, optional
+            Configuration for the plotter. Can be a file path or a dictionary.
 
         Returns
         -------
@@ -1534,17 +1533,15 @@ class PointCloud:
 
         Examples
         --------
-        >>> tractogram.plot(overlay_name="fa")
-        >>> tractogram.plot(overlay_name="fa", cmap="hot", views="medial", show_colorbar=True)
+        >>> pointcloud.plot(maps="point_id")
+        >>> pointcloud.plot(maps="point_id", cmap="hot", views="medial", show_colorbar=True)
         """
-
-        # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
         if views is None:
             views = ["lateral"]
         dict_ctables = self.colortables
         if cmap is None:
-            if overlay_name in dict_ctables.keys():
+            if maps in dict_ctables.keys():
                 show_colorbar = False
 
             else:
@@ -1562,7 +1559,7 @@ class PointCloud:
             self,
             hemi_id=hemi,
             views=views,
-            map_names=overlay_name,
+            map_names=maps,
             colormaps=cmap,
             v_limits=(vmin, vmax),
             range_color=range_color,

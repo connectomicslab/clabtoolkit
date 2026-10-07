@@ -71,8 +71,8 @@ Main Functions
 
 Table Generation
 ~~~~~~~~~~~~~~~~
-- ``create_individual_freesurfer_table()``: Build a morphometry table for one subject
-- ``create_freesurfer_table()``: Build tables for many subjects in parallel
+- ``create_subject_stats_table()``: Build a morphometry table for one subject
+- ``create_cohort_stats_table()``: Build tables for many subjects in parallel
 - ``process_subject()``: Process a single subject
 
 Transforms and Coordinates
@@ -149,19 +149,19 @@ Working with a subject::
 Morphometry tables::
 
     from clabtoolkit.freesurfertools import (
-        create_individual_freesurfer_table,
-        create_freesurfer_table,
+        create_subject_stats_table,
+        create_cohort_stats_table,
     )
 
     # One subject
-    table = create_individual_freesurfer_table(
+    table = create_subject_stats_table(
         subj_id="sub-01",
         subjs_dir="/path/to/freesurfer/subjects",
         out_tab_file="/path/to/sub-01_morphometry.tsv"
     )
 
     # Many subjects, in parallel
-    create_freesurfer_table(
+    create_cohort_stats_table(
         out_folder="/path/to/output",
         fs_subject_dir="/path/to/freesurfer/subjects",
         max_workers=4

@@ -138,7 +138,7 @@ Visualization and saving::
     # Attach a colortable and render with an overlay
     tract.load_colortable("/path/to/lookup_table.lut", map_name="fa")
     tract.plot(
-        overlay_name="fa",
+        maps="fa",
         cmap="hot",
         views=["lateral"],
         plot_style="tube",

@@ -1915,7 +1915,7 @@ class Tractogram:
     ###################################################################################################
     def get_pointwise_colors(
         self,
-        overlay_name: str = "default",
+        map_name: str = "default",
         colormap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
@@ -1933,7 +1933,7 @@ class Tractogram:
 
         Parameters
         ----------
-        overlay_name : str, optional
+        map_name : str, optional
             Name of the overlay to visualize.
         colormap : str, optional
             Colormap to use for scalar overlays.
@@ -1959,12 +1959,12 @@ class Tractogram:
         pt_maps = map_list_dict["maps_per_point"] or []
         overlays = st_maps + pt_maps
 
-        if overlay_name not in overlays:
+        if map_name not in overlays:
             raise ValueError(
-                f"Overlay '{overlay_name}' not found. Available overlays: {', '.join(overlays)}"
+                f"Overlay '{map_name}' not found. Available overlays: {', '.join(overlays)}"
             )
 
-        is_streamline_map = overlay_name in st_maps
+        is_streamline_map = map_name in st_maps
 
         # Number of points per streamline always comes from the actual geometry,
         # never from the overlay itself (a per-streamline map has 1 entry per
@@ -1974,20 +1974,20 @@ class Tractogram:
 
         if is_streamline_map:
             # One value (or one row of values) per streamline.
-            values = np.asarray(self.data_per_streamline[overlay_name])
+            values = np.asarray(self.data_per_streamline[map_name])
             if values.ndim > 1:
                 values = values.reshape(len(self.tracts), -1)
                 if values.shape[1] == 1:
                     values = values.ravel()
             color_input = values  # one entry per streamline
         else:
-            data = self.data_per_point[overlay_name]
+            data = self.data_per_point[map_name]
             color_input = np.concatenate(data)  # one entry per point
 
         # --- Map values -> colors ---
-        if hasattr(self, "colortables") and overlay_name in self.colortables:
+        if hasattr(self, "colortables") and map_name in self.colortables:
             colors = cltcol.get_colors_from_colortable(
-                color_input, self.colortables[overlay_name]["color_table"]
+                color_input, self.colortables[map_name]["color_table"]
             )
         else:
             colors = cltcol.values2colors(
@@ -2957,7 +2957,7 @@ class Tractogram:
     ###############################################################################################
     def plot(
         self,
-        overlay_name: str = "default",
+        maps: str | list[str] = "default",
         cmap: str = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
@@ -2985,7 +2985,7 @@ class Tractogram:
 
         Parameters
         ----------
-        overlay_name : str, default "default"
+        maps : str or list[str], default "default"
             Name of the overlay to visualize from the tractogram's point data.
 
         cmap : str, optional
@@ -3046,11 +3046,11 @@ class Tractogram:
 
         Examples
         --------
-        >>> tractogram.plot(overlay_name="fa")
-        >>> tractogram.plot(overlay_name="fa", cmap="hot", views="medial", show_colorbar=True)
+        >>> tractogram.plot(maps="fa")
+        >>> tractogram.plot(maps="fa", cmap="hot", views="medial", show_colorbar=True)
         """
 
-        # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
+        # self.prepare_colors(maps=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
 
         if views is None:
             views = ["lateral"]
@@ -3089,7 +3089,7 @@ class Tractogram:
             obj2plot,
             hemi_id=hemi,
             views=views,
-            map_names=overlay_name,
+            map_names=maps,
             colormaps=cmap,
             v_limits=(vmin, vmax),
             range_color=range_color,
@@ -3313,7 +3313,7 @@ class Tractogram:
         >>> tract = Tractogram.simulate_tractogram('fa.nii.gz', n_bundles=2,
         ...                                        directions=[[1, 0, 0], [0, 1, 0]],
         ...                                        bundle_names=['left_right', 'front_back'])
-        >>> tract.plot(overlay_name='bundle_id')
+        >>> tract.plot(maps='bundle_id')
 
         >>> # Rough streamlines, as reconstructed from noisy diffusion data
         >>> tract = Tractogram.simulate_tractogram('fa.nii.gz', n_bundles=5, noise=0.8, seed=42)
