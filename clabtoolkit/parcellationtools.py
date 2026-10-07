@@ -579,12 +579,20 @@ class Parcellation:
 
         data = (nearest_seed + 1).reshape(dimensions).astype(np.int32)
 
-        return cls(
+        parc = cls(
             data,
             affine=affine,
             parc_id=f"simulated_{n_regions}regions",
             space_id="simulated",
         )
+
+        # Use the seed for the region colors too, so the whole simulation is reproducible
+        if len(parc.index) > 0:
+            parc.color = cltcol.create_distinguishable_colors(
+                len(parc.index), output_format="hex", random_seed=seed
+            )
+
+        return parc
 
     #####################################################################################################
     def get_space_id(self) -> str:
