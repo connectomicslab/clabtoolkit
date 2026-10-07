@@ -4500,11 +4500,17 @@ class Surface:
         views_orientation: str = "grid",
         hemi: str = "lh",
         notebook: bool = False,
+        smooth: bool = False,
+        smooth_iterations: int = 20,
+        show_edges: bool = False,
+        edge_color: tuple = (0, 0, 0, 255),
+        line_width: float = 0.5,
         show_colorbar: bool = None,
         colorbar_title: str | list[str] = None,
         colorbar_position: str = "bottom",
         opacity: float | list[float] = 1.0,
         save_path: str = None,
+        config: str | Path | dict = None,
     ):
         """
         Plot the surface with specified overlay and visualization parameters.
@@ -4567,6 +4573,10 @@ class Surface:
         save_path : str, optional
             Path to save plot as image. If None, displays interactively.
 
+        config : str, Path or dict, optional
+            Visualization configuration. Can be a path to a JSON file or a dictionary.
+            If None, the default configuration is loaded.
+
         Returns
         -------
         Plotter
@@ -4582,6 +4592,52 @@ class Surface:
         >>> surface.plot(maps="aparc")
         >>> surface.plot(maps="thickness", cmap="hot", views="medial", show_colorbar=True)
         """
+
+        # If the smooth_iterations parameter is not an integer, convert it to int
+        if not isinstance(smooth_iterations, int):
+            smooth_iterations = int(smooth_iterations)
+        if not isinstance(line_width, float):
+            line_width = float(line_width)
+
+        # self.prepare_colors(maps=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
+        from . import visualization_utils as visutils
+
+        # loading the configuration if None
+        if config is None:
+            # Loading the default configuration file
+            cwd = os.path.dirname(os.path.abspath(__file__))
+
+            # Default to the standard configuration file
+            def_config_file = os.path.join(cwd, "config", "viz_views.json")
+            config = visutils.load_configs(def_config_file)
+
+        # Detect if the radius is different from the configuration and update if necessary
+        def_smooth = config["objs_conf"]["surface"]["smooth"]
+        def_smooth_iterations = config["objs_conf"]["surface"]["smooth_iterations"]
+        def_show_edges = config["objs_conf"]["surface"]["show_edges"]
+        def_line_width = config["objs_conf"]["surface"]["line_width"]
+        def_edge_color = cltcol.harmonize_colors(
+            config["objs_conf"]["surface"]["edge_color"], output_format="hex"
+        )[0]
+        edge_color = cltcol.harmonize_colors(edge_color, output_format="hex")[0]
+
+        if def_smooth != smooth:
+            config["objs_conf"]["surface"]["smooth"] = smooth
+
+        if def_smooth_iterations != smooth_iterations:
+            config["objs_conf"]["surface"]["smooth_iterations"] = smooth_iterations
+
+        if def_show_edges != show_edges:
+            config["objs_conf"]["surface"]["show_edges"] = show_edges
+
+        if def_edge_color.lower() != edge_color.lower():
+            config["objs_conf"]["surface"]["edge_color"] = edge_color
+
+        if def_line_width != line_width:
+            config["objs_conf"]["surface"]["line_width"] = line_width
+
+        if config["objs_conf"]["surface"]["smooth"]:
+            pass
 
         # self.prepare_colors(overlay_name=maps, cmap=cmap, vmin=vmin, vmax=vmax)
 
@@ -4617,6 +4673,48 @@ class Surface:
             save_path=save_path,
             config_file=config,
         )
+
+    #################################################################################################
+    def smooth(
+        self,
+        smooth_iterations: int = 10,
+        pass_band: float = 0.1,
+        inplace: bool = True,
+    ) -> "Surface | None":
+        """
+        Apply Taubin smoothing to the surface mesh.
+
+        Parameters
+        ----------
+        smooth_iterations : int, default 10
+            Number of smoothing iterations.
+
+        pass_band : float, default 0.1
+            Pass band of the windowed-sinc filter. Lower values give stronger smoothing.
+
+        inplace : bool, default True
+            If True, smooth this surface and return None.
+            If False, leave this surface unchanged and return a smoothed copy.
+
+        Returns
+        -------
+        Surface or None
+            The smoothed copy if ``inplace=False``, otherwise None.
+
+        Examples
+        --------
+        >>> surf.smooth(smooth_iterations=20)                     # modifies surf
+        >>> smoothed = surf.smooth(smooth_iterations=20, inplace=False)  # surf unchanged
+        """
+        if smooth_iterations < 1:
+            raise ValueError("smooth_iterations must be a positive integer.")
+
+        target = self if inplace else copy.deepcopy(self)
+        target.mesh = target.mesh.smooth_taubin(
+            n_iter=smooth_iterations, pass_band=pass_band
+        )
+
+        return None if inplace else target
 
 
 #################################################################################################

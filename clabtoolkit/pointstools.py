@@ -1446,6 +1446,8 @@ class PointCloud:
         range_color: tuple = (128, 128, 128, 255),
         views: str | list[str] = None,
         hemi: str = "lh",
+        radius: float = 10,
+        as_spheres: bool = True,
         use_opacity: bool = True,
         notebook: bool = False,
         show_colorbar: bool = False,
@@ -1530,6 +1532,10 @@ class PointCloud:
         >>> pointcloud.plot(maps="point_id", cmap="hot", views="medial", show_colorbar=True)
         """
 
+        # If the radius is not floating point, convert it to float
+        if not isinstance(radius, float):
+            radius = float(radius)
+
         if views is None:
             views = ["lateral"]
         dict_ctables = self.colortables
@@ -1544,6 +1550,25 @@ class PointCloud:
             show_colorbar = True
 
         from . import visualizationtools as cltvis
+        from . import visualization_utils as visutils
+
+        # loading the configuration if None
+        if config is None:
+            # Loading the default configuration file
+            cwd = os.path.dirname(os.path.abspath(__file__))
+
+            # Default to the standard configuration file
+            def_config_file = os.path.join(cwd, "config", "viz_views.json")
+            config = visutils.load_configs(def_config_file)
+
+        # Detect if the radius is different from the configuration and update if necessary
+        def_as_spheres = config["objs_conf"]["points"]["spheres"]
+        def_radius = config["objs_conf"]["points"]["spheres_radius"]
+        if as_spheres != def_as_spheres:
+            config["objs_conf"]["points"]["spheres"] = as_spheres
+
+        if radius != def_radius:
+            config["objs_conf"]["points"]["spheres_radius"] = radius
 
         # Initialize the BrainPlotter
         plotter = cltvis.BrainPlotter()
@@ -1642,8 +1667,7 @@ def merge_pointclouds(
 
     # Load the point clouds supplied as files
     pointclouds = [
-        PointCloud.load(pc) if isinstance(pc, (str, Path)) else pc
-        for pc in pointclouds
+        PointCloud.load(pc) if isinstance(pc, (str, Path)) else pc for pc in pointclouds
     ]
     n_clouds = len(pointclouds)
 

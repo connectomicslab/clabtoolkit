@@ -2967,7 +2967,9 @@ class Tractogram:
         views: str | list[str] = None,
         hemi: str = "lh",
         use_opacity: bool = False,
-        plot_style: str = "tube",
+        as_tube: bool = True,
+        tube_sides: int = 8,
+        tube_radius: float = 0.1,
         vis_percentage: float = 100,
         force_reduction: bool = True,
         notebook: bool = False,
@@ -2975,6 +2977,7 @@ class Tractogram:
         colorbar_title: str = None,
         colorbar_position: str = "bottom",
         save_path: str = None,
+        config: str | Path | dict = None,
     ):
         """
         Plot the tractrogram with specified overlay and visualization parameters.
@@ -3050,7 +3053,35 @@ class Tractogram:
         >>> tractogram.plot(maps="fa", cmap="hot", views="medial", show_colorbar=True)
         """
 
+        # If the radius is not floating point, convert it to float
+        if not isinstance(tube_radius, float):
+            tube_radius = float(tube_radius)
+
         # self.prepare_colors(maps=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
+        from . import visualization_utils as visutils
+
+        # loading the configuration if None
+        if config is None:
+            # Loading the default configuration file
+            cwd = os.path.dirname(os.path.abspath(__file__))
+
+            # Default to the standard configuration file
+            def_config_file = os.path.join(cwd, "config", "viz_views.json")
+            config = visutils.load_configs(def_config_file)
+
+        # Detect if the radius is different from the configuration and update if necessary
+        def_as_tubes = config["objs_conf"]["tracts"]["tubes"]
+        def_radius = config["objs_conf"]["tracts"]["tube_radius"]
+        def_sides = config["objs_conf"]["tracts"]["tube_sides"]
+
+        if as_tube != def_as_tubes:
+            config["objs_conf"]["tracts"]["tubes"] = as_tube
+
+        if tube_radius != def_radius:
+            config["objs_conf"]["tracts"]["tube_radius"] = tube_radius
+
+        if tube_sides != def_sides:
+            config["objs_conf"]["tracts"]["tube_sides"] = tube_sides
 
         if views is None:
             views = ["lateral"]
@@ -3100,6 +3131,7 @@ class Tractogram:
             colorbar_titles=colorbar_title,
             colorbar_position=colorbar_position,
             save_path=save_path,
+            config_file=config,
         )
 
     ###############################################################################################
