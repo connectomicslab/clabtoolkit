@@ -1126,7 +1126,7 @@ class PointCloud:
             return target
 
     ###############################################################################################
-    def explore_pointcloud(self) -> None:
+    def get_info(self) -> None:
         """
         Display comprehensive information about the point cloud.
 
@@ -1156,7 +1156,7 @@ class PointCloud:
         --------
         >>> pc = PointCloud(points=np.random.rand(10000, 3))
         >>> pc.add_point_data(np.random.rand(10000), name="intensity")
-        >>> pc.explore_pointcloud()
+        >>> pc.get_info()
         ╔════════════════════════════════════════════════════════════════╗
         ║                    POINT CLOUD EXPLORATION                     ║
         ╠════════════════════════════════════════════════════════════════╣
@@ -1446,7 +1446,7 @@ class PointCloud:
         range_color: tuple = (128, 128, 128, 255),
         views: str | list[str] = None,
         hemi: str = "lh",
-        radius: float = 10,
+        radius: float = 10.0,
         as_spheres: bool = True,
         use_opacity: bool = True,
         notebook: bool = False,
@@ -1534,7 +1534,9 @@ class PointCloud:
 
         # If the radius is not floating point, convert it to float
         if not isinstance(radius, float):
+            # Convert the radius to float if it is not already with 2 decimal places
             radius = float(radius)
+            radius = round(radius, 2)
 
         if views is None:
             views = ["lateral"]
