@@ -5339,6 +5339,7 @@ class Parcellation:
         include_by_code: list | np.ndarray = None,
         include_by_name: list | str = None,
         include_global: bool = True,
+        add_bids_entities: bool = False,
         output_table: str | Path = None,
     ):
         """
@@ -5357,22 +5358,21 @@ class Parcellation:
         include_by_code : list or np.ndarray, optional
             Region codes to include in the analysis. If None, all regions are included.
             Useful for focusing on specific regions of interest.
-        include_by_name : list or str, optional
 
+        include_by_name : list or str, optional
             Region names to include in the analysis. If None, all regions are included.
             Example: ["Cortex", "Hippocampus"] to focus on specific structures.
 
-        add_bids_entities : bool, default=True
+        add_bids_entities : bool, default=False
             Whether to include BIDS entities as columns in the resulting DataFrame.
             This extracts subject, session, and other metadata from the filename.
-
-        region_prefix : str, default="supra-side"
-            Prefix to use for region names when they cannot be determined from the parcellation object.
-            The prefix will be combined with the region index number.
 
         include_global : bool, default=True
             Whether to include a the total volume in the output table.
             If True, adds a row for the total volume calculated from the parcellation.
+
+        output_table : str or Path, optional
+            Path to save the resulting volume table. If None, the table is not saved to disk.
 
         Examples
         --------
@@ -5391,6 +5391,7 @@ class Parcellation:
             include_by_name=include_by_name,
             include_global=include_global,
             output_table=output_table,
+            add_bids_entities=add_bids_entities,
         )
 
         return volume_table
