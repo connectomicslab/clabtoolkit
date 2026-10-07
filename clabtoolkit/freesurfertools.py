@@ -2623,265 +2623,139 @@ class AnnotParcellation:
         hemi: str = None,
         cont_tech: str = "local",
         cont_image: str | Path = None,
-    ):
+    ) -> str:
         """
-        Convert FreeSurfer annotation files to GCS (Gaussian Classifier Surface) files.
+        Train a FreeSurfer GCS (Gaussian Classifier Surface) atlas from this annotation.
 
-        This method creates a trained Gaussian classifier from an existing manual
-        or semi-manual parcellation. The resulting GCS file can be applied to new
-        subjects to automatically generate parcellations with the same regional
-        definitions and boundaries as the training annotation.
+        The resulting GCS file can be applied to new subjects with :meth:`gcs2annot`
+        to generate parcellations with the same regions.
 
         Parameters
         ----------
         gcs_file : str or Path, optional
-            Path for the output GCS classifier file. If None, the file is saved
-            in the same directory as the annotation file with the extension
-            changed from .annot to .gcs. Default is None.
+            Output GCS file. If None, it is written next to the annotation file with
+            the extension changed from .annot to .gcs.
 
         freesurfer_dir : str or Path, optional
-            Path to the FreeSurfer subjects directory containing the training
-            subject data. If None, uses the SUBJECTS_DIR environment variable.
-            The directory will be created if it doesn't exist. Default is None.
+            FreeSurfer subjects directory containing the training subject. If None,
+            the SUBJECTS_DIR environment variable is used.
 
-        fssubj_id : str, required
-            Subject ID of the FreeSurfer subject to use for training the classifier.
-            This subject must have the required surface files (sphere.reg) and
-            should be the same subject from which the annotation was derived.
-            No default value - must be provided.
+        fssubj_id : str
+            ID of the FreeSurfer subject used for training. It must contain
+            ``surf/<hemi>.sphere.reg``. Required.
 
-        hemi : str, optional
-            Hemisphere specification ('lh' or 'rh'). If None, the hemisphere is
-            automatically detected from the annotation filename. Default is None.
+        hemi : {'lh', 'rh'}, optional
+            Hemisphere. If None, it is taken from the annotation (``self.hemi``).
 
         cont_tech : str, optional
-            Container technology for running FreeSurfer commands. Options include
-            'local' (run directly), 'singularity', 'docker', or other supported
-            containerization methods. Default is 'local'.
+            Container technology ('local', 'singularity', 'docker'). Default 'local'.
 
         cont_image : str or Path, optional
-            Container image specification when using containerized execution.
-            Required when cont_tech is not 'local'. Should specify the FreeSurfer
-            container image (e.g., 'freesurfer/freesurfer:7.2.0'). Default is None.
+            Container image, required when ``cont_tech`` is not 'local'.
 
         Returns
         -------
-        gcs_name : str
-            Filename (not full path) of the created GCS classifier file.
+        gcs_file : str
+            Full path of the created GCS file.
 
         Raises
         ------
         ValueError
-            If SUBJECTS_DIR environment variable is not set and freesurfer_dir
-            is not provided.
-
-        ValueError
-            If fssubj_id is not provided (required parameter).
-
-        ValueError
-            If the FreeSurfer subject directory does not exist.
-
-        ValueError
-            If the required sphere.reg file is not found in the subject directory.
-
-        ValueError
-            If the hemisphere cannot be determined from the filename and is not
-            provided as a parameter.
+            If the subjects directory, the subject, its sphere.reg file, the
+            hemisphere or the annotation file cannot be resolved.
+        RuntimeError
+            If mris_ca_train fails or does not create the GCS file.
 
         Notes
         -----
-        This method uses FreeSurfer's `mris_ca_train` command to create the GCS
-        classifier. The process involves:
+        SUBJECTS_DIR is passed only to the mris_ca_train process. The
+        environment of the Python session is not modified.
 
-        1. **Color table creation**: Generates a temporary .ctab file with region
-        names and RGB color values from the annotation.
+        The command run is::
 
-        2. **Classifier training**: Uses spherical surface registration and the
-        annotation labels to train Gaussian classifiers for each region.
-
-        3. **Model output**: Creates a .gcs file containing the trained statistical
-        models that can be applied to new subjects.
-
-        The command structure is:
-
-        .. code-block:: bash
-
-            mris_ca_train -n 2 -t color_table.ctab hemisphere sphere.reg \\
-                        annotation.annot subject_id output.gcs
-
-        Required FreeSurfer files for the training subject:
-
-        - **sphere.reg**: Spherical surface registration for spatial normalization
-        - **Proper directory structure**: Standard FreeSurfer subject organization
-
-        The resulting GCS file can be used with the `gcs2annot` method to apply
-        the same parcellation scheme to new subjects automatically.
+            mris_ca_train -n 2 -t <ctab> <hemi> sphere.reg <annot> <subject> <gcs>
 
         Examples
         --------
-        Basic GCS creation with required subject ID:
-
-        >>> # Train classifier from manual parcellation
-        >>> annot = Annotation('/data/sub001/label/lh.manual.annot')
-        >>> gcs_name = AnnotParcellation.annot2gcs(fssubj_id='sub001')
-        >>> print(f"Created classifier: {gcs_name}")
-
-        Specify custom output location:
-
-        >>> # Save GCS file to specific location
-        >>> output_file = '/atlases/custom_parcellation.gcs'
-        >>> gcs_name = AnnotParcellation.annot2gcs(
-        ...     gcs_file=output_file,
-        ...     fssubj_id='fsaverage',
-        ...     freesurfer_dir='/data/freesurfer'
+        >>> annot_parc = AnnotParcellation('/data/subjects/sub-01/label/lh.manual.annot')
+        >>> gcs_file = annot_parc.annot2gcs(
+        ...     gcs_file='/atlases/lh.manual.gcs',
+        ...     freesurfer_dir='/data/subjects',
+        ...     fssubj_id='sub-01',
         ... )
-
-        Create classifier from template subject:
-
-        >>> # Use fsaverage as training template
-        >>> annot = Annotation('/templates/fsaverage/label/rh.custom.annot')
-        >>> gcs_name = AnnotParcellation.annot2gcs(
-        ...     fssubj_id='fsaverage',
-        ...     hemi='rh',
-        ...     freesurfer_dir='/usr/local/freesurfer/subjects'
-        ... )
-
-        Using Docker for training:
-
-        >>> # Train classifier in container environment
-        >>> gcs_name = AnnotParcellation.annot2gcs(
-        ...     fssubj_id='training_subject',
-        ...     cont_tech='docker',
-        ...     cont_image='freesurfer/freesurfer:7.2.0'
-        ... )
-
-        Complete workflow - train and apply:
-
-        >>> # Step 1: Create GCS from manual annotation
-        >>> manual_annot = AnnotParcellation('/manual/lh.expert_labels.annot')
-        >>> gcs_file = '/classifiers/expert_parcellation.gcs'
-        >>>
-        >>> gcs_name = manual_annot.annot2gcs(
-        ...     gcs_file=gcs_file,
-        ...     fssubj_id='template_subject'
-        ... )
-        >>>
-        >>> # Step 2: Apply to new subjects
-        >>> for subject in ['sub002', 'sub003', 'sub004']:
-        ...     output_annot = f'/results/{subject}/lh.expert_auto.annot'
-        ...     AnnotParcellation.gcs2annot(
-        ...         gcs_file=gcs_file,
-        ...         annot_file=output_annot,
-        ...         ref_id=subject
-        ...     )
-
-        Quality control after training:
-
-        >>> # Verify the trained classifier works
-        >>> test_output = '/tmp/test_application.annot'
-        >>> AnnotParcellation.gcs2annot(
-        ...     gcs_file='/atlases/new_classifier.gcs',
-        ...     annot_file=test_output,
-        ...     ref_id='fsaverage'
-        ... )
-        >>>
-        >>> # Compare with original
-        >>> original = AnnotParcellation('/original/annotation.annot')
-        >>> test_result = AnnotParcellation(test_output)
-        >>> # Implement comparison logic...
 
         See Also
         --------
-        gcs2annot : Apply GCS classifiers to generate annotations
-        mris_ca_train : FreeSurfer command for training surface classifiers
-        export_to_tsv : Export parcellation metadata for analysis
+        gcs2annot : Apply a GCS classifier to generate an annotation.
         """
 
-        if gcs_file is None:
-            gcs_name = self.name.replace(".annot", ".gcs")
-
-            # Default the output folder to the annotation's own directory.
-            gcs_folder = self.path
-
-            gcs_file = os.path.join(gcs_folder, gcs_name)
-
-        else:
-            if isinstance(gcs_file, Path):
-                gcs_file = str(gcs_file)
-
-            gcs_name = os.path.basename(gcs_file)
-            gcs_folder = os.path.dirname(gcs_file)
-
-        if not os.path.exists(gcs_folder):
-            os.makedirs(gcs_folder)
-
-        # Read the colors from annot
-        reg_colors = self.regtable[:, 0:3]
-
-        # Create the lookup table for the right hemisphere
-        luttable = []
-        for roi_pos, roi_name in enumerate(self.regnames):
-
-            luttable.append(
-                f"{roi_pos + 1:<4} {roi_name:<40} {reg_colors[roi_pos, 0]:>3} {reg_colors[roi_pos, 1]:>3} {reg_colors[roi_pos, 2]:>3} {0:>3}"
-            )
-
-        # Set the FreeSurfer directory
-        if freesurfer_dir is not None:
-            if isinstance(freesurfer_dir, Path):
-                freesurfer_dir = str(freesurfer_dir)
-
-            if not os.path.isdir(freesurfer_dir):
-
-                # Create the directory if it does not exist
-                freesurfer_dir = Path(freesurfer_dir)
-                freesurfer_dir.mkdir(parents=True, exist_ok=True)
-                os.environ["SUBJECTS_DIR"] = str(freesurfer_dir)
-
-        else:
-            if "SUBJECTS_DIR" not in os.environ:
+        # ── 1. Resolve the subjects directory, the subject and the hemisphere ────
+        if freesurfer_dir is None:
+            freesurfer_dir = os.environ.get("SUBJECTS_DIR")
+            if not freesurfer_dir:
                 raise ValueError(
-                    "The FreeSurfer directory must be set in the environment variables or passed as an argument"
+                    "The FreeSurfer subjects directory must be passed as freesurfer_dir "
+                    "or set in the SUBJECTS_DIR environment variable."
                 )
-            else:
-                freesurfer_dir = os.environ["SUBJECTS_DIR"]
+        freesurfer_dir = os.path.abspath(str(freesurfer_dir))
 
-                if not os.path.isdir(freesurfer_dir):
-
-                    # Create the directory if it does not exist
-                    freesurfer_dir = Path(freesurfer_dir)
-                    freesurfer_dir.mkdir(parents=True, exist_ok=True)
-
-        # Set the FreeSurfer subject id
         if fssubj_id is None:
-            raise ValueError("Please supply a valid subject ID.")
+            raise ValueError("Please supply a valid subject ID (fssubj_id).")
 
-        # If the freesurfer subject directory does not exist, raise an error
-        if not os.path.isdir(os.path.join(freesurfer_dir, fssubj_id)):
+        subject_dir = os.path.join(freesurfer_dir, fssubj_id)
+        if not os.path.isdir(subject_dir):
             raise ValueError(
-                f"The FreeSurfer subject directory for {fssubj_id} does not exist"
+                f"The FreeSurfer subject directory does not exist: {subject_dir}"
             )
 
-        if not os.path.isfile(
-            os.path.join(freesurfer_dir, fssubj_id, "surf", "sphere.reg")
-        ):
-            raise ValueError(
-                f"The FreeSurfer subject directory for {fssubj_id} does not contain the sphere.reg file"
-            )
-
-        # Save the lookup table for the left hemisphere
-        ctab_file = os.path.join(gcs_folder, self.name + ".ctab")
-        with open(ctab_file, "w") as colorLUT_f:
-            colorLUT_f.write("\n".join(luttable))
-
-        # Detecting the hemisphere
         if hemi is None:
             hemi = self.hemi
-            if hemi is None:
-                raise ValueError(
-                    "The hemisphere could not be extracted from the annot filename. Please provide it as an argument"
-                )
+        if hemi not in ("lh", "rh"):
+            raise ValueError(
+                "The hemisphere could not be determined from the annotation. "
+                "Please provide hemi='lh' or hemi='rh'."
+            )
 
+        sphere_reg = os.path.join(subject_dir, "surf", f"{hemi}.sphere.reg")
+        if not os.path.isfile(sphere_reg):
+            raise ValueError(f"The sphere.reg file does not exist: {sphere_reg}")
+
+        if self.filename is None or not os.path.isfile(self.filename):
+            raise ValueError(
+                "The annotation must exist on disk to train a GCS. "
+                "Save it first with save_annotation()."
+            )
+        annot_file = os.path.abspath(self.filename)
+
+        # ── 2. Resolve the output file ───────────────────────────────────────────
+        if gcs_file is None:
+            base = os.path.basename(annot_file)
+            base = (
+                base[: -len(".annot")]
+                if base.endswith(".annot")
+                else os.path.splitext(base)[0]
+            )
+            gcs_file = os.path.join(os.path.dirname(annot_file), base + ".gcs")
+        gcs_file = os.path.abspath(str(gcs_file))
+
+        gcs_folder = os.path.dirname(gcs_file)
+        os.makedirs(gcs_folder, exist_ok=True)
+
+        # ── 3. Write the color table used by mris_ca_train ───────────────────────
+        reg_colors = self.regtable[:, 0:3].astype(int)
+        luttable = [
+            f"{pos + 1:<4} {name:<40} {reg_colors[pos, 0]:>3} {reg_colors[pos, 1]:>3} "
+            f"{reg_colors[pos, 2]:>3} {0:>3}"
+            for pos, name in enumerate(self.regnames)
+        ]
+
+        ctab_file = os.path.join(
+            gcs_folder, os.path.basename(gcs_file).replace(".gcs", "") + ".ctab"
+        )
+        with open(ctab_file, "w") as colorLUT_f:
+            colorLUT_f.write("\n".join(luttable) + "\n")
+
+        # ── 4. Run mris_ca_train with SUBJECTS_DIR set for this process only ─────
         cmd_bashargs = [
             "mris_ca_train",
             "-n",
@@ -2890,22 +2764,35 @@ class AnnotParcellation:
             ctab_file,
             hemi,
             "sphere.reg",
-            self.filename,
+            annot_file,
             fssubj_id,
             gcs_file,
         ]
-
         cmd_cont = cltmisc.generate_container_command(
             cmd_bashargs, cont_tech, cont_image
-        )  # Generating container command
-        subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, text=True
-        )  # Running container command
+        )
 
-        # Delete the ctab file
-        os.remove(ctab_file)
+        env = os.environ.copy()
+        env["SUBJECTS_DIR"] = freesurfer_dir
 
-        return gcs_name
+        try:
+            result = subprocess.run(
+                cmd_cont,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        finally:
+            if os.path.isfile(ctab_file):
+                os.remove(ctab_file)
+
+        if result.returncode != 0 or not os.path.isfile(gcs_file):
+            raise RuntimeError(
+                f"mris_ca_train failed (exit code {result.returncode}).\n{result.stdout}"
+            )
+
+        return gcs_file
 
     ####################################################################################################
     def group_into_lobes(
