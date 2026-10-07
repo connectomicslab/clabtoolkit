@@ -583,7 +583,7 @@ class Surface:
         >>> custom = Surface.simulate_surface(pv.Superquadric(), seed=1)
         >>>
         >>> # Visualize the result
-        >>> surf.plot(overlay_name='thickness', cmap='inferno')  # doctest: +SKIP
+        >>> surf.plot(maps='thickness', cmap='inferno')  # doctest: +SKIP
         """
 
         if subdivide is None:
@@ -1909,7 +1909,7 @@ class Surface:
                 raise
 
     ##############################################################################################
-    def export_overlay(
+    def export_map(
         self,
         overlay_name: str,
         filename: str | Path,
@@ -1980,18 +1980,18 @@ class Surface:
         >>> surf = Surface.simulate_surface('icosphere', nsub=5, seed=0)
         >>>
         >>> # No colortable: written as a FreeSurfer map
-        >>> surf.export_overlay('thickness', '/tmp/lh.thickness')
+        >>> surf.export_map('thickness', '/tmp/lh.thickness')
         '/tmp/lh.thickness'
         >>>
         >>> # Same map in other formats
-        >>> surf.export_overlay('thickness', '/tmp/lh.thickness.mgz')  # doctest: +SKIP
-        >>> surf.export_overlay('thickness', '/tmp/lh.thickness.shape.gii')  # doctest: +SKIP
+        >>> surf.export_map('thickness', '/tmp/lh.thickness.mgz')  # doctest: +SKIP
+        >>> surf.export_map('thickness', '/tmp/lh.thickness.shape.gii')  # doctest: +SKIP
         >>>
         >>> # With a colortable: written as an annotation
         >>> from clabtoolkit.freesurfertools import AnnotParcellation
         >>> parc = AnnotParcellation.simulate_annotation(surf, n_regions=8, seed=0)
         >>> surf.load_annotation(parc, 'simulated')
-        >>> surf.export_overlay('simulated', '/tmp/lh.simulated')
+        >>> surf.export_map('simulated', '/tmp/lh.simulated')
         '/tmp/lh.simulated.annot'
         """
 
@@ -2182,7 +2182,7 @@ class Surface:
         >>> _ = surf.simulate_map('my_effect_size', set_active=True, seed=3)
         >>>
         >>> # Plot the simulated map
-        >>> surf.plot(overlay_name='thickness', cmap='inferno')  # doctest: +SKIP
+        >>> surf.plot(maps='thickness', cmap='inferno')  # doctest: +SKIP
         """
 
         if not self.is_loaded():
@@ -4488,8 +4488,8 @@ class Surface:
     ###############################################################################################
     def plot(
         self,
-        overlay_name: str = None,
-        cmap: str = "viridis",
+        maps: str | list[str] = None,
+        cmap: str | list[str] = "viridis",
         vmin: np.float64 = None,
         vmax: np.float64 = None,
         range_min: np.float64 = None,
@@ -4501,8 +4501,9 @@ class Surface:
         hemi: str = "lh",
         notebook: bool = False,
         show_colorbar: bool = None,
-        colorbar_title: str = None,
+        colorbar_title: str | list[str] = None,
         colorbar_position: str = "bottom",
+        opacity: float | list[float] = 1.0,
         save_path: str = None,
     ):
         """
@@ -4514,8 +4515,8 @@ class Surface:
 
         Parameters
         ----------
-        overlay_name : str, default "default"
-            Name of the overlay to visualize from the surface's point data.
+        maps : str | list[str], default "default"
+            Name of the maps to visualize from the surface's point data.
 
         cmap : str, optional
             Colormap for scalar data. If None, uses parcellation colors for
@@ -4578,21 +4579,21 @@ class Surface:
 
         Examples
         --------
-        >>> surface.plot(overlay_name="aparc")
-        >>> surface.plot(overlay_name="thickness", cmap="hot", views="medial", show_colorbar=True)
+        >>> surface.plot(maps="aparc")
+        >>> surface.plot(maps="thickness", cmap="hot", views="medial", show_colorbar=True)
         """
 
-        # self.prepare_colors(overlay_name=overlay_name, cmap=cmap, vmin=vmin, vmax=vmax)
+        # self.prepare_colors(overlay_name=maps, cmap=cmap, vmin=vmin, vmax=vmax)
 
         if views is None:
             views = ["lateral"]
-        if overlay_name is None:
-            overlay_name = self.active_scalar
+        if maps is None:
+            maps = self.active_scalar
 
         # Only decide for the user when the flag was not supplied
         if show_colorbar is None:
             dict_ctables = self.colortables
-            show_colorbar = not (cmap is None and overlay_name in dict_ctables)
+            show_colorbar = not (cmap is None and maps in dict_ctables)
 
         from . import visualizationtools as cltvis
 
@@ -4603,7 +4604,7 @@ class Surface:
             hemi_id=hemi,
             views=views,
             views_orientation=views_orientation,
-            map_names=overlay_name,
+            map_names=maps,
             colormaps=cmap,
             v_limits=(vmin, vmax),
             use_opacity=use_opacity,
