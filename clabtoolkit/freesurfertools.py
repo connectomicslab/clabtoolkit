@@ -5203,7 +5203,7 @@ class FreeSurferSubject:
         return surf_file
 
     ####################################################################################################
-    def get_vertexwise_map(self, hemi: str, map_type: str):
+    def get_map(self, hemi: str, map_type: str):
         """
         Get the file path for a specific vertex-wise morphometric map.
 
@@ -5234,11 +5234,11 @@ class FreeSurferSubject:
         Examples
         --------
         >>> # Get left hemisphere cortical thickness
-        >>> thickness_map = subject.get_vertexwise_map('lh', 'thickness')
+        >>> thickness_map = subject.get_map('lh', 'thickness')
         >>> print(thickness_map)
         >>>
         >>> # Get right hemisphere curvature
-        >>> curv_map = subject.get_vertexwise_map('rh', 'curv')
+        >>> curv_map = subject.get_map('rh', 'curv')
         """
 
         if hemi not in ["lh", "rh"]:
