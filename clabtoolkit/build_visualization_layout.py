@@ -597,12 +597,8 @@ def grid_multi_map_layout(
 
                     # Extract map properties
                     maps_dict[maps_names[map_idx]]
-                    colormap = charac_dict[maps_names[map_idx]]["individual"][
-                        "colormap"
-                    ]
-                    colorbar_title = charac_dict[maps_names[map_idx]]["individual"][
-                        "colorbar_title"
-                    ]
+                    colormap = charac_dict[maps_names[map_idx]]["colormap"]
+                    colorbar_title = charac_dict[maps_names[map_idx]]["colorbar_title"]
 
                     cb_dict = {}
                     cb_dict["position"] = (pos[0] * 2 + 1, pos[1])
