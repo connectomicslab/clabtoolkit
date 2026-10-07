@@ -1855,6 +1855,161 @@ class AnnotParcellation:
         return vertex_wise_values
 
     ####################################################################################################
+    def complete_table(
+        self,
+        prefix: str = None,
+        inplace: bool = True,
+        seed: int = None,
+        verbose: bool = False,
+    ) -> "AnnotParcellation":
+        """
+        Add a color table entry for every vertex code that is missing from the table.
+
+        Vertex codes that have no entry in the region table (for example -1 or 0 for
+        unlabeled vertices, or codes left behind after editing a parcellation) make
+        the annotation inconsistent: those vertices have no name and no color, and
+        they are lost when the annotation is saved. This method gives each missing
+        code its own region:
+
+        - If only one code is missing, it gets the color (250, 250, 250).
+        - If several codes are missing, distinguishable colors are generated.
+
+        In both cases the new colors are guaranteed not to be in the original table
+        and to be different from each other. The new regions are named
+        ``<prefix>-unknown-<number>`` (or ``unknown-<number>`` without prefix).
+
+        Because FreeSurfer identifies a region by the packed RGB value of its color
+        (``R + G*256 + B*65536``), the vertices of each missing code are relabeled
+        with the packed value of their new color.
+
+        Parameters
+        ----------
+        prefix : str, optional
+            Prefix for the names of the new regions (e.g. 'ctx-lh'). If None, the
+            names are 'unknown-1', 'unknown-2', ...
+
+        inplace : bool, optional
+            If True (default), the object is modified and returned. If False, a
+            completed copy is returned and the object is left untouched.
+
+        seed : int, optional
+            Seed used to generate the colors when several codes are missing, for
+            reproducible results.
+
+        verbose : bool, optional
+            If True, print the codes that were added to the table. Default is False.
+
+        Returns
+        -------
+        AnnotParcellation
+            The completed parcellation (``self`` when ``inplace`` is True).
+
+        Raises
+        ------
+        ValueError
+            If the object does not contain parcellation data.
+
+        Examples
+        --------
+        >>> annot_parc = AnnotParcellation('/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot')
+        >>> annot_parc.codes[:10] = -1                      # simulate unlabeled vertices
+        >>> annot_parc.complete_table(prefix='ctx-lh', verbose=True)
+        Added 1 missing code(s) to the color table:
+          -1 -> ctx-lh-unknown-1  (250, 250, 250)  code 16448250
+        >>> annot_parc.get_info(verbose=False)['labels_not_in_table']
+        []
+        """
+
+        if not self.is_loaded() or self.regtable is None:
+            raise ValueError("The AnnotParcellation object does not contain any data.")
+
+        annot_obj = self if inplace else copy.deepcopy(self)
+
+        codes = np.asarray(annot_obj.codes)
+        regtable = np.asarray(annot_obj.regtable)
+        regnames = list(annot_obj.regnames) if annot_obj.regnames is not None else []
+
+        # ── 1. Detect the vertex codes that are not in the table ─────────────────
+        table_codes = regtable[:, 4].astype(np.int64)
+        vertex_codes = np.unique(codes).astype(np.int64)
+        missing_codes = np.setdiff1d(vertex_codes, table_codes)
+        n_missing = len(missing_codes)
+
+        if n_missing == 0:
+            if verbose:
+                print("All vertex codes are already in the color table.")
+            return annot_obj
+
+        # ── 2. Choose the new colors ─────────────────────────────────────────────
+        def _pack(rgb):
+            return int(rgb[0]) + int(rgb[1]) * 256 + int(rgb[2]) * 65536
+
+        used_codes = set(table_codes.tolist())
+
+        if n_missing == 1:
+            candidates = np.array([[250, 250, 250]], dtype=np.int64)
+        else:
+            gen_table = cltcol.colors_to_table(
+                cltcol.create_distinguishable_colors(n_missing, random_seed=seed),
+                alpha_values=0,
+            )
+            candidates = np.asarray(gen_table)[:, :3].astype(np.int64)
+
+        # Make every color unique, both against the original table and among the
+        # new ones: on a collision, nudge the color until its packed code is free.
+        # The vertex codes being replaced count as used too: a new region whose
+        # code equals another missing code would merge two regions.
+        used_codes.update(missing_codes.tolist())
+        rng = np.random.default_rng(seed)
+        new_rgbs = []
+        for rgb in candidates:
+            rgb = np.clip(rgb, 0, 255)
+            while _pack(rgb) in used_codes:
+                step = rng.integers(-3, 4, size=3)
+                if not step.any():
+                    step[rng.integers(3)] = 1
+                rgb = np.clip(rgb + step, 0, 255)
+            used_codes.add(_pack(rgb))
+            new_rgbs.append(rgb)
+
+        # ── 3. Names: <prefix>-unknown-<number>, never clashing with old names ───
+        existing_names = set(regnames)
+        new_names = []
+        number = 1
+        for _ in range(n_missing):
+            while True:
+                base = f"unknown_{number}"
+                name = f"{prefix}-{base}" if prefix else base
+                number += 1
+                if name not in existing_names:
+                    break
+            new_names.append(name)
+            existing_names.add(name)
+
+        # ── 4. Relabel the vertices and extend the table ─────────────────────────
+        new_codes = codes.astype(np.int64, copy=True)
+        new_rows = []
+        for old_code, rgb in zip(missing_codes, new_rgbs):
+            packed = _pack(rgb)
+            new_codes[codes == old_code] = packed
+            new_rows.append([rgb[0], rgb[1], rgb[2], 0, packed])
+
+        annot_obj.codes = new_codes.astype(np.int32)
+        annot_obj.regtable = np.vstack(
+            [regtable.astype(np.int32), np.array(new_rows, dtype=np.int32)]
+        )
+        annot_obj.regnames = regnames + new_names
+
+        if verbose:
+            print(f"Added {n_missing} missing code(s) to the color table:")
+            for old_code, name, row in zip(missing_codes, new_names, new_rows):
+                print(
+                    f"  {old_code} -> {name}  ({row[0]}, {row[1]}, {row[2]})  code {row[4]}"
+                )
+
+        return annot_obj
+
+    ####################################################################################################
     @staticmethod
     def gii2annot(
         gii_file: str,
