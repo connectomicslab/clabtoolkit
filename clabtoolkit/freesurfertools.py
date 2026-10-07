@@ -16,6 +16,7 @@ from pathlib import Path
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import pyvista as pv
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
@@ -502,7 +503,7 @@ class AnnotParcellation:
     @classmethod
     def simulate_annotation(
         cls,
-        surface,
+        surface=None,
         n_regions: int = 10,
         region_names: list[str] = None,
         colors: list | np.ndarray = None,
@@ -621,17 +622,24 @@ class AnnotParcellation:
         # ------------------------------------------------------------------ #
         # Resolve the surface
         # ------------------------------------------------------------------ #
-        if isinstance(surface, (str, Path)):
-            surf = cltsurf.Surface(str(surface))
-
-        elif isinstance(surface, cltsurf.Surface):
-            surf = surface
+        if surface is None:
+            surf = cltsurf.Surface.simulate_surface()
 
         else:
-            raise ValueError(
-                "surface must be a path to a surface file or a Surface object, "
-                f"got {type(surface).__name__}"
-            )
+            if isinstance(surface, (str, Path)):
+                surf = cltsurf.Surface(str(surface))
+
+            elif isinstance(surface, cltsurf.Surface):
+                surf = surface
+
+            elif isinstance(surface, pv.PolyData):
+                surf = cltsurf.Surface(surface)
+
+            else:
+                raise ValueError(
+                    "surface must be a path to a surface file or a Surface object, "
+                    f"got {type(surface).__name__}"
+                )
 
         if not surf.is_loaded():
             raise ValueError("The supplied surface does not contain any geometry")
@@ -2670,219 +2678,164 @@ class AnnotParcellation:
         out_annot: str | Path = None,
         ctxprefix: str = None,
         overwrite: bool = False,
-    ):
+        unknown_color: str = "#fafafa",
+        inplace: bool = False,
+    ) -> "AnnotParcellation":
         """
-        Group parcellation regions into anatomical lobes for coarser-grained analysis.
-
-        This method combines fine-grained brain regions into larger anatomical units
-        (lobes) based on predefined or custom grouping schemes. This is useful for
-        reducing dimensionality in analyses, creating simplified visualizations,
-        or studying brain function at the lobar level.
+        Group parcellation regions into anatomical lobes.
 
         Parameters
         ----------
         grouping : str, optional
-            Grouping method or scheme name to use for lobar organization. Built-in
-            options include 'desikan' for Desikan-Killiany atlas grouping. Custom
-            groupings can be specified when providing a lobes_json file.
-            Default is 'desikan'.
+            Name of the grouping scheme inside the JSON file (e.g. 'desikan',
+            'desikan_w_cingulate'). Ignored if the JSON file directly contains a
+            'lobes' key. Default is 'desikan'.
 
         lobes_json : str or Path, optional
-            Path to a JSON file containing custom lobe definitions and region
-            mappings. If None, uses the default grouping scheme called lobes.json.
-            This file is located in the clabtoolkit package directory
-            (e.g., clabtoolkit/config/lobes.json).
-
-            Default is None.
+            JSON file with the lobe definitions. If None, the default lobes.json
+            shipped with clabtoolkit is used.
 
         out_annot : str or Path, optional
-            Path where the new lobar annotation file should be saved. If None,
-            the parcellation is only returned as an object without saving to disk.
-            The output directory will be created if it doesn't exist. Default is None.
+            If provided, the lobar parcellation is also saved to this .annot file.
 
         ctxprefix : str, optional
-            Prefix string to prepend to the lobe names. This is useful for
-            distinguishing between hemispheres (e.g., 'lh_' or 'rh_') or different
-            analysis contexts. If None, no prefix is added. Default is None.
+            Prefix added to the lobe names (e.g. 'ctx-lh-').
 
         overwrite : bool, optional
-            Whether to overwrite existing output files. If False and the output
-            file already exists, an error will be raised. If True, existing files
-            will be overwritten without warning. Default is False.
+            Overwrite out_annot if it already exists. Default is False.
+
+        unknown_color : str, optional
+            Hexadecimal color for vertices not assigned to any lobe. Default '#fafafa'.
+
+        inplace : bool, optional
+            If True, the current object is modified and returned. If False (default),
+            a new AnnotParcellation is returned and the original is left untouched.
 
         Returns
         -------
-        lobar_parcellation : AnnotParcellation
-            New AnnotParcellation object containing the lobar parcellation where original
-            regions have been grouped into larger anatomical units. The object
-            contains updated region names, codes, and color tables corresponding
-            to the lobes.
+        AnnotParcellation
+            The lobar parcellation.
 
         Raises
         ------
-        FileExistsError
-            If the output annotation file already exists and overwrite=False.
-
-        FileNotFoundError
-            If the specified lobes_json file does not exist.
-
         ValueError
-            If the JSON file format is invalid or missing required keys.
-
-        KeyError
-            If regions specified in the JSON file are not found in the current
-            parcellation.
+            If the grouping does not exist in the JSON file or lobe colors collide.
+        FileExistsError
+            If out_annot exists and overwrite is False.
 
         Notes
         -----
-        The grouping process works as follows:
-
-        1. **Region mapping**: Original parcellation regions are mapped to their
-        corresponding lobes based on the grouping scheme.
-
-        2. **Label reassignment**: Vertex labels are updated to reflect the new
-        lobar assignments rather than fine-grained regional assignments.
-
-        3. **Color assignment**: New color table is created for the lobes, either
-        from the JSON file specification or using default colors.
-
-        4. **Metadata update**: Region names and identifiers are updated to
-        reflect the lobar structure.
-
-        The method is particularly useful for:
-
-        - Simplifying complex parcellations for visualization
-        - Reducing multiple comparisons in statistical analyses
-        - Creating anatomically meaningful ROI groups
-        - Cross-study comparisons at the lobar level
-        - Educational and clinical applications
+        If a region is listed under several lobes, the last lobe in the JSON file
+        wins and a warning is issued.
 
         Examples
         --------
-        Basic lobar grouping with default scheme:
-
-        >>> # Group Desikan-Killiany regions into standard lobes
-        >>> lobar_parc = parc.group_into_lobes(grouping='desikan')
-        >>> print(f"Original regions: {len(parc.regnames)}")
-        >>> print(f"Lobar regions: {len(lobar_parc.regnames)}")
-        >>> print(f"Lobe names: {lobar_parc.regnames}")
-
-        Save lobar parcellation to file:
-
-        >>> # Create and save lobar parcellation
-        >>> output_file = '/results/lh.desikan_lobes.annot'
-        >>> lobar_parc = parc.group_into_lobes(
-        ...     grouping='desikan',
-        ...     out_annot=output_file
-        ... )
-        >>> print(f"Lobar parcellation saved to: {output_file}")
-
-        Use custom JSON grouping file:
-
-        >>> # Create custom lobe definitions
-        >>> custom_json = '/configs/custom_lobes.json'
-        >>> lobar_parc = parc.group_into_lobes(
-        ...     grouping='mylobes',
-        ...     lobes_json=custom_json
-        ... )
-
-
-        overwrite overwrite existing files:
-
-        >>> # Overwrite existing lobar parcellation
-        >>> lobar_parc = parc.group_into_lobes(
-        ...     grouping='desikan',
-        ...     out_annot='/existing/file.annot',
-        ...     overwrite=True
-        ... )
-
-
-        See Also
-        --------
-        export_to_tsv : Export parcellation tables for external analysis
-        map_values : Map regional values to surface vertices
-        AnnotParcellation : Main class for parcellation handling
+        >>> parc = AnnotParcellation('/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot')
+        >>> lobar = parc.group_into_lobes(grouping='desikan')
+        >>> lobar.regnames
+        ['unknown', 'frontal', 'parietal', 'temporal', 'occipital', 'insula']
         """
 
-        lobes_dict = load_lobes_json(lobes_json)
+        # ── 1. Load and validate the grouping scheme ─────────────────────────────
+        lobes_cfg = load_lobes_json(lobes_json)
 
-        if "lobes" not in lobes_dict.keys():
-            lobes_dict = lobes_dict[grouping]
-
-        # Lobes names
-        lobe_names = list(lobes_dict["lobes"].keys())
-
-        # Create the new parcellation
-        new_codes = np.zeros_like(self.codes)
-        orig_codes = np.zeros_like(self.codes)
-
-        reg_codes = self.regtable[:, 4]
-
-        # Create an empty numpy array to store the new table
-        rgb = np.array([250, 250, 250])
-        vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
-        orig_codes += vert_val
-
-        new_table = np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])
-
-        for i, lobe in enumerate(lobe_names):
-            lobe_regions = lobes_dict["lobes"][lobe]
-            lobe_colors = lobes_dict["colors"][lobe]
-
-            rgb = cltcol.hex2rgb(lobe_colors)
-
-            # Detect the codes of the regions that belong to the lobe
-            reg_indexes = cltmisc.get_indexes_by_substring(self.regnames, lobe_regions)
-
-            if len(reg_indexes) != 0:
-                reg_values = reg_codes[reg_indexes]
-                vert_val = rgb[0] + rgb[1] * 2**8 + rgb[2] * 2**16
-                orig_codes[np.isin(self.codes, reg_values)] = vert_val
-                new_codes[np.isin(self.codes, reg_values)] = i + 1
-
-                # Concatenate the new table
-                new_table = np.concatenate(
-                    (new_table, np.array([[rgb[0], rgb[1], rgb[2], 0, vert_val]])),
-                    axis=0,
-                )
-
-        # Remove the first row
-        # new_table = new_table[1:, :]
-        self.codes = new_codes
-        if ctxprefix is not None:
-            self.regnames = ["unknown"] + cltmisc.correct_names(
-                lobe_names, prefix=ctxprefix
-            )
-        else:
-            self.regnames = ["unknown"] + lobe_names
-
-        self.regtable = new_table
-        self.name = ""
-        self.path = ""
-
-        # Saving the annot file
-        if out_annot is not None:
-            if isinstance(out_annot, Path):
-                out_annot = str(out_annot)
-
-            self.name = os.path.basename(out_annot)
-            self.path = os.path.dirname(out_annot)
-
-            if not os.path.exists(self.path):
-                os.makedirs(self.path, exist_ok=True)
-
-            if os.path.exists(out_annot) and not overwrite:
+        if "lobes" not in lobes_cfg:
+            if grouping not in lobes_cfg:
                 raise ValueError(
-                    "The output annotation file already exists. Use the overwrite option to overwrite it."
+                    f"Grouping {grouping!r} not found in the lobes JSON. "
+                    f"Available groupings: {list(lobes_cfg.keys())}"
                 )
-            elif os.path.exists(out_annot) and overwrite:
-                os.remove(out_annot)
+            lobes_cfg = lobes_cfg[grouping]
 
-            # Save the annotation file
-            self.save_annotation(out_file=out_annot)
+        lobes = lobes_cfg["lobes"]
+        lobe_colors = lobes_cfg.get("colors", {})
 
-        else:
-            self.codes = orig_codes
+        # Fail early on the output file, before doing any work
+        if out_annot is not None:
+            out_annot = str(out_annot)
+            if os.path.exists(out_annot) and not overwrite:
+                raise FileExistsError(
+                    f"{out_annot} already exists. Use overwrite=True to replace it."
+                )
+
+        # ── 2. Resolve colors (generate missing ones) ────────────────────────────
+        missing = [lobe for lobe in lobes if lobe not in lobe_colors]
+        if missing:
+            generated = cltcol.create_distinguishable_colors(len(missing))
+            generated = cltcol.harmonize_colors(generated)  # hex strings
+            lobe_colors = {**lobe_colors, **dict(zip(missing, generated))}
+
+        def _rgb_and_code(hex_color):
+            rgb = np.asarray(cltcol.hex2rgb(hex_color), dtype=float).ravel()[:3]
+            if rgb.max() <= 1.0:  # hex2rgb returned values in [0, 1]
+                rgb = rgb * 255
+            rgb = np.round(rgb).astype(int)
+            return rgb, int(rgb[0] + rgb[1] * 256 + rgb[2] * 65536)
+
+        bg_rgb, bg_code = _rgb_and_code(unknown_color)
+
+        # ── 3. Build vertex codes and color table, using packed RGB codes ────────
+        reg_codes = self.regtable[:, 4]
+        new_codes = np.full(self.codes.shape, bg_code, dtype=np.int32)
+
+        table_rows = [[*bg_rgb, 0, bg_code]]
+        lobe_names = []
+        used_codes = {bg_code}
+        region_owner = {}
+
+        for lobe, lobe_regions in lobes.items():
+            reg_indexes = cltmisc.get_indexes_by_substring(self.regnames, lobe_regions)
+            if len(reg_indexes) == 0:
+                continue
+
+            for idx in reg_indexes:
+                if idx in region_owner:
+                    warnings.warn(
+                        f"Region '{self.regnames[idx]}' is assigned to both "
+                        f"'{region_owner[idx]}' and '{lobe}'. Keeping '{lobe}'.",
+                        stacklevel=2,
+                    )
+                region_owner[idx] = lobe
+
+            rgb, code = _rgb_and_code(lobe_colors[lobe])
+            if code in used_codes:
+                raise ValueError(
+                    f"The color of lobe '{lobe}' ({lobe_colors[lobe]}) is already used. "
+                    "FreeSurfer identifies regions by their packed RGB value, so every "
+                    "lobe (and the unknown color) must have a distinct color."
+                )
+            used_codes.add(code)
+
+            new_codes[np.isin(self.codes, reg_codes[reg_indexes])] = code
+            table_rows.append([*rgb, 0, code])
+            lobe_names.append(lobe)
+
+        if ctxprefix is not None:
+            lobe_names = cltmisc.correct_names(lobe_names, prefix=ctxprefix)
+
+        new_table = np.array(table_rows, dtype=np.int32)
+        new_names = ["unknown"] + list(lobe_names)
+
+        # ── 4. Assemble the result ───────────────────────────────────────────────
+        # create_from_data drops table rows that no vertex uses (e.g. 'unknown',
+        # or a lobe whose regions were all claimed by a later lobe)
+        lobar = self if inplace else AnnotParcellation()
+        lobar.create_from_data(
+            codes=new_codes,
+            regtable=new_table,
+            regnames=new_names,
+            annot_id=f"{self.id}_lobes" if self.id else "lobes",
+            hemi=self.hemi,
+            filename=out_annot,
+        )
+        if out_annot is None:
+            lobar.filename = lobar.path = lobar.name = None
+
+        # ── 5. Optionally save ───────────────────────────────────────────────────
+        if out_annot is not None:
+            lobar.save_annotation(out_file=out_annot, overwrite=True)
+
+        return lobar
 
 
 ####################################################################################################
