@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from pathlib import Path
 
@@ -10,7 +12,6 @@ from . import colorstools as cltcol
 
 # Importing the internal modules
 from . import misctools as cltmisc
-from . import plottools as cltplot
 
 ####################################################################################################
 ####################################################################################################
@@ -1072,7 +1073,7 @@ class DiffusionScheme:
         self,
         show=True,
         use_notebook: bool = False,
-        radius: float = 10.0,
+        sphere_radius: float = 30.0,
         colormap: str = "jet",
         toroid_radius: float = None,
         toroid_alpha: float = 0.3,
@@ -1080,7 +1081,102 @@ class DiffusionScheme:
         show_colorbar: bool = True,
         show_axes: bool = True,
         show_opposite_dirs: bool = True,
-    ):
+        save_path: str | Path | None = None,
+        non_blocking: bool = False,
+        window_size: tuple[int, int] | None = None,
+    ) -> pv.Plotter | None:
+        """
+        Plot the diffusion acquisition scheme in q-space.
+
+        Each gradient direction is drawn as a point scaled by its b-value
+        (shelled schemes) or by sqrt(b * b_max) (cartesian/DSI schemes), with a
+        toroid marking each shell. The figure can be displayed or saved to an
+        image, a vector graphic or an interactive HTML file.
+
+        Parameters
+        ----------
+        show : bool, default True
+            Whether to display the figure. If False, the plotter is returned
+            without being displayed so it can be modified before showing it.
+            Ignored when save_path is given.
+
+        use_notebook : bool, default False
+            Whether to display the figure inside a Jupyter notebook.
+
+        sphere_radius : float, default 10.0
+            Size of the spheres representing the gradient directions. The
+            spheres are real meshes, so they keep their 3D shading in the
+            interactive window, the notebook and the exported HTML.
+
+        colormap : str, default "jet"
+            Colormap used to color the points and toroids by b-value.
+
+        toroid_radius : float, optional
+            Tube radius of the shell toroids. If None, 0.5% of the maximum
+            b-value is used.
+
+        toroid_alpha : float, default 0.3
+            Opacity of the shell toroids.
+
+        b0_thresh : float, default 10.0
+            b-values lower than or equal to this threshold are counted as B0s.
+
+        show_colorbar : bool, default True
+            Whether to show the b-value colorbar.
+
+        show_axes : bool, default True
+            Whether to draw the X, Y and Z axes.
+
+        show_opposite_dirs : bool, default True
+            Whether to also draw the opposite of each direction (-g).
+
+        save_path : str or Path, optional
+            File path for saving the figure. The format is chosen from the
+            extension: ``.html``/``.htm`` exports an interactive HTML file;
+            ``.svg``, ``.pdf``, ``.eps``, ``.ps`` or ``.tex`` saves a vector
+            graphic; any other extension (e.g. ``.png``, ``.jpg``) saves a
+            screenshot. The figure is rendered off-screen and not displayed.
+            If the directory does not exist, the figure is displayed instead.
+
+        non_blocking : bool, default False
+            If True, display the figure in a separate thread so the terminal
+            remains interactive. Only applies when save_path is None and show
+            is True.
+
+        window_size : tuple of int, optional
+            Size of the figure in pixels (width, height). If None, notebook
+            figures use PyVista's default window size
+            (``pv.global_theme.window_size``, 1024 x 768 by default) so they fit
+            in the cell output, while windows and saved figures use the size of
+            the current monitor.
+
+        Returns
+        -------
+        pv.Plotter or None
+            The PyVista plotter, or None when the figure was saved to save_path
+            (the plotter is closed after saving).
+
+        Examples
+        --------
+        >>> scheme = DiffusionScheme.from_bvec_bval_files("dwi.bvec", "dwi.bval")
+        >>> scheme.plot()                                  # Interactive window
+        >>> scheme.plot(save_path="scheme.png")            # Screenshot
+        >>> scheme.plot(save_path="scheme.html")           # Interactive HTML
+        >>> scheme.plot(save_path="scheme.pdf", show_axes=False)
+        >>> scheme.plot(use_notebook=True, window_size=(800, 600))  # Inside a notebook
+        """
+
+        # Imported here so that importing dwitools does not load the surface and
+        # tractogram modules that visualization_utils depends on
+        from . import visualization_utils as visutils
+
+        if isinstance(save_path, Path):
+            save_path = str(save_path)
+
+        # Determine rendering mode based on save_path, environment, and threading preference
+        save_mode, use_off_screen, use_notebook, use_threading = (
+            visutils.determine_render_mode(save_path, use_notebook, non_blocking)
+        )
 
         g = self.gradients
         b = self.bvals
@@ -1113,48 +1209,72 @@ class DiffusionScheme:
             "mesh_smooth_shading": True,
         }
 
-        rgba_data = cltcol.values2colors(
-            b, cmap=colormap, vmin=b.min(), vmax=b.max(), output_format="rgb"
-        )
-
         # Optionally add opposite directions (mirror across origin)
         if show_opposite_dirs:
             coords = np.vstack([coords, -coords])
-            rgba_data = np.vstack([rgba_data, rgba_data])
             b = np.concatenate([b, b])
 
-        # Detecting the screen size for the plotter
-        screen_size = cltplot.get_current_monitor_size()
+        # Color limits shared by the spheres, the toroids and the colorbar
+        b_min, b_max = float(self.bvals.min()), float(self.bvals.max())
+        clim = [b_min, b_max] if b_max > b_min else [b_min, b_min + 1.0]
+
+        # Sphere size relative to the extent of the q-space plot
+        extent = float(np.linalg.norm(coords, axis=1).max()) if len(coords) else 0.0
+        sphere_radius = sphere_radius * 0.0006 * (extent if extent > 0 else 1.0)
+
+        # Figure size: monitor size for windows and saved figures, smaller for notebooks
+        window_size = visutils.resolve_window_size(window_size, use_notebook)
 
         # Create PyVista plotter with appropriate rendering mode
         plotter_kwargs = {
             "notebook": use_notebook,
-            "window_size": [screen_size[0], screen_size[1]],
+            "window_size": window_size,
+            "off_screen": use_off_screen,
         }
 
         pv_plotter = pv.Plotter(**plotter_kwargs)
         pv_plotter.set_background(figure_conf["background_color"])
 
-        # Add gradient points as spheres
-        pv_plotter.add_points(
-            coords,
-            render_points_as_spheres=True,
-            point_size=radius,
-            scalars=rgba_data,
-            rgb=True,
+        # Add the gradient directions as sphere meshes (glyphs). Points rendered
+        # with render_points_as_spheres are only supported by the desktop VTK
+        # renderer: vtk.js (HTML export and notebooks) draws them as flat squares.
+        bval_title = "b-value (s/mm²)"
+        sphere_geom = pv.Sphere(
+            radius=sphere_radius, theta_resolution=16, phi_resolution=16
+        )
+        cloud = pv.PolyData(np.asarray(coords, dtype=float))
+        cloud[bval_title] = b
+        spheres = cloud.glyph(geom=sphere_geom, scale=False, orient=False)
+
+        pv_plotter.add_mesh(
+            spheres,
+            scalars=bval_title,
+            cmap=colormap,
+            clim=clim,
             ambient=figure_conf["mesh_ambient"],
             diffuse=figure_conf["mesh_diffuse"],
             specular=figure_conf["mesh_specular"],
             specular_power=figure_conf["mesh_specular_power"],
             smooth_shading=figure_conf["mesh_smooth_shading"],
-            show_scalar_bar=False,
+            show_scalar_bar=show_colorbar,
+            scalar_bar_args={
+                "title": bval_title,
+                "title_font_size": 20,
+                "label_font_size": 16,
+                "color": "white",
+                "position_x": 0.90,  # Far right
+                "position_y": 0.25,  # Vertically centered
+                "width": 0.08,  # Narrow width for vertical bar
+                "height": 0.5,  # Tall for vertical orientation
+                "vertical": True,  # Explicitly vertical
+                "n_labels": 5,  # Number of labels
+                "fmt": "%.0f",  # Format as integers
+            },
         )
 
         # Add center sphere for b0
-        pv_plotter.add_points(
-            np.array([[0.0, 0.0, 0.0]]),
-            render_points_as_spheres=True,
-            point_size=radius,
+        pv_plotter.add_mesh(
+            pv.Sphere(radius=sphere_radius, theta_resolution=16, phi_resolution=16),
             color="white",
             ambient=figure_conf["mesh_ambient"],
             diffuse=figure_conf["mesh_diffuse"],
@@ -1173,8 +1293,8 @@ class DiffusionScheme:
         unique_colors = cltcol.values2colors(
             unique_bvals,
             cmap=colormap,
-            vmin=original_bvals.min(),
-            vmax=original_bvals.max(),
+            vmin=clim[0],
+            vmax=clim[1],
             output_format="rgb",
         )
 
@@ -1184,8 +1304,13 @@ class DiffusionScheme:
             toroid_radius = b_max * 0.005 if b_max > 0 else 0.5
 
         for bval, color in zip(unique_bvals, unique_colors, strict=False):
+            # Each shell lies at the same radius as its points in q-space
+            if self.scheme_type == "shelled":
+                ring_radius = bval
+            else:
+                ring_radius = np.sqrt(bval * original_bvals.max())
             torus = pv.ParametricTorus(
-                ringradius=bval, crosssectionradius=toroid_radius
+                ringradius=ring_radius, crosssectionradius=toroid_radius
             )
             pv_plotter.add_mesh(
                 torus,
@@ -1222,33 +1347,6 @@ class DiffusionScheme:
                 width=2,
             )
 
-        # Add colorbar - vertical on the right
-        if show_colorbar:
-            # Create a dummy mesh for the colorbar
-            dummy_mesh = pv.PolyData(coords)
-            dummy_mesh["bvalues"] = b
-
-            pv_plotter.add_mesh(
-                dummy_mesh,
-                scalars="bvalues",
-                cmap=colormap,
-                show_edges=False,
-                opacity=0,  # Make it invisible
-                scalar_bar_args={
-                    "title": "b-value (s/mm²)",
-                    "title_font_size": 20,
-                    "label_font_size": 16,
-                    "color": "white",
-                    "position_x": 0.90,  # Far right
-                    "position_y": 0.25,  # Vertically centered
-                    "width": 0.08,  # Narrow width for vertical bar
-                    "height": 0.5,  # Tall for vertical orientation
-                    "vertical": True,  # Explicitly vertical
-                    "n_labels": 5,  # Number of labels
-                    "fmt": "%.0f",  # Format as integers
-                },
-            )
-
         # Count b0 and DWI images (use original counts)
         n_b0s = np.sum(original_bvals <= b0_thresh)
         n_dwi = len(original_bvals) - n_b0s
@@ -1266,7 +1364,12 @@ class DiffusionScheme:
         pv_plotter.add_light(pv.Light(position=(1, 1, 1)))
         pv_plotter.view_isometric()
 
-        if show:
-            pv_plotter.show()
+        # Handle final rendering - either save, display blocking, or display non-blocking
+        if save_mode or show:
+            visutils.finalize_plot(pv_plotter, save_mode, save_path, use_threading)
+
+        # The plotter is closed after saving, so there is nothing left to return
+        if save_mode:
+            return None
 
         return pv_plotter
