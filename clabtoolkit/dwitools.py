@@ -23,6 +23,12 @@ from . import plottools as cltplot
 ####################################################################################################
 
 
+def _load_bvals(bval_file: str) -> np.ndarray:
+    """Load a bval file stored either as a single row or as a single column."""
+    return np.round(np.loadtxt(bval_file, dtype=float, ndmin=1).ravel()).astype(int)
+
+
+####################################################################################################
 def delete_dwi_volumes(
     in_image: str | Path,
     bvec_file: str | Path = None,
@@ -30,9 +36,108 @@ def delete_dwi_volumes(
     out_image: str | Path = None,
     bvals_to_delete: int | list[int | tuple | list | str | np.ndarray] = None,
     vols_to_delete: int | list[int | tuple | list | str | np.ndarray] = None,
-) -> str:
+) -> tuple:
     """
-    ... (docstring unchanged) ...
+    Remove specific volumes from DWI image. If no volumes are specified, the function will remove the last B0s of the DWI image.
+
+    Parameters
+    ----------
+    in_image : str or Path
+        Path to the diffusion weighted image file.
+
+    bvec_file : str or Path, optional
+        Path to the bvec file. If None, it will assume the bvec file is in the same directory as the DWI file with the same name but with the .bvec extension.
+
+    bval_file : str or Path, optional
+        Path to the bval file. If None, it will assume the bval file is in the same directory as the DWI file with the same name but with the .bval extension.
+        The b-values can be stored as a single row or as a single column.
+
+    out_image : str or Path, optional
+        Path to the output file. If None, it will assume the output file is in the same directory as the DWI file with the same name but with the .nii.gz extension.
+        The original file will be overwritten if the output file is not specified.
+
+    bvals_to_delete : int, list, optional
+        List of bvals to delete. If None, it will assume the bvals to delete are the last B0s of the DWI image.
+        Some conditions could be used to delete the volumes.
+            For example:
+                1. If you want to delete all the volumes with bval = 0, you can use:
+                bvals_to_delete = [0]
+
+                2. If you want to delete all the volumes with b-values higher than 1000, you can use:
+                bvals_to_delete = ["bvals > 1000"]  or  bvals_to_delete = ["bvals >= 1000"] if you want to include the 1000 bvals.
+
+                3. If you want to delete all the volumes with b-values between 1000 and 3000 you can use:
+                bvals_to_delete = ["1000 < bvals < 3000"] or bvals_to_delete = ["1000 <= bvals < 3000"] if you want to include the 1000 but not the 3000 bvals.
+
+            For more complex conditions, you can see the function get_indices_by_condition. Included in the clabtoolkit.misctools module.
+
+    vols_to_delete : int, list, optional
+        Indices of the volumes to delete. If None, it will assume the volumes to delete are the last B0s of the DWI image.
+        Some conditions could be used to delete the volumes.
+            For example:
+                1. If you want to delete the first 3 volumes, you can use:
+                    vols_to_delete = [0, 1, 2]
+
+                2. If you want to delete the volumes from 0 to 10, you can use:
+                    vols_to_delete = ["0:10"] or vols_to_delete = ["0-10"]
+
+                3. If you want to delete the volumes from 0 to 10 and 20 to 30, you can use:
+                    vols_to_delete = ["0:10", "20:30"] or vols_to_delete = ["0-10", "20-30"]
+
+                4. If you want to delete the volumes from 0 to 10 and the volumes 40 and 60, you can use:
+                    vols_to_delete = ["0:10", 40, 60] or vols_to_delete = ["0-10, 40, 60"], etc
+
+                For more complex conditions, you can see the function build_indices. Included in the clabtoolkit.misctools module.
+
+        If both bvals_to_delete and vols_to_delete are specified, the function will remove the volumes with the bvals specified
+        and the volumes specified in the vols_to_delete list.
+        The function will unify all the indices in a single list and remove the volumes from the DWI image.
+
+    Returns
+    -------
+    out_image : str
+        Path to the diffusion weighted image file.
+
+    out_bvecs_file : str or None
+        Path to the bvec file, or None if no bvec file was found.
+
+    out_bvals_file : str or None
+        Path to the bval file, or None if no bval file was found.
+
+    vols2rem : np.ndarray
+        Indices of the volumes removed. When nothing is removed, the input paths are
+        returned unchanged together with an empty array.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the DWI image, the output directory, or a bval file required to select
+        the volumes does not exist.
+
+    ValueError
+        If the image is not 4D, the number of b-values does not match the number of
+        volumes, or the volumes to delete are out of range.
+
+    Notes
+    -----
+    IMPORTANT: The function will overwrite the original DWI file if the output file is not specified.
+    IMPORTANT: The function will overwrite the original bvec and bval files if the output file is not specified.
+    IMPORTANT: The function will remove the last B0s of the DWI image if no volumes are specified.
+
+    Examples
+    -----------
+
+    >>> delete_dwi_volumes('dwi.nii.gz') # will remove the last B0s. The original file will be overwritten.
+
+    >>> delete_dwi_volumes('dwi.nii.gz', out_image='dwi_clean.nii.gz') # will remove the last B0s and save the output in dwi_clean.nii.gz
+
+    >>> delete_dwi_volumes('dwi.nii.gz', vols_to_delete=[0, 1, 2]) # will remove the first 3 volumes
+
+    >>> delete_dwi_volumes('dwi.nii.gz', bvec_file='dwi.bvec', bval_file='dwi.bval') # will remove the last B0s
+
+    >>> delete_dwi_volumes('dwi.nii.gz', bvec_file='dwi.bvec', bval_file='dwi.bval', bvals_to_delete= [3000, "bvals >=5000"], out_image='dwi_clean.nii.gz') # will remove the volumes with bvals equal to 3000 and equal or higher than 5000.
+        The output will be saved in in dwi_clean.nii.gz
+
     """
 
     # Normalize all path-like arguments to plain strings up front
@@ -68,6 +173,14 @@ def delete_dwi_volumes(
     if bval_file is None:
         bval_file = os.path.join(pth, flname + ".bval")
 
+    # Outputs returned when no volume is removed
+    no_change = (
+        in_image,
+        bvec_file if os.path.isfile(bvec_file) else None,
+        bval_file if os.path.isfile(bval_file) else None,
+        np.array([], dtype=int),
+    )
+
     # Checking the output basename
     if out_image is not None:
         fl_out_name = os.path.basename(out_image)
@@ -85,7 +198,7 @@ def delete_dwi_volumes(
         fl_out_name = flname
         fl_out_path = pth
 
-    # *** THE ACTUAL FIX: rebuild out_image whenever it wasn't supplied ***
+    # Rebuild out_image so it always has the .nii.gz extension
     out_image = os.path.join(fl_out_path, fl_out_name + ".nii.gz")
 
     # Checking the volumes to delete
@@ -102,7 +215,7 @@ def delete_dwi_volumes(
 
         # Loading bvalues
         if os.path.exists(bval_file):
-            bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
+            bvals = _load_bvals(bval_file)
         else:
             raise FileNotFoundError(
                 f"File {bval_file} not found. It is mandatory if bvals_to_delete is specified."
@@ -122,137 +235,135 @@ def delete_dwi_volumes(
     if vols_to_delete is not None:
         if len(vols_to_delete) == 0:
             print("No volumes to delete. The volumes to delete are empty.")
-            return in_image
+            return no_change
 
     # Loading the DWI image
     mapI = nib.load(in_image)
     dim = mapI.shape
 
-    if len(dim) == 4:
-        nvols = dim[3]
-
-        if vols_to_delete is not None:
-            if len(vols_to_delete) == nvols:
-                print(
-                    "Number of volumes to delete is equal to the number of volumes. No volumes will be deleted."
-                )
-                return in_image
-
-            if np.max(vols_to_delete) >= nvols:
-                vols_to_delete = np.array(vols_to_delete)
-                out_of_range = np.where(vols_to_delete >= nvols)[0]
-                raise ValueError(
-                    f"Volumes out of the range:  {vols_to_delete[out_of_range]} . The values should be between 0 and {nvols-1}."
-                )
-
-            if np.min(vols_to_delete) < 0:
-                raise ValueError(
-                    f"Volumes to delete {vols_to_delete} are out of range. The values should be between 0 and {nvols-1}."
-                )
-
-            vols2rem = np.where(np.isin(np.arange(nvols), vols_to_delete))[0]
-            vols2keep = np.where(
-                np.isin(np.arange(nvols), vols_to_delete, invert=True)
-            )[0]
-        else:
-            if os.path.exists(bval_file):
-                bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
-
-                mask = bvals < 10
-                lb_bvals = measure.label(mask, 2)
-
-                if np.max(lb_bvals) > 1 and lb_bvals[-1] != 0:
-                    lab2rem = lb_bvals[-1]
-                    vols2rem = np.where(lb_bvals == lab2rem)[0]
-                    vols2keep = np.where(lb_bvals != lab2rem)[0]
-                else:
-                    print("No B0s to remove at the end of the volume.")
-                    return in_image
-            else:
-                raise FileNotFoundError(
-                    f"File {bval_file} not found. It is mandatory if the volumes to remove are not specified (vols_to_delete)."
-                )
-
-        diffData = mapI.get_fdata()
-        affine = mapI.affine
-
-        array_data = np.delete(diffData, vols2rem, 3)
-        array_img = nib.Nifti1Image(array_data, affine)
-        nib.save(array_img, out_image)
-
-        if os.path.isfile(bvec_file):
-            bvecs = np.loadtxt(bvec_file, dtype=float)
-            if bvecs.shape[0] == 3:
-                select_bvecs = bvecs[:, vols2keep]
-            else:
-                select_bvecs = bvecs[vols2keep, :]
-
-            select_bvecs.transpose()
-            if out_image.endswith("nii.gz"):
-                out_bvecs_file = out_image.replace(".nii.gz", ".bvec")
-            elif out_image.endswith("nii"):
-                out_bvecs_file = out_image.replace(".nii", ".bvec")
-
-            np.savetxt(out_bvecs_file, select_bvecs, fmt="%f")
-        else:
-            out_bvecs_file = None
-
-        if os.path.isfile(bval_file):
-            bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
-            select_bvals = bvals[vols2keep]
-            select_bvals.transpose()
-
-            if out_image.endswith("nii.gz"):
-                out_bvals_file = out_image.replace(".nii.gz", ".bval")
-            elif out_image.endswith("nii"):
-                out_bvals_file = out_image.replace(".nii", ".bval")
-            np.savetxt(out_bvals_file, select_bvals, newline=" ", fmt="%d")
-        else:
-            out_bvals_file = None
-
-    else:
+    if len(dim) != 4:
         raise ValueError(f"Image {in_image} is not a 4D image. No volumes to remove.")
+
+    nvols = dim[3]
+
+    # The b-values must describe every volume of the image
+    if os.path.isfile(bval_file):
+        bvals = _load_bvals(bval_file)
+        if len(bvals) != nvols:
+            raise ValueError(
+                f"The bval file {bval_file} has {len(bvals)} values but the image has {nvols} volumes."
+            )
+
+    if vols_to_delete is not None:
+        if len(vols_to_delete) == nvols:
+            print(
+                "Number of volumes to delete is equal to the number of volumes. No volumes will be deleted."
+            )
+            return no_change
+
+        if np.max(vols_to_delete) >= nvols:
+            vols_to_delete = np.array(vols_to_delete)
+            out_of_range = np.where(vols_to_delete >= nvols)[0]
+            raise ValueError(
+                f"Volumes out of the range:  {vols_to_delete[out_of_range]} . The values should be between 0 and {nvols-1}."
+            )
+
+        if np.min(vols_to_delete) < 0:
+            raise ValueError(
+                f"Volumes to delete {vols_to_delete} are out of range. The values should be between 0 and {nvols-1}."
+            )
+
+        vols2rem = np.where(np.isin(np.arange(nvols), vols_to_delete))[0]
+        vols2keep = np.where(np.isin(np.arange(nvols), vols_to_delete, invert=True))[0]
+    else:
+        if os.path.exists(bval_file):
+            mask = bvals < 10
+            lb_bvals = measure.label(mask, 2)
+
+            if np.max(lb_bvals) > 1 and lb_bvals[-1] != 0:
+                lab2rem = lb_bvals[-1]
+                vols2rem = np.where(lb_bvals == lab2rem)[0]
+                vols2keep = np.where(lb_bvals != lab2rem)[0]
+            else:
+                print("No B0s to remove at the end of the volume.")
+                return no_change
+        else:
+            raise FileNotFoundError(
+                f"File {bval_file} not found. It is mandatory if the volumes to remove are not specified (vols_to_delete)."
+            )
+
+    diffData = mapI.get_fdata()
+    affine = mapI.affine
+
+    array_data = np.delete(diffData, vols2rem, 3)
+    array_img = nib.Nifti1Image(array_data, affine)
+    nib.save(array_img, out_image)
+
+    if os.path.isfile(bvec_file):
+        bvecs = np.loadtxt(bvec_file, dtype=float)
+        if bvecs.shape[0] == 3:
+            select_bvecs = bvecs[:, vols2keep]
+        else:
+            select_bvecs = bvecs[vols2keep, :]
+
+        out_bvecs_file = out_image.replace(".nii.gz", ".bvec")
+        np.savetxt(out_bvecs_file, select_bvecs, fmt="%f")
+    else:
+        out_bvecs_file = None
+
+    if os.path.isfile(bval_file):
+        select_bvals = bvals[vols2keep]
+
+        out_bvals_file = out_image.replace(".nii.gz", ".bval")
+        np.savetxt(out_bvals_file, select_bvals, newline=" ", fmt="%d")
+    else:
+        out_bvals_file = None
 
     return out_image, out_bvecs_file, out_bvals_file, vols2rem
 
 
 ####################################################################################################
 def get_b0s(
-    dwi_img: str, b0s_img: str, bval_file: str = None, bval_thresh: int = 0
-) -> str:
+    dwi_img: str | Path,
+    b0s_img: str | Path = None,
+    bval_file: str | Path = None,
+    bval_thresh: int = 0,
+) -> tuple:
     """
     Extract B0 volumes from a DWI image and save them as a separate NIfTI file.
 
     Parameters
     ----------
-    dwi_img : str
+    dwi_img : str or Path
         Path to the input DWI image file.
 
-    b0s_img : str
-        Path to the output B0 image file.
+    b0s_img : str or Path, optional
+        Path to the output B0 image file. If None, the B0s are saved next to the DWI
+        image with the suffix ``_b0s`` (e.g. ``dwi.nii.gz`` -> ``dwi_b0s.nii.gz``).
 
-    bval_file : str, optional
+    bval_file : str or Path, optional
         Path to the bval file. If None, it will assume the bval file is in the same directory as the DWI file with the same name but with the .bval extension.
-        The bval file is used to identify the B0 volumes in the DWI image.
+        The bval file is used to identify the B0 volumes in the DWI image. The b-values can be stored as a single row or as a single column.
 
     bval_thresh : int, optional
-        Threshold for identifying B0 volumes. Default is 0. Volumes with b-values below this threshold will be considered B0 volumes.
+        Threshold for identifying B0 volumes. Default is 0. Volumes with b-values lower than or equal to this threshold will be considered B0 volumes.
 
     Returns
     -------
     b0s_img : str
         Path to the output B0 image file.
 
-    b0_vols : List[int]
-        List of indices of the B0 volumes extracted from the DWI image.
+    b0_vols : np.ndarray
+        Indices of the B0 volumes extracted from the DWI image.
 
     Raises
     ------
     FileNotFoundError
-        If the input DWI image file or the bval file does not exist.
+        If the input DWI image file, the bval file or the output directory does not exist.
 
     ValueError
-        If the output path for the B0 image file does not exist.
+        If the number of b-values does not match the number of volumes, or no volume
+        has a b-value lower than or equal to bval_thresh.
 
     Examples
     -----------
@@ -265,18 +376,19 @@ def get_b0s(
     >>> print(f"B0 volumes indices: {b0_vols}")
 
     >>> b0s_img, b0_vols = get_b0s(dwi_img, b0s_img, bval_file, bval_thresh=10)
-    >>> print(f"B0 image saved at: {b0s_img}")
-    >>> print(f"B0 volumes indices: {b0_vols}")
-    >>> All the volumes with b-values below 10 will be considered B0 volumes.
+    >>> # All the volumes with b-values lower than or equal to 10 will be considered B0 volumes.
 
-    >>> b0s_img, b0_vols = get_b0s(dwi_img, b0s_img)
-    >>> print(f"B0 image saved at: {b0s_img}")
-    >>> print(f"B0 volumes indices: {b0_vols}")
-    >>> The bval file will be assumed to be in the same directory as the DWI file with the same name but with the .bval extension.
+    >>> b0s_img, b0_vols = get_b0s(dwi_img)
+    >>> # The bval file is assumed to be next to the DWI file, and the B0s are saved as dwi_image_b0s.nii.gz
 
     """
 
-    # Creating the name for the json file
+    dwi_img = str(dwi_img)
+    if b0s_img is not None:
+        b0s_img = str(b0s_img)
+    if bval_file is not None:
+        bval_file = str(bval_file)
+
     if os.path.isfile(dwi_img):
         pth = os.path.dirname(dwi_img)
         fname = os.path.basename(dwi_img)
@@ -287,57 +399,44 @@ def get_b0s(
         flname = fname[0:-7]
     elif fname.endswith(".nii"):
         flname = fname[0:-4]
+    else:
+        raise ValueError(
+            f"File {dwi_img} does not have a recognized NIfTI extension (.nii or .nii.gz)."
+        )
 
     # Checking if the file exists. If it is None assume it is in the same directory with the same name as the DWI file but with the .bval extensions.
     if bval_file is None:
         bval_file = os.path.join(pth, flname + ".bval")
 
-    # Checking the ouput basename
-    if b0s_img is not None:
-        fl_out_name = os.path.basename(b0s_img)
+    if not os.path.isfile(bval_file):
+        raise FileNotFoundError(f"File {bval_file} not found.")
 
-        if fl_out_name.endswith(".nii.gz"):
-            fl_out_name = fl_out_name[0:-7]
-        elif fl_out_name.endswith(".nii"):
-            fl_out_name = fl_out_name[0:-4]
-
-        fl_out_path = os.path.dirname(b0s_img)
-
-        if not os.path.isdir(fl_out_path):
-            raise FileNotFoundError(f"Output path {fl_out_path} does not exist.")
+    # Checking the output name
+    if b0s_img is None:
+        b0s_img = os.path.join(pth, flname + "_b0s.nii.gz")
     else:
-        fl_out_name = fname
-        fl_out_path = pth
+        fl_out_path = os.path.dirname(b0s_img)
+        if fl_out_path and not os.path.isdir(fl_out_path):
+            raise FileNotFoundError(f"Output path {fl_out_path} does not exist.")
 
     # Loading bvalues
-    if os.path.exists(bval_file):
-        bvals = np.loadtxt(bval_file, dtype=float, max_rows=5).astype(int)
+    bvals = _load_bvals(bval_file)
+    b0_vols = np.where(bvals <= bval_thresh)[0]
 
-        # Generate search cad
-        cad = ["bvals > " + str(bval_thresh)]
-
-        # Get the indices of the volumes that will be removed
-        vols2rem = cltmisc.build_indices_with_conditions(
-            cad, bvals=bvals, nonzeros=False
+    if len(b0_vols) == 0:
+        raise ValueError(
+            f"No B0 volumes found: no b-value in {bval_file} is lower than or equal to {bval_thresh}. "
+            "Increase bval_thresh if the B0s were acquired with a small non-zero b-value."
         )
 
-        b0_vols = np.setdiff1d(np.arange(bvals.shape[0]), vols2rem)
+    mapI = nib.load(dwi_img)
+    if mapI.ndim != 4 or mapI.shape[3] != len(bvals):
+        raise ValueError(
+            f"The bval file {bval_file} has {len(bvals)} values but the image has shape {mapI.shape}."
+        )
 
-        if len(vols2rem) == 0:
-            print("No B0s to remove. The volumes to delete are empty.")
-            return dwi_img
-        else:
-
-            mapI = nib.load(dwi_img)
-            diffData = mapI.get_fdata()
-            affine = mapI.affine
-
-            # Removing the volumes
-            array_data = np.delete(diffData, vols2rem, 3)
-
-            # Temporal image and diffusion scheme
-            array_img = nib.Nifti1Image(array_data, affine)
-            nib.save(array_img, b0s_img)
+    array_data = mapI.get_fdata()[..., b0_vols]
+    nib.save(nib.Nifti1Image(array_data, mapI.affine), b0s_img)
 
     return b0s_img, b0_vols
 
@@ -381,12 +480,15 @@ def maps_from_tensor_eigenvalues(
         ``RD``    Radial Diffusivity ((λ2 + λ3) / 2)
         ``MD``    Mean Diffusivity ((λ1 + λ2 + λ3) / 3)
         ``FA``    Fractional Anisotropy
-        ``CL``    Linear Anisotropy Coefficient
-        ``CP``    Planar Anisotropy Coefficient
-        ``CS``    Spherical Anisotropy Coefficient
-        ``VF``    Volume Fraction
+                  sqrt(3/2) * sqrt(Σ(λi - MD)²) / sqrt(Σλi²)
+        ``CL``    Linear Anisotropy Coefficient ((λ1 - λ2) / Σλi)
+        ``CP``    Planar Anisotropy Coefficient (2(λ2 - λ3) / Σλi)
+        ``CS``    Spherical Anisotropy Coefficient (3λ3 / Σλi)
+        ``VF``    Volume Fraction (1 - λ1λ2λ3 / MD³)
         ``GA``    Geodesic Anisotropy
+                  sqrt(Σ(log λi - mean(log λ))²), 0 if any λi <= 0
         ``RA``    Relative Anisotropy
+                  sqrt(Σ(λi - MD)²) / (sqrt(3) * MD)
         ========  ==============================================
 
     overwrite : bool, optional
@@ -410,14 +512,14 @@ def maps_from_tensor_eigenvalues(
     Examples
     --------
     >>> # 4D eigenvalue image
-    >>> maps = compute_scalar_maps_from_tensor(
+    >>> maps = maps_from_tensor_eigenvalues(
     ...     "sub-01_eigvals.nii.gz",
     ...     "out/sub-01",
     ...     dtmaps=["FA", "MD"],
     ... )
 
     >>> # Three separate eigenvalue files
-    >>> maps = compute_scalar_maps_from_tensor(
+    >>> maps = maps_from_tensor_eigenvalues(
     ...     ["sub-01_l1.nii.gz", "sub-01_l2.nii.gz", "sub-01_l3.nii.gz"],
     ...     "out/sub-01",
     ...     dtmaps=["all"],
@@ -505,9 +607,9 @@ def maps_from_tensor_eigenvalues(
         return fpath if os.path.isfile(fpath) else ""
 
     # Pre-compute quantities shared across multiple maps
-    suma = l1_data + l2_data + l3_data  # used by CL, CP, CS, GA
-    RD_data = (l2_data + l3_data) / 2  # used by RD, VF, RA
-    MD_data = suma / 3  # used by MD, FA
+    suma = l1_data + l2_data + l3_data  # used by CL, CP, CS
+    RD_data = (l2_data + l3_data) / 2  # used by RD
+    MD_data = suma / 3  # used by MD, FA, VF, RA
 
     scalar_maps: dict = {}
 
@@ -553,7 +655,7 @@ def maps_from_tensor_eigenvalues(
                 + (l3_data - MD_data) ** 2
             )
             den = l1_data**2 + l2_data**2 + l3_data**2
-            FA = np.sqrt(0.5 * _safe_div(num, den))
+            FA = np.sqrt(1.5 * _safe_div(num, den))
             scalar_maps["FA"] = _save_map(FA, "FA")
         else:
             scalar_maps["FA"] = fpath
@@ -598,8 +700,9 @@ def maps_from_tensor_eigenvalues(
         fpath = f"{out_basename}_VF.nii.gz"
         if not os.path.isfile(fpath) or overwrite:
             product = l1_data * l2_data * l3_data
-            den = RD_data**3
-            VF = 1 - _safe_div(product, den)
+            den = MD_data**3
+            # Background voxels (MD = 0) are isotropic by convention: VF = 0
+            VF = np.where(den != 0, 1 - _safe_div(product, den), 0.0)
             scalar_maps["VF"] = _save_map(VF, "VF")
         else:
             scalar_maps["VF"] = fpath
@@ -610,13 +713,19 @@ def maps_from_tensor_eigenvalues(
     if "ga" in dtmaps or compute_all:
         fpath = f"{out_basename}_GA.nii.gz"
         if not os.path.isfile(fpath) or overwrite:
-            D = (l1_data * l2_data * l3_data) ** (1 / 3)
-            log_sum_sq = (
-                _safe_log(l1_data) ** 2
-                + _safe_log(l2_data) ** 2
-                + _safe_log(l3_data) ** 2
+            # Geodesic anisotropy (Batchelor et al., 2005). It is only defined
+            # for positive-definite tensors, so it is 0 where any eigenvalue <= 0
+            log_l1 = _safe_log(l1_data)
+            log_l2 = _safe_log(l2_data)
+            log_l3 = _safe_log(l3_data)
+            mean_log = (log_l1 + log_l2 + log_l3) / 3
+            GA = np.sqrt(
+                (log_l1 - mean_log) ** 2
+                + (log_l2 - mean_log) ** 2
+                + (log_l3 - mean_log) ** 2
             )
-            GA = np.sqrt(_safe_div(log_sum_sq, D))
+            positive = (l1_data > 0) & (l2_data > 0) & (l3_data > 0)
+            GA = np.where(positive, GA, 0.0)
             scalar_maps["GA"] = _save_map(GA, "GA")
         else:
             scalar_maps["GA"] = fpath
@@ -627,12 +736,12 @@ def maps_from_tensor_eigenvalues(
     if "ra" in dtmaps or compute_all:
         fpath = f"{out_basename}_RA.nii.gz"
         if not os.path.isfile(fpath) or overwrite:
-            num = (
-                (l1_data - RD_data) ** 2
-                + (l2_data - RD_data) ** 2
-                + (l3_data - RD_data) ** 2
+            num = np.sqrt(
+                (l1_data - MD_data) ** 2
+                + (l2_data - MD_data) ** 2
+                + (l3_data - MD_data) ** 2
             )
-            RA = np.sqrt(_safe_div(num / 3, suma))
+            RA = _safe_div(num, np.sqrt(3) * MD_data)
             scalar_maps["RA"] = _save_map(RA, "RA")
         else:
             scalar_maps["RA"] = fpath
@@ -696,6 +805,7 @@ class DiffusionScheme:
         Bxx, Byy, Bzz, Bxy, Bxz, Byz = bmat.T
         obj.bvals = Bxx + Byy + Bzz
 
+        # The diagonal gives the magnitude of each gradient component (b * g_i^2)
         gradients = np.vstack(
             [
                 np.sqrt(np.maximum(Bxx, 0)),
@@ -703,6 +813,23 @@ class DiffusionScheme:
                 np.sqrt(np.maximum(Bzz, 0)),
             ]
         ).T
+
+        # The signs come from the off-diagonal terms (b * g_i * g_j). A gradient and
+        # its opposite give the same b-matrix, so the largest component is taken as
+        # positive and the sign of each other component is the sign of its product
+        # with that one.
+        offdiag = np.array(
+            [
+                [np.zeros_like(Bxy), Bxy, Bxz],
+                [Bxy, np.zeros_like(Bxy), Byz],
+                [Bxz, Byz, np.zeros_like(Bxy)],
+            ]
+        )  # (3, 3, N)
+        ref = np.argmax(gradients, axis=1)
+        rows = np.arange(len(ref))
+        signs = np.sign(offdiag[ref, :, rows])  # (N, 3)
+        signs[signs == 0] = 1
+        gradients = gradients * signs
 
         # Normalize
         norms = np.linalg.norm(gradients, axis=1)
@@ -859,7 +986,7 @@ class DiffusionScheme:
 
         # Add center sphere for b0
         pv_plotter.add_points(
-            np.array([[0, 0, 0]]),
+            np.array([[0.0, 0.0, 0.0]]),
             render_points_as_spheres=True,
             point_size=radius,
             color="white",
