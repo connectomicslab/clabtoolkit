@@ -840,6 +840,172 @@ class DiffusionScheme:
         return obj
 
     # -------------------------
+    # Simulation
+    # -------------------------
+    @classmethod
+    def simulate_dwi_acq_scheme(
+        cls,
+        scheme_type: str = "shelled",
+        shells: dict = None,
+        n_b0s: int = 6,
+        bmax: float = 4000,
+        radius: int = 4,
+        n_iter: int = 200,
+    ) -> "DiffusionScheme":
+        """
+        Simulate a diffusion acquisition scheme (shelled or cartesian/DSI).
+
+        Parameters
+        ----------
+        scheme_type : str, optional
+            ``"shelled"`` (single- or multi-shell HARDI) or ``"cartesian"`` (DSI q-space
+            grid). ``"shell"`` and ``"dsi"`` are accepted as aliases. Default is ``"shelled"``.
+
+        shells : dict, optional
+            Only for shelled schemes. Mapping ``{b-value: number of directions}``.
+            Default is ``{1000: 30, 2000: 60}``.
+
+        n_b0s : int, optional
+            Number of B0 volumes placed at the beginning of the scheme. Used by both
+            scheme types. Default is 6.
+
+        bmax : float, optional
+            Only for cartesian schemes. b-value at the outermost grid radius. Default is 4000.
+
+        radius : int, optional
+            Only for cartesian schemes. Radius of the q-space sphere in grid units.
+            Every grid point with ``0 < |q| <= radius`` in the upper half-space
+            (``qz >= 0``) is sampled. Default is 4.
+
+        n_iter : int, optional
+            Only for shelled schemes. Iterations of the electrostatic repulsion used to
+            spread the directions of each shell. Default is 200.
+
+        Returns
+        -------
+        DiffusionScheme
+            Object with ``gradients`` (N, 3), ``bvals`` (N,) and ``scheme_type`` set.
+
+        Examples
+        --------
+        >>> scheme = DiffusionScheme.simulate_dwi_acq_scheme(
+        ...     "shelled", shells={1000: 32, 2000: 64, 3000: 96}, n_b0s=8
+        ... )
+        >>> scheme = DiffusionScheme.simulate_dwi_acq_scheme(
+        ...     "cartesian", bmax=6000, radius=5, n_b0s=1
+        ... )
+        >>> scheme.plot()
+        """
+
+        stype = str(scheme_type).lower()
+        if stype in ("shelled", "shell", "hardi", "multishell"):
+            stype = "shelled"
+        elif stype in ("cartesian", "dsi", "grid"):
+            stype = "cartesian"
+        else:
+            raise ValueError(
+                f"Unknown scheme_type '{scheme_type}'. Use 'shelled' or 'cartesian'."
+            )
+
+        if n_b0s < 0:
+            raise ValueError("n_b0s must be greater than or equal to 0.")
+
+        if stype == "shelled":
+            if shells is None:
+                shells = {1000: 30, 2000: 60}
+            bvecs, bvals = cls._shelled_scheme(shells, n_b0s=n_b0s, n_iter=n_iter)
+        else:
+            bvecs, bvals = cls._dsi_scheme(bmax=bmax, radius=radius, n_b0s=n_b0s)
+
+        obj = cls.from_bvec_bval_arrays(bvecs, bvals)
+        obj.scheme_type = stype  # The type is known, no need to rely on detection
+        return obj
+
+    @staticmethod
+    def _sphere_dirs(n: int, n_iter: int = 200) -> np.ndarray:
+        """
+        Return ``n`` unit vectors (n, 3) evenly spread over the half sphere (z >= 0).
+
+        Directions start from a Fibonacci spiral and are refined with an antipodally
+        symmetric electrostatic repulsion (each direction also repels the opposite
+        of the others), as gradient directions and their opposites are equivalent.
+        """
+        if n <= 0:
+            return np.zeros((0, 3))
+
+        # Fibonacci spiral initialization on the upper hemisphere
+        i = np.arange(n) + 0.5
+        z = 1 - i / n
+        r = np.sqrt(1 - z**2)
+        phi = np.pi * (1 + np.sqrt(5)) * i
+        dirs = np.column_stack([r * np.cos(phi), r * np.sin(phi), z])
+
+        if n > 1:
+            # Step size proportional to the mean spacing between 2n points on the sphere
+            step = 0.2 * np.sqrt(4 * np.pi / (2 * n))
+            for it in range(n_iter):
+                diff_m = dirs[:, None, :] - dirs[None, :, :]
+                diff_p = dirs[:, None, :] + dirs[None, :, :]
+                dm = np.linalg.norm(diff_m, axis=2)
+                dp = np.linalg.norm(diff_p, axis=2)
+                np.fill_diagonal(dm, np.inf)
+                np.fill_diagonal(dp, np.inf)
+
+                force = (diff_m / dm[..., None] ** 3).sum(axis=1) + (
+                    diff_p / dp[..., None] ** 3
+                ).sum(axis=1)
+
+                # Keep only the tangential component
+                force -= np.sum(force * dirs, axis=1)[:, None] * dirs
+                fmax = np.linalg.norm(force, axis=1).max()
+                if fmax == 0:
+                    break
+
+                dirs = dirs + step * (1 - it / n_iter) * force / fmax
+                dirs /= np.linalg.norm(dirs, axis=1)[:, None]
+
+        # Bring every direction to the upper hemisphere
+        dirs[dirs[:, 2] < 0] *= -1
+        return dirs
+
+    @staticmethod
+    def _shelled_scheme(shells: dict, n_b0s: int = 6, n_iter: int = 200) -> tuple:
+        """bvecs (3 x N) and bvals (N,) for a shelled acquisition: {b-value: number of directions}."""
+        if not isinstance(shells, dict) or len(shells) == 0:
+            raise ValueError("shells must be a non-empty dict {b-value: n_directions}.")
+
+        g = [np.zeros((n_b0s, 3))] + [
+            DiffusionScheme._sphere_dirs(int(n), n_iter=n_iter) for n in shells.values()
+        ]
+        b = [np.zeros(n_b0s)] + [
+            np.full(int(n), float(bval)) for bval, n in shells.items()
+        ]
+        return np.vstack(g).T, np.concatenate(b)
+
+    @staticmethod
+    def _dsi_scheme(bmax: float = 4000, radius: int = 4, n_b0s: int = 1) -> tuple:
+        """bvecs (3 x N) and bvals (N,) for a cartesian (DSI) q-space grid inside a sphere of the given radius."""
+        if radius < 1:
+            raise ValueError("radius must be an integer greater than or equal to 1.")
+
+        rng = range(-radius, radius + 1)
+        grid = np.array(
+            [
+                (i, j, k)
+                for i in rng
+                for j in rng
+                for k in range(0, radius + 1)
+                if 0 < i * i + j * j + k * k <= radius**2
+            ],
+            dtype=float,
+        )
+        q = np.linalg.norm(grid, axis=1)
+
+        g = np.vstack([np.zeros((n_b0s, 3)), grid / q[:, None]])
+        b = np.concatenate([np.zeros(n_b0s), bmax * (q / radius) ** 2])
+        return g.T, b
+
+    # -------------------------
     # Scheme detection
     # -------------------------
     def _detect_scheme(self):
