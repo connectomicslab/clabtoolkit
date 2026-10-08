@@ -1574,6 +1574,7 @@ def rename_folders(
     replacements: dict[str, str],
     bool_case: bool = True,
     simulate: bool = False,
+    root_dir: str | None = None,
 ) -> list[tuple[str, str]]:
     """
     Rename folders based on specified string replacements. Handles nested directories and avoids conflicts.
@@ -1594,6 +1595,12 @@ def rename_folders(
         If True, only simulate the renaming and return what would be renamed without actually renaming.
         If False, perform the actual renaming operations.
         Default is False.
+
+    root_dir : str, optional
+        If given, only the folders inside root_dir are renamed, and the replacements
+        are only applied to the part of the path below it: root_dir itself and its
+        parent folders are never renamed. If None (default), every parent folder of
+        the given paths, up to the filesystem root, can be renamed.
 
     Returns
     -------
@@ -1639,17 +1646,29 @@ def rename_folders(
                 new_path = re.sub(pattern, new_str, new_path, flags=re.IGNORECASE)
         return new_path
 
+    root = os.path.abspath(root_dir) if root_dir is not None else None
+
+    def is_below_root(path: str) -> bool:
+        """True if path is strictly inside root_dir (always True without root_dir)."""
+        if root is None:
+            return True
+        path = os.path.abspath(path)
+        try:
+            return path != root and os.path.commonpath([path, root]) == root
+        except ValueError:  # Paths on different drives (Windows)
+            return False
+
     # Find unique directories that need renaming
     dirs_to_process = set()
 
     for folder_path in folder_paths:
         # Add this path and all its parents, stopping at the filesystem root
         # ("/" on POSIX, "C:\\" or "\\\\server\\share\\" on Windows), where
-        # os.path.dirname returns the path unchanged
+        # os.path.dirname returns the path unchanged, or at root_dir
         current = folder_path
         while current:
             parent = os.path.dirname(current)
-            if parent == current:
+            if parent == current or not is_below_root(current):
                 break
             dirs_to_process.add(current)
             current = parent
@@ -1657,7 +1676,13 @@ def rename_folders(
     # Find which directories actually need renaming
     rename_operations = []
     for old_path in dirs_to_process:
-        new_path = apply_replacements(old_path)
+        if root is None:
+            new_path = apply_replacements(old_path)
+        else:
+            # Only the part of the path below root_dir can change
+            relative = os.path.relpath(os.path.abspath(old_path), root)
+            new_path = os.path.join(root, apply_replacements(relative))
+            old_path = os.path.abspath(old_path)
         # In simulation mode, don't check if path exists
         # In execution mode, only process existing paths
         if old_path != new_path:

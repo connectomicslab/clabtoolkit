@@ -504,6 +504,24 @@ class TestDirectories:
         assert (tmp_path / "subject-01" / "ses1" / "keep.txt").is_file()
         assert not (tmp_path / "sub-01").exists()
 
+    def test_rename_folders_stays_inside_root_dir(self, tmp_path):
+        root = tmp_path / "sub-project" / "bids"
+        (root / "sub-01" / "session1").mkdir(parents=True)
+        renamed = cltmisc.rename_folders(
+            [str(root / "sub-01" / "session1")],
+            {"sub-": "subject-", "session": "ses"},
+            root_dir=str(root),
+        )
+        assert len(renamed) == 2
+        assert (tmp_path / "sub-project" / "bids" / "subject-01" / "ses1").is_dir()
+        planned = cltmisc.rename_folders(
+            [str(root / "subject-01")],
+            {"bids": "x", "subject": "s"},
+            simulate=True,
+            root_dir=str(root),
+        )
+        assert planned == [(str(root / "subject-01"), str(root / "s-01"))]
+
     def test_rename_folders_case_insensitive(self, tmp_path):
         (tmp_path / "SUB-01").mkdir()
         cltmisc.rename_folders(
