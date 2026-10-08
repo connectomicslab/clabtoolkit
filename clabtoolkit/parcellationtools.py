@@ -86,7 +86,9 @@ class Parcellation:
 
         space_id : str, optional
             Identifier for the space in which the parcellation is defined
-            (e.g., 'MNI152NLin6Asym', 'native'). Default is "unknown".
+            (e.g., 'MNI152NLin6Asym', 'native'). Default is "unknown". When
+            loading from a file, an explicit value takes priority; with None or
+            "unknown" the space is read from the 'space-' entity of the file name.
 
         Attributes
         ----------
@@ -174,8 +176,8 @@ class Parcellation:
             else:
                 self.get_parcellation_id()
 
-            # Set space ID
-            self.set_space_id()
+            # Set space ID (an explicit value wins over the file name)
+            self.set_space_id(space_id if space_id != "unknown" else None)
 
             # Load the parcellation data
             temp_iparc = nib.load(parc_file)
@@ -319,12 +321,11 @@ class Parcellation:
 
         index = color_dict["index"]
         name = color_dict["name"]
-        color = color_dict["color"]
 
         if not (len(index) == len(name)):
             raise ValueError(
                 f"All required lists in color_table dict must have same length. "
-                f"Got: index={len(index)}, name={len(name)}, color={len(color)}"
+                f"Got: index={len(index)}, name={len(name)}"
             )
 
         # Convert to appropriate types
@@ -1556,7 +1557,7 @@ class Parcellation:
             self.get_parcellation_id()
 
         if not hasattr(self, "space"):
-            self.get_space_id(space_id="unknown")
+            self.set_space_id("unknown")
 
         parc_id = self.id
         space_id = self.space
@@ -1570,7 +1571,7 @@ class Parcellation:
             hf.create_dataset(f"{base_cad}/header/file_path", data=self.parc_file)
 
         # Save the LUT file pathname if it exists
-        if hasattr(self, "lut_file"):
+        if getattr(self, "lut_file", None) is not None:
             hf.create_dataset(f"{base_cad}/header/lut_file", data=self.lut_file)
 
         # Save the parcellation id
@@ -1641,14 +1642,24 @@ class Parcellation:
         if hasattr(self, "timeseries"):
             hf.create_dataset(f"{base_cad}/time_series", data=self.timeseries)
 
+        # Save the morphometry DataFrame if it exists (one dataset per column)
+        if isinstance(getattr(self, "morphometry", None), pd.DataFrame):
+            morpho_group = hf.create_group(f"{base_cad}/morphometry")
+            morpho_group.attrs["columns"] = [str(c) for c in self.morphometry.columns]
+            for col in self.morphometry.columns:
+                values = self.morphometry[col]
+                if pd.api.types.is_numeric_dtype(values):
+                    data = values.to_numpy()
+                else:
+                    data = values.astype(str).to_numpy().astype(object)
+                    morpho_group.create_dataset(
+                        str(col), data=data, dtype=h5py.string_dtype()
+                    )
+                    continue
+                morpho_group.create_dataset(str(col), data=data)
+
         # Close the file
         hf.close()
-
-        # Save the morphometry DataFrame if it exists
-        if hasattr(self, "morphometry"):
-            cltmisc.save_morphometry_hdf5(
-                out_file, "{base_cad}/morphometry", self.morphometry, mode="w"
-            )
 
     ####################################################################################################
     def prepare_for_connectomics(
@@ -1867,7 +1878,8 @@ class Parcellation:
         Parameters
         ----------
         names : str or list of str
-            Region names to convert to labels.
+            Region names, or substrings of them, to convert to labels. Every
+            region whose name contains one of the strings is selected.
 
         Returns
         -------
@@ -1876,9 +1888,9 @@ class Parcellation:
 
         Examples
         --------
-        >>> parc.names_to_label('ctx-lh-bankssts')
+        >>> parc.names_to_labels('ctx-lh-bankssts')
         [1]
-        >>> parc.names_to_label(['ctx-lh-bankssts', 'ctx-rh-bankssts'])
+        >>> parc.names_to_labels(['ctx-lh-bankssts', 'ctx-rh-bankssts'])
         [1, 2]
         """
         if isinstance(names, str):
@@ -1895,29 +1907,39 @@ class Parcellation:
         """
         Convert region labels to their corresponding names.
         The input labels can be integers, lists of integers, numpy arrays, strings, or lists of strings.
-        Strings will be converted to their corresponding labels using the parcellation's name-to-label mapping.
+        Strings that match a region name exactly are converted to its label; other
+        strings are parsed as labels or label ranges (e.g. "1-5").
 
         Parameters
         ----------
         labels : int, list of int, np.ndarray, str, or list of str
-            Region labels or names to convert to names. Strings will be converted
-            to their corresponding labels using the parcellation's name-to-label mapping.
+            Region labels or names to convert to names.
 
         Returns
         -------
         list of str
-            Corresponding region names for the given labels or names.
+            Corresponding region names, in the same order as the input.
 
         Examples
         --------
         >>> parc.labels_to_names(1)
         ['ctx-lh-bankssts']
-        >>> parc.labels_to_names([1, 2])
-        ['ctx-lh-bankssts', 'ctx-rh-bankssts']
+        >>> parc.labels_to_names([2, 1])
+        ['ctx-rh-bankssts', 'ctx-lh-bankssts']
+        >>> parc.labels_to_names(['ctx-rh-bankssts', 1])
+        ['ctx-rh-bankssts', 'ctx-lh-bankssts']
         """
 
-        # Ensure code is a list of indices
-        labels = cltmisc.build_indices(labels)
+        # Convert every item to labels, keeping the input order
+        if isinstance(labels, (str, int, np.integer)):
+            labels = [labels]
+        codes = []
+        for item in np.asarray(labels, dtype=object).ravel():
+            if isinstance(item, str) and item in self.name:
+                codes.append(self.index[self.name.index(item)])
+            else:
+                codes.extend(cltmisc.build_indices(item))
+        labels = codes
 
         missing = [label for label in labels if label not in self.index]
         if missing:
@@ -3450,7 +3472,7 @@ class Parcellation:
         >>>
         >>> grouped_array, color_table = parc.group_by_codes(group_dict)
         >>> print(color_table['index'])  # [3, 4, 5, 6, ...ungrouped codes...]
-        >>> print(color_table['name'])   # ['group_1', 'Thalamus', 'LimbicSystem', 'Cerebellum', ...original names...]
+        >>> print(color_table['name'])   # ['group-000001', 'Thalamus', 'LimbicSystem', 'Cerebellum', ...original names...]
         """
 
         # Expand all groups up front
@@ -3662,7 +3684,9 @@ class Parcellation:
         ----------
         relabel_dict : dict
             Mapping {old_label: new_label}. Only labels present as keys are
-            changed; everything else is left untouched.
+            changed; everything else is left untouched. Regions mapped to the
+            same label are merged, keeping the name and color of the region that
+            already had that label (or of the first one).
         rearrange : bool, optional
             If True, after relabeling, renumber all labels present in the
             parcellation into a contiguous sequence (1, 2, 3, ...), ordered
@@ -3705,9 +3729,24 @@ class Parcellation:
         # Mirror the same mapping onto the index (labels not in the dict
         # pass through unchanged).
         if self.index is not None:
-            old_index = np.asarray(self.index)
-            new_index = np.array([relabel_dict.get(val, val) for val in old_index])
-            self.index = new_index
+            old_index = [int(val) for val in self.index]
+            new_index = [int(relabel_dict.get(val, val)) for val in old_index]
+
+            # Regions merged into the same label keep a single table entry: the
+            # one of the region that already had that label, otherwise the first.
+            keep = {}
+            for pos, (old_val, new_val) in enumerate(
+                zip(old_index, new_index, strict=True)
+            ):
+                if new_val not in keep or old_val == new_val:
+                    keep[new_val] = pos
+            positions = sorted(keep.values())
+
+            self.index = [new_index[pos] for pos in positions]
+            for attr in ("name", "color", "opacity"):
+                values = getattr(self, attr, None)
+                if values is not None and len(values) == len(old_index):
+                    setattr(self, attr, [values[pos] for pos in positions])
 
         # Adjust values and update parcellation range after relabeling
         self.adjust_values()
@@ -4053,13 +4092,6 @@ class Parcellation:
         elif isinstance(headerlines, str):
             headerlines = [headerlines]
 
-            # Add an empty line at the end if not present
-            headerlines = (
-                headerlines + "\n"
-                if not headerlines[-1].endswith("\n")
-                else headerlines
-            )
-
         # Normalise out_file to str
         if isinstance(out_file, Path):
             out_file = str(out_file)
@@ -4137,8 +4169,14 @@ class Parcellation:
         Parameters
         ----------
         lut_file : str or dict, optional
-            Path to LUT file or dictionary with index/name/color keys. Default is None.
+            Path to LUT file or dictionary with index/name/color keys. If None,
+            $FREESURFER_HOME/FreeSurferColorLUT.txt is loaded. Default is None.
 
+        Raises
+        ------
+        ValueError
+            If lut_file is None and FREESURFER_HOME is not set, if the file does
+            not exist, or if the table has no 'index' and 'name' entries.
 
         Examples
         --------
@@ -4152,6 +4190,11 @@ class Parcellation:
         if lut_file is None:
             # Get the enviroment variable of $FREESURFER_HOME
             freesurfer_home = os.getenv("FREESURFER_HOME")
+            if not freesurfer_home:
+                raise ValueError(
+                    "No lut_file was given and FREESURFER_HOME is not set, so the "
+                    "default FreeSurferColorLUT.txt cannot be found."
+                )
             lut_file = os.path.join(freesurfer_home, "FreeSurferColorLUT.txt")
 
         if isinstance(lut_file, (str, Path)):
@@ -4277,7 +4320,7 @@ class Parcellation:
         index_new = temp_index[mask]
 
         if hasattr(self, "index"):
-            self.index = index_new
+            self.index = [int(x) for x in index_new]
 
         # If name is an attribute of self
         if hasattr(self, "name"):
@@ -5471,9 +5514,10 @@ class Parcellation:
 
         Parameters
         ----------
-        data : str, Path, or np.ndarray
+        data : str, Path, np.ndarray, or RegionTimeSeries
             Either a path to a NIfTI file, a pre-loaded 2-D ROI × time matrix,
-            or a 4-D NIfTI array (handled via ``get_regionwise_timeseries``).
+            a 4-D NIfTI array (handled via ``get_regionwise_timeseries``), or a
+            ``RegionTimeSeries`` object (its own ``compute_fc_matrix`` is used).
 
         method : str, default ``"pearson"``
             Correlation / association method.  Supported values:
@@ -5550,14 +5594,29 @@ class Parcellation:
         SUPPORTED = {"pearson", "spearman", "kendall", "partial", "mutual_info"}
 
         if isinstance(data, RegionTimeSeries):
+            # Labels are translated to this parcellation's names, which must
+            # match the region names of the time series exactly
+            if region_labels is not None and region_names is None:
+                wanted = self.labels_to_names(region_labels)
+                rows = [i for i, name in enumerate(data.region_names) if name in wanted]
+                if not rows:
+                    raise ValueError(
+                        "None of the requested region_labels match the region "
+                        "names of the time series."
+                    )
+                data = RegionTimeSeries(
+                    data.data[rows, :],
+                    region_names=[data.region_names[i] for i in rows],
+                    region_colors=[data.region_colors[i] for i in rows],
+                )
             fc_connectome = data.compute_fc_matrix(
                 method=method,
                 z_transform=z_transform,
                 absolute=absolute,
                 threshold=threshold,
-                region_labels=region_labels,
-                region_names=region_names,
                 normalize_rows=normalize_rows,
+                vols_to_delete=vols_to_delete,
+                region_names=region_names,
             )
             return fc_connectome
 
@@ -5865,8 +5924,11 @@ class RegionTimeSeries:
             Equivalent to ``create_carpet_plot``'s ``normalize_rows``.
 
         vols_to_delete : str, list, or np.ndarray, optional
-            Volume indices to discard before computing the FC matrix.
-            Passed directly to ``get_regionwise_timeseries``.
+            Volume indices (or ranges such as ``"0-4"``) to discard before
+            computing the FC matrix. An empty list deletes nothing.
+
+        region_names : str or list of str, optional
+            Keep only the regions whose names contain one of these strings.
 
         Returns
         -------
@@ -5882,12 +5944,12 @@ class RegionTimeSeries:
         Examples
         --------
         >>> import numpy as np
-        >>> data = np.random.randn(90, 200)      # 90 ROIs, 200 time points
+        >>> rts = RegionTimeSeries(np.random.randn(90, 200))  # 90 ROIs, 200 time points
 
-        >>> fc_r   = compute_fc_matrix(data, method="pearson")
-        >>> fc_rho = compute_fc_matrix(data, method="spearman", z_transform=True)
-        >>> fc_par = compute_fc_matrix(data, method="partial")
-        >>> fc_mi  = compute_fc_matrix(data, method="mutual_info")
+        >>> fc_r   = rts.compute_fc_matrix(method="pearson")
+        >>> fc_rho = rts.compute_fc_matrix(method="spearman", z_transform=True)
+        >>> fc_par = rts.compute_fc_matrix(method="partial")
+        >>> fc_mi  = rts.compute_fc_matrix(method="mutual_info")
         """
 
         # ------------------------------------------------------------------
@@ -5923,15 +5985,13 @@ class RegionTimeSeries:
             # Convert vols_to_delete to a flat list of integers
             vols_to_delete = cltmisc.build_indices(vols_to_delete, nonzeros=False)
 
-            # Check if vols_to_delete is not empty
-            if len(vols_to_delete) == 0:
-                vols_to_delete = None  # Reset to None for get_regionwise_timeseries
-
-            if max(vols_to_delete) >= data.shape[1]:
-                raise ValueError(
-                    f"vols_to_delete contains indices that exceed the number of time points ({data.shape[1]})."
-                )
-            data = np.delete(data, vols_to_delete, axis=1)
+            # Nothing to delete for an empty list
+            if len(vols_to_delete) > 0:
+                if max(vols_to_delete) >= data.shape[1]:
+                    raise ValueError(
+                        f"vols_to_delete contains indices that exceed the number of time points ({data.shape[1]})."
+                    )
+                data = np.delete(data, vols_to_delete, axis=1)
 
         method = method.lower().strip()
         if method not in SUPPORTED:

@@ -4832,35 +4832,29 @@ def merge_surfaces(
             "lookup_table": None,
         }
 
-    # Track point ranges for each surface
-    point_ranges = []
-
-    # Merge surfaces
+    # Tag the points of every surface with its ID before merging. The merge
+    # removes duplicated points, so point counts cannot be used to find
+    # which surface each merged point comes from.
+    tagged = []
     for i, surf in enumerate(surfaces):
         try:
-            if i == 0:
-                if isinstance(surf, Surface):
-                    merged = copy.deepcopy(surf)
-                else:
-                    merged = Surface(surf)
-                point_ranges.append((0, merged.mesh.n_points))
-            else:
-                n_points_before = merged.mesh.n_points
-                result = merged.add_surface(surf)
-                if result is not None:
-                    merged = result
-                n_points_after = merged.mesh.n_points
-                point_ranges.append((n_points_before, n_points_after))
+            surf_copy = (
+                copy.deepcopy(surf) if isinstance(surf, Surface) else Surface(surf)
+            )
         except Exception as e:
             print(f"Merge failed: {e}")
             return None
+        surf_copy.mesh.point_data[map_name] = np.full(
+            surf_copy.mesh.n_points, color_table_array[i, 4], dtype=float
+        )
+        tagged.append(surf_copy)
 
-    # Create surf_ids based on actual point ranges
-    surf_ids = np.zeros(merged.mesh.n_points)
-    for i, (start, end) in enumerate(point_ranges):
-        surf_ids[start:end] = color_table_array[i, 4]
+    try:
+        merged = tagged[0].add_surface(tagged[1:])
+    except Exception as e:
+        print(f"Merge failed: {e}")
+        return None
 
-    merged.mesh.point_data[map_name] = surf_ids
     merged.colortables[map_name] = color_table_dict
 
     return merged
