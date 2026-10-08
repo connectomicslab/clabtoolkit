@@ -140,7 +140,8 @@ def delete_entity(entity: dict | str, ent2rem: list[str] | str | dict) -> dict |
 
     ent2rem : List[str], str or dict
         Entities to be removed from the entity dictionary or string. If ent2rem is a dictionary,
-        only the combination key-value will be removed from the filenames.
+        only the combination key-value will be removed from the filenames. Its values can be a
+        single value or a list of values, and must match the entity value exactly.
 
     Returns
     -------
@@ -151,6 +152,9 @@ def delete_entity(entity: dict | str, ent2rem: list[str] | str | dict) -> dict |
     --------
     >>> delete_entity("sub-01_ses-M00_acq-3T_dir-AP_run-01_T1w.nii.gz", "acq")
     Returns: "sub-01_ses-M00_dir-AP_run-01_T1w.nii.gz"
+
+    >>> delete_entity("sub-01_acq-3T_T1w.nii.gz", {"acq": ["1T", "3T"]})
+    Returns: "sub-01_T1w.nii.gz"
 
     """
     # Determine if `entity` is a string and convert if necessary.
@@ -182,8 +186,12 @@ def delete_entity(entity: dict | str, ent2rem: list[str] | str | dict) -> dict |
     # Remove specified keys from the entity dictionary.
     for key in key2rem:
         if rem_is_dict:
-            # If `key2rem` is a dictionary, check if the key exists and has the specified value.
-            if key in entity_out and entity_out[key] in ent2rem[key]:
+            # If `key2rem` is a dictionary, check if the key exists and has exactly
+            # (one of) the specified value(s).
+            values = ent2rem[key]
+            if not isinstance(values, (list, tuple, set)):
+                values = [values]
+            if key in entity_out and entity_out[key] in {str(v) for v in values}:
                 entity_out.pop(key, None)
         else:
             entity_out.pop(key, None)  # `pop` with default `None` avoids KeyErrors.
@@ -300,16 +308,18 @@ def replace_entity_key(
     # Filter out any empty keys or values from `keys2replace`
     keys2replace = {k: v for k, v in keys2replace.items() if k and v}
 
+    # Verbose output for the keys to replace that do not exist in the entity
+    if verbose:
+        for key in keys2replace:
+            if key not in entity:
+                print(f"Warning: Key '{key}' not found in the original dictionary.")
+
     # Replace key names in the entity
     entity_out = {}
     for key, value in entity.items():
         # Use the new key if it exists in `keys2replace`, otherwise keep the original key
         new_key = keys2replace.get(key, key)
         entity_out[new_key] = value
-
-        # Verbose output if the key to replace does not exist in the entity
-        if verbose and key in keys2replace and key not in entity:
-            print(f"Warning: Key '{key}' not found in the original dictionary.")
 
     # Convert back to string format if the original input was a string
     if is_string:
@@ -423,11 +433,60 @@ def insert_entity(
 
 
 ####################################################################################################
+def _rename_bids_tree(root_dir: str, transform, rename_folders: bool = True) -> int:
+    """
+    Rename the BIDS files (and optionally folders) inside root_dir.
+
+    The tree is walked bottom-up, so a folder is renamed after its content. Only
+    names that follow the BIDS naming convention are passed to ``transform``; other
+    names (e.g. ``anat``, ``derivatives`` or ``dataset_description.json``) and
+    root_dir itself are never renamed.
+
+    Parameters
+    ----------
+    root_dir : str
+        Root directory of the BIDS dataset.
+
+    transform : callable
+        Function receiving a file or folder name and returning its new name.
+
+    rename_folders : bool, optional
+        Whether folders are renamed too. Default is True.
+
+    Returns
+    -------
+    int
+        Number of files and folders renamed.
+    """
+    n_renamed = 0
+    for current, dirs, files in os.walk(root_dir, topdown=False):
+        names = files + (dirs if rename_folders else [])
+        for name in names:
+            if not is_bids_filename(name):
+                continue
+            new_name = transform(name)
+            if not new_name or new_name == name:
+                continue
+            src = os.path.join(current, name)
+            dst = os.path.join(current, new_name)
+            if os.path.exists(dst):
+                print(f"Warning: {dst} already exists. {src} was not renamed.")
+                continue
+            os.rename(src, dst)
+            n_renamed += 1
+    return n_renamed
+
+
+####################################################################################################
 def recursively_replace_entity_value(
     root_dir: str, dict2old: dict | str, dict2new: dict | str
 ):
     """
     This method replaces the values of certain entities in all the files and folders of a BIDs dataset.
+
+    Only the files and folders whose names contain all the entities of ``dict2old``
+    with those exact values are renamed (e.g. ``ses-01`` matches ``ses-01`` but not
+    ``ses-010``). Nothing outside ``root_dir`` is renamed.
 
     Parameters
     ----------
@@ -440,7 +499,10 @@ def recursively_replace_entity_value(
     dict2new: dict or str
         Dictionary containing the entities to replace and their new values
 
-
+    Examples
+    --------
+    >>> recursively_replace_entity_value("/data/bids", {"ses": "01"}, {"ses": "baseline"})
+    >>> # sub-01/ses-01/anat/sub-01_ses-01_T1w.nii.gz -> sub-01/ses-baseline/anat/sub-01_ses-baseline_T1w.nii.gz
     """
 
     # Detect if the BIDs directory exists
@@ -454,52 +516,20 @@ def recursively_replace_entity_value(
         dict2new = str2entity(dict2new)
 
     # Leave in the dictionaries only the keys that are common
-    dict2old = {k: dict2old[k] for k in dict2old if k in dict2new}
-    dict2new = {k: dict2new[k] for k in dict2new if k in dict2old}
+    dict2old = {k: str(dict2old[k]) for k in dict2old if k in dict2new}
+    dict2new = {k: str(dict2new[k]) for k in dict2new if k in dict2old}
 
-    # Order the dictionaries alphabetically by key
-    dict2old = dict(sorted(dict2old.items()))
-    dict2new = dict(sorted(dict2new.items()))
+    def transform(name: str) -> str:
+        ent = str2entity(name)
+        if not dict2old or any(ent.get(k) != v for k, v in dict2old.items()):
+            return name
+        ent.update(dict2new)
+        return entity2str(ent)
 
-    # Creating the list of strings
-    dict2old_list = [f"{key}-{value}" for key, value in dict2old.items()]
-    dict2new_list = [f"{key}-{value}" for key, value in dict2new.items()]
-
-    replacements = dict(zip(dict2old_list, dict2new_list, strict=False))
-
-    #
-    all_files = cltmisc.get_all_files(
-        root_dir, or_filter=dict2old_list[0], and_filter=dict2old_list
-    )
-
-    if not all_files:
+    if _rename_bids_tree(root_dir, transform) == 0:
         print(
             "No files found that match the specified entities. Please check the input parameters."
         )
-        return
-
-    else:
-        all_dirs = []
-        for file in all_files:
-            file_path = os.path.dirname(file)
-            file_name = os.path.basename(file)
-            all_dirs.append(file_path)
-
-            for i, subst_x in enumerate(dict2old_list):
-                subst_y = dict2new_list[i]
-                if subst_x in file_name:
-                    old_path = os.path.join(file_path, file_name)
-                    new_name = file_name.replace(subst_x, subst_y)
-                    new_path = os.path.join(file_path, new_name)
-                    os.rename(old_path, new_path)
-                    file_name = (
-                        new_name  # Update old_path to the new path after renaming
-                    )
-
-        all_dirs = set(all_dirs)  # Remove duplicates from the directory list
-
-        # Renaming the directories
-        cltmisc.rename_folders(all_dirs, replacements)
 
 
 ####################################################################################################
@@ -519,69 +549,50 @@ def recursively_replace_entity_key(root_dir: str, replacements: dict):
     Returns
     -------
     None
-        The method will rename the files and folders in the BIDs dataset. All the files or folders containing the old
-        entities' names on their names will be renamed and the old entities will be replaced with the new entities.
+        The method will rename the files and folders in the BIDs dataset. Only the
+        entity keys are replaced (``run-01`` -> ``echo-01``); entity values that
+        happen to contain the key (e.g. ``task-rerun``) are left unchanged. Nothing
+        outside ``root_dir`` is renamed.
 
     """
     # Detect if the BIDs directory exists
     if not os.path.isdir(root_dir):
         raise ValueError("The BIDs directory does not exist.")
 
-    old_keys = list(replacements.keys())
-    new_keys = list(replacements.values())
+    def transform(name: str) -> str:
+        ent = str2entity(name)
+        if not any(k in ent for k in replacements):
+            return name
+        return replace_entity_key(name, replacements)
 
-    all_files = cltmisc.get_all_files(
-        root_dir, or_filter=old_keys[0], and_filter=old_keys
-    )
-
-    if not all_files:
+    if _rename_bids_tree(root_dir, transform) == 0:
         print(
             "No files found that match the specified entities. Please check the input parameters."
         )
-        return
-
-    else:
-        all_dirs = []
-        for file in all_files:
-            file_path = os.path.dirname(file)
-            file_name = os.path.basename(file)
-            all_dirs.append(file_path)
-
-            for i, subst_x in enumerate(old_keys):
-                subst_y = new_keys[i]
-                if subst_x in file_name:
-                    old_path = os.path.join(file_path, file_name)
-                    new_name = file_name.replace(subst_x, subst_y)
-                    new_path = os.path.join(file_path, new_name)
-                    os.rename(old_path, new_path)
-                    file_name = (
-                        new_name  # Update old_path to the new path after renaming
-                    )
-
-        all_dirs = set(all_dirs)  # Remove duplicates from the directory list
-
-        # Renaming the directories
-        cltmisc.rename_folders(all_dirs, replacements)
 
 
 ####################################################################################################
 def recursively_delete_entity(root_dir: str, key2rem: list[str] | str | dict):
     """
-    This method deletes entities in all the files and folders of a BIDs dataset.
+    This method deletes entities from the names of all the files of a BIDs dataset.
 
     Parameters
     ----------
     root_dir: str
         Root directory of the BIDs dataset
 
-    key2rem: list or str
-        Key(s) of the entities that will be removed from the files and folders.
+    key2rem: list, str or dict
+        Key(s) of the entities that will be removed from the file names. If a
+        dictionary is given, the entities are only removed when they have the
+        specified value(s), e.g. ``{"acq": "mprage"}``.
 
     Returns
     -------
     None
-        The method will rename the files and folders in the BIDs dataset, removing from file names and folder names the entities containing the specified keys.
-
+        The method will rename the files in the BIDs dataset, removing the entities
+        with the specified keys from their names. Folder names are not changed (e.g.
+        removing ``ses`` keeps the ``ses-XX`` folders, so files from different
+        sessions do not collide). Nothing outside ``root_dir`` is renamed.
 
     """
 
@@ -594,41 +605,13 @@ def recursively_delete_entity(root_dir: str, key2rem: list[str] | str | dict):
     if isinstance(key2rem, str):
         key2rem = [key2rem]
 
-    if isinstance(key2rem, dict):
-        tmp_keys = list(key2rem.keys())
-        all_files = cltmisc.get_all_files(
-            root_dir, or_filter=tmp_keys[0], and_filter=tmp_keys
-        )
-    else:
+    def transform(name: str) -> str:
+        return delete_entity(name, key2rem)
 
-        all_files = cltmisc.get_all_files(
-            root_dir, or_filter=key2rem[0], and_filter=key2rem
-        )
-
-    if not all_files:
+    if _rename_bids_tree(root_dir, transform, rename_folders=False) == 0:
         print(
             "No files found that match the specified entities. Please check the input parameters."
         )
-        return
-
-    else:
-        all_dirs = []
-        for file in all_files:
-            file_path = os.path.dirname(file)
-            file_name = os.path.basename(file)
-            all_dirs.append(file_path)
-
-            new_entity = delete_entity(file_name, key2rem)
-
-            old_path = os.path.join(file_path, file_name)
-            new_path = os.path.join(file_path, new_entity)
-            os.rename(old_path, new_path)
-
-        all_dirs = set(all_dirs)  # Remove duplicates from the directory list
-
-        # Renaming the directories
-        key2rem_dict = dict.fromkeys(key2rem, "")  # Create a dict with empty values
-        cltmisc.rename_folders(all_dirs, key2rem_dict)
 
 
 ####################################################################################################
@@ -636,7 +619,7 @@ def recursively_insert_entity(
     root_dir: str, entity2add: dict[str, str], prev_entity: str = None
 ) -> None:
     """
-    This method inserts entities in all the files and folders of a BIDs dataset.
+    This method inserts entities in the names of all the files of a BIDs dataset.
 
     Parameters
     ----------
@@ -649,12 +632,14 @@ def recursively_insert_entity(
 
     prev_entity: str, optional
         Key in `entity` after which to insert the new entities. Otherwise it will be added at the end of the file name, just before the suffix.
+        Files that do not contain this entity are not renamed.
 
     Returns
     -------
     None
-        The method will rename the files and folders in the BIDs dataset. All the files or folders containing the old
-        entities' names on their names will be renamed and the old entities will be replaced with the new entities.
+        The method will rename the files of the subjects (names starting with
+        ``sub-``) in the BIDs dataset. Entities that a file already has are not added
+        again. Folder names are not changed.
 
     """
 
@@ -670,32 +655,16 @@ def recursively_insert_entity(
     # Order the dictionaries alphabetically by key
     entity2add = dict(sorted(entity2add.items()))
 
-    # Creating the list of strings
-    [f"{key}-{value}" for key, value in entity2add.items()]
+    def transform(name: str) -> str:
+        ent = str2entity(name)
+        if "sub" not in ent or (prev_entity is not None and prev_entity not in ent):
+            return name
+        return insert_entity(name, entity2add, prev_entity=prev_entity)
 
-    if prev_entity is not None:
-        all_files = cltmisc.get_all_files(root_dir, or_filter=prev_entity)
-    else:
-        all_files = cltmisc.get_all_files(root_dir, or_filter="sub-")
-
-    if not all_files:
+    if _rename_bids_tree(root_dir, transform, rename_folders=False) == 0:
         print(
             "No files found that match the specified entities. Please check the input parameters."
         )
-        return
-
-    else:
-        all_dirs = []
-        for file in all_files:
-            file_path = os.path.dirname(file)
-            file_name = os.path.basename(file)
-            all_dirs.append(file_path)
-
-            new_entity = insert_entity(file_name, entity2add, prev_entity=prev_entity)
-
-            old_path = os.path.join(file_path, file_name)
-            new_path = os.path.join(file_path, new_entity)
-            os.rename(old_path, new_path)
 
 
 ####################################################################################################
@@ -1034,7 +1003,6 @@ def entities_to_table(
             f"Error parsing the default configuration file: {default_config_path}"
         ) from err
 
-    file_directory = os.path.dirname(filepath)
     filename = cltmisc.get_real_basename(filepath)
     filename = filename.split(".")[0]
 
@@ -1047,13 +1015,8 @@ def entities_to_table(
         if "extension" in entities_dict:
             entities_dict.pop("extension")
 
-        # Extract suffix before removing it
-        if "suffix" in entities_dict:
-            if include_suffix:
-                # Add an entity at the end called "Type"
-                tmp_suffix = entities_dict["suffix"]
-
-            entities_dict.pop("suffix")
+        # Extract the suffix before removing it
+        tmp_suffix = entities_dict.pop("suffix", None)
 
         if entities_to_extract is not None:
             if isinstance(entities_to_extract, str):
@@ -1095,9 +1058,9 @@ def entities_to_table(
             else:
                 result_df.insert(0, custom_name or entity.capitalize(), value)
 
-        # Append Type column at the end if requested
-        if "tmp_suffix" in locals() and include_suffix:
-            result_df.insert(0, "Type", tmp_suffix)
+        # Append the Type column at the end if requested
+        if include_suffix:
+            result_df["Type"] = tmp_suffix if tmp_suffix is not None else ""
 
     else:
         if result_df.empty:
@@ -1500,10 +1463,10 @@ def get_bids_database_table(
         saved to disk but still returned as a DataFrame. Default is None.
 
     valid_extensions : str or list of str, optional
-        File extension(s) to include when scanning for files (e.g. ".nii.gz"). If None,
-        the extensions are loaded from the default BIDS config file
-        (config/bids.json -> "extensions"). If an invalid type is provided, falls back
-        to the default config extensions as well.
+        File extension(s) to include when scanning for files (e.g. ".nii.gz"). If None
+        (default), only the images are counted (".nii.gz" and ".nii"), so sidecar files
+        such as .json, .bvec, .bval or _events.tsv are not counted. If an invalid type
+        is provided, falls back to the default as well.
 
     n_jobs : int, optional
         Number of worker threads to use when processing subjects. Use 1 (default) for
@@ -1516,8 +1479,9 @@ def get_bids_database_table(
     pd.DataFrame
         DataFrame with columns for each detected BIDS entity (Subject, Session,
         Acquisition, etc.), plus 'suffix' (image type like T1w, FLAIR) and 'N'
-        (number of files for each unique combination). Each row represents a unique
-        combination of BIDS entities and their file count.
+        (number of files with valid_extensions, i.e. images by default, for each
+        unique combination). Each row represents a unique combination of BIDS
+        entities and their file count.
 
     Raises
     ------
@@ -1526,8 +1490,7 @@ def get_bids_database_table(
     NotADirectoryError
         If root_dir exists but is not a directory.
     ValueError
-        If no subjects are found in the BIDS dataset (no sub-* folders), or if the
-        default BIDS config file fails to load.
+        If no subjects are found in the BIDS dataset (no sub-* folders).
 
     Examples
     --------
@@ -1596,14 +1559,9 @@ def get_bids_database_table(
     if not os.path.isdir(root_dir):
         raise NotADirectoryError(f"Provided path is not a directory: {root_dir}")
 
-    # Validate extensions filter
-    # Loading the default valid extensions from the BIDS config if not provided
-    default_config_path = os.path.join(os.path.dirname(__file__), "config", "bids.json")
-    try:
-        config_data = load_bids_json(default_config_path)
-    except Exception as e:
-        raise ValueError(f"Failed to load default BIDS config: {e}") from e
-    default_valid_extensions = config_data.get("extensions", None)
+    # Validate extensions filter. By default only the images are counted, so the
+    # sidecar files (.json, .bvec, .bval, _events.tsv, ...) do not inflate N
+    default_valid_extensions = [".nii.gz", ".nii"]
 
     if valid_extensions is not None:
         if isinstance(valid_extensions, str):
@@ -1954,7 +1912,10 @@ def get_individual_files_and_folders(input_folder: str, cad4query: str | list | 
         Path to the input folder.
 
     cad4query : str, list, or dict
-        String or list of strings to filter the files and folders. If a dictionary is provided, it should contain key-value pairs where the key is the string before '-' and the value is the string after '-'.
+        Entities to filter the files and folders. It must include the subject (``sub``). Can be:
+        - a BIDS-like string, e.g. ``"sub-01"`` or ``"sub-01_ses-02"``
+        - a list of such strings, e.g. ``["sub-01", "ses-02"]``
+        - a dictionary of entities, e.g. ``{"sub": "01", "ses": "02"}``
 
     Returns
     -------
@@ -1974,6 +1935,7 @@ def get_individual_files_and_folders(input_folder: str, cad4query: str | list | 
     >>> input_folder = "/path/to/input/folder"
     >>> cad4query = "sub-01"
     >>> files = get_individual_files_and_folders(input_folder, cad4query)
+    >>> files = get_individual_files_and_folders(input_folder, "sub-01_ses-02")
 
 
     """
@@ -1990,13 +1952,27 @@ def get_individual_files_and_folders(input_folder: str, cad4query: str | list | 
         cad4query = [cad4query]
 
     if isinstance(cad4query, list):
-        clean_id_dict = dict([i.split("-") for i in cad4query])
+        # Each item can hold one or several entities (e.g. "sub-01" or "sub-01_ses-02")
+        clean_id_dict = {}
+        for item in cad4query:
+            ent = str2entity(item)
+            ent.pop("suffix", None)
+            ent.pop("extension", None)
+            clean_id_dict.update(ent)
 
     elif isinstance(cad4query, dict):
-        clean_id_dict = cad4query.copy()
+        clean_id_dict = {k: str(v) for k, v in cad4query.items()}
 
-        # cad4query should be converted to a list of strings for filtering
-        cad4query = [f"{k}-{v}" for k, v in clean_id_dict.items()]
+    else:
+        raise TypeError(
+            "cad4query must be a string, a list of strings or a dictionary."
+        )
+
+    if "sub" not in clean_id_dict:
+        raise ValueError("cad4query must include the subject entity (sub).")
+
+    # cad4query is converted to a list of key-value strings for filtering
+    cad4query = [f"{k}-{v}" for k, v in clean_id_dict.items()]
 
     # Detecting the all the files for the reference subject
     ind_der_dir = glob(os.path.join(input_folder, "sub-" + clean_id_dict["sub"] + "*"))
