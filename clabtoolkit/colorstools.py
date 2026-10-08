@@ -176,7 +176,7 @@ def is_color_like(color) -> bool:
 
         # Integer arrays: must be in 0-255 range
         if np.issubdtype(color.dtype, np.integer):
-            return (color >= 0).all() and (color <= 255).all()
+            return bool((color >= 0).all() and (color <= 255).all())
 
         # Float arrays: can be either 0-1 or 0-255 range
         if np.issubdtype(color.dtype, np.floating):
@@ -187,7 +187,7 @@ def is_color_like(color) -> bool:
             # Check if all values are in 0-255 range and are whole numbers
             if (color >= 0).all() and (color <= 255).all():
                 # Check if they're all whole numbers (e.g., 70.0, 130.0, 180.0)
-                return np.all(color == np.floor(color))
+                return bool(np.all(color == np.floor(color)))
 
             return False
 
@@ -219,7 +219,7 @@ def is_color_like(color) -> bool:
         return False
 
     # Default to matplotlib's validator for strings and other types
-    return mpl_is_color_like(color)
+    return bool(mpl_is_color_like(color))
 
 
 #####################################################################################################
@@ -397,14 +397,14 @@ def is_valid_rgb_255(rgb: Any) -> bool:
 
         # Integer arrays: check range
         if np.issubdtype(rgb.dtype, np.integer):
-            return (rgb >= 0).all() and (rgb <= 255).all()
+            return bool((rgb >= 0).all() and (rgb <= 255).all())
 
         # Float arrays: must be in 0-255 range and whole numbers
         if np.issubdtype(rgb.dtype, np.floating):
             if not ((rgb >= 0).all() and (rgb <= 255).all()):
                 return False
             # Check if all values are whole numbers
-            return np.all(rgb == np.floor(rgb))
+            return bool(np.all(rgb == np.floor(rgb)))
 
         return False
 
@@ -507,11 +507,11 @@ def is_valid_rgb_01(rgb: Any) -> bool:
 
         # Integer arrays: only 0 and 1 are valid
         if np.issubdtype(rgb.dtype, np.integer):
-            return (rgb >= 0).all() and (rgb <= 1).all()
+            return bool((rgb >= 0).all() and (rgb <= 1).all())
 
         # Float arrays: must be in 0-1 range
         if np.issubdtype(rgb.dtype, np.floating):
-            return (rgb >= 0.0).all() and (rgb <= 1.0).all()
+            return bool((rgb >= 0.0).all() and (rgb <= 1.0).all())
 
         return False
 
@@ -587,7 +587,8 @@ def rgb2hex(r: int | float, g: int | float, b: int | float) -> str:
     ValueError
         If values are outside valid ranges (either 0-255 or 0-1)
     TypeError
-        If input types are mixed (some ints and some floats)
+        If the components mix integers and floats, or are not numbers.
+        Python and NumPy numbers of the same kind can be mixed.
 
     Examples
     --------
@@ -597,27 +598,43 @@ def rgb2hex(r: int | float, g: int | float, b: int | float) -> str:
     >>> rgb2hex(1.0, 0.0, 0.0)  # Normalized float inputs
     '#ff0000'
 
-    >>> rgb2hex(0.5, 0.0, 1.0)  # Mixed range
-    '#7f00ff'
+    >>> rgb2hex(0.5, 0.0, 1.0)  # 0.5 * 255 = 127.5 is rounded to 128
+    '#8000ff'
+
+    >>> rgb2hex(np.int64(255), 0, 0)  # Python and NumPy integers
+    '#ff0000'
     """
-    # Check for mixed input types
-    input_types = {type(r), type(g), type(b)}
-    if len(input_types) > 1:
+
+    def _kind(value) -> str:
+        if isinstance(value, (bool, np.bool_)):
+            return "other"
+        if isinstance(value, (int, np.integer)):
+            return "int"
+        if isinstance(value, (float, np.floating)):
+            return "float"
+        return "other"
+
+    # Integers (Python or NumPy) or floats, but not a mix of both
+    kinds = {_kind(r), _kind(g), _kind(b)}
+    if "other" in kinds:
+        raise TypeError("RGB components must be integers or floats")
+    if len(kinds) > 1:
         raise TypeError(
             "All RGB components must be the same type (all int or all float)"
         )
 
     # Process based on input type
-    if isinstance(r, float):
+    if kinds == {"float"}:
         # Validate normalized range
         if not (0 <= r <= 1 and 0 <= g <= 1 and 0 <= b <= 1):
             raise ValueError("Float values must be between 0 and 1")
         # Convert to 0-255 range
-        r, g, b = (int(round(x * 255)) for x in (r, g, b))
+        r, g, b = (int(round(float(x) * 255)) for x in (r, g, b))
     else:
         # Validate 0-255 range
         if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
             raise ValueError("Integer values must be between 0 and 255")
+        r, g, b = int(r), int(g), int(b)
 
     # Ensure values are within byte range after conversion
     r, g, b = (max(0, min(255, x)) for x in (r, g, b))
@@ -695,7 +712,7 @@ def is_valid_hex_color(hex_color):
     True
     >>> is_valid_hex_color("#ABC123")
     True
-    >>> is_valid_hex_color_strict("#FFF")
+    >>> is_valid_hex_color("#FFF")
     False
     >>> is_valid_hex_color("FF0000")
     False
@@ -916,10 +933,13 @@ def harmonize_colors(
     >>> harmonize_colors(colors)
     ['#ff5733', '#ff5733', '#3357ff']
 
-    >>> colors = [(255, 87, 51, 255), (51, 87, 255, 128)]  # RGBA
-    >>> harmonize_colors(colors)
+    >>> harmonize_colors([(255, 87, 51, 255), (51, 87, 255, 128)])  # RGBA
     ['#ff5733', '#3357ff']
 
+    >>> harmonize_colors(np.array([70., 130., 180.]))  # Whole-number floats are 0-255
+    ['#4682b4']
+
+    >>> colors = ["#FF5733", [255, 87, 51], (51, 87, 255)]
     >>> harmonize_colors(colors, output_format='rgb')
     array([[255,  87,  51],
             [255,  87,  51],
@@ -1002,29 +1022,27 @@ def harmonize_colors(
             if rgb_array.shape == (4,):
                 rgb_array = rgb_array[:3]
 
+        # Normalize to the 0-1 range, following the precedence of is_color_like:
+        # integer values are 0-255, floats in [0, 1] are 0-1 and whole-number
+        # floats up to 255 (e.g. 70.0, 130.0, 180.0) are 0-255
+        rgb_array = np.asarray(rgb_array)
+        if np.issubdtype(rgb_array.dtype, np.integer) or (
+            detect_rgb_range(rgb_array) == "0-255"
+        ):
+            rgb_norm = rgb_array.astype(np.float64) / 255.0
+        else:
+            rgb_norm = rgb_array.astype(np.float64)
+
         # Process based on output format
         if output_format == "hex":
-            # Convert to hex format
-            if np.issubdtype(rgb_array.dtype, np.integer):
-                # If integer type, assume 0-255 range and normalize
-                rgb_array = rgb_array / 255.0
-            result.append(to_hex(rgb_array).lower())
+            result.append(to_hex(rgb_norm).lower())
 
         elif output_format == "rgbnorm":
-            # Convert to normalized RGB (0-1)
-            if np.issubdtype(rgb_array.dtype, np.integer):
-                range_type = detect_rgb_range(rgb_array)
-                if range_type == "0-255":
-                    rgb_array = rgb_array / 255.0
-            result.append(rgb_array.astype(np.float64))
+            result.append(rgb_norm)
 
         else:  # output_format == "rgb"
-            # Convert to RGB (0-255)
-            if np.issubdtype(rgb_array.dtype, np.floating):
-                range_type = detect_rgb_range(rgb_array)
-                if range_type == "0-1":
-                    rgb_array = rgb_array * 255
-            result.append(rgb_array.astype(np.uint8))
+            # Round (rather than truncate) so that the values match the hex output
+            result.append(np.round(rgb_norm * 255).astype(np.uint8))
 
     # Stack results if not hex format
     if output_format != "hex":
@@ -1232,7 +1250,7 @@ def get_colormaps_names(n, cmap_type="sequential"):
     Examples
     --------
     >>> get_colormaps_names(5, cmap_type="sequential")
-    ['viridis', 'plasma', 'inferno', 'magma', 'cividis']
+    ['viridis', 'jet', 'copper', 'hot', 'winter']
 
     >>> get_colormaps_names(3, cmap_type="diverging")
     ['PiYG', 'PRGn', 'BrBG']
@@ -1949,20 +1967,20 @@ def get_colors_from_colortable(
         Array of parcellation labels for each vertex.
 
     reg_ctable : np.ndarray
-        Color table with shape (N, 5) where first 3 columns are RGB values
-        and column 4 contains region labels.
+        Color table with shape (N, 5): R, G, B, alpha and the region label
+        (e.g. the output of colors_to_table).
 
     Returns
     -------
     colors : np.ndarray
-        Array of RGB colors for each vertex with shape (num_vertices, 3).
-        Default color is gray (240, 240, 240) for unlabeled vertices.
+        Array of RGBA colors for each vertex with shape (num_vertices, 4).
+        Unlabeled vertices are gray (240, 240, 240) with an alpha of 0.
 
     Examples
     --------
     >>> # Create vertex colors for visualization over a surface mesh
     >>> colors = get_colors_from_colortable(vertex_labels, color_table)
-    >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 3)
+    >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 4)
     """
 
     # Automatically detect the range of the colors in reg_ctable
@@ -2275,8 +2293,9 @@ def colors_to_table(
     --------
     >>> # Convert hex colors to color table
     >>> hex_colors = ["#FF0000", "#00FF00", "#0000FF"]
-    >>> ctab = colors2colortable(hex_colors)
+    >>> ctab = colors_to_table(hex_colors)
     >>> print(f"Color table shape: {ctab.shape}")
+    Color table shape: (3, 5)
     """
 
     if not isinstance(colors, (list, np.ndarray)):
@@ -2642,6 +2661,9 @@ class ColorTableLoader:
             - 'index': List of integer region codes (standard Python integers)
             - 'name': List of region name strings
             - 'color': List of color codes (format depends on source file)
+            - 'opacity': List of opacities in the 0-1 range. The 0-255 alpha
+              values of LUT files are divided by 255, and an alpha (or
+              opacity) of 0 is read as fully opaque (1.0).
             - Additional keys may be present depending on the file format
 
         Examples
@@ -2705,12 +2727,17 @@ class ColorTableLoader:
         else:
             raise ValueError(f"Could not determine file format for: {in_file}")
 
-        #  Force opacity values equal to 0 to be 255. This is because most
-        # of the neuroimaging software interpret 0 opacity as fully opaque.
-        #
-        colors_dict["opacity"] = [
-            255 if op == 0 else op for op in colors_dict["opacity"]
-        ]
+        # Opacity 0 is interpreted as fully opaque, as most neuroimaging software
+        # does. LUT files store the alpha in the 0-255 range, so the other values
+        # are divided by 255; TSV files already store opacities in the 0-1 range.
+        if file_format == "lut":
+            colors_dict["opacity"] = [
+                1.0 if op == 0 else op / 255 for op in colors_dict["opacity"]
+            ]
+        else:
+            colors_dict["opacity"] = [
+                1.0 if op == 0 else op for op in colors_dict["opacity"]
+            ]
 
         # Force opacity values to be between 0 and 1
         colors_dict["opacity"] = [min(max(op, 0), 1) for op in colors_dict["opacity"]]
@@ -3174,8 +3201,8 @@ class ColorTableLoader:
             Default is False.
 
         overwrite : bool, optional
-            If True, overwrite existing files without warning. If False, warn before
-            overwriting. Default is True.
+            If True, overwrite an existing file. If False, an existing file is left
+            unchanged and a warning is printed. Default is True.
 
         Returns
         -------
@@ -3217,8 +3244,11 @@ class ColorTableLoader:
 
         # Check if the file already exists and if the overwrite parameter is False
         if out_file is not None:
-            if os.path.exists(out_file) and not overwrite:
-                print("Warning: The file already exists. It will be overwritten.")
+            if os.path.exists(out_file) and not overwrite and not boolappend:
+                print(
+                    f"Warning: {out_file} already exists and overwrite=False. "
+                    "The file was not modified."
+                )
 
             out_dir = os.path.dirname(out_file)
             if out_dir and not os.path.exists(out_dir):
@@ -3326,8 +3356,9 @@ class ColorTableLoader:
             Default is False.
 
         overwrite : bool, optional
-            If True, overwrite existing files without warning. If False, warn before
-            overwriting. Default is False.
+            If True, overwrite an existing file. If False, an existing file is left
+            unchanged and a warning is printed (unless boolappend is True).
+            Default is False.
 
         Returns
         -------
@@ -3372,9 +3403,13 @@ class ColorTableLoader:
         - When appending, columns are matched by name; missing values are filled with empty strings
         - The output file includes a header row with column names
         """
-        # Check if the file already exists and if the overwrite parameter is False
+        # An existing file is only replaced with overwrite=True (or extended with
+        # boolappend=True)
         if os.path.exists(out_file) and not overwrite and not boolappend:
-            print("Warning: The TSV file already exists. It will be overwritten.")
+            print(
+                f"Warning: {out_file} already exists and overwrite=False. "
+                "The file was not modified."
+            )
 
         out_dir = os.path.dirname(out_file)
         if out_dir and not os.path.exists(out_dir):
@@ -3413,7 +3448,9 @@ class ColorTableLoader:
             if not os.path.exists(out_file):
                 raise ValueError(f"Cannot append: file does not exist: {out_file}")
             else:
-                tsv_orig = ColorTableLoader.read_tsvtable(in_file=out_file)
+                # Read the columns exactly as they are in the file (read_tsvtable
+                # adds 'opacity' and 'headerlines' entries that are not columns)
+                tsv_orig = pd.read_csv(out_file, sep="\t").to_dict(orient="list")
 
                 # Create a list with the common keys between tsv_orig and tsv_dict
                 common_keys = list(set(tsv_orig.keys()) & set(tsv_dict.keys()))
@@ -3438,11 +3475,8 @@ class ColorTableLoader:
         # Convert dictionary to DataFrame
         tsv_df = pd.DataFrame(tsv_dict)
 
-        # Write to file
-        if os.path.isfile(out_file) and overwrite:
-            with open(out_file, "w") as tsv_file:
-                tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
-        elif not os.path.isfile(out_file):
+        # Write to file (a new file, an overwrite, or the appended table)
+        if boolappend or overwrite or not os.path.isfile(out_file):
             with open(out_file, "w") as tsv_file:
                 tsv_file.write(tsv_df.to_csv(sep="\t", index=False))
 
@@ -3541,9 +3575,9 @@ class ColorTableLoader:
                 f"{st_code:<4} {st_colors_lut[roi_pos, 0] / 255:>3.5f} {st_colors_lut[roi_pos, 1] / 255:>3.5f} {st_colors_lut[roi_pos, 2] / 255:>3.5f} {st_name:<40} "
             )
 
-        if os.path.isfile(out_ctab) or overwrite:
-            with open(out_ctab, "w") as colorLUT_f:
-                colorLUT_f.write("\n".join(lut_lines))
+        # An existing file without overwrite was already rejected above
+        with open(out_ctab, "w") as colorLUT_f:
+            colorLUT_f.write("\n".join(lut_lines))
 
     ######################################################################################################
     def export_to_nilearnctab(
