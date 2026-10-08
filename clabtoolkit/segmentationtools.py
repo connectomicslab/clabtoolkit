@@ -306,7 +306,10 @@ def abased_parcellation(
 
 ######################################################################################################
 @staticmethod
-def tissue_seg_table(tsv_filename: str | Path | None = None) -> pd.DataFrame:
+def tissue_seg_table(
+    tsv_filename: str | Path | None = None,
+    overwrite: bool = True,
+) -> pd.DataFrame:
     """
     Create the standard tissue segmentation lookup table (CSF, GM, WM).
 
@@ -315,6 +318,10 @@ def tissue_seg_table(tsv_filename: str | Path | None = None) -> pd.DataFrame:
     tsv_filename : str | Path | None, default None
         If given, the table is also saved to this path as a tab-separated file.
         The parent directory must already exist.
+
+    overwrite : bool, default True
+        Whether to overwrite ``tsv_filename`` if it already exists. If False and
+        the file exists, it is left untouched and the table is only returned.
 
     Returns
     -------
@@ -329,8 +336,9 @@ def tissue_seg_table(tsv_filename: str | Path | None = None) -> pd.DataFrame:
 
     Examples
     --------
-    >>> seg_df = Parcellation.tissue_seg_table()               # table only
-    >>> seg_df = Parcellation.tissue_seg_table("tissues.tsv")  # table + TSV file
+    >>> seg_df = tissue_seg_table()                                # table only
+    >>> seg_df = tissue_seg_table("tissues.tsv")                   # table + TSV file
+    >>> seg_df = tissue_seg_table("tissues.tsv", overwrite=False)  # keep existing TSV
     """
     # Check the output directory before building anything
     if tsv_filename is not None:
@@ -355,7 +363,8 @@ def tissue_seg_table(tsv_filename: str | Path | None = None) -> pd.DataFrame:
         }
     )
 
-    if tsv_filename is not None:
+    # Save only if the file does not exist yet, or if overwriting is allowed
+    if tsv_filename is not None and (overwrite or not tsv_filename.exists()):
         seg_df.to_csv(tsv_filename, sep="\t", index=False)
 
     return seg_df
