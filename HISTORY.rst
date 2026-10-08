@@ -20,7 +20,12 @@ Unreleased
 * Fixed crop_image_from_mask excluding the last voxel of the mask on each axis
 * Fixed create_spams with a dictionary lookup table and the name of the colored SPAM image
 * spams2maxprob_from_volume and region_growing no longer modify their input arrays
-* Added the example notebooks for the imagetools and dwitools modules
+* Fixed the session names of dicomtools losing the leading zero of the study time (a study at 09:15:30 gave 'ses-2024031291530' instead of 'ses-20240312091530'). Session folders of studies acquired before 10:00 will be named differently
+* Fixed copy_dicom_file (and org_conv_dicoms) deleting the existing copy without copying the file again when overwrite=True
+* The ses_id parameter of org_conv_dicoms and copy_dicom_file now sets the session label ('ses-<ses_id>'); it was ignored
+* Fixed create_session_series_names failing without SeriesNumber, StudyDate or StudyTime, and copy_dicom_file failing on files that are not DICOMs
+* org_conv_dicoms returns instead of exiting Python when no subjects are found, matches the subject IDs exactly (with or without 'sub-'), accepts acq_date as MM/DD/YYYY or YYYY-MM-DD, and matches the demographics rows by exact participant ID
+* Added the example notebooks for the imagetools, dwitools and dicomtools modules
 
 0.4.5 (2026-08-28)
 ------------------

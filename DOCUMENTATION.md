@@ -453,14 +453,26 @@ plotter.plot(surf_lh, views=["lateral", "medial"], save_path="figure.png")  # Sa
 
 #### dicomtools - DICOM Processing
 
-**Purpose**: DICOM file organization and BIDS conversion
+**Purpose**: Organization of raw DICOM files into subject/session/series folders (conversion to NIfTI is left to tools such as dcm2niix)
 
 **Key Features**:
 
-- Multi-threaded DICOM organization
-- BIDS conversion workflows
-- Demographics integration
-- Session management
+- Multi-threaded DICOM organization, with subjects taken from the `sub-*` folders or from the `PatientID` tag
+- Session (`ses-YYYYMMDDHHMMSS`) and series (`0001-T1w-MPRAGE`) names built from the DICOM headers
+- Visit IDs from a demographics table, subject selection and fixed session labels
+- Compression and extraction of the session folders (`tar.gz`)
+- DICOM metadata extraction
+
+**Usage Example**:
+
+```python
+from clabtoolkit.dicomtools import org_conv_dicoms, get_dicom_info
+
+# /raw/sub-01, /raw/sub-02, ... -> /organized/<subject>/<session>/<series>
+org_conv_dicoms("/raw", "/organized", demog_file="demographics.csv", nthreads=4)
+
+info = get_dicom_info("/raw/sub-01/IM_0001.dcm", tags=["PatientID", "StudyDate"])
+```
 
 ## Configuration System
 
