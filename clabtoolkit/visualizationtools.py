@@ -37,7 +37,6 @@ from . import build_visualization_layout as vislayout
 from . import colorstools as cltcol
 from . import misctools as cltmisc
 from . import parcellationtools as cltparc
-from . import plottools as cltplot
 from . import pointstools as cltpts
 from . import surfacetools as cltsurf
 from . import tracttools as clttract
@@ -619,6 +618,7 @@ class BrainPlotter:
         colorbar_titles: str | list[str] = None,
         colorbar_position: str = "right",
         config_file: str | Path | dict = None,
+        window_size: tuple[int, int] | None = None,
     ) -> None:
         """
         Plot brain surfaces with optional threading and screenshot support.
@@ -681,6 +681,13 @@ class BrainPlotter:
         config_file : str, Path or Dict, optional
             Path to a custom configuration file (JSON) or a dictionary containing
             configuration settings. If provided, it overrides the default settings.
+
+        window_size : tuple of int, optional
+            Size of the figure in pixels (width, height). If None, notebook
+            figures use PyVista's default window size
+            (``pv.global_theme.window_size``, 1024 x 768 by default) so they fit
+            in the cell output, while windows and saved figures use the size of
+            the current monitor.
 
         Returns
         -------
@@ -786,13 +793,13 @@ class BrainPlotter:
             visutils.determine_render_mode(save_path, notebook, non_blocking)
         )
 
-        # Detecting the screen size for the plotter
-        screen_size = cltplot.get_current_monitor_size()
+        # Figure size: monitor size for windows and saved figures, smaller for notebooks
+        window_size = visutils.resolve_window_size(window_size, use_notebook)
 
         # Create PyVista plotter with appropriate rendering mode
         plotter_kwargs = {
             "notebook": use_notebook,
-            "window_size": [screen_size[0], screen_size[1]],
+            "window_size": window_size,
             "off_screen": use_off_screen,
             "shape": config_dict["shape"],
             "row_weights": config_dict["row_weights"],
@@ -968,6 +975,7 @@ class BrainPlotter:
         non_blocking: bool = False,
         save_path: str | None = None,
         config_file: str | Path | dict = None,
+        window_size: tuple[int, int] | None = None,
     ):
         """
         Plot brain hemispheres with multiple views.
@@ -1031,6 +1039,13 @@ class BrainPlotter:
         config_file : Union[str, Path, Dict], optional
             Path to a custom configuration file (JSON) or a dictionary containing configuration settings.
             If provided, this configuration will override the default settings for plotting.
+
+        window_size : tuple of int, optional
+            Size of the figure in pixels (width, height). If None, notebook
+            figures use PyVista's default window size
+            (``pv.global_theme.window_size``, 1024 x 768 by default) so they fit
+            in the cell output, while windows and saved figures use the size of
+            the current monitor.
 
         Returns
         -------
@@ -1133,13 +1148,13 @@ class BrainPlotter:
             visutils.determine_render_mode(save_path, notebook, non_blocking)
         )
 
-        # Detecting the screen size for the plotter
-        screen_size = cltplot.get_current_monitor_size()
+        # Figure size: monitor size for windows and saved figures, smaller for notebooks
+        window_size = visutils.resolve_window_size(window_size, use_notebook)
 
         # Create PyVista plotter with appropriate rendering mode
         plotter_kwargs = {
             "notebook": use_notebook,
-            "window_size": [screen_size[0], screen_size[1]],
+            "window_size": window_size,
             "off_screen": use_off_screen,
             "shape": config_dict["shape"],
             "row_weights": config_dict["row_weights"],
@@ -1244,6 +1259,7 @@ class BrainPlotter:
         non_blocking: bool = False,
         save_path: str | None = None,
         config_file: str | Path | dict = None,
+        window_size: tuple[int, int] | None = None,
     ):
         """
         Plot a scene combining several objects with independent color settings.
@@ -1290,6 +1306,13 @@ class BrainPlotter:
 
         config_file : str, Path or Dict, optional
             Custom configuration overriding the default plotting settings.
+
+        window_size : tuple of int, optional
+            Size of the figure in pixels (width, height). If None, notebook
+            figures use PyVista's default window size
+            (``pv.global_theme.window_size``, 1024 x 768 by default) so they fit
+            in the cell output, while windows and saved figures use the size of
+            the current monitor.
 
         Returns
         -------
@@ -1346,13 +1369,13 @@ class BrainPlotter:
             visutils.determine_render_mode(save_path, notebook, non_blocking)
         )
 
-        # Detecting the screen size for the plotter
-        screen_size = cltplot.get_current_monitor_size()
+        # Figure size: monitor size for windows and saved figures, smaller for notebooks
+        window_size = visutils.resolve_window_size(window_size, use_notebook)
 
         # Create PyVista plotter with appropriate rendering mode
         plotter_kwargs = {
             "notebook": use_notebook,
-            "window_size": [screen_size[0], screen_size[1]],
+            "window_size": window_size,
             "off_screen": use_off_screen,
             "shape": config_dict["shape"],
             "row_weights": config_dict["row_weights"],

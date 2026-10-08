@@ -981,6 +981,42 @@ def determine_render_mode(
 
 
 ###############################################################################################
+def resolve_window_size(
+    window_size: tuple[int, int] | list[int] | None, use_notebook: bool
+) -> list[int]:
+    """
+    Resolve the size in pixels of the PyVista plotter window.
+
+    Parameters
+    ----------
+    window_size : tuple or list of int, optional
+        Requested size (width, height). If given, it is returned unchanged.
+
+    use_notebook : bool
+        Whether the figure is displayed inside a Jupyter notebook.
+
+    Returns
+    -------
+    list of int
+        Window size as [width, height].
+
+    Notes
+    -----
+    When window_size is None, notebook figures use PyVista's default window size
+    (``pv.global_theme.window_size``, 1024 x 768 by default): a monitor-sized
+    figure would overflow the cell output. Windows and saved figures use the size
+    of the current monitor.
+    """
+    if window_size is None:
+        if use_notebook:
+            window_size = pv.global_theme.window_size
+        else:
+            window_size = cltplot.get_current_monitor_size()
+
+    return [int(window_size[0]), int(window_size[1])]
+
+
+###############################################################################################
 def list_available_view_names(plotobj) -> list[str]:
     """
     List available view names for dynamic view selection.
