@@ -277,9 +277,7 @@ def org_conv_dicoms(
                     # Date times of all the series acquired for the current subject
                     nrows = np.shape(subTB)[0]
                     for nr in np.arange(0, nrows):
-                        date_times.append(
-                            _parse_acq_date(subTB.iloc[nr]["acq_date"])
-                        )
+                        date_times.append(_parse_acq_date(subTB.iloc[nr]["acq_date"]))
                 try:
                     if booldic:
                         dicom_files = cltmisc.get_all_files(subj_dir)

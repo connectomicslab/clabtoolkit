@@ -25,16 +25,16 @@ Examples
 
 import os
 from pathlib import Path
-from typing import Union
 
 import nibabel as nb
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.ndimage import gaussian_filter1d
 
+
 ###############################################################################################
 def get_reference_geometry(
-    ref_image: Union[str, Path, nb.Nifti1Image],
+    ref_image: str | Path | nb.Nifti1Image,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Extracts the voxel-grid geometry of a reference image.
@@ -423,9 +423,7 @@ def populate_bundle(
             rng, len(centroid), 4, spread * radius, n_dim=2
         )
 
-        streamline = (
-            centroid + offsets[:, [0]] * normals + offsets[:, [1]] * binormals
-        )
+        streamline = centroid + offsets[:, [0]] * normals + offsets[:, [1]] * binormals
 
         # Trimming the extremities so the streamlines have different lengths
         if length_variability > 0:
@@ -446,11 +444,11 @@ def populate_bundle(
 ###############################################################################################
 def add_noise_to_streamlines(
     rng: np.random.Generator,
-    streamlines: Union[list[np.ndarray], np.ndarray],
+    streamlines: list[np.ndarray] | np.ndarray,
     noise_level: float,
     noise_smoothness: float = 0.0,
     fix_endpoints: bool = False,
-) -> Union[list[np.ndarray], np.ndarray]:
+) -> list[np.ndarray] | np.ndarray:
     """
     Adds a random displacement to every point of one or several streamlines.
 
@@ -646,7 +644,7 @@ def simulate_noise_streamlines(
 
 ###############################################################################################
 def mask_world_coordinates(
-    mask: Union[str, Path, np.ndarray, nb.Nifti1Image],
+    mask: str | Path | np.ndarray | nb.Nifti1Image,
     affine: np.ndarray,
     max_points: int = 50000,
     rng: np.random.Generator = None,
@@ -698,9 +696,7 @@ def mask_world_coordinates(
         mask_affine = np.asarray(mask.affine, dtype=float)
 
     else:
-        raise TypeError(
-            "mask must be a path, a numpy array or a nibabel image object"
-        )
+        raise TypeError("mask must be a path, a numpy array or a nibabel image object")
 
     voxels = np.argwhere(mask_data > 0)
     if voxels.size == 0:
@@ -710,7 +706,6 @@ def mask_world_coordinates(
         voxels = voxels[rng.choice(len(voxels), size=max_points, replace=False)]
 
     return nb.affines.apply_affine(mask_affine, voxels.astype(float))
-
 
 
 ###############################################################################################

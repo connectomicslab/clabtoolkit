@@ -16,13 +16,14 @@ from typing import (
     Any,
     Literal,
 )
-from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_numeric_dtype
+
 import h5py
 import numpy as np
 import pandas as pd
 from colorama import Back, Fore, Style, init
 from IPython import get_ipython
 from IPython.display import HTML, display
+from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_numeric_dtype
 
 from . import colorstools as cltcolors
 from .misctools_utils import ExplorerDict
@@ -1642,11 +1643,16 @@ def rename_folders(
     dirs_to_process = set()
 
     for folder_path in folder_paths:
-        # Add this path and all its parents
+        # Add this path and all its parents, stopping at the filesystem root
+        # ("/" on POSIX, "C:\\" or "\\\\server\\share\\" on Windows), where
+        # os.path.dirname returns the path unchanged
         current = folder_path
-        while current and current != "/":
+        while current:
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
             dirs_to_process.add(current)
-            current = os.path.dirname(current)
+            current = parent
 
     # Find which directories actually need renaming
     rename_operations = []
@@ -1659,7 +1665,7 @@ def rename_folders(
                 rename_operations.append((old_path, new_path))
 
     # Sort by depth (shallowest first) - important for nested renames
-    rename_operations.sort(key=lambda x: x[0].count("/"))
+    rename_operations.sort(key=lambda x: len(Path(x[0]).parts))
 
     # If simulation mode, return ALL operations showing the final state
     if simulate:
@@ -1692,7 +1698,7 @@ def rename_folders(
             # update them to reflect the new parent path
             for j in range(i + 1, len(rename_operations)):
                 child_old, child_new = rename_operations[j]
-                if child_old.startswith(old_path + "/"):
+                if child_old.startswith((old_path + os.sep, old_path + "/")):
                     # Update the old path to reflect parent rename
                     updated_old = child_old.replace(old_path, new_path, 1)
                     rename_operations[j] = (updated_old, child_new)

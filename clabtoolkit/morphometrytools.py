@@ -15,11 +15,11 @@ from nibabel.processing import resample_from_to
 # Importing local modules
 from . import bidstools as cltbids
 from . import colorstools as cltcol
+from . import connectivitytools as cltconn
 from . import freesurfertools as cltfree
 from . import misctools as cltmisc
 from . import parcellationtools as cltparc
 from . import surfacetools as cltsurf
-from . import connectivitytools as cltconn
 
 # Regions of an annotation that are not anatomical cortical regions
 _UNKNOWN_SUBSTRINGS = ["medialwall", "unknown", "corpuscallosum"]

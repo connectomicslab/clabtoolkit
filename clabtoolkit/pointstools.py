@@ -1540,8 +1540,8 @@ class PointCloud:
         if cmap is None and all(m in self.colortables for m in map_list):
             show_colorbar = False
 
-        from . import visualizationtools as cltvis
         from . import visualization_utils as visutils
+        from . import visualizationtools as cltvis
 
         # loading the configuration if None
         if config is None:

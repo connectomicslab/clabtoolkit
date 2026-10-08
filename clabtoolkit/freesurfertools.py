@@ -1986,7 +1986,7 @@ class AnnotParcellation:
         # ── 4. Relabel the vertices and extend the table ─────────────────────────
         new_codes = codes.astype(np.int64, copy=True)
         new_rows = []
-        for old_code, rgb in zip(missing_codes, new_rgbs):
+        for old_code, rgb in zip(missing_codes, new_rgbs, strict=False):
             packed = _pack(rgb)
             new_codes[codes == old_code] = packed
             new_rows.append([rgb[0], rgb[1], rgb[2], 0, packed])
@@ -1999,7 +1999,9 @@ class AnnotParcellation:
 
         if verbose:
             print(f"Added {n_missing} missing code(s) to the color table:")
-            for old_code, name, row in zip(missing_codes, new_names, new_rows):
+            for old_code, name, row in zip(
+                missing_codes, new_names, new_rows, strict=False
+            ):
                 print(
                     f"  {old_code} -> {name}  ({row[0]}, {row[1]}, {row[2]})  code {row[4]}"
                 )
@@ -2302,7 +2304,7 @@ class AnnotParcellation:
         label_table = nib.gifti.GiftiLabelTable()
         code_to_key = {}
 
-        for key, (row, name) in enumerate(zip(ctab, names)):
+        for key, (row, name) in enumerate(zip(ctab, names, strict=False)):
             r, g, b, a, code = (int(v) for v in row[:5])
             code_to_key[code] = key
 
@@ -2887,7 +2889,7 @@ class AnnotParcellation:
         if missing:
             generated = cltcol.create_distinguishable_colors(len(missing))
             generated = cltcol.harmonize_colors(generated)  # hex strings
-            lobe_colors = {**lobe_colors, **dict(zip(missing, generated))}
+            lobe_colors = {**lobe_colors, **dict(zip(missing, generated, strict=False))}
 
         def _rgb_and_code(hex_color):
             rgb = np.asarray(cltcol.hex2rgb(hex_color), dtype=float).ravel()[:3]

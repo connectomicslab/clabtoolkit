@@ -852,7 +852,7 @@ class DiffusionScheme:
         bmax: float = 4000,
         radius: int = 4,
         n_iter: int = 200,
-    ) -> "DiffusionScheme":
+    ) -> DiffusionScheme:
         """
         Simulate a diffusion acquisition scheme (shelled or cartesian/DSI).
 

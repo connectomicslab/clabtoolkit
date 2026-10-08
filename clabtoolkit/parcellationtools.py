@@ -1149,7 +1149,9 @@ class Parcellation:
         # Count voxels per label directly from the data, so counts stay correct
         # even if self.index/self.data were ever out of sync
         unique_data_labels, voxel_counts = np.unique(self.data, return_counts=True)
-        voxel_count_map = dict(zip(unique_data_labels.tolist(), voxel_counts.tolist()))
+        voxel_count_map = dict(
+            zip(unique_data_labels.tolist(), voxel_counts.tolist(), strict=False)
+        )
 
         info: dict = {}
         for label in selected_labels:
@@ -2036,7 +2038,7 @@ class Parcellation:
 
         return {
             name: voxel_dict_by_code[code]
-            for name, code in zip(matched_names, codes)
+            for name, code in zip(matched_names, codes, strict=False)
             if code in voxel_dict_by_code
         }
 
@@ -3478,7 +3480,9 @@ class Parcellation:
         orig = self.data.copy()
         orig_meta = {
             int(c): (n, col, op)
-            for c, n, col, op in zip(self.index, self.name, self.color, self.opacity)
+            for c, n, col, op in zip(
+                self.index, self.name, self.color, self.opacity, strict=False
+            )
         }
 
         grouped_mask = np.isin(orig, list(seen))
@@ -3620,7 +3624,7 @@ class Parcellation:
                 continue
 
             # A region matched by two groups is ambiguous
-            for k, code in zip(matches, codes):
+            for k, code in zip(matches, codes, strict=False):
                 if code in claimed:
                     raise ValueError(
                         f"Region '{self.name[k]}' (code {code}) matches both "
@@ -3687,6 +3691,7 @@ class Parcellation:
                 f"(all lookups use the original labels), but double-check "
                 f"this is intentional.",
                 UserWarning,
+                stacklevel=2,
             )
 
         # Work from the ORIGINAL data so simultaneous/overlapping mappings
@@ -3746,6 +3751,7 @@ class Parcellation:
                 f"(all lookups use the original names), but double-check "
                 f"this is intentional.",
                 UserWarning,
+                stacklevel=2,
             )
 
         # Work from the ORIGINAL names so simultaneous/overlapping mappings
@@ -4660,7 +4666,7 @@ class Parcellation:
 
         # A code assigned to two different targets is ambiguous
         code_to_new: dict[int, int] = {}
-        for group, new in zip(groups, new_list):
+        for group, new in zip(groups, new_list, strict=False):
             for c in group:
                 if c in code_to_new and code_to_new[c] != new:
                     raise ValueError(
@@ -4675,7 +4681,7 @@ class Parcellation:
         new_data = orig.copy()
         present = set(np.unique(orig).tolist())
 
-        for group, new in zip(groups, new_list):
+        for group, new in zip(groups, new_list, strict=False):
             if not any(c in present for c in group):
                 warnings.warn(
                     f"None of the codes {group} is present in the data.", stacklevel=2
@@ -4716,7 +4722,7 @@ class Parcellation:
                     final[c] = (names[pos], colors[pos], opacities[pos])
 
             # 2) Replaced codes: metadata of the lowest code in the group
-            for group, new in zip(groups, new_list):
+            for group, new in zip(groups, new_list, strict=False):
                 if not any(c in present for c in group):
                     continue
                 if new in final:
@@ -4912,7 +4918,7 @@ class Parcellation:
         if match in ("exact", "contains"):
             claimed: dict[int, int] = {}  # region position -> group position
 
-            for g, (olds, new) in enumerate(zip(old_groups, new_list)):
+            for g, (olds, new) in enumerate(zip(old_groups, new_list, strict=False)):
                 if match == "exact":
                     if bool_case:
                         olds_set = set(olds)
@@ -4948,7 +4954,7 @@ class Parcellation:
         # ------------------------------------------------------------------
         else:
             lookup: dict[str, str] = {}
-            for olds, new in zip(old_groups, new_list):
+            for olds, new in zip(old_groups, new_list, strict=False):
                 for o in olds:
                     key = o if bool_case else o.lower()
                     if key in lookup and lookup[key] != new:

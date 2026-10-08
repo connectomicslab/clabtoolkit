@@ -1,8 +1,8 @@
 import copy
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import Union
-from collections import defaultdict
 
 import nibabel as nb
 import numpy as np
@@ -23,12 +23,12 @@ from rich.progress import (
 from scipy.interpolate import RegularGridInterpolator
 
 from . import colorstools as cltcol
+from . import freesurfertools as cltfree
 
 # Importing local modules
 from . import misctools as cltmisc
 from . import parcellationtools as cltparc
 from . import pointstools as cltpts
-from . import freesurfertools as cltfree
 from . import tracttools_utils as tractutils
 
 
@@ -800,7 +800,7 @@ class Tractogram:
     ####################################################################################################
     def set_color(
         self,
-        color: Union[str, tuple, list, np.ndarray],
+        color: str | tuple | list | np.ndarray,
         alpha: float = None,
     ) -> None:
         """
@@ -2686,7 +2686,7 @@ class Tractogram:
 
         # ---- 4b. Build the colortable for pair_id ---------------------------------
         pair_names, pair_colors = [], []
-        for key, pair_id in sorted(pair_id_lookup.items(), key=lambda kv: kv[1]):
+        for key, _pair_id in sorted(pair_id_lookup.items(), key=lambda kv: kv[1]):
             source_set, target_set = key
             if has_colortable:
                 color, name = self._pair_label(source_set, target_set, INTERP_KEY)
@@ -3087,7 +3087,9 @@ class Tractogram:
             views = ["lateral"]
         dict_ctables = self.colortables
         if cmap is None:
-            if overlay_name in dict_ctables.keys():
+            # Maps with a colortable are drawn with their own colors, without a colorbar
+            map_list = [maps] if isinstance(maps, str) else list(maps)
+            if all(map_name in dict_ctables for map_name in map_list):
                 show_colorbar = False
 
             else:
@@ -3138,12 +3140,12 @@ class Tractogram:
     @classmethod
     def simulate_tractogram(
         cls,
-        ref_image: Union[str, Path, nb.Nifti1Image],
+        ref_image: str | Path | nb.Nifti1Image,
         n_bundles: int = 5,
-        n_streamlines: Union[int, list[int]] = 100,
+        n_streamlines: int | list[int] = 100,
         n_points: int = 100,
-        bundle_length: Union[float, tuple[float, float]] = None,
-        bundle_radius: Union[float, tuple[float, float]] = 4.0,
+        bundle_length: float | tuple[float, float] = None,
+        bundle_radius: float | tuple[float, float] = 4.0,
         curvature: float = 0.05,
         spread: float = 0.35,
         fanning: float = 0.3,
@@ -3153,10 +3155,10 @@ class Tractogram:
         noise_smoothness: float = 0.0,
         noise_fix_endpoints: bool = False,
         n_noise_streamlines: int = 0,
-        directions: Union[list, np.ndarray] = None,
-        mask: Union[str, Path, np.ndarray, nb.Nifti1Image] = None,
+        directions: list | np.ndarray = None,
+        mask: str | Path | np.ndarray | nb.Nifti1Image = None,
         bundle_names: list[str] = None,
-        colors: Union[list, np.ndarray] = None,
+        colors: list | np.ndarray = None,
         map_name: str = "bundle_id",
         seed: int = None,
         name: str = "simulated",

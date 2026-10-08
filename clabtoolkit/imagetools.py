@@ -1,4 +1,3 @@
-import copy
 import json
 import os
 import subprocess
@@ -2768,9 +2767,7 @@ def extract_mesh_from_volume(
 
         # Apply Gaussian smoothing. The closing above returns a boolean array and
         # gaussian_filter keeps the input dtype, so it must be cast to float first.
-        tmp_volume_array = gaussian_filter(
-            volume_array.astype(np.float32), sigma=sigma
-        )
+        tmp_volume_array = gaussian_filter(volume_array.astype(np.float32), sigma=sigma)
         # Re-threshold after smoothing
         tmp_volume_array = (tmp_volume_array > 0.5).astype(np.float32)
 
@@ -2918,9 +2915,7 @@ def extract_centroid_from_volume(
 
         # Apply Gaussian smoothing. The closing above returns a boolean array and
         # gaussian_filter keeps the input dtype, so it must be cast to float first.
-        tmp_volume_array = gaussian_filter(
-            volume_array.astype(np.float32), sigma=sigma
-        )
+        tmp_volume_array = gaussian_filter(volume_array.astype(np.float32), sigma=sigma)
         # Re-threshold after smoothing
         tmp_volume_array = (tmp_volume_array > 0.5).astype(np.float32)
 

@@ -799,7 +799,7 @@ def get_all_entities(root_dir: str) -> tuple[dict[str, set[str]], list[str]]:
     all_entities = []
     all_suffixes = []
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         results = executor.map(process_file, bids_files)
 
     for entity_keys, suffix in results:
@@ -1602,7 +1602,7 @@ def get_bids_database_table(
     try:
         config_data = load_bids_json(default_config_path)
     except Exception as e:
-        raise ValueError(f"Failed to load default BIDS config: {e}")
+        raise ValueError(f"Failed to load default BIDS config: {e}") from e
     default_valid_extensions = config_data.get("extensions", None)
 
     if valid_extensions is not None:
