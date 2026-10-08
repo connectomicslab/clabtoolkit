@@ -306,51 +306,56 @@ def abased_parcellation(
 
 ######################################################################################################
 @staticmethod
-def tissue_seg_table(tsv_filename):
+def tissue_seg_table(tsv_filename: str | Path | None = None) -> pd.DataFrame:
     """
-    Create standard tissue segmentation lookup table.
+    Create the standard tissue segmentation lookup table (CSF, GM, WM).
 
     Parameters
     ----------
-    tsv_filename : str
-        Output TSV file path.
+    tsv_filename : str | Path | None, default None
+        If given, the table is also saved to this path as a tab-separated file.
+        The parent directory must already exist.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with tissue segmentation information (CSF, GM, WM).
+        Table with columns ``index``, ``name``, ``abbreviation`` and ``color``
+        (hexadecimal), one row per tissue class.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the parent directory of ``tsv_filename`` does not exist.
 
     Examples
     --------
-    >>> seg_df = Parcellation.tissue_seg_table('tissues.tsv')
-    >>> print(seg_df)
+    >>> seg_df = Parcellation.tissue_seg_table()               # table only
+    >>> seg_df = Parcellation.tissue_seg_table("tissues.tsv")  # table + TSV file
     """
+    # Check the output directory before building anything
+    if tsv_filename is not None:
+        tsv_filename = Path(tsv_filename)
+        out_dir = tsv_filename.resolve().parent
+        if not out_dir.is_dir():
+            raise FileNotFoundError(f"Output directory does not exist: {out_dir}")
 
-    # Table for tissue segmentation
-    # 1. Default values for tissues segmentation table
-    seg_rgbcol = np.array([[172, 0, 0], [0, 153, 76], [0, 102, 204]])
-    seg_codes = np.array([1, 2, 3])
-    seg_names = ["cerebro_spinal_fluid", "gray_matter", "white_matter"]
-    seg_acron = ["CSF", "GM", "WM"]
-
-    # 2. Converting colors to hexidecimal string
-    seg_hexcol = []
-    nrows, ncols = seg_rgbcol.shape
-    for i in np.arange(0, nrows):
-        seg_hexcol.append(
-            cltcol.rgb2hex(seg_rgbcol[i, 0], seg_rgbcol[i, 1], seg_rgbcol[i, 2])
-        )
+    # Default tissue classes: (code, name, abbreviation, RGB color)
+    tissues = [
+        (1, "cerebro_spinal_fluid", "CSF", (172, 0, 0)),
+        (2, "gray_matter", "GM", (0, 153, 76)),
+        (3, "white_matter", "WM", (0, 102, 204)),
+    ]
 
     seg_df = pd.DataFrame(
         {
-            "index": seg_codes,
-            "name": seg_names,
-            "abbreviation": seg_acron,
-            "color": seg_hexcol,
+            "index": [code for code, _, _, _ in tissues],
+            "name": [name for _, name, _, _ in tissues],
+            "abbreviation": [abbr for _, _, abbr, _ in tissues],
+            "color": [cltcol.rgb2hex(*rgb) for _, _, _, rgb in tissues],
         }
     )
-    # Save the tsv table
-    with open(tsv_filename, "w+") as tsv_file:
-        tsv_file.write(seg_df.to_csv(sep="\t", index=False))
+
+    if tsv_filename is not None:
+        seg_df.to_csv(tsv_filename, sep="\t", index=False)
 
     return seg_df
