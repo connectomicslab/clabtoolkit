@@ -346,6 +346,9 @@ def build_indices_with_conditions(
 
         Usage:
         -------
+        >>> data = np.array([0, 5, 10, 15, 20, 25, 30, 35, 40, 45])
+        >>> threshold = 30
+
         # Test 2: Pure range strings
         >>> input2 = ["1:4", "5-7", "8:2:10"]
         >>> print(f"Input: {input2}")
@@ -380,12 +383,12 @@ def build_indices_with_conditions(
         >>> result = build_indices_with_conditions(input6, data=data, nonzeros=True)
         >>> print(f"Result: {result}")
 
-        # Test 7: Complex mixed case
+        # Test 7: Complex mixed case (index 0 is dropped because nonzeros=True)
         >>> input7 = [0, "data > threshold", "1:3, 5-7", np.array([8,9])]
         >>> print(f"Input: {input7}")
         >>> result = build_indices_with_conditions(input7, data=data, threshold=threshold)
         >>> print(f"Result: {result}")
-        >>> print("Expected: [0,1,2,3,5,6,7,8,9] (all valid indices)")
+        >>> print("Expected: [1,2,3,5,6,7,8,9] (0 is included only with nonzeros=False)")
 
     """
 
@@ -762,9 +765,9 @@ def get_indexes_by_substring(
         >>> indexes = get_indexes_by_substring(input_list, or_filter)
         >>> print(indexes)  # Output: [0, 2]
 
-        >>> # Using AND filter
+        >>> # Using AND filter: elements containing "e" and "a" (apple, date, grape)
         >>> indexes = get_indexes_by_substring(input_list, or_filter="e", and_filter="a")
-        >>> print(indexes)  # Output: [0, 2, 3, 4]
+        >>> print(indexes)  # Output: [0, 3, 4]
 
         >>> # Using invert
         >>> indexes = get_indexes_by_substring(input_list, or_filter, invert=True)
@@ -800,7 +803,8 @@ def get_indexes_by_substring(
         if whole_word:
             # Use regex for whole word matching with word boundaries
             pattern = r"\b" + re.escape(substring) + r"\b"
-            return bool(re.search(pattern, element))
+            flags = 0 if case_sensitive else re.IGNORECASE
+            return bool(re.search(pattern, element, flags))
         else:
             # Simple substring matching
             if case_sensitive:
@@ -1401,10 +1405,12 @@ def remove_trailing_separators(path: str) -> str:
     str
         The path with trailing separators removed.
 
-    Usage example:
-    >>> path = "/path/to/directory///"
-    >>> print(remove_trailing_separators(path))
-    "/path/to/directory/"
+    Examples
+    --------
+    >>> remove_trailing_separators("/path/to/directory///")
+    '/path/to/directory'
+    >>> remove_trailing_separators("///")
+    '/'
 
     """
     stripped = path.rstrip(os.sep)
@@ -4649,7 +4655,7 @@ class SmartFormatter(argparse.HelpFormatter):
     """
 
     ###################################################################################################
-    def split_lines(self, text, width):
+    def _split_lines(self, text, width):
         """
         This function is used to split the lines of the help message.
         It allows to use the "R|" prefix to print the help message as raw text.
@@ -4675,4 +4681,4 @@ class SmartFormatter(argparse.HelpFormatter):
         if text.startswith("R|"):
             return text[2:].splitlines()
         # this is the RawTextHelpFormatter.split_lines
-        return argparse.HelpFormatter.split_lines(self, text, width)
+        return argparse.HelpFormatter._split_lines(self, text, width)
