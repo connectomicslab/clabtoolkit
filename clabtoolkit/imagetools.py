@@ -323,7 +323,14 @@ class MorphologicalOperations:
         if structure is None:
             structure = self.create_structuring_element("cube", 3, binary_array.ndim)
 
-        return binary_closing(binary_array, structure=structure, iterations=iterations)
+        # scipy treats everything outside the array as background, so the erosion
+        # step removes foreground voxels touching the border and closing stops being
+        # extensive. Padding by the reach of the dilation avoids that artifact.
+        pad = max(s // 2 for s in structure.shape) * iterations
+        padded = np.pad(binary_array, pad, mode="constant", constant_values=False)
+        closed = binary_closing(padded, structure=structure, iterations=iterations)
+
+        return closed[tuple(slice(pad, pad + s) for s in binary_array.shape)]
 
     ########################################################################################################
     def fill_holes(self, binary_array, structure=None):
@@ -972,10 +979,15 @@ def crop_image_from_mask(
     array_img = nib.Nifti1Image(masked_data, img1_affine)
 
     # Cropping the masked data
+    # The end indexes are inclusive, so +1 keeps the last slice of the mask
     if len(img1_data.shape) == 4:
-        cropped_img = array_img.slicer[i_start:i_end, j_start:j_end, k_start:k_end, :]
+        cropped_img = array_img.slicer[
+            i_start : i_end + 1, j_start : j_end + 1, k_start : k_end + 1, :
+        ]
     else:
-        cropped_img = array_img.slicer[i_start:i_end, j_start:j_end, k_start:k_end]
+        cropped_img = array_img.slicer[
+            i_start : i_end + 1, j_start : j_end + 1, k_start : k_end + 1
+        ]
 
     # Saving the cropped image
     nib.save(cropped_img, out_image)
@@ -1828,6 +1840,7 @@ def create_spams(
                 raise ValueError(
                     f"The LUT dictionary must contain the keys: {required_keys}"
                 )
+            lut_dict = lut_table
 
         else:
             if isinstance(lut_table, (str, Path)):
@@ -1882,10 +1895,12 @@ def create_spams(
         color_spam_image = np.zeros((spams_dim[0], spams_dim[1], spams_dim[2], 3))
 
         # Take the same name and and colored after the original basename
-        colored_spam_name = os.path.splitext(out_spams.name)[0] + "_colored.nii.gz"
-
-        # Full path
-        color_spam_path = out_spams.with_name(colored_spam_name)
+        spam_stem = out_spams.name
+        for suffix in (".nii.gz", ".nii"):
+            if spam_stem.endswith(suffix):
+                spam_stem = spam_stem[: -len(suffix)]
+                break
+        colored_spam_name = spam_stem + "_colored.nii.gz"
 
         for i, _vol_index in enumerate(sts_ids):
             color = sts_colors[i]
@@ -2751,20 +2766,23 @@ def extract_mesh_from_volume(
     # Apply Gaussian smoothing to reduce noise and fill small gaps
     if gaussian_smooth:
 
-        # Apply Gaussian smoothing
-        tmp_volume_array = gaussian_filter(volume_array, sigma=sigma)
+        # Apply Gaussian smoothing. The closing above returns a boolean array and
+        # gaussian_filter keeps the input dtype, so it must be cast to float first.
+        tmp_volume_array = gaussian_filter(
+            volume_array.astype(np.float32), sigma=sigma
+        )
         # Re-threshold after smoothing
-        tmp_volume_array = (tmp_volume_array > 0).astype(int)
+        tmp_volume_array = (tmp_volume_array > 0.5).astype(np.float32)
 
         if tmp_volume_array.max() == 0:
-            tmp_volume_array = copy.deepcopy(volume_array)
+            tmp_volume_array = volume_array.astype(np.float32)
     else:
-        tmp_volume_array = copy.deepcopy(volume_array)
+        tmp_volume_array = volume_array.astype(np.float32)
 
     # Check if the code exists in the data
     # Extract surface using marching cubes
     vertices, faces, normals, values = measure.marching_cubes(
-        volume_array, level=0.5, gradient_direction="ascent"
+        tmp_volume_array, level=0.5, gradient_direction="ascent"
     )
     if len(faces) == 0:
         raise ValueError(
@@ -2838,8 +2856,10 @@ def extract_centroid_from_volume(
     -------
     tuple
         A tuple containing:
-        - Centroid coordinates as a numpy array of shape (3,) in mm space.
-        - Voxel count as an integer.
+        - Centroid coordinates as a numpy array of shape (3,) in voxel space
+          (NaN if the volume is empty). Use vox2mm to convert them to mm.
+        - Number of non-zero voxels in the original volume (before closing
+          and smoothing) as an integer.
 
     Raises
     ------
@@ -2858,19 +2878,20 @@ def extract_centroid_from_volume(
     1. Converts non-zero values to 1 to create a binary mask.
     2. Applies morphological closing to fill small gaps in the region.
     3. Optionally applies Gaussian smoothing to reduce noise.
-    4. Computes the centroid of the non-zero region.
-    5. Counts the number of voxels in the region.
-    6. Returns the centroid coordinates and voxel count as a numpy array.
+    4. Computes the centroid of the processed region.
+    5. Counts the number of voxels in the original (unprocessed) region.
+    6. Returns the centroid coordinates and voxel count as a tuple.
 
     Examples
     --------
     >>> # Basic centroid extraction
-    >>> centroid_info = extract_centroid_from_volume(binary_volume)
-    >>> print(f"Centroid: {centroid_info[:3]}, Voxel Count: {centroid_info[3]}")
+    >>> centroid, voxel_count = extract_centroid_from_volume(binary_volume)
+    >>> print(f"Centroid: {centroid}, Voxel Count: {voxel_count}")
     >>>
     >>> # With Gaussian smoothing and morphological closing
-    >>> centroid_info = extract_centroid_from_volume(binary_volume, gaussian_smooth=True, sigma=1.5, closing_iterations=2)
-    >>> print(f"Centroid: {centroid_info[:3]}, Voxel Count: {centroid_info[3]}")
+    >>> centroid, voxel_count = extract_centroid_from_volume(
+    ...     binary_volume, gaussian_smooth=True, sigma=1.5, closing_iterations=2
+    ... )
     """
 
     # Binary mask for the specified value
@@ -2883,6 +2904,10 @@ def extract_centroid_from_volume(
     # Everything that is different from 0 is set to 1
     volume_array = (volume_array != 0).astype(np.float32)
 
+    # The voxel count is taken from the original region: closing and smoothing
+    # can spill into neighboring voxels (e.g. other regions of a parcellation)
+    voxel_count = int(np.count_nonzero(volume_array))
+
     if closing_iterations > 0:
         volume_array = quick_morphology(
             volume_array, "closing", iterations=closing_iterations
@@ -2891,15 +2916,18 @@ def extract_centroid_from_volume(
     # Apply Gaussian smoothing to reduce noise and fill small gaps
     if gaussian_smooth:
 
-        # Apply Gaussian smoothing
-        tmp_volume_array = gaussian_filter(volume_array, sigma=sigma)
+        # Apply Gaussian smoothing. The closing above returns a boolean array and
+        # gaussian_filter keeps the input dtype, so it must be cast to float first.
+        tmp_volume_array = gaussian_filter(
+            volume_array.astype(np.float32), sigma=sigma
+        )
         # Re-threshold after smoothing
-        tmp_volume_array = (tmp_volume_array > 0).astype(int)
+        tmp_volume_array = (tmp_volume_array > 0.5).astype(np.float32)
 
         if tmp_volume_array.max() == 0:
-            tmp_volume_array = copy.deepcopy(volume_array)
+            tmp_volume_array = volume_array.astype(np.float32)
     else:
-        tmp_volume_array = copy.deepcopy(volume_array)
+        tmp_volume_array = volume_array.astype(np.float32)
 
     # Create mask for current region
     region_x, region_y, region_z = np.where(tmp_volume_array != 0)
@@ -2914,12 +2942,9 @@ def extract_centroid_from_volume(
         centroid_y = np.mean(region_y)
         centroid_z = np.mean(region_z)
 
-        # Count voxels and compute volume
-        voxel_count = len(region_x)
-
         return (
             np.array([centroid_x, centroid_y, centroid_z], dtype=np.float32),
-            int(voxel_count),
+            voxel_count,
         )
 
 
@@ -3050,6 +3075,8 @@ def spams2maxprob_from_volume(
     if not isinstance(spam_vol, np.ndarray) or spam_vol.ndim != 4:
         raise ValueError("spam_vol must be a 4D numpy array (X, Y, Z, M).")
 
+    # Work on a copy so the caller's SPAMs are not modified
+    spam_vol = spam_vol.copy()
     spam_vol[spam_vol < prob_thresh] = 0
     spam_vol[spam_vol > 1] = 1
 
@@ -3129,7 +3156,7 @@ def compute_statistics_at_nonzero_voxels(
     >>> data = np.array([[[1, 2], [3, 4]],
     ...                  [[5, 6], [7, 8]]])
     >>> mean_value = compute_statistics_at_nonzero_voxels(mask, data)
-    >>> print(mean_value)  # Output: 4.5 (mean of 2, 5, 6, 8)
+    >>> print(mean_value)  # Output: 5.0 (mean of 2, 5, 8)
     >>>
     >>> # Example with 4D data_array
     >>> mask_4d = np.array([[[0, 1], [0, 0]],
@@ -3139,8 +3166,7 @@ def compute_statistics_at_nonzero_voxels(
     ...                     [[[9, 10], [11, 12]],
     ...                      [[13, 14], [15, 16]]]])
     >>> mean_values_4d = compute_statistics_at_nonzero_voxels(mask_4d, data_4d)
-    >>> print(mean_values_4d)  # Output: [ 6.  8. 10. 12.] (mean for each time point
-    1, 2, 3, 4)
+    >>> print(mean_values_4d)  # Output: [ 9. 10.] (mean of [3, 9, 15] and [4, 10, 16])
 
     """
 
@@ -3363,6 +3389,9 @@ def region_growing(
     ...     min_neighbors=4,
     ... )
     """
+
+    # Work on a copy so the caller's parcellation is not modified
+    iparc = iparc.copy()
 
     # Create a binary array where labeled voxels are marked as 1
     binary_labels = (iparc > 0).astype(int)
