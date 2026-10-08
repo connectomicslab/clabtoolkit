@@ -1,7 +1,6 @@
 # Standard library
 import os
 import shutil
-import sys
 import tarfile
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -58,6 +57,51 @@ def progress_indicator(future):
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
+def _select_subject_ids(subj_ids: list, ids_file: str, nosub: bool = False) -> list:
+    """
+    Select the subject folders listed in a text file or in a comma-separated string.
+
+    The IDs are matched exactly, with or without the ``sub-`` prefix (``"02"`` and
+    ``"sub-02"`` both select the folder ``sub-02``).
+
+    Parameters
+    ----------
+    subj_ids : list of str
+        Subject folders found in the input directory.
+
+    ids_file : str
+        Text file with one subject ID per line, or a comma-separated list of IDs.
+
+    nosub : bool, optional
+        If True, the folders do not use the ``sub-`` prefix. Default is False.
+
+    Returns
+    -------
+    list of str
+        Subject folders to process, in the order of subj_ids.
+    """
+    if os.path.isfile(ids_file):
+        with open(ids_file, encoding="utf-8") as fh:
+            requested = [line.strip() for line in fh if line.strip()]
+    else:
+        requested = [s.strip() for s in ids_file.split(",") if s.strip()]
+
+    def _norm(subj):
+        return subj if nosub else subj.removeprefix("sub-")
+
+    requested = {_norm(r) for r in requested}
+    return [s for s in subj_ids if _norm(s) in requested]
+
+
+def _parse_acq_date(value) -> datetime:
+    """Parse an acquisition date given as MM/DD/YYYY or YYYY-MM-DD."""
+    value = str(value).strip()
+    if "/" in value:
+        return datetime.strptime(value, "%m/%d/%Y")
+    return datetime.strptime(value[:10], "%Y-%m-%d")
+
+
+####################################################################################################
 def org_conv_dicoms(
     in_dic_dir: str,
     out_dic_dir: str,
@@ -84,15 +128,20 @@ def org_conv_dicoms(
         Output directory where the organized DICOM files will be saved. A new folder called 'Dicom' will be created inside this directory.
 
     demog_file : str, optional
-        Demographics file containing the information about the subjects. The file should contain the following mandatory columns:
+        Demographics file (CSV) containing the information about the subjects. The file should contain the following mandatory columns:
         'participant_id', 'session_id', 'acq_date'. Other columns such as 'birth_date', 'sex', 'group_id' or 'scanner_id' could be added.
+        'acq_date' must be given as MM/DD/YYYY or YYYY-MM-DD. Each session is matched to the row with the closest acquisition date
+        and its 'session_id' is appended to the session name without a separator (e.g. 'ses-20240312091530V1'), so that the
+        label stays BIDS-valid.
 
     ids_file : str, optional
-        Text file containing the list of subject IDs to be considered. The file should contain the subject IDs in a single column.
+        Subject IDs to be considered: a text file with one ID per line, or a comma-separated list of IDs. The IDs are matched
+        exactly and can be given with or without the 'sub-' prefix.
 
     ses_id : str, optional
-        Session ID to be added to the session name. If not provided, the session ID will be the date of the study or the session ID
-        extracted from the demographics table.
+        Session label used for all the sessions (the folders are named 'ses-<ses_id>'). It overrides the label built from the
+        study date and time and the demographics table, so all the series of a subject end up in the same session folder.
+        If not provided, the session is named after the study date and time (YYYYMMDDHHMMSS).
 
     nosub : bool, optional, default=False
         Boolean variable to consider the subjects that do not start with 'sub-'.
@@ -175,24 +224,13 @@ def org_conv_dicoms(
     # If subj_ids is empty do not continue
     if not subj_ids:
         print("No subjects found in the input directory")
-        sys.exit()
+        return
 
     if ids_file is not None:
-        if os.path.isfile(ids_file):
-            subj_ids = cltmisc.select_ids_from_file(subj_ids, ids_file)
-
-        else:
-            s_ids = ids_file.split(",")
-
-            if not nosub:
-                temp_ids = [s.strip("sub-") for s in subj_ids]
-                s_ids = cltmisc.list_intercept(s_ids, temp_ids)
-
-            if not s_ids:
-                s_ids = subj_ids
-            else:
-                s_ids = ["sub-" + s for s in s_ids]
-            subj_ids = s_ids
+        subj_ids = _select_subject_ids(subj_ids, ids_file, nosub)
+        if not subj_ids:
+            print(f"None of the subjects in '{ids_file}' was found in {in_dic_dir}")
+            return
 
     # Reading demographics
     demobool = False  # Boolean variable to use the demographics table for the session id definition
@@ -229,22 +267,19 @@ def org_conv_dicoms(
                 date_times = []
 
                 if demobool:
-                    # Sub-table containing only the selected ID
+                    # Sub-table containing only the selected ID (exact match, with
+                    # or without the 'sub-' prefix)
                     subTB = demoDB[
-                        demoDB["participant_id"].str.contains(subj_id.split("-")[-1])
+                        demoDB["participant_id"].astype(str).str.removeprefix("sub-")
+                        == subj_id.removeprefix("sub-")
                     ]
 
                     # Date times of all the series acquired for the current subject
                     nrows = np.shape(subTB)[0]
                     for nr in np.arange(0, nrows):
-                        temp = subTB.iloc[nr]["acq_date"]
-                        tempVar = temp.split("/")
-                        date_time = datetime(
-                            day=int(tempVar[1]),
-                            month=int(tempVar[0]),
-                            year=int(tempVar[2]),
+                        date_times.append(
+                            _parse_acq_date(subTB.iloc[nr]["acq_date"])
                         )
-                        date_times.append(date_time)
                 try:
                     if booldic:
                         dicom_files = cltmisc.get_all_files(subj_dir)
@@ -267,7 +302,8 @@ def org_conv_dicoms(
                                     subTB,
                                     overwrite,
                                 )
-                                all_ser_dirs.append(ser_dir)
+                                if ser_dir is not None:
+                                    all_ser_dirs.append(ser_dir)
                                 pb.update(
                                     task_id=pb1,
                                     description=f"[red]Copying DICOMs: Subject {subj_id} ({cont_dic+1}/{n_dics})",
@@ -282,12 +318,11 @@ def org_conv_dicoms(
                                 total=n_dics,
                             )
 
-                            # Adjusting the number of threads to the number of subjects
-                            if n_dics < nthreads:
-                                nthreads = n_dics
+                            # Do not start more threads than files for this subject
+                            subj_threads = max(1, min(nthreads, n_dics))
 
                             # start the thread pool
-                            with ThreadPoolExecutor(nthreads) as executor:
+                            with ThreadPoolExecutor(subj_threads) as executor:
                                 # send in the tasks
                                 # futures = [executor.submit(build_parcellation, t1s[i],
                                 # bids_dir, deriv_dir, parccode, growwm) for i in range(n_subj)]
@@ -315,13 +350,13 @@ def org_conv_dicoms(
 
                     else:
 
-                        for ses_id in os.listdir(subj_dir):  # Loop along the session
-                            ses_dir = os.path.join(subj_dir, ses_id)
-                            if not ses_id[-2].isalpha():
+                        for ses_name in os.listdir(subj_dir):  # Loop along the session
+                            ses_dir = os.path.join(subj_dir, ses_name)
+                            if not ses_name[-2].isalpha():
                                 if (
                                     demobool
                                 ):  # Adding the Visit ID to the last part o the session ID only in the DICOM Folder
-                                    tempVar = ses_id.split("-")[-1]
+                                    tempVar = ses_name.split("-")[-1]
                                     sdate_time = datetime.strptime(
                                         tempVar, "%Y%m%d%H%M%S"
                                     )
@@ -330,7 +365,7 @@ def org_conv_dicoms(
                                     )
                                     clostd = np.argmin(abs(timediff))
                                     visitVar = subTB.iloc[clostd]["session_id"]
-                                    newses_id = ses_id + visitVar
+                                    newses_id = ses_name + visitVar
                                     newses_dir = os.path.join(subj_dir, newses_id)
                                     os.rename(ses_dir, newses_dir)
                                     ses_dir = newses_dir
@@ -352,8 +387,7 @@ def org_conv_dicoms(
         #     pb.update(task_id=t2, completed=cont_subj+1)
         # pb.update(task_id=t2, completed=n_subj)
 
-    all_ser_dirs = list(set(all_ser_dirs))
-    all_ser_dirs.sort()
+    all_ser_dirs = sorted({d for d in all_ser_dirs if d is not None})
 
     if boolcomp:
         compress_dicom_session(out_dic_dir)
@@ -618,8 +652,9 @@ def copy_dicom_file(
         Output directory where the DICOM files will be saved.
 
     ses_id: str
-        Session ID to be added to the session name. If not provided, the session ID will be the date of the study or the session ID
-        extracted from the demographics table.
+        Session label. If provided, the file is copied into 'ses-<ses_id>', overriding the label built from the study date and
+        time and the demographics table. If not provided, the session is named after the study date and time (YYYYMMDDHHMMSS),
+        followed by the visit ID of the demographics table when demogbool is True.
 
     date_times: list
         List containing the date and time of all the studies for that subject ID.
@@ -635,70 +670,58 @@ def copy_dicom_file(
 
     Returns
     --------
-    dest_dic_dir: str
-        Destination directory where the DICOM file was copied.
+    dest_dic_dir: str or None
+        Destination directory where the DICOM file was copied, or None if the file is not
+        a valid DICOM file (it is reported and skipped).
 
 
     """
 
+    dest_dic_dir = None
     try:
-        dataset = pydicom.dcmread(dic_file)
-        os.path.dirname(dic_file)
-        dic_name = os.path.basename(dic_file)
-
-        # Extracting the study date from DICOM file
-        attributes = dataset.dir("")
-
-        if attributes:
-            sdate = dataset.data_element("StudyDate").value
-            year = int(sdate[:4])
-            month = int(sdate[4:6])
-            day = int(sdate[6:8])
-
-            # Date format
-            sdate_time = datetime(day=day, month=month, year=year)
-
-            # Creating default current Session ID
-            ses_id, ser_id = create_session_series_names(dataset)
-
-            if ses_id is not None:
-                ses_id = "ses-" + ses_id
-
-            # NOTE: a DICOM whose StudyTime is missing gets the session id
-            # "000000". This used to try to inherit the session id of the
-            # previously copied file of the same series, reading ses_idprev /
-            # ser_idprev — but copy_dicom_file() is called once per file and
-            # keeps no state between calls, so those names were never bound and
-            # the lookup raised NameError. Restoring that fallback needs the
-            # previous ids to be threaded in by the caller.
-
-            # Changing the session Id in case we have access to the demographics file
-            if demogbool:
-                timediff = np.array(date_times) - np.array(sdate_time)
-                clostd = np.argmin(abs(timediff))
-                visitVar = demog_tab.iloc[clostd]["session_id"]
-                ses_id = ses_id + visitVar
-
-            dest_dic_dir = os.path.join(out_dic_dir, subj_id, ses_id, ser_id)
-
-            # Create the destination path
-            if not os.path.isdir(dest_dic_dir):
-                path = Path(dest_dic_dir)
-                path.mkdir(parents=True, exist_ok=True)
-            #                     print(newPath)
-            dest_dic = os.path.join(dest_dic_dir, dic_name)
-            if overwrite:
-                if os.path.isfile(dest_dic):
-                    os.remove(dest_dic)
-                else:
-                    copyfile(dic_file, dest_dic)
-            else:
-                if not os.path.isfile(dest_dic):
-                    copyfile(dic_file, dest_dic)
-
+        dataset = pydicom.dcmread(dic_file, stop_before_pixels=True)
     except pydicom.errors.InvalidDicomError:
-        print("Error at file at path :  " + dic_file)
-    pass
+        print("Skipping file that is not a valid DICOM: " + dic_file)
+        return dest_dic_dir
+
+    dic_name = os.path.basename(dic_file)
+
+    # Creating default current Session ID
+    date_ses_id, ser_id = create_session_series_names(dataset)
+
+    # NOTE: a DICOM whose StudyTime is missing gets the session id
+    # "000000". This used to try to inherit the session id of the
+    # previously copied file of the same series, reading ses_idprev /
+    # ser_idprev — but copy_dicom_file() is called once per file and
+    # keeps no state between calls, so those names were never bound and
+    # the lookup raised NameError. Restoring that fallback needs the
+    # previous ids to be threaded in by the caller.
+
+    if ses_id is not None:
+        # A user-defined session label overrides the date and the demographics table
+        ses_name = "ses-" + str(ses_id).removeprefix("ses-")
+    else:
+        ses_name = "ses-" + date_ses_id
+
+        # Changing the session Id in case we have access to the demographics file
+        sdate = str(dataset.get("StudyDate", "") or "")
+        if demogbool and date_times and len(sdate) >= 8:
+            sdate_time = datetime(
+                year=int(sdate[:4]), month=int(sdate[4:6]), day=int(sdate[6:8])
+            )
+            timediff = np.array(date_times) - np.array(sdate_time)
+            clostd = np.argmin(abs(timediff))
+            visitVar = demog_tab.iloc[clostd]["session_id"]
+            ses_name = ses_name + str(visitVar)
+
+    dest_dic_dir = os.path.join(out_dic_dir, subj_id, ses_name, ser_id)
+
+    # Create the destination path
+    Path(dest_dic_dir).mkdir(parents=True, exist_ok=True)
+
+    dest_dic = os.path.join(dest_dic_dir, dic_name)
+    if overwrite or not os.path.isfile(dest_dic):
+        copyfile(dic_file, dest_dic)
 
     return dest_dic_dir
 
@@ -716,26 +739,32 @@ def create_session_series_names(dataset):
     Returns
     -------
     ses_id: str
-        Session ID.
+        Session ID built from StudyDate and StudyTime as YYYYMMDDHHMMSS (e.g. a study
+        on 2024-03-12 at 09:15:30 gives '20240312091530'). A missing date or time is
+        replaced by zeros.
 
     ser_id: str
-        Series ID.
+        Series ID: the zero-padded SeriesNumber followed by the SeriesDescription
+        (or SequenceName, ProtocolName, ScanningSequence_SequenceVariant), without
+        special characters and with '-' as separator (e.g. '0001-T1w-MPRAGE'). The
+        number is omitted when the file has no SeriesNumber.
 
     """
     # % This function creates the session and the series name for a dicom object
 
     # Extracting the study date from DICOM file
     attributes = dataset.dir("")
-    sdate = dataset.data_element("StudyDate").value
-    stime = dataset.data_element("StudyTime").value
+    sdate = str(dataset.get("StudyDate", "") or "").strip()
+    stime = str(dataset.get("StudyTime", "") or "").strip()
 
-    ########### ========== Creating current Session ID
-    if sdate and stime:
-        ses_id = str(sdate) + str(int(np.floor(float(stime))))
-    elif sdate and not stime:
-        ses_id = str(sdate) + "000000"
-    elif stime and not sdate:
-        ses_id = "00000000" + str(stime)
+    ########### ========== Creating current Session ID (YYYYMMDDHHMMSS)
+    # StudyDate is YYYYMMDD. StudyTime is HHMMSS with optional fractional seconds,
+    # and may be shortened to HH or HHMM; the leading zeros must be kept, so the
+    # time is handled as text (e.g. '091530.25' -> '091530').
+    sdate = sdate.replace("-", "").replace(".", "")[:8] if sdate else "00000000"
+    stime = stime.split(".")[0].replace(":", "")
+    stime = stime.ljust(6, "0")[:6] if stime else "000000"
+    ses_id = sdate + stime
 
     ########### ========== Creating current Series ID
     if any("SeriesDescription" in s for s in attributes):
@@ -800,12 +829,10 @@ def create_session_series_names(dataset):
     ser_id = cltmisc.remove_consecutive_duplicates(ser_id, "_")
     ser_id = ser_id.replace("_", "-")
 
-    if any("SeriesNumber" in s for s in attributes):
-        serNumb = dataset.data_element("SeriesNumber").value
-
-    # Adding the series number
-    sNumb = f"{int(serNumb):04d}"
-    ser_id = sNumb + "-" + ser_id
+    # Adding the series number (omitted when the file does not have one)
+    ser_numb = dataset.get("SeriesNumber", None)
+    if ser_numb not in (None, ""):
+        ser_id = f"{int(ser_numb):04d}" + "-" + ser_id
 
     return ses_id, ser_id
 
