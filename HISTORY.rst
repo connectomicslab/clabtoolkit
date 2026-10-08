@@ -2,6 +2,26 @@
 History
 =======
 
+Unreleased
+----------
+
+* Fixed the FA, VF, RA and GA maps of maps_from_tensor_eigenvalues in dwitools (FA used a factor of 0.5 instead of 3/2, VF and RA used the radial instead of the mean diffusivity, and GA was not the geodesic anisotropy). Maps computed with previous versions will change
+* Fixed the gradient signs recovered by DiffusionScheme.from_bmatrix_array (they were always positive)
+* Fixed delete_dwi_volumes and get_b0s reading only 5 b-values from bval files stored as a column, and added a check of the number of b-values against the number of volumes
+* Fixed get_b0s crashing without an output name or a bval file and saving an empty image when no B0 was found; it now always returns (image, indices)
+* Fixed delete_dwi_volumes returning a single path instead of a tuple when no volume was removed, and restored its docstring
+* Added DiffusionScheme.simulate_dwi_acq_scheme to simulate shelled and cartesian (DSI) acquisition schemes
+* Added save_path, non_blocking and window_size to DiffusionScheme.plot to save the scheme as an image, a vector graphic or an interactive HTML file
+* DiffusionScheme.plot draws the directions as sphere meshes so they keep their 3D shading in notebooks and HTML files, uses the right range in the colorbar and places the DSI shells at their q-space radius
+* Added window_size to BrainPlotter.plot, plot_hemispheres and plot_scene. Notebook figures now use PyVista's default window size (1024 x 768) instead of the monitor size, which overflowed the cell output
+* Fixed the Gaussian smoothing of extract_centroid_from_volume and extract_mesh_from_volume in imagetools (the boolean dtype shrank the region and the mesh ignored the smoothing)
+* extract_centroid_from_volume returns the voxel count of the input region, which fixes the region volumes reported by Parcellation.compute_centroids
+* Fixed MorphologicalOperations.closing removing foreground voxels on the image border
+* Fixed crop_image_from_mask excluding the last voxel of the mask on each axis
+* Fixed create_spams with a dictionary lookup table and the name of the colored SPAM image
+* spams2maxprob_from_volume and region_growing no longer modify their input arrays
+* Added the example notebooks for the imagetools and dwitools modules
+
 0.4.5 (2026-08-28)
 ------------------
 

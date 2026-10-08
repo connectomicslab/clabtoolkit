@@ -85,10 +85,10 @@ Features
     * Visualization of surface data
 
 **DWI Tools** (``clabtoolkit.dwitools``)
-    * Diffusion-weighted imaging analysis
-    * Tractography processing utilities
-    * DTI and advanced diffusion modeling
-    * White matter analysis tools
+    * DWI volume removal by index or b-value and B0 extraction
+    * Acquisition schemes from bvec/bval files or b-matrices
+    * q-space visualization of the scheme (window, notebook, image or HTML)
+    * Scalar maps from the tensor eigenvalues (FA, MD, AD, RD and more)
 
 **Quality Control Tools** (``clabtoolkit.qcqatools``)
     * Automated quality assessment

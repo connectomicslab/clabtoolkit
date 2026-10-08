@@ -47,10 +47,10 @@ surface.plot()
 
 The toolkit follows a modular, layered architecture designed for scalability and ease of use:
 
--   **Foundation Layer**: Core utilities and plotting infrastructure
--   **Data Layer**: BIDS compliance and image processing
--   **Analysis Layer**: Specialized neuroimaging analysis tools
--   **Workflow Layer**: Pipeline management and quality control
+- **Foundation Layer**: Core utilities and plotting infrastructure
+- **Data Layer**: BIDS compliance and image processing
+- **Analysis Layer**: Specialized neuroimaging analysis tools
+- **Workflow Layer**: Pipeline management and quality control
 
 ## Module Reference
 
@@ -62,10 +62,10 @@ The toolkit follows a modular, layered architecture designed for scalability and
 
 **Key Features**:
 
--   BIDS entity manipulation and validation
--   Dataset organization and structure analysis
--   Batch processing utilities
--   Automated database table generation from BIDS datasets
+- BIDS entity manipulation and validation
+- Dataset organization and structure analysis
+- Batch processing utilities
+- Automated database table generation from BIDS datasets
 
 **Key Functions**:
 
@@ -95,14 +95,14 @@ print(database.head())
 
 **Key Classes**:
 
--   `MorphologicalOperations`: Binary image morphology (erosion, dilation, opening, closing)
+- `MorphologicalOperations`: Binary image morphology (erosion, dilation, opening, closing)
 
 **Key Features**:
 
--   2D/3D morphological operations
--   Volume filtering and hole filling
--   Image resampling and transformation
--   Quality control utilities
+- 2D/3D morphological operations
+- Volume filtering and hole filling
+- Image resampling and transformation
+- Quality control utilities
 
 **Usage Example**:
 
@@ -122,17 +122,17 @@ filled = morph.closing(image_with_holes, iterations=1)
 
 **Key Classes**:
 
--   `AnnotParcellation`: Advanced annotation file management
-    -   Load/save annotation files (.annot, .gcs formats)
-    -   Parcellation correction and validation
-    -   Format conversion between annotation types
+- `AnnotParcellation`: Advanced annotation file management
+    - Load/save annotation files (.annot, .gcs formats)
+    - Parcellation correction and validation
+    - Format conversion between annotation types
 
 **Key Features**:
 
--   FreeSurfer stats file parsing
--   Surface-based morphometry computation
--   Container technology integration
--   Annotation file correction and processing
+- FreeSurfer stats file parsing
+- Surface-based morphometry computation
+- Container technology integration
+- Annotation file correction and processing
 
 **Usage Example**:
 
@@ -169,18 +169,18 @@ annot.correct_parcellation()  # Fix unlabeled vertices
 
 **Key Classes**:
 
--   `Parcellation`: Complete parcellation ecosystem
-    -   Load parcellations with lookup tables
-    -   Regional filtering and grouping
-    -   Volume calculations and statistics
-    -   Multi-format export capabilities
+- `Parcellation`: Complete parcellation ecosystem
+    - Load parcellations with lookup tables
+    - Regional filtering and grouping
+    - Volume calculations and statistics
+    - Multi-format export capabilities
 
 **Key Features**:
 
--   Flexible parcellation filtering and modification
--   Regional statistics computation
--   Atlas integration and validation
--   BIDS-compliant output generation
+- Flexible parcellation filtering and modification
+- Regional statistics computation
+- Atlas integration and validation
+- BIDS-compliant output generation
 
 **Usage Example**:
 
@@ -225,18 +225,18 @@ vol_parc.save_parcellation(out_parc_path, save_lut=True)
 
 **Key Classes**:
 
--   `Surface`: Comprehensive surface management
-    -   FreeSurfer surface file support (.pial, .white, .inflated)
-    -   Scalar data overlay and visualization
-    -   Parcellation integration
-    -   PyVista-powered 3D rendering
+- `Surface`: Comprehensive surface management
+    - FreeSurfer surface file support (.pial, .white, .inflated)
+    - Scalar data overlay and visualization
+    - Parcellation integration
+    - PyVista-powered 3D rendering
 
 **Key Features**:
 
--   Multi-format surface loading
--   Scalar map management and visualization
--   Interactive 3D plotting
--   Surface-based analysis tools
+- Multi-format surface loading
+- Scalar map management and visualization
+- Interactive 3D plotting
+- Surface-based analysis tools
 
 **Usage Example**:
 
@@ -246,11 +246,11 @@ from clabtoolkit.surfacetools import Surface
 # Load surface with scalar data
 surface = Surface("/path/to/lh.pial")
 surface.load_scalar_data("/path/to/thickness.mgh", maps_names="Thickness")
-surface.plot(overlay_name="Thickness", cmap='viridis', views=["lateral", "medial"])
+surface.plot(maps="Thickness", cmap='viridis', views=["lateral", "medial"])
 
 # Load annotations
 surface.load_annotation("/path/to/lh.aparc.annot", 'aparc')
-surface.plot(overlay_name="Thickness", cmap='viridis', views="8_views")
+surface.plot(maps="Thickness", cmap='viridis', views="8_views")
 ```
 
 #### morphometrytools - Morphometric Analysis
@@ -259,10 +259,10 @@ surface.plot(overlay_name="Thickness", cmap='viridis', views="8_views")
 
 **Key Features**:
 
--   Regional value extraction from surface annotations
--   Multi-hemisphere morphometric analysis
--   Statistical summary generation
--   Integration with parcellation workflows
+- Regional value extraction from surface annotations
+- Multi-hemisphere morphometric analysis
+- Statistical summary generation
+- Integration with parcellation workflows
 
 **Usage Examples**:
 
@@ -297,26 +297,38 @@ df, metric_values, _ = morpho.compute_reg_val_fromparcellation(
 
 #### dwitools - Diffusion MRI Analysis
 
-**Purpose**: Diffusion-weighted imaging analysis and tractography processing
+**Purpose**: Diffusion-weighted imaging volume handling, acquisition schemes and tensor-derived maps (tractograms are handled by `tracttools`)
 
 **Key Features**:
 
--   DWI volume manipulation and quality control
--   Tractography file processing (.trk, .tck formats)
--   Bundle analysis and clustering
+- DWI volume removal by index or b-value, keeping the bvec/bval files in sync
+- B0 volume extraction
+- Acquisition scheme handling from bvec/bval files or b-matrices (shelled and cartesian/DSI schemes)
+- q-space visualization of the scheme, displayed or saved as an image, a vector graphic or an interactive HTML file
+- Scalar maps from the tensor eigenvalues (AD, RD, MD, FA, CL, CP, CS, VF, GA, RA)
 
 **Usage Example**:
 
 ```python
-from clabtoolkit.dwitools import delete_dwi_volumes
+from clabtoolkit.dwitools import DiffusionScheme, delete_dwi_volumes, get_b0s
 
-# Remove specific DWI volumes
-delete_dwi_volumes(
-    dwi_file="dwi.nii.gz",
-    bval_file="dwi.bval",
+# Remove specific DWI volumes (the bvec/bval files are updated as well)
+out_image, out_bvec, out_bval, removed = delete_dwi_volumes(
+    in_image="dwi.nii.gz",
     bvec_file="dwi.bvec",
-    volumes_to_delete=[0, 5, 10]  # Remove specific volumes
+    bval_file="dwi.bval",
+    vols_to_delete=[0, 5, 10],
+    out_image="dwi_clean.nii.gz",
 )
+
+# Extract the B0 volumes
+b0s_img, b0_vols = get_b0s("dwi.nii.gz", "dwi_b0s.nii.gz", bval_thresh=50)
+
+# Plot the acquisition scheme, or save it as an image or an interactive HTML file
+scheme = DiffusionScheme.from_bvec_bval_files("dwi.bvec", "dwi.bval")
+scheme.plot()
+scheme.plot(save_path="scheme.html")
+scheme.plot(use_notebook=True)  # Inside a Jupyter notebook
 ```
 
 #### networktools - Graph Analysis
@@ -325,9 +337,9 @@ delete_dwi_volumes(
 
 **Key Features**:
 
--   Graph representation creation from brain meshes
--   Sparse matrix operations for large-scale networks
--   Connectivity analysis utilities
+- Graph representation creation from brain meshes
+- Sparse matrix operations for large-scale networks
+- Connectivity analysis utilities
 
 **Usage Example**:
 
@@ -344,9 +356,9 @@ graph = triangulated_mesh_to_csr(vertices, faces)
 
 **Key Features**:
 
--   Atlas-based parcellation using ANTs
--   Template registration workflows
--   Multi-atlas segmentation support
+- Atlas-based parcellation using ANTs
+- Template registration workflows
+- Multi-atlas segmentation support
 
 **Usage Example**:
 
@@ -369,10 +381,10 @@ abased_parcellation(
 
 **Key Features**:
 
--   Automated slice selection for quality control
--   Multi-modal data validation
--   Visual quality assessment tools
--   Report generation capabilities
+- Automated slice selection for quality control
+- Multi-modal data validation
+- Visual quality assessment tools
+- Report generation capabilities
 
 #### visualizationtools - Advanced Brain Visualization
 
@@ -380,18 +392,31 @@ abased_parcellation(
 
 **Key Classes**:
 
--   `BrainPlotter`: Multi-view brain surface visualization
-    -   Configurable view layouts
-    -   Custom colormap support
-    -   Publication-ready output
-    -   Multi-hemisphere rendering
+- `BrainPlotter`: Multi-view brain surface visualization
+    - Configurable view layouts
+    - Custom colormap support
+    - Publication-ready output
+    - Multi-hemisphere rendering
 
 **Key Features**:
 
--   JSON-based view configuration system
--   Flexible layout management
--   High-quality rendering for publications
--   Interactive visualization capabilities
+- JSON-based view configuration system
+- Flexible layout management
+- High-quality rendering for publications
+- Interactive visualization capabilities
+- Figures saved with `save_path` as screenshots (`.png`, `.jpg`), vector graphics (`.svg`, `.pdf`, `.eps`) or interactive HTML (`.html`)
+- Notebook-friendly figure size: `window_size` sets the figure size; by default notebook figures are 1024 x 768 so they fit in the cell output, while windows and saved figures use the monitor size
+
+**Usage Example**:
+
+```python
+from clabtoolkit.visualizationtools import BrainPlotter
+
+plotter = BrainPlotter()
+plotter.plot(surf_lh, views="lateral", notebook=True)                       # Fits the cell output
+plotter.plot(surf_lh, views="lateral", notebook=True, window_size=(800, 500))
+plotter.plot(surf_lh, views=["lateral", "medial"], save_path="figure.png")  # Saved, not displayed
+```
 
 ### Utilities and Infrastructure
 
@@ -401,10 +426,10 @@ abased_parcellation(
 
 **Key Features**:
 
--   Enhanced command-line argument parsing
--   File system operations
--   Color processing utilities
--   Documentation generation helpers
+- Enhanced command-line argument parsing
+- File system operations
+- Color processing utilities
+- Documentation generation helpers
 
 #### pipelinetools - Workflow Management
 
@@ -412,9 +437,9 @@ abased_parcellation(
 
 **Key Features**:
 
--   Subject ID management for batch workflows
--   Parallel processing utilities
--   Progress tracking and monitoring
+- Subject ID management for batch workflows
+- Parallel processing utilities
+- Progress tracking and monitoring
 
 #### plottools - Plotting Infrastructure
 
@@ -422,9 +447,9 @@ abased_parcellation(
 
 **Key Features**:
 
--   Dynamic subplot grid calculation
--   Screen size detection
--   Multi-monitor support
+- Dynamic subplot grid calculation
+- Screen size detection
+- Multi-monitor support
 
 #### dicomtools - DICOM Processing
 
@@ -432,36 +457,36 @@ abased_parcellation(
 
 **Key Features**:
 
--   Multi-threaded DICOM organization
--   BIDS conversion workflows
--   Demographics integration
--   Session management
+- Multi-threaded DICOM organization
+- BIDS conversion workflows
+- Demographics integration
+- Session management
 
 ## Configuration System
 
 clabtoolkit uses a sophisticated JSON-based configuration system located in `clabtoolkit/config/`:
 
--   **bids.json**: BIDS entity definitions and validation rules
--   **viz_views.json**: Visualization layout configurations
--   **lobes.json**: Anatomical lobe definitions for parcellation
--   **stats_mapping.json**: Statistical measure mappings and metadata
+- **bids.json**: BIDS entity definitions and validation rules
+- **viz_views.json**: Visualization layout configurations
+- **lobes.json**: Anatomical lobe definitions for parcellation
+- **stats_mapping.json**: Statistical measure mappings and metadata
 
 ## Dependencies
 
 ### Core Dependencies
 
--   **nibabel**: Neuroimaging file I/O
--   **numpy**: Numerical computing
--   **pandas**: Data manipulation
--   **scipy**: Scientific computing
--   **matplotlib**: Basic plotting
+- **nibabel**: Neuroimaging file I/O
+- **numpy**: Numerical computing
+- **pandas**: Data manipulation
+- **scipy**: Scientific computing
+- **matplotlib**: Basic plotting
 
 ### Specialized Dependencies
 
--   **pyvista**: 3D visualization and mesh processing
--   **rich**: Enhanced console output
--   **dipy**: Diffusion MRI processing
--   **h5py**: HDF5 file support
+- **pyvista**: 3D visualization and mesh processing
+- **rich**: Enhanced console output
+- **dipy**: Diffusion MRI processing
+- **h5py**: HDF5 file support
 
 ### Environment
 
@@ -477,21 +502,21 @@ All dependencies are specified in the **environment.yaml** file for reproducible
 
 ## Support and Documentation
 
--   **GitHub Issues**: Report bugs and request features
--   **Documentation**: Comprehensive API documentation with examples
--   **Test Suite**: Extensive test coverage with example data
--   **Jupyter Notebooks**: Interactive examples and tutorials
+- **GitHub Issues**: Report bugs and request features
+- **Documentation**: Comprehensive API documentation with examples
+- **Test Suite**: Extensive test coverage with example data
+- **Jupyter Notebooks**: Interactive examples and tutorials
 
 ## Research Applications
 
 clabtoolkit is particularly well-suited for:
 
--   **Connectomics Research**: Brain connectivity analysis and visualization
--   **Surface-based Analysis**: Cortical thickness, area, and curvature studies
--   **BIDS Data Management**: Large-scale neuroimaging dataset organization
--   **Multi-modal Integration**: Combined structural and diffusion MRI analysis
--   **Quality Control**: Automated quality assessment for neuroimaging data
--   **Publication Visualization**: High-quality brain visualizations for research papers
+- **Connectomics Research**: Brain connectivity analysis and visualization
+- **Surface-based Analysis**: Cortical thickness, area, and curvature studies
+- **BIDS Data Management**: Large-scale neuroimaging dataset organization
+- **Multi-modal Integration**: Combined structural and diffusion MRI analysis
+- **Quality Control**: Automated quality assessment for neuroimaging data
+- **Publication Visualization**: High-quality brain visualizations for research papers
 
 ---
 

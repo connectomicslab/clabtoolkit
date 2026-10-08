@@ -16,6 +16,8 @@ Key Features
 - Publication-ready figure generation
 - Flexible colormap and colorbar support
 - PyVista-powered 3D rendering
+- Figures displayed in a window or a Jupyter notebook, or saved as images,
+  vector graphics or interactive HTML files
 - Carpet plots for time series data
 
 Main Classes
@@ -29,6 +31,19 @@ Plotting:
 - ``plot()``: Render one or more objects with the requested views
 - ``plot_hemispheres()``: Render left and right hemispheres side by side
 - ``plot_scene()``: Render a configured scene of multiple objects
+
+Display and output options shared by the three plotting methods:
+
+- ``notebook``: display the figure inside a Jupyter notebook.
+- ``save_path``: save the figure instead of displaying it. The format is chosen
+  from the extension: ``.html``/``.htm`` exports an interactive HTML file,
+  ``.svg``, ``.pdf``, ``.eps``, ``.ps`` or ``.tex`` a vector graphic, and any
+  other extension (e.g. ``.png``) a screenshot.
+- ``window_size``: figure size in pixels (width, height). By default notebook
+  figures use PyVista's default window size (1024 x 768) so they fit in the cell
+  output, while windows and saved figures use the size of the current monitor.
+- ``non_blocking``: open the window in a separate thread so the terminal stays
+  interactive.
 
 Views and Layouts:
 - ``list_available_view_names()``: List the view names that can be requested
@@ -119,6 +134,21 @@ Themes and configuration::
     plotter.list_figure_config_options()
     plotter.update_figure_config(auto_save=True)
     plotter.reset_figure_config()
+
+Notebooks and figure size::
+
+    # Inside a Jupyter notebook the figure fits the cell output (1024 x 768)
+    plotter.plot(objs2plot=surf_lh, views="lateral", notebook=True)
+
+    # Choose another size, e.g. a wide figure for two hemispheres
+    plotter.plot_hemispheres(
+        obj_rh=surf_rh, obj_lh=surf_lh, views="lateral",
+        notebook=True, window_size=(1200, 500)
+    )
+
+    # window_size also sets the resolution of saved figures
+    plotter.plot(objs2plot=surf_lh, views="lateral",
+                 save_path="/path/to/figure.png", window_size=(1600, 1200))
 
 Publication-ready figures::
 
