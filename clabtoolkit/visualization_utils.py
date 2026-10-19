@@ -860,8 +860,8 @@ def add_colorbar(
     base_label_size = font_sizes["colorbar_ticks"]
 
     # Apply font sizes with explicit scaling
-    title_prop.SetFontSize(base_title_size)
-    label_prop.SetFontSize(base_label_size)
+    title_prop.SetFontSize(int(base_title_size))
+    label_prop.SetFontSize(int(base_label_size))
 
     # Enable/disable bold for better consistency
     title_prop.BoldOff()
