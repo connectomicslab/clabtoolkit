@@ -1,9 +1,11 @@
 import copy
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import warnings
@@ -166,7 +168,6 @@ class AnnotParcellation:
             if isinstance(ref_surf, Path):
                 ref_surf = str(ref_surf)
 
-        booldel = False
         self.filename = parc_file
 
         # Verify if the file exists
@@ -190,28 +191,32 @@ class AnnotParcellation:
         hemi = detect_hemi(temp_name)
         self.hemi = hemi
 
-        # If the file is a .gii file, then convert it to a .annot file
-        if self.name.endswith(".gii"):
-            annot_file = AnnotParcellation.gii2annot(
-                self.filename,
-                annot_file=self.filename.replace(".gii", ".annot"),
-            )
-            booldel = True
-        elif self.name.endswith(".annot"):
+        # GIFTI and GCS files are converted to a temporary .annot file, so that no
+        # existing annotation next to them is overwritten
+        tmp_dir = None
+        if self.name.endswith(".annot"):
             annot_file = self.filename
-        elif self.name.endswith(".gcs"):
-            annot_file = AnnotParcellation.gcs2annot(
-                self.filename, annot_file=self.filename.replace(".gcs", ".annot")
+        elif self.name.endswith((".gii", ".gcs")):
+            tmp_dir = tempfile.mkdtemp(prefix="annot_")
+            annot_file = os.path.join(tmp_dir, "converted.annot")
+            if self.name.endswith(".gii"):
+                AnnotParcellation.gii2annot(self.filename, annot_file=annot_file)
+            else:
+                AnnotParcellation.gcs2annot(self.filename, annot_file=annot_file)
+        else:
+            raise ValueError(
+                f"Unsupported parcellation file: {self.name}. "
+                "Expected a .annot, .gii or .gcs file."
             )
-            booldel = True
 
         # Read the annot file using nibabel
-        codes, reg_table, reg_names = nib.freesurfer.read_annot(
-            annot_file, orig_ids=True
-        )
-
-        if booldel:
-            os.remove(annot_file)
+        try:
+            codes, reg_table, reg_names = nib.freesurfer.read_annot(
+                annot_file, orig_ids=True
+            )
+        finally:
+            if tmp_dir is not None:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
         # Correcting region names
         reg_names = [name.decode("utf-8") for name in reg_names]
@@ -589,7 +594,7 @@ class AnnotParcellation:
         Examples
         --------
         >>> # From a surface file, with generated names and colors
-        >>> parc = AnnotParcellation.simulate_parcellation(
+        >>> parc = AnnotParcellation.simulate_annotation(
         ...     '/opt/freesurfer/subjects/fsaverage/surf/lh.pial', n_regions=12, seed=0
         ... )
         >>> parc.get_info(verbose=False)                        # doctest: +SKIP
@@ -597,7 +602,7 @@ class AnnotParcellation:
         >>> # From a Surface object, with explicit names and colors
         >>> from clabtoolkit.surfacetools import Surface
         >>> surf = Surface.simulate_surface('icosphere', nsub=4, maps=None)
-        >>> parc = AnnotParcellation.simulate_parcellation(
+        >>> parc = AnnotParcellation.simulate_annotation(
         ...     surf,
         ...     n_regions=3,
         ...     region_names=['frontal', 'parietal', 'occipital'],
@@ -783,26 +788,35 @@ class AnnotParcellation:
     ####################################################################################################
     def save_annotation(self, out_file: str = None, overwrite: bool = True):
         """
-        Save the annotation file. If the file already exists, it will be overwritten.
+        Save the annotation to a FreeSurfer .annot file.
 
         Parameters
         ----------
-        out_file     - Optional  : Output annotation file:
-        overwrite        - Optional  : overwrite to overwrite the annotation file. Default is True:
+        out_file : str, optional
+            Output annotation file. Missing folders are created. If None, the file
+            the annotation was loaded from is used.
 
-        Returns
-        -------
+        overwrite : bool, optional
+            Replace the file if it exists. If False, a ValueError is raised.
+            Default is True.
 
-
-
+        Raises
+        ------
+        ValueError
+            If out_file is None and the annotation has no associated file, or if
+            the file exists and overwrite is False.
         """
 
         if out_file is None:
+            if self.path is None or self.name is None:
+                raise ValueError(
+                    "The annotation has no associated file. Please provide out_file."
+                )
             out_file = os.path.join(self.path, self.name)
 
         # If the directory does not exist then create it
         temp_dir = os.path.dirname(out_file)
-        if not os.path.exists(temp_dir):
+        if temp_dir and not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
 
         if os.path.exists(out_file) and not overwrite:
@@ -1076,11 +1090,9 @@ class AnnotParcellation:
 
         Parameters
         ----------
-        annot : AnnotParcellation
-            The input annotation parcellation to be corrected.
-
-        surf : Surface
-            The surface object corresponding to the annotation, used to extract edges for connectivity analysis.
+        surf : str, Path or Surface
+            The surface the annotation is defined on (a file or a Surface object),
+            used to extract the edges for the connectivity analysis.
 
         cortex_file : str or Path, optional
             Path to the cortex label file used to fill the parcellation after corrections. If None, filling is skipped.
@@ -1091,8 +1103,9 @@ class AnnotParcellation:
 
         Returns
         -------
-        AnnotParcellation
-            A new AnnotParcellation object with the corrected parcellation.
+        np.ndarray
+            Vertex-wise codes of the corrected parcellation. The codes of the
+            annotation are updated too.
 
         Notes
         -----
@@ -1101,7 +1114,7 @@ class AnnotParcellation:
 
         Examples
         --------
-        >>> annot_corrected = correct_vertexwise_parcellation(annot_obj, surf_file, cortex_file=cortex_file, min_cluster_size=100)
+        >>> codes = annot.correct_vertexwise_parcellation(surf_file, cortex_file=cortex_file, min_cluster_size=100)
 
 
         """
@@ -1113,8 +1126,17 @@ class AnnotParcellation:
         annot_obj = copy.deepcopy(self)  # Avoid modifying the original object
 
         # ── 1. Load surface and extract edges ─────────────────────────────────────
+        tmp_dir = None
         if isinstance(surf, (str, Path)):
-            surface = cltsurf.Surface(surf)
+            surface = cltsurf.Surface(str(surf))
+            surf_file = str(surf)
+        elif isinstance(surf, cltsurf.Surface):
+            surface = surf
+            surf_file = None
+        else:
+            raise TypeError(
+                f"surf must be a path or a Surface object, got {type(surf).__name__}"
+            )
 
         edges = surface.get_edges()  # shape (n_edges, 2)
 
@@ -1171,7 +1193,18 @@ class AnnotParcellation:
 
         # ── 3. Fill parcellation after corrections ────────────────────────────────
         if cortex_file is not None:
-            annot_obj.fill_parcellation(label_file=cortex_file, surf_file=surf)
+            if surf_file is None:
+                # fill_parcellation reads the surface from a file
+                tmp_dir = tempfile.mkdtemp(prefix="surf_")
+                surf_file = os.path.join(tmp_dir, "surface")
+                surface.save_surface(surf_file, overwrite=True)
+            try:
+                annot_obj.fill_parcellation(
+                    label_file=str(cortex_file), surf_file=surf_file
+                )
+            finally:
+                if tmp_dir is not None:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
 
         self.codes = annot_obj.codes
         return annot_obj.codes
@@ -1789,8 +1822,9 @@ class AnnotParcellation:
         numpy.loadtxt : Alternative for reading simple numeric files
         """
 
-        # Check if the regional values are a string (txt file)
-        if isinstance(regional_values, str):
+        # Check if the regional values are a file (txt or csv)
+        if isinstance(regional_values, (str, Path)):
+            regional_values = str(regional_values)
             # Check if the file exists
             if not os.path.exists(regional_values):
                 raise ValueError("The regional values file does not exist")
@@ -1818,7 +1852,8 @@ class AnnotParcellation:
             else:
                 # Check if the columns are numeric
                 if not all(
-                    np.issubdtype(dtype, np.number) for dtype in regional_values.dtypes
+                    pd.api.types.is_numeric_dtype(dtype)
+                    for dtype in regional_values.dtypes
                 ):
                     raise ValueError("The regional values should be numeric")
                 else:
@@ -1873,7 +1908,7 @@ class AnnotParcellation:
 
         In both cases the new colors are guaranteed not to be in the original table
         and to be different from each other. The new regions are named
-        ``<prefix>-unknown-<number>`` (or ``unknown-<number>`` without prefix).
+        ``<prefix>-unknown_<number>`` (or ``unknown_<number>`` without prefix).
 
         Because FreeSurfer identifies a region by the packed RGB value of its color
         (``R + G*256 + B*65536``), the vertices of each missing code are relabeled
@@ -1883,7 +1918,7 @@ class AnnotParcellation:
         ----------
         prefix : str, optional
             Prefix for the names of the new regions (e.g. 'ctx-lh'). If None, the
-            names are 'unknown-1', 'unknown-2', ...
+            names are 'unknown_1', 'unknown_2', ...
 
         inplace : bool, optional
             If True (default), the object is modified and returned. If False, a
@@ -1912,7 +1947,7 @@ class AnnotParcellation:
         >>> annot_parc.codes[:10] = -1                      # simulate unlabeled vertices
         >>> annot_parc.complete_table(prefix='ctx-lh', verbose=True)
         Added 1 missing code(s) to the color table:
-          -1 -> ctx-lh-unknown-1  (250, 250, 250)  code 16448250
+          -1 -> ctx-lh-unknown_1  (250, 250, 250)  code 16448250
         >>> annot_parc.get_info(verbose=False)['labels_not_in_table']
         []
         """
@@ -2054,10 +2089,13 @@ class AnnotParcellation:
 
         GIFTI colour range
             nibabel exposes ``GiftiLabel`` RGBA attributes as floats in ``[0, 1]``.
-            This method multiplies by 255 and rounds to obtain uint8 values.
+            This method multiplies by 255 and rounds to obtain uint8 values. The
+            alpha channel of a GIFTI label is an opacity, while FreeSurfer stores a
+            transparency, so it is inverted (opaque labels get 0).
 
         Missing colours / names
-            Labels whose RGBA values are ``None`` default to ``(0, 0, 0, 255)``.
+            Labels whose RGBA values are ``None`` default to ``(0, 0, 0, 0)``, an
+            opaque black.
             Labels whose ``label`` attribute is ``None`` receive the name
             ``"region_<key>"``.
 
@@ -2109,7 +2147,7 @@ class AnnotParcellation:
             r = _to_uint8(lbl.red, default=0)
             g = _to_uint8(lbl.green, default=0)
             b = _to_uint8(lbl.blue, default=0)
-            a = _to_uint8(lbl.alpha, default=255)
+            a = 255 - _to_uint8(lbl.alpha, default=255)
             code = r + g * 256 + b * 65536
 
             key_to_row[int(lbl.key)] = row_idx  # <-- row index, not code
@@ -2433,6 +2471,9 @@ class AnnotParcellation:
             If neither freesurfer_dir is provided nor SUBJECTS_DIR environment
             variable is set, and FREESURFER_HOME is also not available.
 
+        RuntimeError
+            If mris_ca_label fails or does not create the annotation file.
+
         Notes
         -----
         This method uses FreeSurfer's `mris_ca_label` command to apply the GCS
@@ -2610,9 +2651,14 @@ class AnnotParcellation:
         cmd_cont = cltmisc.generate_container_command(
             cmd_bashargs, cont_tech, cont_image
         )  # Generating container command
-        subprocess.run(
-            cmd_cont, stdout=subprocess.PIPE, text=True
+        result = subprocess.run(
+            cmd_cont, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
         )  # Running container command
+
+        if result.returncode != 0 or not os.path.isfile(annot_file):
+            raise RuntimeError(
+                f"mris_ca_label failed (exit code {result.returncode}).\n{result.stdout}"
+            )
 
         return annot_file
 
@@ -3022,6 +3068,11 @@ class FreeSurferSubject:
 
         if subjs_dir is None:
             self.subjs_dir = os.environ.get("SUBJECTS_DIR")
+            if not self.subjs_dir:
+                raise ValueError(
+                    "The subjects directory must be passed as subjs_dir or set in "
+                    "the SUBJECTS_DIR environment variable."
+                )
         else:
             if isinstance(subjs_dir, Path):
                 subjs_dir = str(subjs_dir)
@@ -3036,10 +3087,24 @@ class FreeSurferSubject:
 
             self.subjs_dir = subjs_dir
 
-        subj_dir = os.path.join(self.subjs_dir, subj_id)
         self.subj_id = subj_id
 
         # Generate a dictionary of the FreeSurfer files
+        self._index_files()
+
+    ####################################################################################################
+    def _index_files(self):
+        """
+        Look for the FreeSurfer files of the subject and organize their paths.
+
+        Sets ``fs_files`` (paths of the files that exist, empty strings for the
+        ones that do not) and ``fs_files_count`` (number of files found by type).
+        It is called when the object is created and every time the processing
+        status is checked, so files created later are taken into account.
+        """
+
+        subj_dir = os.path.join(self.subjs_dir, self.subj_id)
+
         self.fs_files = {}
         mri_dict = {}
         count_mri = 0
@@ -3297,8 +3362,10 @@ class FreeSurferSubject:
         Check the FreeSurfer processing status for this subject.
 
         Evaluates which FreeSurfer processing stages have been completed by
-        checking for the existence of key output files. Handles missing pial
-        surface files by copying from pial.T1 files when needed.
+        checking for the existence of key output files. The files are looked
+        for again each time, so the status reflects the current state of the
+        subject folder. Handles missing pial surface files by copying from
+        pial.T1 files when needed.
 
         Attributes Set
         --------------
@@ -3342,6 +3409,10 @@ class FreeSurferSubject:
             if os.path.isfile(rh_pial_t1) and not os.path.isfile(rh_pial):
                 # Copy the rh.pial.T1 to rh.pial
                 shutil.copy(rh_pial_t1, rh_pial)
+
+            # Look for the files again: the subject may have changed since the object
+            # was created, and the pial surfaces may have just been restored
+            self._index_files()
 
             # Check the FreeSurfer files
             arecon1_files = [
@@ -3441,7 +3512,8 @@ class FreeSurferSubject:
         Returns
         -------
         cras : tuple
-            A tuple containing the CRAS coordinates (x, y, z) in millimeters.
+            A tuple containing the CRAS coordinates (x, y, z) in millimeters. They
+            are also stored in the ``cras`` attribute.
 
         Raises
         ------
@@ -3454,6 +3526,7 @@ class FreeSurferSubject:
         >>> print(f"CRAS coordinates: {subject.cras}")
         """
 
+        self._index_files()
         lta_file = self.fs_files["mri"]["talairach"]
 
         if not os.path.isfile(lta_file):
@@ -3462,6 +3535,7 @@ class FreeSurferSubject:
             )
 
         self.cras = get_cras_coordinates(lta_file)
+        return self.cras
 
     ####################################################################################################
     def launch_freesurfer(
@@ -3534,29 +3608,53 @@ class FreeSurferSubject:
         ... )
         """
 
-        # Set the FreeSurfer directory
-        if self.subjs_dir is not None:
+        # Check the processing stages before doing anything
+        val_stages = ["all", "autorecon1", "autorecon2", "autorecon3"]
 
-            if not os.path.isdir(self.subjs_dir):
+        if isinstance(proc_stage, str):
+            proc_stage = [proc_stage]
 
-                # Create the directory if it does not exist
-                self.subjs_dir = Path(self.subjs_dir)
-                self.subjs_dir.mkdir(parents=True, exist_ok=True)
-                os.environ["SUBJECTS_DIR"] = str(self.subjs_dir)
+        proc_stage = [stage.lower() for stage in proc_stage]
 
-        else:
-            if "SUBJECTS_DIR" not in os.environ:
-                raise ValueError(
-                    "The FreeSurfer directory must be set in the environment variables or passed as an argument"
-                )
-            else:
-                self.subjs_dir = os.environ["SUBJECTS_DIR"]
+        for stage in proc_stage:
+            if stage not in val_stages:
+                raise ValueError(f"Stage {stage} is not valid")
 
-                if not os.path.isdir(self.subjs_dir):
+        if "all" in proc_stage:
+            proc_stage = ["all"]
 
-                    # Create the directory if it does not exist
-                    self.subjs_dir = Path(self.subjs_dir)
-                    self.subjs_dir.mkdir(parents=True, exist_ok=True)
+        # Check the extra processing stages
+        val_extra_stages = [
+            "lgi",
+            "thalamus",
+            "brainstem",
+            "hippocampus",
+            "amygdala",
+            "hypothalamus",
+        ]
+        if extra_proc is not None:
+            if isinstance(extra_proc, str):
+                extra_proc = [extra_proc]
+
+            # Put the extra processing stages in lower case
+            extra_proc = [stage.lower() for stage in extra_proc]
+
+            # If hippocampus and amygdala are in the list, remove amygdala from the list
+            if "hippocampus" in extra_proc and "amygdala" in extra_proc:
+                extra_proc.remove("amygdala")
+
+            for stage in extra_proc:
+                if stage not in val_extra_stages:
+                    raise ValueError(f"Stage {stage} is not valid")
+
+        if t1w_img is not None:
+            t1w_img = str(t1w_img)
+            if not os.path.isfile(t1w_img):
+                raise ValueError("The T1w image does not exist")
+
+        # Set the FreeSurfer directory (recon-all reads it from the environment)
+        FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
+        self.subjs_dir = str(self.subjs_dir)
 
         # For containerization
         mount_dirs = []
@@ -3592,78 +3690,58 @@ class FreeSurferSubject:
                     mount_dirs.append("-v")
                 mount_dirs.append(fs_license + ":" + cont_license)
 
-        # Getting the freesurfer version
-        ver_cad = get_version(cont_tech=cont_tech, cont_image=cont_image)
-        ver_ent = ver_cad.split(".")
-        vert_int = int("".join(ver_ent))
+        # The FreeSurfer scripts of the versions before 7.3.0 are different. When the
+        # version cannot be determined, the recent commands are used
+        ver_tuple = _version_tuple(
+            get_version(cont_tech=cont_tech, cont_image=cont_image)
+        )
+        legacy_scripts = ver_tuple is not None and ver_tuple < (7, 3, 0)
 
-        if not hasattr(self, "pstatus"):
-            self.get_proc_status()
+        def run(cmd_bashargs, env=None):
+            cmd_cont = cltmisc.generate_container_command(
+                cmd_bashargs, cont_tech, cont_image
+            )  # Generating container command
+            subprocess.run(
+                cmd_cont,
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                text=True,
+                env=env,
+            )  # Running container command
+
+        # The status is always checked again, as the subject may have changed
+        self.get_proc_status()
         proc_status = self.pstatus
+        subj_path = os.path.join(self.subjs_dir, self.subj_id)
+        has_orig = os.path.isfile(os.path.join(subj_path, "mri", "orig.mgz"))
 
-        # Check if the processing stage is valid
-        val_stages = ["all", "autorecon1", "autorecon2", "autorecon3"]
-
-        if isinstance(proc_stage, str):
-            proc_stage = [proc_stage]
-
-        proc_stage = [stage.lower() for stage in proc_stage]
-
-        for stage in proc_stage:
-            if stage not in val_stages:
-                raise ValueError(f"Stage {stage} is not valid")
-
-        if "all" in proc_stage:
-            proc_stage = ["all"]
-
-        # Check if the extra processing stages are valid
-        val_extra_stages = [
-            "lgi",
-            "thalamus",
-            "brainstem",
-            "hippocampus",
-            "amygdala",
-            "hypothalamus",
-        ]
-        if extra_proc is not None:
-            if isinstance(extra_proc, str):
-                extra_proc = [extra_proc]
-
-            # Put the extra processing stages in lower case
-            extra_proc = [stage.lower() for stage in extra_proc]
-
-            # If hippocampus and amygdala are in the list, remove amygdala from the list
-            if "hippocampus" in extra_proc and "amygdala" in extra_proc:
-                extra_proc.remove("amygdala")
-
-            for stage in extra_proc:
-                if stage not in val_extra_stages:
-                    raise ValueError(f"Stage {stage} is not valid")
+        def first_stage_command(stage):
+            """recon-all command that imports the image (or uses the existing orig.mgz)."""
+            if t1w_img is not None:
+                return [
+                    "recon-all",
+                    "-i",
+                    t1w_img,
+                    "-subjid",
+                    self.subj_id,
+                    "-" + stage,
+                ]
+            if has_orig:
+                return ["recon-all", "-subjid", self.subj_id, "-" + stage]
+            raise ValueError(
+                "t1w_img is required to process a subject without an orig.mgz volume"
+            )
 
         if overwrite:
-
+            # Run the requested stages again, whatever the status of the subject
             if t1w_img is None:
-                if os.path.isdir(
-                    os.path.join(self.subjs_dir, self.subj_id)
-                ) and os.path.isfile(self.fs_files["mri"]["orig"]):
+                if has_orig:
                     for st in proc_stage:
-                        cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-" + st]
-                        cmd_cont = cltmisc.generate_container_command(
-                            cmd_bashargs, cont_tech, cont_image
-                        )
-                        subprocess.run(
-                            cmd_cont,
-                            stderr=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE,
-                            text=True,
-                        )  # Running container command
+                        run(["recon-all", "-subjid", self.subj_id, "-" + st])
             else:
-                if isinstance(t1w_img, Path):
-                    t1w_img = str(t1w_img)
-
-                if os.path.isfile(t1w_img):
-                    for st in proc_stage:
-                        cmd_bashargs = [
+                for st in proc_stage:
+                    run(
+                        [
                             "recon-all",
                             "-subjid",
                             self.subj_id,
@@ -3671,91 +3749,30 @@ class FreeSurferSubject:
                             t1w_img,
                             "-" + st,
                         ]
-                        cmd_cont = cltmisc.generate_container_command(
-                            cmd_bashargs, cont_tech, cont_image
-                        )  # Generating container command
-                        subprocess.run(
-                            cmd_cont,
-                            stderr=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE,
-                            text=True,
-                        )  # Running container command
-                else:
-                    raise ValueError("The T1w image does not exist")
-        else:
+                    )
+
+        elif proc_stage == ["all"]:
+            # Run what is missing
             if proc_status == "unprocessed":
-                if t1w_img is None:
-                    if os.path.isdir(
-                        os.path.join(self.subjs_dir, self.subj_id)
-                    ) and os.path.isfile(self.fs_files["mri"]["orig"]):
-                        cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-all"]
-                else:
-                    if isinstance(t1w_img, Path):
-                        t1w_img = str(t1w_img)
-
-                    if os.path.isfile(t1w_img):
-                        cmd_bashargs = [
-                            "recon-all",
-                            "-subjid",
-                            self.subj_id,
-                            "-i",
-                            t1w_img,
-                            "-all",
-                        ]
-                    else:
-                        raise ValueError("The T1w image does not exist")
-
-                cmd_bashargs = [
-                    "recon-all",
-                    "-i",
-                    t1w_img,
-                    "-subjid",
-                    self.subj_id,
-                    "-all",
-                ]
-                cmd_cont = cltmisc.generate_container_command(
-                    cmd_bashargs, cont_tech, cont_image
-                )  # Generating container command
-                subprocess.run(
-                    cmd_cont,
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    text=True,
-                )  # Running container command
+                run(first_stage_command("all"))
             elif proc_status == "autorecon1":
-                cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-autorecon2"]
-                cmd_cont = cltmisc.generate_container_command(
-                    cmd_bashargs, cont_tech, cont_image
-                )  # Generating container command
-                subprocess.run(
-                    cmd_cont,
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    text=True,
-                )  # Running container command
-
-                cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-autorecon3"]
-                cmd_cont = cltmisc.generate_container_command(
-                    cmd_bashargs, cont_tech, cont_image
-                )  # Generating container command
-                subprocess.run(
-                    cmd_cont,
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    text=True,
-                )  # Running container command
-
+                run(["recon-all", "-subjid", self.subj_id, "-autorecon2"])
+                run(["recon-all", "-subjid", self.subj_id, "-autorecon3"])
             elif proc_status == "autorecon2":
-                cmd_bashargs = ["recon-all", "-subjid", self.subj_id, "-autorecon3"]
-                cmd_cont = cltmisc.generate_container_command(
-                    cmd_bashargs, cont_tech, cont_image
-                )
-                subprocess.run(
-                    cmd_cont,
-                    stderr=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    text=True,
-                )  # Running container command
+                run(["recon-all", "-subjid", self.subj_id, "-autorecon3"])
+
+        else:
+            # Run only the requested stages that the subject has not completed
+            done = {"unprocessed": 0, "autorecon1": 1, "autorecon2": 2, "processed": 3}[
+                proc_status
+            ]
+            for st in proc_stage:
+                if done >= int(st[-1]):
+                    continue
+                if st == "autorecon1":
+                    run(first_stage_command(st))
+                else:
+                    run(["recon-all", "-subjid", self.subj_id, "-" + st])
 
         self.get_proc_status()
         proc_status = self.pstatus
@@ -3797,7 +3814,7 @@ class FreeSurferSubject:
                         )
 
                         if len(th_files) != 3 or overwrite:
-                            if vert_int < 730:
+                            if legacy_scripts:
                                 cmd_bashargs = [
                                     "segmentThalamicNuclei.sh",
                                     self.subj_id,
@@ -3822,8 +3839,7 @@ class FreeSurferSubject:
                         )
 
                         if len(bs_files) != 3 or overwrite:
-                            os.system("WRITE_POSTERIORS=1")
-                            if vert_int < 730:
+                            if legacy_scripts:
                                 cmd_bashargs = [
                                     "segmentBS.sh",
                                     self.subj_id,
@@ -3854,8 +3870,8 @@ class FreeSurferSubject:
 
                         if len(ha_files) != 16 or overwrite:
                             if (
-                                vert_int < 730
-                            ):  # Use the FreeSurfer script for versions below 7.2.0
+                                legacy_scripts
+                            ):  # Use the FreeSurfer script for versions below 7.3.0
                                 cmd_bashargs = [
                                     "segmentHA_T1.sh",
                                     self.subj_id,
@@ -3881,7 +3897,6 @@ class FreeSurferSubject:
                                 "hypothalamic_subunits*",
                             )
                         )
-                        os.system("WRITE_POSTERIORS=1")
                         if len(hy_files) != 3 or overwrite:
                             cmd_bashargs = [
                                 "mri_segment_hypothalamic_subunits",
@@ -3895,6 +3910,9 @@ class FreeSurferSubject:
 
             if len(cmd_list) > 0:
 
+                # The segmentation scripts write the posterior probabilities when
+                # WRITE_POSTERIORS is set
+                seg_env = {**os.environ, "WRITE_POSTERIORS": "1"}
                 for cmd_bashargs in cmd_list:
                     cmd_cont = cltmisc.generate_container_command(
                         cmd_bashargs, cont_tech, cont_image
@@ -3906,6 +3924,7 @@ class FreeSurferSubject:
                         stderr=subprocess.DEVNULL,
                         stdout=subprocess.PIPE,
                         text=True,
+                        env=seg_env,
                     )  # Running container command
 
         return proc_status
@@ -4130,23 +4149,29 @@ class FreeSurferSubject:
         # Initialize DataFrame for results
         df_hemi = pd.DataFrame()
 
-        # Process lobar parcellation
+        # Group the Desikan regions into lobes. Without the Desikan parcellation the
+        # lobar tables are left out
+        lobar_obj = None
         desikan_parc = parc_files_dict.get("desikan", None)
-        include_lobes = os.path.isfile(desikan_parc) if desikan_parc else False
-        if include_lobes:
+        if desikan_parc and os.path.isfile(desikan_parc):
             # Print  Step 0: Grouping into lobes
             if verbose:
                 print(" ")
                 print("Step 0: Grouping into lobes")
                 start_time = time.time()
 
-            lobar_obj = AnnotParcellation(parc_file=desikan_parc)
-            lobar_obj.group_into_lobes(grouping=lobes_grouping)
+            lobar_obj = AnnotParcellation(parc_file=desikan_parc).group_into_lobes(
+                grouping=lobes_grouping
+            )
 
             # Compute the elapsed time and print it
             if verbose:
                 elapsed_time = time.time() - start_time
                 print(f"Elapsed time: {elapsed_time:.2f} seconds")
+
+        # The lobar tables and the Euler characteristics do not depend on the
+        # parcellation: they are only computed with the first one
+        first_parc = True
 
         # Iterate over parcellations
         if verbose:
@@ -4193,14 +4218,17 @@ class FreeSurferSubject:
                     start_time = time.time()
 
                 # Compute lobar and regional metrics
-                df_lobes, _, _ = morpho.compute_reg_val_fromannot(
-                    metric_file,
-                    lobar_obj,
-                    hemi,
-                    metric=metric_name,
-                    add_bids_entities=False,
-                )
-                df_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
+                if first_parc and lobar_obj is not None:
+                    df_lobes, _, _ = morpho.compute_reg_val_fromannot(
+                        metric_file,
+                        lobar_obj,
+                        hemi,
+                        metric=metric_name,
+                        add_bids_entities=False,
+                    )
+                    df_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
+                else:
+                    df_lobes = pd.DataFrame()
 
                 df_region, _, _ = morpho.compute_reg_val_fromannot(
                     metric_file,
@@ -4220,7 +4248,6 @@ class FreeSurferSubject:
 
             # Compute surface area and Euler characteristic for both pial and white surfaces
             df_parc = pd.DataFrame()
-            pd.DataFrame()
             cont_metric += 1
             cont_euler = cont_metric + 1
             for surface, source_label in zip(
@@ -4238,60 +4265,66 @@ class FreeSurferSubject:
 
                 df_area_region.insert(4, "Atlas", parc_base_name)
 
-                df_area_lobes, _ = morpho.compute_reg_area_fromsurf(
-                    surface,
-                    lobar_obj,
-                    hemi,
-                    surf_type=source_label,
-                    add_bids_entities=False,
-                )
-                df_area_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
+                if first_parc and lobar_obj is not None:
+                    df_area_lobes, _ = morpho.compute_reg_area_fromsurf(
+                        surface,
+                        lobar_obj,
+                        hemi,
+                        surf_type=source_label,
+                        add_bids_entities=False,
+                    )
+                    df_area_lobes.insert(4, "Atlas", f"lobes_{lobes_grouping}")
+                else:
+                    df_area_lobes = pd.DataFrame()
 
                 if verbose:
                     print(
-                        f"        - Metric: {surface.capitalize()} Surface Area [{cont_metric}/{n_metrics+1}]"
+                        f"        - Metric: {source_label.capitalize()} Surface Area [{cont_metric}/{n_metrics+1}]"
                     )
                     elapsed_time = time.time() - start_time
                     print(f"        Elapsed time: {elapsed_time:.2f} seconds")
 
                 # Compute Euler characteristic
-                start_time = time.time()
-                df_euler, _ = morpho.compute_euler_fromsurf(
-                    surface, hemi, surf_type=source_label, add_bids_entities=False
-                )
-
-                if verbose:
-                    print(
-                        f"        - Metric: Euler Characteristic for {surface.capitalize()} Surface [{cont_euler}/{n_metrics+1}]"
+                if first_parc:
+                    start_time = time.time()
+                    df_euler, _ = morpho.compute_euler_fromsurf(
+                        surface, hemi, surf_type=source_label, add_bids_entities=False
                     )
-                    elapsed_time = time.time() - start_time
-                    print(f"        Elapsed time: {elapsed_time:.2f} seconds")
+                    df_euler.insert(4, "Atlas", "")
 
-                df_euler.insert(4, "Atlas", "")
+                    if verbose:
+                        print(
+                            f"        - Metric: Euler Characteristic for {source_label.capitalize()} Surface [{cont_euler}/{n_metrics+1}]"
+                        )
+                        elapsed_time = time.time() - start_time
+                        print(f"        Elapsed time: {elapsed_time:.2f} seconds")
+                else:
+                    df_euler = pd.DataFrame()
 
                 # Concatenate all the results
                 df_parc = pd.concat(
                     [df_parc, df_area_lobes, df_area_region, df_euler], axis=0
                 )
 
-            if verbose:
-                print(" ")
-                print(
-                    f"    - Step 1.2: Metrics from Stats files (Parcellation: {parc_base_name})"
-                )
-                start_time = time.time()
-
-            # Read the stats file
+            # Read the stats file, when the subject has it
+            df_stats_cortex = pd.DataFrame()
             stat_file = self.fs_files["stats"][hemi][parc_name]
+            if stat_file:
+                if verbose:
+                    print(" ")
+                    print(
+                        f"    - Step 1.2: Metrics from Stats files (Parcellation: {parc_base_name})"
+                    )
+                    start_time = time.time()
 
-            df_stats_cortex, _ = morpho.parse_freesurfer_cortex_stats(
-                stat_file, add_bids_entities=False
-            )
-            if verbose:
-                elapsed_time = time.time() - start_time
-                print(f"        Elapsed time: {elapsed_time:.2f} seconds")
+                df_stats_cortex, _ = morpho.parse_freesurfer_cortex_stats(
+                    stat_file, add_bids_entities=False
+                )
+                df_stats_cortex.insert(4, "Atlas", parc_base_name)
 
-            df_stats_cortex.insert(4, "Atlas", parc_base_name)
+                if verbose:
+                    elapsed_time = time.time() - start_time
+                    print(f"        Elapsed time: {elapsed_time:.2f} seconds")
 
             # Merge morphometric and area metrics
             if not df_metric.empty:
@@ -4299,6 +4332,8 @@ class FreeSurferSubject:
 
             if not df_parc.empty:
                 df_hemi = pd.concat([df_hemi, df_parc, df_stats_cortex], axis=0)
+
+            first_parc = False
 
         return df_hemi
 
@@ -4409,6 +4444,9 @@ class FreeSurferSubject:
         FileNotFoundError
             If the source annotation file cannot be found in expected locations.
 
+        RuntimeError
+            If mri_surf2surf does not create the annotation.
+
         Notes
         -----
         The method performs the following steps:
@@ -4453,24 +4491,17 @@ class FreeSurferSubject:
                 f"Files {fs_annot} or {os.path.join(self.subjs_dir, ref_id, 'label', hemi + '.' + fs_annot + '.annot')} do not exist"
             )
 
-        if fs_annot.endswith(".gii"):
-            tmp_annot = fs_annot.replace(".gii", ".annot")
-            tmp_refsurf = os.path.join(
-                self.subjs_dir, ref_id, "surf", hemi + ".inflated"
-            )
-
-            AnnotParcellation.gii2annot(
-                gii_file=fs_annot,
-                ref_surf=tmp_refsurf,
-                annot_file=tmp_annot,
-                cont_tech=cont_tech,
-                cont_image=cont_image,
-            )
-            fs_annot = tmp_annot
-
         if not os.path.isfile(ind_annot) or overwrite:
 
             FreeSurferSubject.set_freesurfer_directory(self.subjs_dir)
+
+            # GIFTI sources are converted to a temporary annotation file
+            tmp_dir = None
+            if fs_annot.endswith(".gii"):
+                tmp_dir = tempfile.mkdtemp(prefix="annot_")
+                tmp_annot = os.path.join(tmp_dir, "source.annot")
+                AnnotParcellation.gii2annot(gii_file=fs_annot, annot_file=tmp_annot)
+                fs_annot = tmp_annot
 
             # Create the folder if it does not exist
             temp_dir = os.path.dirname(ind_annot)
@@ -4512,12 +4543,22 @@ class FreeSurferSubject:
                 cmd_cont.insert(2, "-v")
                 cmd_cont.insert(3, dir_cad)
 
-            subprocess.run(
-                cmd_cont,
-                stderr=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                text=True,
-            )  # Running container command
+            if os.path.isfile(ind_annot):
+                os.remove(ind_annot)
+
+            try:
+                subprocess.run(
+                    cmd_cont,
+                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )  # Running container command
+            finally:
+                if tmp_dir is not None:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+            if not os.path.isfile(ind_annot):
+                raise RuntimeError(f"mri_surf2surf did not create {ind_annot}")
 
             # Correcting the parcellation file in order to refill the parcellation with the correct labels
             cort_parc = AnnotParcellation(parc_file=ind_annot)
@@ -4586,6 +4627,11 @@ class FreeSurferSubject:
         -------
         ind_annot : str
             Path to the created individual space annotation file.
+
+        Raises
+        ------
+        RuntimeError
+            If mris_ca_label does not create the annotation.
 
         Notes
         -----
@@ -4673,12 +4719,18 @@ class FreeSurferSubject:
                 cmd_cont.insert(2, "-v")
                 cmd_cont.insert(3, dir_cad)
 
+            if os.path.isfile(ind_annot):
+                os.remove(ind_annot)
+
             subprocess.run(
                 cmd_cont,
                 stderr=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 text=True,
             )  # Running container command
+
+            if not os.path.isfile(ind_annot):
+                raise RuntimeError(f"mris_ca_label did not create {ind_annot}")
 
             # Correcting the parcellation file in order to refill the parcellation with the correct labels
             cort_parc = AnnotParcellation(parc_file=ind_annot)
@@ -4764,8 +4816,16 @@ class FreeSurferSubject:
         out_vol : str
             Path to the created volumetric parcellation file.
 
+        Raises
+        ------
+        RuntimeError
+            If mri_aparc2aseg does not create the volume.
+
         Notes
         -----
+        The color tables are saved next to the volume, with the extension of the
+        volume (.nii.gz, .nii, .mgz or .mgh) replaced by .tsv or .lut.
+
         This method is particularly useful for:
         - Creating volumetric ROIs from surface parcellations
         - Bridging surface-based and volume-based analyses
@@ -4870,8 +4930,13 @@ class FreeSurferSubject:
 
             else:
 
+                if not os.environ.get("FREESURFER_HOME"):
+                    raise ValueError(
+                        "FREESURFER_HOME must be set to find FreeSurferColorLUT.txt "
+                        "when a color table is requested."
+                    )
                 fslut_file = os.path.join(
-                    os.environ.get("FREESURFER_HOME"), "FreeSurferColorLUT.txt"
+                    os.environ["FREESURFER_HOME"], "FreeSurferColorLUT.txt"
                 )
                 lut_dict = cltcol.ColorTableLoader.load_colortable(fslut_file)
 
@@ -4943,12 +5008,18 @@ class FreeSurferSubject:
                 cmd_cont.insert(2, "-v")
                 cmd_cont.insert(3, dir_cad)
 
+            if os.path.isfile(out_vol):
+                os.remove(out_vol)
+
             subprocess.run(
                 cmd_cont,
                 stderr=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 text=True,
             )  # Running container command
+
+            if not os.path.isfile(out_vol):
+                raise RuntimeError(f"mri_aparc2aseg did not create {out_vol}")
 
             if bool_native:
 
@@ -5087,12 +5158,12 @@ class FreeSurferSubject:
                 }
                 col_obj = cltcol.ColorTableLoader(col_dict)
                 if "tsv" in color_table:
-                    out_file = out_vol.replace(".nii.gz", ".tsv")
+                    out_file = _swap_volume_extension(out_vol, ".tsv")
 
                     col_obj.export(out_file, out_format="tsv", overwrite=overwrite)
 
                 if "lut" in color_table:
-                    out_file = out_vol.replace(".nii.gz", ".lut")
+                    out_file = _swap_volume_extension(out_vol, ".lut")
 
                     now = datetime.now()
                     date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
@@ -5206,6 +5277,7 @@ class FreeSurferSubject:
         if not os.path.isfile(raw_vol):
             raise FileNotFoundError(f"File {raw_vol} does not exist")
 
+        os.makedirs(os.path.dirname(tmp_raw), exist_ok=True)
         cmd_bashargs = ["mri_convert", "-i", raw_vol, "-o", tmp_raw]
         cmd_cont = cltmisc.generate_container_command(
             cmd_bashargs, cont_tech, cont_image
@@ -5426,6 +5498,14 @@ class FreeSurferSubject:
         annot_file = self.fs_files["surf"][hemi]["parc"][annot_type]
 
         return annot_file
+
+
+def _swap_volume_extension(path: str, new_ext: str) -> str:
+    """Replace the extension of a volume (.nii.gz, .nii, .mgz or .mgh) by another one."""
+    for ext in (".nii.gz", ".nii", ".mgz", ".mgh"):
+        if path.lower().endswith(ext):
+            return path[: -len(ext)] + new_ext
+    return path + new_ext
 
 
 ####################################################################################################
@@ -5873,6 +5953,9 @@ def create_fsaverage_links(
         if isinstance(fsavg_dir, Path):
             fsavg_dir = str(fsavg_dir)
 
+    if refsubj_name is None:
+        refsubj_name = "fsaverage"
+
     # Verify if the FreeSurfer directory exists
     if not os.path.isdir(fssubj_dir):
         raise ValueError("The selected FreeSurfer directory does not exist")
@@ -5969,9 +6052,12 @@ def remove_fsaverage_links(linkavg_folder: str | Path):
     if isinstance(linkavg_folder, Path):
         linkavg_folder = str(linkavg_folder)
 
-    # FreeSurfer subjects directory
-    fssubj_dir_orig = os.path.join(
-        os.environ["FREESURFER_HOME"], "subjects", "fsaverage"
+    # fsaverage of the FreeSurfer installation, if there is one
+    fs_home = os.environ.get("FREESURFER_HOME")
+    fssubj_dir_orig = (
+        os.path.realpath(os.path.join(fs_home, "subjects", "fsaverage"))
+        if fs_home
+        else None
     )
 
     # if linkavg_folder is a link then remove it
@@ -6071,14 +6157,15 @@ def create_vertex_colors(labels: np.ndarray, reg_ctable: np.ndarray) -> np.ndarr
     Returns
     -------
     vertex_colors : np.ndarray
-        Array of RGB colors for each vertex with shape (num_vertices, 3).
-        Default color is gray (240, 240, 240) for unlabeled vertices.
+        Array of colors for each vertex with shape (num_vertices, 4): the R, G, B
+        and A columns of the color table. Unlabeled vertices are gray
+        (240, 240, 240).
 
     Examples
     --------
     >>> # Create vertex colors for visualization
     >>> colors = create_vertex_colors(vertex_labels, color_table)
-    >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 3)
+    >>> print(f"Colors shape: {colors.shape}")  # (num_vertices, 4)
     """
 
     # Automatically detect the range of the colors in reg_ctable
@@ -6661,8 +6748,9 @@ def get_version(cont_tech: str = "local", cont_image: str | Path = None):
 
     Returns
     -------
-    vers_cad : str
-        FreeSurfer version number (e.g., '7.2.0').
+    vers_cad : str or None
+        FreeSurfer version number (e.g., '7.2.0'), or None if the version could not
+        be determined (e.g. for development builds).
 
     Examples
     --------
@@ -6685,11 +6773,17 @@ def get_version(cont_tech: str = "local", cont_image: str | Path = None):
     out_cmd = subprocess.run(cmd_cont, stdout=subprocess.PIPE, text=True)
 
     for st_ver in out_cmd.stdout.split("-"):
-        if "." in st_ver:
-            vers_cad = st_ver
-            break
+        version = re.search(r"\d+(?:\.\d+)+", st_ver)
+        if version:
+            return version.group(0)
 
-    # Delete all the non numeric characters from the string except the "."
-    vers_cad = "".join(filter(lambda x: x.isdigit() or x == ".", vers_cad))
+    return None
 
-    return vers_cad
+
+############################################################################################################
+def _version_tuple(version: str | None) -> tuple | None:
+    """Convert a version such as '7.4.1' to (7, 4, 1), or None if it is unknown."""
+    if not version:
+        return None
+    numbers = [int(n) for n in re.findall(r"\d+", str(version))[:3]]
+    return tuple(numbers) if numbers else None
