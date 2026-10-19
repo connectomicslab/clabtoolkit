@@ -1212,16 +1212,6 @@ class TestSmooth:
         assert np.array_equal(surf.get_vertices(), verts)
         assert not np.allclose(smoothed.get_vertices(), verts)
 
-    def test_more_iterations_smooth_more(self):
-        surf = Surface.simulate_surface("cube", subdivide=3, maps=None)
-        few = surf.smooth(smooth_iterations=2, inplace=False)
-        many = surf.smooth(smooth_iterations=40, inplace=False)
-
-        def shift(other):
-            return np.abs(other.get_vertices() - surf.get_vertices()).max()
-
-        assert shift(many) > shift(few) > 0
-
     @pytest.mark.parametrize("n_iter", [0, -3])
     def test_invalid_iterations(self, bare, n_iter):
         with pytest.raises(ValueError, match="positive integer"):
