@@ -367,6 +367,10 @@ class Tractogram:
                 raise ValueError("The lut file does not exist")
         elif isinstance(lut_file, dict):
             lut_dict = copy.deepcopy(lut_file)
+        else:
+            raise TypeError(
+                f"lut_file must be a path or a dictionary, got {type(lut_file).__name__}"
+            )
 
         colors = lut_dict["color"]
 
@@ -853,6 +857,11 @@ class Tractogram:
 
         color = cltcol.harmonize_colors(color)
 
+        if len(color) != 1:
+            raise ValueError(
+                f"A single color is expected to color the tractogram, got {len(color)}"
+            )
+
         # Keeping the current opacity unless a new one is requested
         if alpha is None:
             alpha = getattr(self, "alpha", None)
@@ -989,22 +998,20 @@ class Tractogram:
         if streamline_map_name is None:
             streamline_map_name = map_name
 
-        streamline_data = np.zeros(
-            len(self.tracts), dtype=type(self.data_per_point[map_name][0][0])
+        summarize = {"median": np.median, "max": np.max, "min": np.min}.get(
+            metric, np.mean
         )
-        for i, _streamline in enumerate(self.tracts):
-            point_values = self.data_per_point[map_name][i]
 
-            if metric == "median":
-                avg_value = np.median(point_values, axis=0)
-            elif metric == "max":
-                avg_value = np.max(point_values, axis=0)
-            elif metric == "min":
-                avg_value = np.min(point_values, axis=0)
-            else:
-                avg_value = np.mean(point_values, axis=0)
-
-            streamline_data[i] = avg_value
+        # Every streamline gives one row: a single value for a map with one value
+        # per point, whether it is stored as (n_points,) or as (n_points, 1), or one
+        # value per feature for a map with several. Stacking the rows keeps the
+        # numeric type, instead of building an array of arrays.
+        streamline_data = np.array(
+            [
+                np.atleast_1d(summarize(np.asarray(point_values), axis=0))
+                for point_values in self.data_per_point[map_name]
+            ]
+        )
 
         # Ensure it's 2D even for single scalar values
         if streamline_data.ndim == 1:
@@ -1125,7 +1132,6 @@ class Tractogram:
         merged_streamlines = []
         tract_ids = []  # Changed variable name for clarity
         merged_data_per_point = {key: [] for key in common_data_per_points}
-        merged_data_per_streamline = {key: [] for key in common_data_per_streamlines}
         merged_colortables = {}
 
         # Create a new colortable entry for tract IDs
@@ -1240,11 +1246,6 @@ class Tractogram:
             for key in common_data_per_points:
                 merged_data_per_point[key].extend(tractogram.data_per_point[key])
 
-            for key in common_data_per_streamlines:
-                merged_data_per_streamline[key].extend(
-                    tractogram.data_per_streamline[key]
-                )
-
             for key, value in tractogram.colortables.items():
                 if key == "default" or key in merged_colortables:
                     # 'default' was concatenated above, and if the key already
@@ -1270,10 +1271,21 @@ class Tractogram:
             name="merged_tractogram",
         )
         merged_tractogram.data_per_point = merged_data_per_point
-        merged_tractogram.data_per_streamline = merged_data_per_streamline
 
-        # Add tract_id as ArraySequence (consistent with other data_per_streamline fields)
-        merged_tractogram.data_per_streamline["tract_id"] = ArraySequence(tract_ids)
+        # The per-streamline maps are arrays with one row per streamline, as in
+        # any other tractogram, so every method can index and summarize them
+        merged_tractogram.data_per_streamline = {
+            key: np.vstack(
+                [
+                    np.asarray(tractogram.data_per_streamline[key]).reshape(
+                        len(tractogram.tracts), -1
+                    )
+                    for tractogram in all_tractograms
+                ]
+            )
+            for key in common_data_per_streamlines
+        }
+        merged_tractogram.data_per_streamline["tract_id"] = np.vstack(tract_ids)
         merged_tractogram.colortables = merged_colortables
 
         return merged_tractogram
@@ -2149,37 +2161,40 @@ class Tractogram:
                     ]
             if hasattr(self, "data_per_streamline") and self.data_per_streamline:
                 for key in self.data_per_streamline.keys():
-                    self.data_per_streamline[key] = self.data_per_streamline[key][
-                        indexes
-                    ]
+                    # Whatever the container (array, list or ArraySequence)
+                    self.data_per_streamline[key] = np.asarray(
+                        self.data_per_streamline[key]
+                    )[indexes]
             if hasattr(self, "header") and self.header:
                 self.header["nb_streamlines"] = len(self.tracts)
 
-            # Remove it from the colortables if exists
+            # Keep in the colortable of the map only the entries that are still in
+            # use, so it keeps describing the streamlines that were kept
             if hasattr(self, "colortables") and map_name in self.colortables:
 
                 tmp_colortable = self.colortables[map_name]["color_table"]
                 tmp_names = self.colortables[map_name]["names"]
-                tmp_dict = {}
-                tmp_dict[map_name] = tmp_colortable[
-                    :, -1
-                ]  # Assuming last column has the streamline IDs
-                indexes = cltmisc.get_indices_by_condition(
-                    condition, **{map_name: tmp_dict[map_name]}
+
+                if map_name in self.data_per_streamline:
+                    values_in_use = np.asarray(self.data_per_streamline[map_name])
+                else:
+                    values_in_use = np.concatenate(
+                        [np.ravel(v) for v in self.data_per_point[map_name]]
+                    )
+
+                # The last column of the colortable has the values of the map
+                entries_to_keep = np.isin(
+                    tmp_colortable[:, -1], np.unique(values_in_use)
                 )
-                # Filter the colortable and names
-                filtered_colortable = np.array(
-                    [
-                        tmp_colortable[i]
-                        for i in range(len(tmp_colortable))
-                        if i not in indexes
-                    ]
-                )
-                filtered_names = [
-                    tmp_names[i] for i in range(len(tmp_names)) if i not in indexes
+
+                self.colortables[map_name]["color_table"] = tmp_colortable[
+                    entries_to_keep
                 ]
-                self.colortables[map_name]["color_table"] = filtered_colortable
-                self.colortables[map_name]["names"] = filtered_names
+                self.colortables[map_name]["names"] = [
+                    name
+                    for name, keep in zip(tmp_names, entries_to_keep, strict=False)
+                    if keep
+                ]
 
             return filtered_streamlines
 
@@ -2557,8 +2572,11 @@ class Tractogram:
             Region(s) of interest.
             - Parcellation instance: used directly.
             - str/Path: loaded via `clabtoolkit.parcellationtools.Parcellation`.
-            - np.ndarray: assumed already in the tractogram's reference space and
-              accepted as-is by `interpolate_on_tractogram` (NOT resampled here).
+            - np.ndarray: assumed to be on the voxel grid of the tractogram, i.e.
+              the one given by the `voxel_to_rasmm` of its header (TRK files and
+              simulated tractograms have it) or, when the header has none, a grid
+              where one voxel is one millimetre. It is accepted as-is by
+              `interpolate_on_tractogram` (NOT resampled here).
               With a raw ndarray there is generally no name/color table available,
               so pair names fall back to numeric ids and colors fall back to gray
               (see `_roi_color_and_name`).
@@ -2613,8 +2631,16 @@ class Tractogram:
             parcellation = cltparc.Parcellation(mask)
 
         elif isinstance(mask, np.ndarray):
-            # If a raw numpy array is provided, wrap it in a Parcellation object.
-            parcellation = cltparc.Parcellation(mask)
+            # A raw array carries no geometry, so it is taken to be on the voxel
+            # grid of the tractogram: the one described by the voxel_to_rasmm of
+            # its header if it has one (TRK files, simulated tractograms), or a
+            # grid where one voxel is one millimetre otherwise. The Parcellation
+            # would otherwise place it with its own, centered, default affine.
+            mask_affine = np.eye(4)
+            if isinstance(self.header, dict) and "voxel_to_rasmm" in self.header:
+                mask_affine = np.asarray(self.header["voxel_to_rasmm"], dtype=float)
+
+            parcellation = cltparc.Parcellation(mask, affine=mask_affine)
 
         else:
             raise TypeError(
@@ -2851,6 +2877,8 @@ class Tractogram:
         >>> tractogram.save_tractogram('output.trk', file_type='trk', overwrite=True)
         >>> print("Tractogram saved to output.trk")
         """
+
+        out_file = str(out_file)  # Accepts Path objects too
 
         if tracts is None:
             tracts = self.tracts
@@ -3821,9 +3849,10 @@ def merge_tractograms(
     if not tractograms:
         return None
 
-    # If there's only one surface, return it as is
+    # If there's only one tractogram, return it as is (loading it if it is a file)
     if len(tractograms) == 1:
-        return Tractogram(tractograms[0])
+        only_one = tractograms[0]
+        return only_one if isinstance(only_one, Tractogram) else Tractogram(only_one)
 
     n_tracts = len(tractograms)
 
