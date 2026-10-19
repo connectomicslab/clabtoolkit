@@ -479,7 +479,7 @@ def area_from_mesh(coords: np.ndarray, faces: np.ndarray) -> tuple[float, np.nda
     --------
     >>> coords = np.array([[0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0]])
     >>> faces = np.array([[0, 1, 2], [1, 3, 2]])
-    >>> total_area, _ = area_from_mesh(coords, faces)   # 100 mm² = 1 cm²
+    >>> total_area, _ = area_from_mesh(coords, faces)   # 100 mm², as "area" is in mm2
     """
     coords = np.asarray(coords, dtype=np.float64)
     faces = np.asarray(faces)
@@ -1553,26 +1553,10 @@ def network_metrics_to_table(
         return _get("len", lambda: bct.weight_conversion(conn_mat, "lengths"))
 
     def charpath_bin():
-        # (char. path length, efficiency, eccentricity, radius, diameter);
-        # disconnected node pairs are excluded
-        return _get(
-            "cp_bin",
-            lambda: bct.charpath(
-                bct.distance_bin(w_bin()),
-                include_diagonal=False,
-                include_infinite=False,
-            ),
-        )
+        return _get("cp_bin", lambda: _charpath(bct, bct.distance_bin(w_bin())))
 
     def charpath_wei():
-        return _get(
-            "cp_wei",
-            lambda: bct.charpath(
-                bct.distance_wei(w_len())[0],
-                include_diagonal=False,
-                include_infinite=False,
-            ),
-        )
+        return _get("cp_wei", lambda: _charpath(bct, bct.distance_wei(w_len())[0]))
 
     def communities():
         # (community assignment, modularity Q)
@@ -1803,7 +1787,7 @@ def get_units(
     Examples
     --------
     >>> get_units(['thickness', 'area', 'volume'])
-    ['mm', 'cm2', 'cm3']
+    ['mm', 'mm2', 'mm3']
     >>> get_units('custom_metric', metrics_json={"metrics_units": {"custom_metric": "kg"}})
     ['kg']
     """
@@ -1959,6 +1943,31 @@ def _default_network_metrics() -> dict[str, tuple[str, ...]]:
             dict.fromkeys(str(m).strip().lower() for m in names)
         )
     return defaults
+
+
+def _charpath(bct, dist: np.ndarray) -> tuple:
+    """
+    Characteristic path length, efficiency, eccentricity, radius and diameter.
+
+    Disconnected node pairs are excluded. A node that reaches no other node has no
+    eccentricity: bct.charpath returns its masked fill value (1e20) for it, so it is
+    replaced by NaN, and the radius and the diameter are taken over the other nodes
+    (NaN when there are none).
+    """
+    dist = np.asarray(dist, dtype=np.float64)
+    char_path, efficiency, ecc, _, _ = bct.charpath(
+        dist, include_diagonal=False, include_infinite=False
+    )
+
+    reaches_others = (np.isfinite(dist) & ~np.eye(dist.shape[0], dtype=bool)).any(
+        axis=1
+    )
+    ecc = np.where(reaches_others, np.asarray(ecc, dtype=np.float64), np.nan)
+    if reaches_others.any():
+        radius, diameter = np.nanmin(ecc), np.nanmax(ecc)
+    else:
+        radius = diameter = np.nan
+    return char_path, efficiency, ecc, radius, diameter
 
 
 def _detect_weighting(conn_mat: np.ndarray) -> str:
