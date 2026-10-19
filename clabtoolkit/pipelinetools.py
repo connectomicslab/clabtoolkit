@@ -1178,35 +1178,29 @@ def get_processing_status_details_sqlite3(
         cursor = conn.cursor()
 
         # Create tables
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS pipelines (
             pipeline_id TEXT PRIMARY KEY,
             ref_fullid TEXT
-        )"""
-        )
+        )""")
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS mismatches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pipeline_id TEXT,
             subject_id TEXT,
             FOREIGN KEY (pipeline_id) REFERENCES pipelines(pipeline_id),
             UNIQUE (pipeline_id, subject_id)
-        )"""
-        )
+        )""")
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS file_details (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mismatch_id INTEGER,
             file_path TEXT,
             status TEXT,
             FOREIGN KEY (mismatch_id) REFERENCES mismatches(id)
-        )"""
-        )
+        )""")
 
         # Clear existing data if needed
         cursor.execute("DELETE FROM file_details")
