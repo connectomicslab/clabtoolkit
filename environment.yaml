@@ -75,6 +75,7 @@ dependencies:
           - async-lru
           - attrs
           - babel
+          - bctpy
           - beautifulsoup4
           - binaryornot
           - bleach

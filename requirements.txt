@@ -32,6 +32,7 @@ trame-vuetify==3.0.1
 ipython==9.1.0
 jupyter-client==8.6.3
 jupyter-core==5.7.2
+itables==2.8.0
 
 # Progress bars and UI
 rich==14.1.0
@@ -55,6 +56,9 @@ patsy==1.0.1
 imageio==2.37.0
 tifffile==2025.6.11
 networkx==3.5
+
+# Brain connectivity and network analysis
+bctpy==0.6.1
 
 # Build tools
 setuptools==80.9.0
