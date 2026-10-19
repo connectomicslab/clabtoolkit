@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import clabtoolkit.plottools
+
 
 @pytest.fixture
 def temp_dir():
@@ -76,3 +78,17 @@ def mock_freesurfer_stats(temp_dir):
     stats_file = temp_dir / "lh.aparc.stats"
     stats_file.write_text(stats_content)
     return stats_file
+
+
+@pytest.fixture
+def fixed_monitor_size(monkeypatch):
+    """
+    Report a fixed monitor size to the plotting code.
+
+    Figures that are not given a window size are sized from the current monitor,
+    which opens a Tk window and fails on machines without a display (CI runners,
+    remote servers) even when the figure is only saved to a file.
+    """
+    monkeypatch.setattr(
+        clabtoolkit.plottools, "get_current_monitor_size", lambda: (1024, 768)
+    )

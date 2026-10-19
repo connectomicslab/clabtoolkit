@@ -30,7 +30,7 @@ BVAL_ARRAY = "b-value (s/mm²)"
 # Fixtures and helpers
 ####################################################################################################
 @pytest.fixture(autouse=True)
-def _quiet():
+def _quiet(fixed_monitor_size):
     """Silence the warnings and the progress messages of the functions."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -47,6 +47,23 @@ def can_render():
         plotter.close()
     except Exception as exc:  # pragma: no cover - depends on the machine
         pytest.skip(f"Off-screen rendering is not available: {exc}")
+
+
+@pytest.fixture(scope="session")
+def can_export_html(tmp_path_factory):
+    """
+    Skip the tests that export interactive HTML when PyVista cannot do it.
+
+    The export needs the optional trame packages (``pyvista[jupyter]``), which are
+    not installed with clabtoolkit.
+    """
+    try:
+        plotter = pv.Plotter(off_screen=True)
+        plotter.add_mesh(pv.Sphere())
+        plotter.export_html(str(tmp_path_factory.mktemp("html") / "probe.html"))
+        plotter.close()
+    except ImportError as exc:
+        pytest.skip(f"HTML export is not available: {exc}")
 
 
 @pytest.fixture(scope="module")
@@ -990,13 +1007,9 @@ class TestPlot:
 
     @pytest.mark.parametrize(
         "name, signature",
-        [
-            ("scheme.png", b"\x89PNG"),
-            ("scheme.jpg", b"\xff\xd8"),
-            ("scheme.html", b"<"),
-        ],
+        [("scheme.png", b"\x89PNG"), ("scheme.jpg", b"\xff\xd8")],
     )
-    def test_saves_images_and_html(self, tmp_path, can_render, scheme, name, signature):
+    def test_saves_images(self, tmp_path, can_render, scheme, name, signature):
         assert scheme.plot(save_path=tmp_path / name) is None  # The plotter is closed
         content = (tmp_path / name).read_bytes()
         assert content.startswith(signature) and len(content) > 1000
@@ -1005,8 +1018,10 @@ class TestPlot:
         scheme.plot(save_path=str(tmp_path / "scheme.svg"))
         assert "<svg" in (tmp_path / "scheme.svg").read_text(errors="ignore")[:500]
 
-    def test_html_is_interactive(self, tmp_path, can_render, scheme):
-        scheme.plot(save_path=tmp_path / "scheme.html")
+    def test_saves_interactive_html(
+        self, tmp_path, can_render, can_export_html, scheme
+    ):
+        assert scheme.plot(save_path=tmp_path / "scheme.html") is None
         html = (tmp_path / "scheme.html").read_text(errors="ignore")
         assert "<html" in html.lower() and "vtk" in html.lower()
 

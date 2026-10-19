@@ -21,7 +21,7 @@ N_VERTS, N_FACES, N_EDGES = 842, 1680, 2520
 # Fixtures
 ####################################################################################################
 @pytest.fixture(autouse=True)
-def _quiet():
+def _quiet(fixed_monitor_size):
     """Silence the progress messages and warnings that the surface methods emit."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

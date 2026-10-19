@@ -979,6 +979,10 @@ class TestSubnetwork:
 
 
 class TestGraphMetrics:
+    @pytest.fixture(autouse=True)
+    def _needs_bctpy(self):
+        pytest.importorskip("bct", reason="bctpy is needed to compute graph metrics")
+
     @staticmethod
     def whole_brain(metrics):
         rows = metrics[metrics["Region"] == WHOLE_BRAIN]
