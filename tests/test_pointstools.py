@@ -509,20 +509,56 @@ class TestSaveAndLoad:
         ]
         assert loaded.coords[1].tolist() == [-12.5, 8.0, 14.3]
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=ValueError,
-        reason=(
-            "The name and color columns written with include_colortable are loaded as "
-            "string maps, which get_info can not format"
-        ),
-    )
-    def test_info_of_a_cloud_loaded_from_a_table_with_the_colortable(
-        self, tmp_path, cloud
+    @pytest.mark.parametrize("fmt", ["csv", "txt"])
+    def test_the_colortable_written_with_the_table_is_restored(
+        self, tmp_path, cloud, fmt
     ):
+        cloud.save(tmp_path / f"cloud.{fmt}", format=fmt, include_colortable=True)
+        loaded = PointCloud.load(tmp_path / f"cloud.{fmt}", format=fmt)
+        table = loaded.colortables["default"]
+        assert table["names"] == NAMES
+        assert table["color_table"][:, 4].tolist() == [1, 2, 3, 4, 5, 6]
+        assert table["color_table"][:, :3] == pytest.approx(
+            cloud.colortables["default"]["color_table"][:, :3]
+        )
+        assert loaded.point_data["default"].tolist() == [1, 2, 3, 4, 5, 6]
+        # The columns of the table are not kept as maps
+        assert set(loaded.point_data) == {"default", "val"}
+
+    def test_a_reloaded_cloud_behaves_like_the_original(self, tmp_path, cloud):
         cloud.save(tmp_path / "cloud.csv", format="csv", include_colortable=True)
         loaded = PointCloud.load(tmp_path / "cloud.csv", format="csv")
-        quiet_call(loaded.get_info)
+        assert np.array_equal(
+            loaded.get_pointwise_colors(), cloud.get_pointwise_colors()
+        )
+        original = cloud.to_dataframe(include_colortable=True)
+        reloaded = loaded.to_dataframe(include_colortable=True)
+        pd.testing.assert_frame_equal(reloaded, original, check_dtype=False)
+        quiet_call(loaded.get_info)  # Used to fail with the string columns
+
+    def test_only_the_regions_in_use_are_restored(self, tmp_path, cloud):
+        kept = quiet_call(cloud.filter, "val >= 30", inplace=False)
+        kept.save(tmp_path / "kept.csv", format="csv", include_colortable=True)
+        loaded = PointCloud.load(tmp_path / "kept.csv", format="csv")
+        assert loaded.colortables["default"]["names"] == ["d", "e", "f"]
+        assert loaded.point_data["default"].tolist() == [4, 5, 6]
+
+    def test_a_table_of_another_map_keeps_its_columns_as_maps(
+        self, tmp_path, cloud, lut_file
+    ):
+        cloud.add_point_data(np.where(cloud.coords[:, 0] < 0, 1, 2), name="hemisphere")
+        cloud.load_colortable(lut_file, map_name="hemisphere")
+        cloud.save(
+            tmp_path / "hemi.csv",
+            format="csv",
+            include_colortable=True,
+            colortable_name="hemisphere",
+        )
+        loaded = PointCloud.load(tmp_path / "hemi.csv", format="csv")
+        # The file does not say which map the table describes: nothing is restored
+        assert {"index", "name", "color", "default", "val"} <= set(loaded.point_data)
+        assert loaded.colortables["default"]["names"] == ["region_1"]
+        quiet_call(loaded.get_info)  # The string maps do not break it either
 
     def test_errors(self, tmp_path, cloud):
         with pytest.raises(ValueError, match="Cannot save an empty"):
@@ -887,6 +923,22 @@ class TestGetInfo:
         val = next(line for line in out.splitlines() if " val " in line)
         assert "Min:   0.0000" in val and "Max:  50.0000" in val
 
+    def test_maps_that_are_not_numbers_are_listed_without_statistics(
+        self, cloud, capsys
+    ):
+        cloud.add_point_data(np.array(list("abcdef")), name="labels")
+        cloud.add_point_data(np.array([True, False] * 3), name="flag")
+        cloud.get_info()
+        lines = capsys.readouterr().out.splitlines()
+        assert "SCALAR DATA PER POINT (4 maps)" in "\n".join(lines)
+        labels = next(line for line in lines if " labels " in line)
+        assert "(non-numeric)" in labels and "Min" not in labels
+        flag = next(line for line in lines if " flag " in line)
+        assert (
+            "Min:   0.0000" in flag and "Max:   1.0000" in flag
+        )  # Booleans are numbers
+        assert len({len(line) for line in lines}) == 1
+
     def test_a_single_map_is_not_plural(self, plain, capsys):
         plain.get_info()
         assert "SCALAR DATA PER POINT (1 map)" in capsys.readouterr().out
@@ -967,11 +1019,27 @@ class TestSmoothCurveCoordinates:
             [1, 2, 3]
         ]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Integer coordinates are truncated at every step, instead of giving a float result",
-    )
-    def test_integer_coordinates(self):
+    def test_integer_coordinates_are_smoothed_as_floats(self):
         curve = np.array([[0, 0, 0], [1, 1, 1], [2, 2, 2]])
         smooth = cltpts.smooth_curve_coordinates(curve)
+        assert smooth.dtype == np.float64
+        assert smooth[0, 0] == pytest.approx(0.504, abs=1e-3)
         assert smooth[2, 0] == pytest.approx(1.496, abs=1e-3)
+        # The same result as for the equivalent floating point curve
+        assert np.array_equal(
+            smooth, cltpts.smooth_curve_coordinates(curve.astype(float))
+        )
+
+    def test_lists_are_accepted(self):
+        smooth = cltpts.smooth_curve_coordinates([[0, 0, 0], [1, 1, 1], [2, 2, 2]])
+        assert isinstance(smooth, np.ndarray) and smooth[2, 0] == pytest.approx(
+            1.496, abs=1e-3
+        )
+
+    def test_floating_point_precision_is_kept(self):
+        curve = np.c_[np.linspace(0, 10, 11), np.zeros(11), np.zeros(11)]
+        assert (
+            cltpts.smooth_curve_coordinates(curve.astype(np.float32)).dtype
+            == np.float32
+        )
+        assert cltpts.smooth_curve_coordinates(curve).dtype == np.float64
