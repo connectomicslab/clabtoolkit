@@ -47,6 +47,7 @@ dependencies = [
     "dipy>=1.11.0",
     "screeninfo>=0.8.1",
     "ipython>=8.0.0",
+    "bctpy>=0.6.1",
 ]
 
 [project.urls]
@@ -76,7 +77,6 @@ test = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "pytest-xdist>=3.8.0",
-    "bctpy>=0.6.1",
 ]
 
 [tool.setuptools]
