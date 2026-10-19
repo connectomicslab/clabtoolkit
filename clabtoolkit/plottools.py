@@ -1,5 +1,48 @@
+import numbers
+import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
+
+# Screen assumed when the real one cannot be detected (e.g. without a display)
+_FALLBACK_SCREEN = (1920, 1080)
+
+
+def _check_positive_integer(value, name: str) -> None:
+    """Raise TypeError for non-integers (and booleans) and ValueError for values < 1."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        raise TypeError(f"{name} must be an integer, got {type(value).__name__}")
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer, got {value}")
+
+
+def _check_positive_number(value, name: str) -> None:
+    """Raise TypeError for non-numbers (and booleans) and ValueError for values that
+    are not finite and positive."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise TypeError(f"{name} must be a number, got {type(value).__name__}")
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive finite number, got {value}")
+
+
+def _detect_screen_size(detector=None) -> tuple[int, int]:
+    """
+    Detect the screen size, falling back to Full HD when it cannot be detected.
+
+    Tkinter fails without a graphical display (e.g. on a server or a CI runner), and
+    the layout of the figures should not depend on having one.
+    """
+    if detector is None:
+        detector = get_screen_size
+    try:
+        return detector()
+    except Exception as err:
+        width, height = _FALLBACK_SCREEN
+        warnings.warn(
+            f"Could not detect the screen size ({err}). Assuming {width}x{height}.",
+            stacklevel=3,
+        )
+        return width, height
 
 
 #####################################################################################################
@@ -21,10 +64,12 @@ def get_screen_size() -> tuple[int, int]:
     import tkinter as tk
 
     root = tk.Tk()
-    root.withdraw()  # Hide the main window
-    width = root.winfo_screenwidth()
-    height = root.winfo_screenheight()
-    root.destroy()  # Clean up the Tkinter instance
+    try:
+        root.withdraw()  # Hide the main window
+        width = root.winfo_screenwidth()
+        height = root.winfo_screenheight()
+    finally:
+        root.destroy()  # Clean up the Tkinter instance
 
     return width, height
 
@@ -53,10 +98,12 @@ def get_current_monitor_size() -> tuple[int, int]:
 
     # Get mouse position
     root = tk.Tk()
-    root.withdraw()
-    mouse_x = root.winfo_pointerx()
-    mouse_y = root.winfo_pointery()
-    root.destroy()
+    try:
+        root.withdraw()
+        mouse_x = root.winfo_pointerx()
+        mouse_y = root.winfo_pointery()
+    finally:
+        root.destroy()
 
     # Find which monitor contains the mouse
     monitors = screeninfo.get_monitors()
@@ -100,7 +147,23 @@ def estimate_monitor_dpi(screen_width: int, screen_height: int) -> float:
     >>>
     >>> estimate_monitor_dpi(1280, 1024)  # Not a known resolution
     78.1
+
+    Notes
+    -----
+    A rotated screen (e.g. 1080x1920) has the same DPI as the landscape one.
     """
+
+    if screen_width <= 0 or screen_height <= 0:
+        raise ValueError(
+            "screen_width and screen_height must be positive, got "
+            f"{screen_width} and {screen_height}"
+        )
+
+    # A portrait screen is the same monitor as the landscape one
+    screen_width, screen_height = (
+        max(screen_width, screen_height),
+        min(screen_width, screen_height),
+    )
 
     # Common monitor configurations: (width, height): typical_dpi
     monitor_configs = {
@@ -202,11 +265,20 @@ def calculate_optimal_subplots_grid(
         (row, column) position of each view in the grid, in row-major order.
         It contains exactly `num_views` positions.
 
+    Raises
+    ------
+    TypeError
+        If num_views is not an integer.
+
+    ValueError
+        If num_views is not positive.
+
     Notes
     -----
     Up to 8 views, and for exactly 16 views, fixed grids are used. For any other
-    number of views the grid follows the screen proportions, which requires a
-    graphical display to detect the screen size.
+    number of views the grid follows the screen proportions. The screen size is
+    detected with a graphical display; without one, a 1920x1080 screen is assumed
+    and a warning is issued.
 
     Examples
     --------
@@ -220,6 +292,8 @@ def calculate_optimal_subplots_grid(
     >>> calculate_optimal_subplots_grid(1)
     ([1, 1], [(0, 0)])
     """
+
+    _check_positive_integer(num_views, "num_views")
 
     # Calculate optimal grid dimensions based on number of views
     if num_views == 1:
@@ -282,7 +356,7 @@ def calculate_optimal_subplots_grid(
 
     else:
         # For more than 8 views, try to keep a proportion with the screen shape
-        screen_size = get_screen_size()
+        screen_size = _detect_screen_size()
 
         # Calculate the number of columns and rows based on the number of views
         rows, cols, aspect = calculate_subplot_layout(
@@ -330,6 +404,19 @@ def calculate_subplot_layout(
     aspect_ratio : float
         Aspect ratio (width/height) used to compute the layout.
 
+    Raises
+    ------
+    TypeError
+        If n_plots is not an integer.
+
+    ValueError
+        If n_plots, the screen size or the target aspect ratio are not positive.
+
+    Notes
+    -----
+    If the screen is needed but cannot be detected (e.g. without a graphical
+    display), a 1920x1080 screen is assumed and a warning is issued.
+
     Examples
     --------
     >>> calculate_subplot_layout(10, screen_width=1920, screen_height=1080)
@@ -339,11 +426,16 @@ def calculate_subplot_layout(
     (4, 3, 1.0)
     """
 
+    _check_positive_integer(n_plots, "n_plots")
+
     if target_aspect_ratio is None:
         if screen_width is None or screen_height is None:
-            screen_width, screen_height = get_screen_size()
+            screen_width, screen_height = _detect_screen_size()
+        _check_positive_number(screen_width, "screen_width")
+        _check_positive_number(screen_height, "screen_height")
         aspect_ratio = screen_width / screen_height
     else:
+        _check_positive_number(target_aspect_ratio, "target_aspect_ratio")
         aspect_ratio = target_aspect_ratio
 
     # Start with square root as baseline
@@ -405,6 +497,14 @@ def create_proportional_subplots(n_plots, figsize_base=4, **layout_kwargs):
         Layout information with the keys 'rows', 'cols', 'aspect_ratio',
         'total_subplots' and 'used_subplots'.
 
+    Raises
+    ------
+    TypeError
+        If n_plots is not an integer.
+
+    ValueError
+        If n_plots, figsize_base or the layout options are not positive.
+
     Examples
     --------
     >>> fig, axes, layout_info = create_proportional_subplots(
@@ -414,6 +514,7 @@ def create_proportional_subplots(n_plots, figsize_base=4, **layout_kwargs):
     (2, 4)
     """
 
+    _check_positive_number(figsize_base, "figsize_base")
     rows, cols, aspect_ratio = calculate_subplot_layout(n_plots, **layout_kwargs)
 
     # Calculate figure size based on layout and aspect ratio
@@ -426,8 +527,6 @@ def create_proportional_subplots(n_plots, figsize_base=4, **layout_kwargs):
     # Handle the case where there's only one subplot
     if n_plots == 1:
         axes = [axes]
-    elif rows == 1 or cols == 1:
-        axes = axes.flatten()
     else:
         axes = axes.flatten()
 
@@ -538,16 +637,22 @@ def calculate_font_sizes(
     Raises
     ------
     ValueError
-        If plot_width or plot_height are not positive numbers.
+        If the plot, colorbar or screen sizes are not positive finite numbers.
 
     ValueError
         If colorbar_orientation is not 'vertical' or 'horizontal'.
 
     TypeError
-        If numeric parameters are not of appropriate numeric types.
+        If numeric parameters are not numbers.
 
     ImportError
         If auto_detect_monitor=True but required packages (tkinter, screeninfo) are not available.
+
+    Warns
+    -----
+    UserWarning
+        If the monitor cannot be detected (e.g. without a graphical display). A
+        1920x1080 screen is assumed.
 
     Examples
     --------
@@ -578,7 +683,7 @@ def calculate_font_sizes(
     ...                             screen_width=1920, screen_height=1080,
     ...                             auto_detect_monitor=False)
     >>> fonts['title']  # Capped at the 28 pt maximum
-    28
+    28.0
 
     Custom colorbar dimensions:
 
@@ -628,12 +733,18 @@ def calculate_font_sizes(
     """
 
     # Input validation
-    if not isinstance(plot_width, (int, float)) or plot_width <= 0:
-        raise ValueError("plot_width must be a positive number")
-    if not isinstance(plot_height, (int, float)) or plot_height <= 0:
-        raise ValueError("plot_height must be a positive number")
+    _check_positive_number(plot_width, "plot_width")
+    _check_positive_number(plot_height, "plot_height")
     if colorbar_orientation not in ["vertical", "horizontal"]:
         raise ValueError("colorbar_orientation must be 'vertical' or 'horizontal'")
+    for name, value in (
+        ("colorbar_width", colorbar_width),
+        ("colorbar_height", colorbar_height),
+        ("screen_width", screen_width),
+        ("screen_height", screen_height),
+    ):
+        if value is not None:
+            _check_positive_number(value, name)
 
     # Get monitor dimensions
     if screen_width is None or screen_height is None:
@@ -648,10 +759,19 @@ def calculate_font_sizes(
                     "Install with: pip install screeninfo\n"
                     "Or disable auto-detection: auto_detect_monitor=False"
                 ) from e
+            except Exception as e:
+                # No graphical display (tkinter) or no monitor (screeninfo)
+                warnings.warn(
+                    f"Could not detect the monitor ({e}). Assuming "
+                    f"{_FALLBACK_SCREEN[0]}x{_FALLBACK_SCREEN[1]}.",
+                    stacklevel=2,
+                )
+                screen_width = screen_width or _FALLBACK_SCREEN[0]
+                screen_height = screen_height or _FALLBACK_SCREEN[1]
         else:
             # Fallback to common resolution
-            screen_width = screen_width or 1920
-            screen_height = screen_height or 1080
+            screen_width = screen_width or _FALLBACK_SCREEN[0]
+            screen_height = screen_height or _FALLBACK_SCREEN[1]
 
     # Calculate monitor DPI
     estimated_dpi = estimate_monitor_dpi(screen_width, screen_height)
@@ -719,7 +839,7 @@ def calculate_font_sizes(
         else:
             scaled_size = max(6, min(20, scaled_size))
 
-        font_sizes[element] = round(scaled_size, 1)
+        font_sizes[element] = round(float(scaled_size), 1)
 
     # Add monitor info for debugging
     font_sizes["_monitor_info"] = {
@@ -797,6 +917,11 @@ def generate_spherical_coords(
     np.ndarray
         An (n_regions, 3) array of points uniformly distributed inside a sphere of the given radius.
 
+    Raises
+    ------
+    ValueError
+        If n_regions is negative, or radius is negative or not finite.
+
     Notes
     -----
     - The function generates random directions by sampling from a normal distribution and normalizing the vectors.
@@ -818,6 +943,11 @@ def generate_spherical_coords(
     >>> bool((np.linalg.norm(coords, axis=1) <= 30.0).all())
     True
     """
+    if n_regions < 0:
+        raise ValueError(f"n_regions must not be negative, got {n_regions}")
+    if not np.isfinite(radius) or radius < 0:
+        raise ValueError(f"radius must be a non-negative finite number, got {radius}")
+
     directions = rng.normal(size=(n_regions, 3))
     norms = np.linalg.norm(directions, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
