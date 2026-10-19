@@ -863,9 +863,36 @@ class PointCloud:
 
             pc = cls(points=df)
 
+            # The index, name and color columns written by save(include_colortable=True)
+            # describe the regions of the default map, so they restore its colortable
+            # instead of becoming maps. A "default" column means the table belonged to
+            # another map, which can not be told from the file, so they are kept as maps.
+            colortable_columns = ["index", "name", "color"]
+            has_colortable = (
+                all(col in df.columns for col in colortable_columns)
+                and "default" not in df.columns
+            )
+
+            if has_colortable:
+                regions = df[colortable_columns].drop_duplicates("index")
+                regions = regions.sort_values("index")
+                color_table = cltcol.colors_to_table(
+                    colors=regions["color"].tolist(),
+                    alpha_values=1,
+                    values=regions["index"].to_numpy(),
+                )
+                color_table[:, :3] = color_table[:, :3] / 255
+                pc.colortables["default"] = {
+                    "names": regions["name"].astype(str).tolist(),
+                    "color_table": color_table,
+                    "lookup_table": None,
+                }
+                pc.point_data["default"] = df["index"].to_numpy()
+
             # Add any additional columns as point data
+            skipped = ["X", "Y", "Z"] + (colortable_columns if has_colortable else [])
             for col in df.columns:
-                if col not in ["X", "Y", "Z"]:
+                if col not in skipped:
                     pc.add_point_data(df[col].values, name=col)
 
             return pc
@@ -1252,9 +1279,14 @@ class PointCloud:
             )
 
             for map_name, values in self.point_data.items():
-                if len(values) > 0:
-                    min_val = np.nanmin(values)
-                    max_val = np.nanmax(values)
+                if len(values) > 0 and np.asarray(values).dtype.kind not in "biuf":
+                    print_line(
+                        f"   {map_name:<12}  (non-numeric)",
+                        width,
+                    )
+                elif len(values) > 0:
+                    min_val = np.nanmin(np.asarray(values, dtype=float))
+                    max_val = np.nanmax(np.asarray(values, dtype=float))
                     print_line(
                         f"   {map_name:<12}  Min: {min_val:>8.4f}    Max: {max_val:>8.4f}",
                         width,
@@ -1739,7 +1771,11 @@ def smooth_curve_coordinates(points, sigma=1.0, iterations=1, window_size=5):
     smoothed : ndarray, shape (N, 3)
         Smoothed 3D coordinates.
     """
-    smoothed = points.copy()
+    # Integer coordinates would be truncated at every step, so they are smoothed as
+    # floats. Floating point coordinates keep their precision.
+    smoothed = np.array(points)
+    if smoothed.dtype.kind != "f":
+        smoothed = smoothed.astype(float)
     half_window = window_size // 2
 
     # Create Gaussian weights
