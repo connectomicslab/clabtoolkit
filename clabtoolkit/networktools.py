@@ -363,7 +363,8 @@ def edges_to_components(edges: np.ndarray, verbose: bool = True):
     Parameters
     ----------
     edges : np.ndarray, shape (n_edges, 2)
-        Array of vertex index pairs. Indices can be global/non-contiguous.
+        Array of vertex index pairs. Indices can be global/non-contiguous,
+        and any integer is accepted (very large or negative ones included).
 
     verbose : bool, optional
         If True (default), print component sizes to the console.
@@ -403,13 +404,20 @@ def edges_to_components(edges: np.ndarray, verbose: bool = True):
     >>> labels[labels[:, 1] == 0, 0]
     array([100, 101, 102, 103])
     """
-    unique_verts = np.unique(edges)
-    n_vert = len(unique_verts)
+    edges = np.asarray(edges)
 
-    global_to_local = np.full(unique_verts.max() + 1, fill_value=-1, dtype=np.int64)
-    global_to_local[unique_verts] = np.arange(n_vert)
+    if not np.issubdtype(edges.dtype, np.integer):
+        raise TypeError("Edges array must contain integer vertex indices")
 
-    local_edges = global_to_local[edges]
+    # Number the vertices that appear in the edges from 0 to n - 1. Doing it with the
+    # inverse of np.unique needs no table as large as the biggest vertex index, and it
+    # works with any integer index, including negative ones.
+    unique_verts, inverse = np.unique(edges, return_inverse=True)
+    local_edges = inverse.reshape(edges.shape)
+
+    # The labels are returned with the vertex numbers, in an int64 array
+    if len(unique_verts) > 0 and unique_verts[-1] > np.iinfo(np.int64).max:
+        raise ValueError("Vertex indices must fit in a 64-bit signed integer")
 
     conn_matrix = edges_to_csr(local_edges)
     # n_components, local_labels = csgraph.connected_components(
