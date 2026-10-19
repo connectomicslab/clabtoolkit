@@ -962,6 +962,20 @@ def harmonize_colors(
     elif isinstance(colors, tuple):
         colors = [colors]
 
+    elif (
+        isinstance(colors, list)
+        and len(colors) in (3, 4)
+        and all(
+            isinstance(c, (int, float, np.integer, np.floating))
+            and not isinstance(c, bool)
+            for c in colors
+        )
+    ):
+        # A flat list of numbers is one color ([R,G,B] or [R,G,B,A]), exactly as
+        # a tuple or a 1D array is. A bare number is never a valid color by
+        # itself, so this can not be read as a list of colors.
+        colors = [colors]
+
     elif isinstance(colors, np.ndarray):
         if colors.ndim == 1:
             # Single color (e.g., [R,G,B] or [R,G,B,A])
@@ -2090,6 +2104,11 @@ def values2colors(
     values = np.array(values, dtype=float)
     if values.size == 0:
         raise ValueError("values array cannot be empty")
+
+    # A single column (n, 1) or single row (1, n) is one value per element, like
+    # a 1D array. Otherwise the comparisons with the range limits broadcast.
+    if values.ndim > 1 and values.size == max(values.shape):
+        values = values.ravel()
 
     # Check the range_color format
     try:

@@ -263,6 +263,53 @@ class TestHarmonizeColors:
             [[1.0, 128 / 255, 0.0]],
         )
 
+    @pytest.mark.parametrize(
+        "color",
+        [
+            [255, 87, 51],
+            [255.0, 87.0, 51.0],
+            [255, 87, 51, 128],  # The alpha channel is dropped
+            (255, 87, 51),
+            np.array([255, 87, 51]),
+            [np.int64(255), np.int64(87), np.int64(51)],
+        ],
+    )
+    def test_a_single_color_is_the_same_in_every_container(self, color):
+        assert cltcol.harmonize_colors(color) == ["#ff5733"]
+        rgb = cltcol.harmonize_colors(color, output_format="rgb")
+        assert rgb.shape == (1, 3) and rgb.tolist() == [[255, 87, 51]]
+
+    def test_a_flat_list_of_normalized_floats_is_one_color(self):
+        assert cltcol.harmonize_colors([1.0, 0.0, 0.0]) == ["#ff0000"]
+        assert cltcol.harmonize_colors([0.0, 0.0, 1.0, 0.5]) == ["#0000ff"]
+
+    def test_lists_of_colors_are_still_lists_of_colors(self):
+        assert cltcol.harmonize_colors(["red", "green", "blue"]) == [
+            "#ff0000",
+            "#008000",
+            "#0000ff",
+        ]
+        assert cltcol.harmonize_colors([[255, 0, 0], [0, 255, 0], [0, 0, 255]]) == [
+            "#ff0000",
+            "#00ff00",
+            "#0000ff",
+        ]
+        assert cltcol.harmonize_colors(
+            ["#ff0000", (0, 255, 0), np.array([0, 0, 255])]
+        ) == [
+            "#ff0000",
+            "#00ff00",
+            "#0000ff",
+        ]
+
+    @pytest.mark.parametrize(
+        "not_a_color",
+        [[255, 87], [1, 2, 3, 4, 5], [True, False, True], [255, "red", 0]],
+    )
+    def test_flat_lists_that_are_not_a_color_are_rejected(self, not_a_color):
+        with pytest.raises(ValueError, match="Invalid color"):
+            cltcol.harmonize_colors(not_a_color)
+
     def test_errors(self):
         with pytest.raises(ValueError):
             cltcol.harmonize_colors(["#ff0000"], output_format="cmyk")
@@ -415,6 +462,25 @@ class TestValuesToColors:
         assert rgb[0].tolist() == [200, 200, 200] and rgb[2].tolist() == [200, 200, 200]
         out = cltcol.values2colors([0, 10], range_min=50, range_color="#000000")
         assert out == ["#000000", "#000000"]
+
+    @pytest.mark.parametrize(
+        "shaped", [np.array([[0], [5], [10]]), np.array([[0, 5, 10]])]
+    )
+    def test_a_single_column_or_row_is_one_value_per_element(self, shaped):
+        flat = cltcol.values2colors([0, 5, 10], cmap="gray", output_format="rgb")
+        out = cltcol.values2colors(shaped, cmap="gray", output_format="rgb")
+        assert out.shape == (3, 3) and np.array_equal(out, flat)
+
+    def test_range_limits_with_a_column_of_values(self):
+        column = np.array([[0.0], [5.0], [10.0]])
+        rgb = cltcol.values2colors(
+            column, cmap="gray", output_format="rgb", range_min=1, range_max=9
+        )
+        flat = cltcol.values2colors(
+            column.ravel(), cmap="gray", output_format="rgb", range_min=1, range_max=9
+        )
+        assert np.array_equal(rgb, flat)
+        assert rgb[0].tolist() == [200, 200, 200] and rgb[2].tolist() == [200, 200, 200]
 
     def test_errors(self):
         with pytest.raises(TypeError):
