@@ -1,7 +1,9 @@
+import html
 import json
 import logging
 import os
 import queue
+import re
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -115,7 +117,7 @@ def generate_slices(
     output_path: str | Path | None = None,
     slice_positions: list[float] = None,
     ignore_value: int | None = None,
-    remove_invalid: bool = True,
+    remove_invalid: bool = False,
     fig_size: tuple[int, int] | None = None,
     dpi: int = 300,
     bg_color: str = "black",
@@ -148,7 +150,9 @@ def generate_slices(
         Value to ignore for slice selection. Default is None.
 
     remove_invalid : bool, optional
-        Whether to remove invalid files when detected. Default is True.
+        Whether to delete the image (and its JSON sidecar) when it cannot be shown
+        because it is not 3D or 4D or has a dimension of size 1. The files are kept
+        by default, as scouts or single-slice images are valid data. Default is False.
 
     fig_size : tuple, optional
         Figure size (width, height) in inches. Auto-calculated if None. Default is None.
@@ -220,18 +224,13 @@ def generate_slices(
     # Determine output path if not provided
     if output_path is None:
 
-        tmp_name = str(nifti_path)
-
-        if tmp_name.endswith(".nii.gz"):
-            tmp_name = tmp_name.replace(".nii.gz", ".png")
-        elif tmp_name.endswith(".nii"):
-            tmp_name = tmp_name.replace(".nii", ".png")
+        # Only the extension of the file changes, not the rest of the path
+        if nifti_path.name.lower().endswith(".nii.gz"):
+            new_name = nifti_path.name[: -len(".nii.gz")] + ".png"
         else:
-            # Detect file extension
-            file_extension = nifti_path.suffix
-            tmp_name = tmp_name.replace(file_extension, ".png")
+            new_name = nifti_path.stem + ".png"
 
-        output_path = Path(tmp_name)
+        output_path = nifti_path.with_name(new_name)
     else:
         output_path = Path(output_path)
         # Make sure the directory exists
@@ -624,11 +623,15 @@ def recursively_generate_slices(
     if not input_folder.exists():
         raise FileNotFoundError(f"Input folder not found: {input_folder}")
 
-    # Get all neuroimaging files using the provided filter function
-    all_files = cltmisc.get_all_files(input_folder)
-    all_files = cltmisc.filter_by_substring(
-        all_files, and_filter=and_filter, or_filter=or_filter
-    )
+    # Get all neuroimaging files using the provided filter function. An empty
+    # folder has no files (get_all_files refuses it)
+    if any(input_folder.iterdir()):
+        all_files = cltmisc.get_all_files(input_folder, recursive=recursive)
+        all_files = cltmisc.filter_by_substring(
+            all_files, and_filter=and_filter, or_filter=or_filter
+        )
+    else:
+        all_files = []
 
     # Filter files by extension
     neuroimaging_files = [
@@ -874,9 +877,9 @@ def generate_image_selection_webpage(
 
     # Find all PNG files
     if recursive:
-        png_files = list(root_directory.glob(png_pattern))
+        png_files = sorted(root_directory.glob(png_pattern))
     else:
-        png_files = list(root_directory.glob("*.png"))
+        png_files = sorted(root_directory.glob("*.png"))
 
     console.print(f"Found {len(png_files)} PNG files")
 
@@ -884,8 +887,9 @@ def generate_image_selection_webpage(
         console.print("[yellow]No PNG files found!")
         return str(output_html)
 
-    # Dictionary to store images organized by hierarchy
-    image_dict = {}
+    # Images organized by hierarchy: every folder has its images ("files") and its
+    # subfolders ("dirs"), so a folder can have any name
+    image_dict = {"files": [], "dirs": {}}
 
     # Process each PNG file
     with Progress() as progress:
@@ -907,13 +911,9 @@ def generate_image_selection_webpage(
 
                 for part in path_parts:
                     hierarchy_path.append(part)
-                    if part not in current_dict:
-                        current_dict[part] = {}
-                    current_dict = current_dict[part]
-
-                # Initialize the final level if needed
-                if "files" not in current_dict:
-                    current_dict["files"] = []
+                    current_dict = current_dict["dirs"].setdefault(
+                        part, {"files": [], "dirs": {}}
+                    )
 
                 # Try to get description from associated files
                 description = None
@@ -971,7 +971,7 @@ def generate_image_selection_webpage(
                 # Store file information
                 file_info = {
                     "png_path": str(png_file),
-                    "relative_path": str(relative_path),
+                    "relative_path": relative_path.as_posix(),
                     "name": png_file.stem,
                     "description": description,
                     "original_nii": original_nii,
@@ -993,7 +993,7 @@ def generate_image_selection_webpage(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title}</title>
+  <title>{html.escape(title)}</title>
   <style>
     body {{
       font-family: Arial, sans-serif;
@@ -1181,11 +1181,11 @@ def generate_image_selection_webpage(
   </script>
 </head>
 <body>
-  <h1>{title}</h1>
+  <h1>{html.escape(title)}</h1>
 
   <div style="text-align: center; margin-bottom: 20px; padding: 15px; background-color: #2a2a2a; border-radius: 8px; border: 1px solid #555;">
     <h3 style="margin: 0; color: #ffcc00;">📁 Root Directory</h3>
-    <p style="margin: 5px 0; font-family: monospace; color: #ccc; font-size: 16px; word-break: break-all;">{root_directory}</p>
+    <p style="margin: 5px 0; font-family: monospace; color: #ccc; font-size: 16px; word-break: break-all;">{html.escape(str(root_directory))}</p>
   </div>
 
   <div class="controls">
@@ -1196,46 +1196,59 @@ def generate_image_selection_webpage(
   </div>
 """
 
+    used_ids = set()
+
+    def unique_id(name):
+        """HTML id of an image: its name made safe, and different from the others."""
+        base = re.sub(r"[^A-Za-z0-9_.:-]", "_", name) or "image"
+        image_id, number = base, 1
+        while image_id in used_ids:
+            number += 1
+            image_id = f"{base}-{number}"
+        used_ids.add(image_id)
+        return image_id
+
     def render_hierarchy(data_dict, level=0):
         """Recursively render the hierarchical structure"""
         content = ""
 
-        for key, value in sorted(data_dict.items()):
-            if key == "files":
-                # Render files at this level
-                for file_info in value:
-                    png_path = file_info["relative_path"]
-                    name = file_info["name"]
-                    description = file_info["description"]
-                    hierarchy = file_info["hierarchy"]
-                    original_nii = file_info["original_nii"]
+        # Images of this folder, then its subfolders
+        for file_info in data_dict["files"]:
+            png_path = html.escape(file_info["relative_path"])
+            name = html.escape(file_info["name"])
+            description = file_info["description"]
+            hierarchy = html.escape(file_info["hierarchy"])
+            original_nii = file_info["original_nii"]
+            image_id = unique_id(file_info["name"])
 
-                    # Use original NIfTI path as checkbox value if available, otherwise PNG path
-                    checkbox_value = (
-                        original_nii if original_nii else file_info["png_path"]
-                    )
+            # Use original NIfTI path as checkbox value if available, otherwise PNG path
+            checkbox_value = html.escape(
+                original_nii if original_nii else file_info["png_path"]
+            )
 
-                    content += f"""
+            content += f"""
       <div class="image-container">
         <div class="hierarchy-info">📁 {hierarchy}</div>
         <label class="checkbox-label">
-          <input type="checkbox" id="{name}" value="{checkbox_value}">
+          <input type="checkbox" id="{image_id}" value="{checkbox_value}">
           <strong>{name}</strong>
         </label>"""
 
-                    if description:
-                        content += f'<div class="description">📝 {description}</div>'
+            if description:
+                content += (
+                    f'<div class="description">📝 {html.escape(str(description))}</div>'
+                )
 
-                    content += f"""
-        <img src="{png_path}" alt="{name}" onclick="document.getElementById('{name}').checked = !document.getElementById('{name}').checked; updateStats();">
+            content += f"""
+        <img src="{png_path}" alt="{name}" onclick="document.getElementById('{image_id}').checked = !document.getElementById('{image_id}').checked; updateStats();">
       </div>"""
-            else:
-                # Render subfolder
-                header_level = min(level + 2, 5)  # h2 to h5
-                content += f"<h{header_level}>📂 {key}</h{header_level}>\n"
-                content += '<div class="folder-section">\n'
-                content += render_hierarchy(value, level + 1)
-                content += "</div>\n"
+
+        for key, value in sorted(data_dict["dirs"].items()):
+            header_level = min(level + 2, 5)  # h2 to h5
+            content += f"<h{header_level}>📂 {html.escape(key)}</h{header_level}>\n"
+            content += '<div class="folder-section">\n'
+            content += render_hierarchy(value, level + 1)
+            content += "</div>\n"
 
         return content
 
