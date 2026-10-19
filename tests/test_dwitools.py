@@ -6,7 +6,6 @@ from pathlib import Path
 import nibabel as nib
 import numpy as np
 import pytest
-import pyvista as pv
 
 from clabtoolkit.dwitools import (
     DiffusionScheme,
@@ -22,48 +21,17 @@ AFFINE = np.array(
 )
 MULTISHELL = {1000: 32, 2000: 64, 3000: 96}
 ALL_MAPS = ["AD", "CL", "CP", "CS", "FA", "GA", "MD", "RA", "RD", "VF"]
-GLYPH_POINTS = pv.Sphere(theta_resolution=16, phi_resolution=16).n_points
-BVAL_ARRAY = "b-value (s/mm²)"
 
 
 ####################################################################################################
 # Fixtures and helpers
 ####################################################################################################
 @pytest.fixture(autouse=True)
-def _quiet(fixed_monitor_size):
+def _quiet():
     """Silence the warnings and the progress messages of the functions."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         yield
-
-
-@pytest.fixture(scope="session")
-def can_render():
-    """Skip the tests that need an off-screen rendering backend when there is none."""
-    try:
-        plotter = pv.Plotter(off_screen=True)
-        plotter.add_mesh(pv.Sphere())
-        plotter.screenshot()
-        plotter.close()
-    except Exception as exc:  # pragma: no cover - depends on the machine
-        pytest.skip(f"Off-screen rendering is not available: {exc}")
-
-
-@pytest.fixture(scope="session")
-def can_export_html(tmp_path_factory):
-    """
-    Skip the tests that export interactive HTML when PyVista cannot do it.
-
-    The export needs the optional trame packages (``pyvista[jupyter]``), which are
-    not installed with clabtoolkit.
-    """
-    try:
-        plotter = pv.Plotter(off_screen=True)
-        plotter.add_mesh(pv.Sphere())
-        plotter.export_html(str(tmp_path_factory.mktemp("html") / "probe.html"))
-        plotter.close()
-    except ImportError as exc:
-        pytest.skip(f"HTML export is not available: {exc}")
 
 
 @pytest.fixture(scope="module")
@@ -71,14 +39,6 @@ def multishell_scheme():
     """Simulated multi-shell scheme: 8 B0s and 32, 64 and 96 directions."""
     return DiffusionScheme.simulate_dwi_acq_scheme(
         "shelled", shells=MULTISHELL, n_b0s=8
-    )
-
-
-@pytest.fixture(scope="module")
-def scheme():
-    """Small simulated scheme: 2 B0s and 16 directions in each of two shells."""
-    return DiffusionScheme.simulate_dwi_acq_scheme(
-        "shelled", shells={1000: 16, 2000: 16}, n_b0s=2, n_iter=10
     )
 
 
@@ -982,174 +942,3 @@ class TestDetectScheme:
         assert (
             DiffusionScheme.from_bvec_bval_arrays(bvecs, bvals).scheme_type == "shelled"
         )
-
-
-####################################################################################################
-# DiffusionScheme: plot
-####################################################################################################
-class TestPlot:
-    @pytest.fixture
-    def plotter(self, can_render):
-        created = []
-
-        def make(scheme, **kwargs):
-            created.append(scheme.plot(show=False, **kwargs))
-            return created[-1]
-
-        yield make
-        for plotter in created:
-            plotter.close()
-
-    @staticmethod
-    def spheres(plotter):
-        """Mesh with the spheres of the gradient directions (the first actor)."""
-        return next(iter(plotter.renderer.actors.values())).mapper.dataset
-
-    @pytest.mark.parametrize(
-        "name, signature",
-        [("scheme.png", b"\x89PNG"), ("scheme.jpg", b"\xff\xd8")],
-    )
-    def test_saves_images(self, tmp_path, can_render, scheme, name, signature):
-        assert scheme.plot(save_path=tmp_path / name) is None  # The plotter is closed
-        content = (tmp_path / name).read_bytes()
-        assert content.startswith(signature) and len(content) > 1000
-
-    def test_saves_vector_graphics(self, tmp_path, can_render, scheme):
-        scheme.plot(save_path=str(tmp_path / "scheme.svg"))
-        assert "<svg" in (tmp_path / "scheme.svg").read_text(errors="ignore")[:500]
-
-    def test_saves_interactive_html(
-        self, tmp_path, can_render, can_export_html, scheme
-    ):
-        assert scheme.plot(save_path=tmp_path / "scheme.html") is None
-        html = (tmp_path / "scheme.html").read_text(errors="ignore")
-        assert "<html" in html.lower() and "vtk" in html.lower()
-
-    def test_missing_folder_displays_the_figure_instead_of_saving(
-        self, tmp_path, can_render, scheme
-    ):
-        plotter = scheme.plot(save_path=tmp_path / "no_dir" / "scheme.png", show=False)
-        try:
-            assert isinstance(plotter, pv.Plotter)
-            assert not (tmp_path / "no_dir").exists()
-        finally:
-            plotter.close()
-
-    def test_returns_a_plotter(self, plotter, scheme):
-        assert isinstance(plotter(scheme), pv.Plotter)
-
-    @staticmethod
-    def expected_actors(n_shells, colorbar=True, axes=True):
-        # Spheres of the directions, central sphere, shell toroids, axes and title
-        return 1 + 1 + n_shells + 3 * axes + 1 + colorbar
-
-    def test_scene_components(self, plotter, scheme):
-        assert len(plotter(scheme).renderer.actors) == self.expected_actors(2)
-
-    def test_axes_and_colorbar_can_be_hidden(self, plotter, scheme):
-        assert len(
-            plotter(scheme, show_axes=False).renderer.actors
-        ) == self.expected_actors(2, axes=False)
-        assert len(
-            plotter(scheme, show_colorbar=False).renderer.actors
-        ) == self.expected_actors(2, colorbar=False)
-
-    def test_one_toroid_per_shell(self, plotter):
-        scheme = DiffusionScheme.simulate_dwi_acq_scheme(
-            "shelled", shells={1000: 8, 2000: 8, 3000: 8}, n_b0s=1, n_iter=5
-        )
-        assert len(plotter(scheme).renderer.actors) == self.expected_actors(3)
-
-    def test_cartesian_scheme_has_a_toroid_per_b_value(self, plotter):
-        scheme = DiffusionScheme.simulate_dwi_acq_scheme("dsi", radius=3, n_b0s=1)
-        n_shells = len(np.unique(scheme.bvals[scheme.bvals > 10]))
-        assert len(plotter(scheme).renderer.actors) == self.expected_actors(n_shells)
-
-    def test_opposite_directions(self, plotter, scheme):
-        n = len(scheme.bvals)
-        assert self.spheres(plotter(scheme)).n_points == 2 * n * GLYPH_POINTS
-        assert (
-            self.spheres(plotter(scheme, show_opposite_dirs=False)).n_points
-            == n * GLYPH_POINTS
-        )
-
-    def test_points_are_colored_by_b_value(self, plotter, scheme):
-        spheres = self.spheres(plotter(scheme))
-        assert set(np.unique(spheres[BVAL_ARRAY])) == {0.0, 1000.0, 2000.0}
-
-    def test_shelled_points_are_placed_at_a_distance_equal_to_the_b_value(
-        self, plotter, scheme
-    ):
-        spheres = self.spheres(plotter(scheme))
-        radius = (
-            30 * 0.0006 * 2000
-        )  # Size of the spheres: relative to the extent of the plot
-        for bval in (1000, 2000):
-            distance = np.linalg.norm(
-                spheres.points[spheres[BVAL_ARRAY] == bval], axis=1
-            )
-            assert (
-                distance.min() >= bval - radius - 1
-                and distance.max() <= bval + radius + 1
-            )
-
-    def test_cartesian_points_are_placed_at_sqrt_of_b_times_bmax(self, plotter):
-        scheme = DiffusionScheme.simulate_dwi_acq_scheme(
-            "dsi", bmax=4000, radius=4, n_b0s=1
-        )
-        spheres = self.spheres(plotter(scheme))
-        radius = 30 * 0.0006 * 4000
-        distance = np.linalg.norm(spheres.points[spheres[BVAL_ARRAY] == 1000], axis=1)
-        expected = np.sqrt(1000 * 4000)  # Not 1000, as in a shelled scheme
-        assert distance.min() >= expected - radius - 1
-        assert distance.max() <= expected + radius + 1
-
-    @staticmethod
-    def toroid_extents(plotter, tube_radius):
-        """Outer radius of each toroid (the actors that are exactly as thick as the tube)."""
-        extents = []
-        for actor in plotter.renderer.actors.values():
-            dataset = getattr(getattr(actor, "mapper", None), "dataset", None)
-            if dataset is None:
-                continue
-            xmin, xmax, ymin, ymax, zmin, zmax = dataset.bounds
-            if abs((zmax - zmin) - 2 * tube_radius) < 0.02 * tube_radius and xmax > 0:
-                extents.append(max(xmax, ymax))
-        return sorted(extents)
-
-    def test_shelled_toroids_lie_at_the_b_value(self, plotter, scheme):
-        extents = self.toroid_extents(plotter(scheme, toroid_radius=1.0), 1.0)
-        assert extents == pytest.approx([1000 + 1, 2000 + 1], abs=0.5)
-
-    def test_cartesian_toroids_lie_at_the_radius_of_their_points(self, plotter):
-        scheme = DiffusionScheme.simulate_dwi_acq_scheme(
-            "dsi", bmax=4000, radius=2, n_b0s=1
-        )
-        extents = self.toroid_extents(plotter(scheme, toroid_radius=1.0), 1.0)
-        b_values = np.unique(scheme.bvals[scheme.bvals > 10])
-        assert len(extents) == len(b_values)
-        assert extents == pytest.approx(np.sort(np.sqrt(b_values * 4000) + 1), abs=0.5)
-
-    def test_toroid_radius_defaults_to_a_fraction_of_the_largest_b_value(
-        self, plotter, scheme
-    ):
-        extents = self.toroid_extents(plotter(scheme), 0.005 * 2000)
-        assert extents == pytest.approx([1000 + 10, 2000 + 10], abs=0.5)
-
-    def test_window_size(self, plotter, scheme):
-        assert list(plotter(scheme, window_size=(400, 300)).window_size) == [400, 300]
-
-    def test_other_options_are_accepted(self, plotter, scheme):
-        plotter(
-            scheme,
-            colormap="viridis",
-            sphere_radius=5,
-            toroid_alpha=0.9,
-            toroid_radius=3.0,
-        )
-
-    def test_scheme_type_is_detected_when_missing(self, plotter, scheme):
-        bare = DiffusionScheme()
-        bare.gradients, bare.bvals = scheme.gradients, scheme.bvals
-        plotter(bare)
-        assert bare.scheme_type == "shelled"

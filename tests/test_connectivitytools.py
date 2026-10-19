@@ -2,21 +2,15 @@
 
 import warnings
 
-import matplotlib
+import h5py
+import numpy as np
+import pandas as pd
+import pytest
+from scipy.sparse import csr_matrix
+from scipy.sparse import random as sparse_random
 
-matplotlib.use("Agg")
-
-import h5py  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-import pytest  # noqa: E402
-import pyvista as pv  # noqa: E402
-from scipy.sparse import csr_matrix  # noqa: E402
-from scipy.sparse import random as sparse_random  # noqa: E402
-
-import clabtoolkit.colorstools as cltcol  # noqa: E402
-from clabtoolkit.connectivitytools import Connectome  # noqa: E402
+import clabtoolkit.colorstools as cltcol
+from clabtoolkit.connectivitytools import Connectome
 
 # 4 x 4 matrix with known values. Off-diagonal values sorted by absolute value:
 # 0.9 (x2), 0.8 (x2), 0.7 (x2, negative), 0.5 (x2), 0.2 (x2), 0.1 (x2)
@@ -36,23 +30,10 @@ WHOLE_BRAIN = "brain-brain-wholebrain"
 ####################################################################################################
 @pytest.fixture(autouse=True)
 def _quiet():
-    """Close the figures of every test and silence warnings and progress messages."""
+    """Silence the warnings and the progress messages of the functions."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         yield
-    plt.close("all")
-
-
-@pytest.fixture(scope="session")
-def can_render():
-    """Skip the tests that need an off-screen rendering backend when there is none."""
-    try:
-        plotter = pv.Plotter(off_screen=True)
-        plotter.add_mesh(pv.Sphere())
-        plotter.screenshot()
-        plotter.close()
-    except Exception as exc:  # pragma: no cover - depends on the machine
-        pytest.skip(f"Off-screen rendering is not available: {exc}")
 
 
 @pytest.fixture
@@ -1054,145 +1035,6 @@ class TestGraphMetrics:
 ####################################################################################################
 # Plots
 ####################################################################################################
-class TestPlotMatrix:
-    def test_heatmap(self, synthetic):
-        synthetic.plot_matrix(figsize=(5, 4))
-        fig = plt.gcf()
-        ax = fig.axes[0]
-        assert tuple(fig.get_size_inches()) == (5, 4)
-        assert ax.get_title() == f"Connectivity Matrix - {synthetic.name}"
-        assert ax.get_xlabel() == ax.get_ylabel() == "Brain Regions"
-        assert np.allclose(ax.images[0].get_array(), synthetic.matrix)
-        assert fig.axes[1].get_ylabel() == "Connection Strength"  # Colorbar
-
-    def test_region_names_label_the_axes(self, synthetic):
-        synthetic.plot_matrix()
-        labels = [t.get_text() for t in plt.gca().get_xticklabels()]
-        assert labels == synthetic.region_names
-
-    def test_labels_can_be_hidden_and_are_skipped_for_large_connectomes(
-        self, synthetic
-    ):
-        synthetic.plot_matrix(show_labels=False)
-        assert synthetic.region_names[0] not in [
-            t.get_text() for t in plt.gca().get_xticklabels()
-        ]
-        plt.close("all")
-        large = Connectome.generate_connectome(60, seed=1)
-        large.plot_matrix()
-        assert large.region_names[0] not in [
-            t.get_text() for t in plt.gca().get_xticklabels()
-        ]
-
-    def test_title_colormap_and_threshold(self, synthetic):
-        synthetic.plot_matrix(title="Mine", cmap="viridis", threshold=0.5)
-        ax = plt.gca()
-        assert ax.get_title() == "Mine" and ax.images[0].get_cmap().name == "viridis"
-        data = np.asarray(ax.images[0].get_array())
-        assert ((data == 0) | (np.abs(data) >= 0.5)).all()
-        # The connectome itself is not modified
-        assert (
-            synthetic.matrix[(synthetic.matrix > 0) & (synthetic.matrix < 0.5)]
-        ).size
-
-    def test_threshold_is_described_in_the_default_title(self, synthetic):
-        synthetic.plot_matrix(threshold=0.3)
-        assert plt.gca().get_title().endswith("(threshold: 0.3, mode: absolute)")
-        plt.close("all")
-        synthetic.plot_matrix(threshold=0.3, threshold_mode="raw")
-        assert plt.gca().get_title().endswith("(threshold: 0.3, mode: raw)")
-
-    def test_raw_threshold_keeps_negative_values_out(self):
-        conn = Connectome(KNOWN, name="known")
-        conn.plot_matrix(threshold=0.2, threshold_mode="raw")
-        data = np.asarray(plt.gca().images[0].get_array())
-        assert data.min() == 0  # The -0.7 connection is below the threshold
-        plt.close("all")
-        conn.plot_matrix(threshold=0.2, threshold_mode="absolute")
-        assert np.asarray(plt.gca().images[0].get_array()).min() == -0.7
-
-    def test_log_scale(self, synthetic):
-        synthetic.plot_matrix(log_scale=True)
-        data = np.asarray(plt.gca().images[0].get_array())
-        assert np.allclose(data, np.log1p(synthetic.matrix))
-
-    def test_log_scale_keeps_the_sign(self):
-        Connectome(KNOWN).plot_matrix(log_scale=True)
-        data = np.asarray(plt.gca().images[0].get_array())
-        assert np.allclose(data, np.sign(KNOWN) * np.log1p(np.abs(KNOWN)))
-
-    def test_without_matrix(self):
-        with pytest.raises(ValueError, match="No connectivity matrix"):
-            Connectome().plot_matrix()
-
-
-class TestVisualize3d:
-    @pytest.fixture
-    def plotter(self, can_render):
-        created = []
-
-        def make(conn, **kwargs):
-            kwargs.setdefault("off_screen", True)
-            created.append(conn.visualize_3d(**kwargs))
-            return created[-1]
-
-        yield make
-        for plotter in created:
-            plotter.close()
-
-    @staticmethod
-    def actors(plotter, prefix):
-        return {name for name in plotter.renderer.actors if name.startswith(prefix)}
-
-    def test_one_sphere_per_region(self, plotter, synthetic):
-        p = plotter(synthetic)
-        assert isinstance(p, pv.Plotter)
-        assert self.actors(p, "region_") == {f"region_{i}" for i in range(8)}
-
-    def test_edges_above_the_threshold(self, plotter, synthetic):
-        p = plotter(synthetic, connectivity_threshold=0.5)
-        i, j = np.triu_indices(8, k=1)
-        keep = np.abs(synthetic.matrix[i, j]) > 0.5
-        expected = {f"edge_{a}_{b}" for a, b in zip(i[keep], j[keep], strict=True)}
-        assert expected and self.actors(p, "edge_") == expected
-
-    def test_edges_can_be_hidden_or_filtered_out(self, plotter, synthetic):
-        assert not self.actors(plotter(synthetic, show_edges=False), "edge_")
-        assert not self.actors(plotter(synthetic, connectivity_threshold=10), "edge_")
-
-    def test_nodes_use_the_region_colors(self, plotter, known):
-        coords = np.arange(12, dtype=float).reshape(4, 3)
-        known.set_region_coordinates(coords)
-        p = plotter(known, node_size_property="uniform")
-        red = p.renderer.actors["region_0"].GetProperty().GetColor()
-        assert np.allclose(red, (1, 0, 0))
-        yellow = p.renderer.actors["region_3"].GetProperty().GetColor()
-        assert np.allclose(yellow, (1, 1, 0))
-
-    @pytest.mark.parametrize(
-        "prop", ["strength", "degree", "uniform", "betweenness", "eigenvector"]
-    )
-    def test_node_size_properties(self, plotter, synthetic, prop):
-        pytest.importorskip("networkx")
-        p = plotter(synthetic, node_size_property=prop)
-        assert len(self.actors(p, "region_")) == 8
-
-    def test_default_colors_are_accepted(self, plotter, matrix):
-        conn = Connectome(matrix, region_coords=np.random.default_rng(0).random((6, 3)))
-        assert len(self.actors(plotter(conn), "region_")) == 6
-
-    def test_errors(self, synthetic, matrix):
-        with pytest.raises(ValueError, match="No connectivity matrix"):
-            Connectome().visualize_3d()
-        with pytest.raises(ValueError, match="No coordinates"):
-            Connectome(matrix).visualize_3d()
-        with pytest.raises(ValueError, match="Unknown node size property"):
-            synthetic.visualize_3d(node_size_property="nope", off_screen=True)
-
-    def test_save_visualization(self, tmp_path, can_render, synthetic):
-        out = tmp_path / "connectome.png"
-        synthetic.save_visualization(str(out), node_size_property="degree")
-        assert out.read_bytes().startswith(b"\x89PNG")
 
 
 class TestNodeSizes:

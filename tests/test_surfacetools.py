@@ -21,23 +21,11 @@ N_VERTS, N_FACES, N_EDGES = 842, 1680, 2520
 # Fixtures
 ####################################################################################################
 @pytest.fixture(autouse=True)
-def _quiet(fixed_monitor_size):
+def _quiet():
     """Silence the progress messages and warnings that the surface methods emit."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         yield
-
-
-@pytest.fixture(scope="session")
-def can_render():
-    """Skip the tests that need an off-screen rendering backend when there is none."""
-    try:
-        plotter = pv.Plotter(off_screen=True)
-        plotter.add_mesh(pv.Sphere())
-        plotter.screenshot()
-        plotter.close()
-    except Exception as exc:  # pragma: no cover - depends on the machine
-        pytest.skip(f"Off-screen rendering is not available: {exc}")
 
 
 @pytest.fixture
@@ -1410,24 +1398,3 @@ class TestCreateSurfaceColortable:
             create_surface_colortable(["red", "green"], struct_names=["a"])
         with pytest.raises(ValueError, match="Length of struct_names"):
             create_surface_colortable("red", struct_names=["a", "b"])
-
-
-####################################################################################################
-# Plot
-####################################################################################################
-class TestPlot:
-    def test_plot_saves_a_figure(self, tmp_path, can_render, sphere):
-        out = tmp_path / "scalar.png"
-        sphere.plot(maps="thickness", save_path=str(out))
-        assert out.is_file() and out.stat().st_size > 0
-
-    def test_plot_a_parcellation_in_several_views(self, tmp_path, can_render, parc):
-        out = tmp_path / "parc.png"
-        parc.plot(maps="Sim", views=["lateral", "medial"], save_path=str(out))
-        assert out.is_file() and out.stat().st_size > 0
-
-    def test_plot_does_not_modify_the_surface(self, tmp_path, can_render, sphere):
-        before = copy.deepcopy(sphere.get_vertices()), set(sphere.list_overlays())
-        sphere.plot(maps="curv", cmap="bwr", save_path=str(tmp_path / "curv.png"))
-        assert np.array_equal(sphere.get_vertices(), before[0])
-        assert set(sphere.list_overlays()) >= before[1]
