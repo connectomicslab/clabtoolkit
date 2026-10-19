@@ -2212,6 +2212,7 @@ class TestStatsTables:
 
 
 ####################################################################################################
+@pytest.mark.skipif(os.name == "nt", reason="FreeSurfer does not run on Windows")
 class TestLaunchFreesurfer:
     @pytest.fixture
     def version(self, monkeypatch):
