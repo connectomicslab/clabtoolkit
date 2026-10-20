@@ -199,10 +199,12 @@ See `HISTORY.rst <HISTORY.rst>`_ for a detailed changelog.
 Citing
 ------
 
-If you use clabtoolkit in your work, please cite it::
+If you use clabtoolkit in your work, please cite the toolkit paper::
 
-    Alemán-Gómez, Y., et al. clabtoolkit: a toolkit for neuroimaging data processing and analysis.
-    https://github.com/connectomicslab/clabtoolkit
+    Alemán-Gómez, Y., et al. clabtoolkit. arXiv:2607.02638.
+    https://arxiv.org/abs/2607.02638
+
+The source code is available at https://github.com/connectomicslab/clabtoolkit.
 
 Credits
 -------
