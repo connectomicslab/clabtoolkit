@@ -1,83 +1,42 @@
-.. clabtoolkit documentation master file, created by
-   sphinx-quickstart on Thu Jul 11 08:31:28 2024.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
 Connectomics Lab Toolkit Documentation
 ======================================
 
+.. image:: _static/clabtoolkit_logo.png
+   :alt: clabtoolkit logo
+   :align: center
+   :width: 400
+
 A comprehensive Python toolkit for neuroimaging data processing and analysis, specifically designed for working with brain connectivity data, BIDS datasets, and various neuroimaging formats.
+
+* **Free software**: Apache Software License 2.0
+* **Source code**: https://github.com/connectomicslab/clabtoolkit
+* **Python versions**: 3.11+
+
+.. image:: _static/clabtoolkit_ecosystem.png
+   :alt: clabtoolkit ecosystem
+   :align: center
+   :width: 700
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Getting started
 
    installation
    quickstart
-   api
    examples
-   contributing
-   changelog
-
-Installation
-============
-
-Install from PyPI::
-
-    conda env create -f environment.yaml
-    conda activate clabtoolkit-env
-    pip install clabtoolkit
-
-For development installation::
-
-    git clone https://github.com/connectomicslab/clabtoolkit.git
-    cd clabtoolkit
-    pip install -e .[dev]
-
-Quick Start
-===========
-
-Surface Visualization
-=====================
-.. code-block:: python
-
-    import clabtoolkit.surfacetools as cltsurf
-
-    # Reading a surface file
-    surf_lh = cltsurf.Surface("/opt/freesurfer/subjects/fsaverage/surf/lh.pial")
-
-    # Loading scalar maps
-    surf_lh.load_scalar_maps("/opt/freesurfer/subjects/fsaverage/surf/lh.thickness", maps_names="Thickness")
-    surf_lh.plot(maps="Thickness", 
-                views="4_views", 
-                cmap= "jet", 
-                colorbar_position="right")
-
-API Reference
-=============
 
 .. toctree::
    :maxdepth: 2
-   
-   modules/bidstools
-   modules/colorstools
-   modules/connectivitytools
-   modules/dicomtools
-   modules/dwitools
-   modules/freesurfertools
-   modules/imagetools
-   modules/misctools
-   modules/morphometrytools
-   modules/networktools
-   modules/parcellationtools
-   modules/pipelinetools
-   modules/plottools
-   modules/pointstools
-   modules/qcqatools
-   modules/segmentationtools
-   modules/surfacetools
-   modules/tracttools
-   modules/visualizationtools
+   :caption: Reference
+
+   api
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Project
+
+   contributing
+   changelog
 
 Indices and tables
 ==================
