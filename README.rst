@@ -143,11 +143,11 @@ To load your own parcellation, use ``cltparc.Parcellation("parc.nii.gz", color_t
     import clabtoolkit.tracttools as clttract
 
     # Simulate a reference image and a tractogram with 5 bundles
-    cltimg.simulate_image(reference=(100, 100, 70), simulated_image="image.nii.gz")
-    tract = clttract.Tractogram.simulate_tractogram(ref_image="image.nii.gz")
+    cltimg.simulate_image(reference=(100, 100, 70), simulated_image="/tmp/image.nii.gz")
+    tract = clttract.Tractogram.simulate_tractogram(ref_image="/tmp/image.nii.gz")
 
     # Sample the image at every point of every streamline
-    tract.interpolate_on_tractogram("image.nii.gz", map_name="fa",
+    tract.interpolate_on_tractogram("/tmp/image.nii.gz", map_name="fa",
                                     storage_mode="data_per_point", interp_method="linear")
 
     print(tract.list_maps()["maps_per_point"])  # ['fa']
