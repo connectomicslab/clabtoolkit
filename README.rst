@@ -161,7 +161,7 @@ Use ``storage_mode="data_per_streamline"`` with ``reduction="mean"`` to store a 
     # Plot two views of the map and save the figure
     plotter = cltvis.BrainPlotter()
     plotter.plot(objs2plot=surf, views=["lateral", "medial"], map_names="thickness",
-                 colormaps="viridis", colorbar=True, save_path="thickness.png")
+                 colormaps="viridis", colorbar=True, save_path="/tmp/thickness.png")
 
 To plot your own data, load a surface with ``cltsurf.Surface("lh.pial")`` and its map with
 ``surf.load_scalar_maps("lh.thickness", maps_names="thickness")``.
