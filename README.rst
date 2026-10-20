@@ -30,7 +30,7 @@ A comprehensive Python toolkit for neuroimaging data processing and analysis, sp
 * **Free software**: Apache Software License 2.0
 * **Documentation**: https://clabtoolkit.readthedocs.io
 * **Source Code**: https://github.com/connectomicslab/clabtoolkit
-* **Python versions**: 3.9+
+* **Python versions**: 3.11+
 
 Installation
 ------------
@@ -45,62 +45,70 @@ For development installation::
     cd clabtoolkit
     pip install -e .[dev]
 
+Requirements and optional dependencies:
+
+* Python 3.11 or newer.
+* 3D plotting (``visualizationtools``) uses PyVista and needs either a display or off-screen
+  rendering (for example ``PYVISTA_OFF_SCREEN=true`` on a server).
+* FreeSurfer is **not** required. If it is installed and ``FREESURFER_HOME`` is set, the example
+  notebooks use its sample subjects; otherwise they run on simulated data.
+
 Features
 --------
 
-**BIDS Tools** (``clabtoolkit.bidstools``)
-    * BIDS dataset validation and manipulation
-    * Entity extraction from BIDS filenames
-    * Conversion between BIDS formats
-    * Metadata handling for neuroimaging datasets
+.. image:: docs/source/_static/clabtoolkit_ecosystem.png
+        :alt: clabtoolkit ecosystem
+        :align: center
+        :width: 700
 
-**Connectivity Tools** (``clabtoolkit.connectivitytools``)
-    * Brain connectivity matrix analysis
-    * Network-based statistics
-    * Graph theory metrics computation
-    * Connectivity visualization utilities
+Each module has a notebook in ``usage_examples`` (``examples-<module>-methods.ipynb``)
+with runnable examples.
 
-**FreeSurfer Tools** (``clabtoolkit.freesurfertools``)
-    * FreeSurfer output parsing and processing
-    * Surface-based analysis utilities
-    * Cortical thickness and morphometry tools
-    * Integration with FreeSurfer workflows
+**Data organization**
 
-**Image Processing Tools** (``clabtoolkit.imagetools``)
-    * Neuroimaging data I/O operations
-    * Image registration and transformation
-    * Quality control and preprocessing utilities
-    * Multi-modal image processing
+* **BIDS Tools** (``clabtoolkit.bidstools``): entity extraction and editing in BIDS filenames,
+  BIDS tree generation and validation, derivatives discovery.
+* **DICOM Tools** (``clabtoolkit.dicomtools``): DICOM organization, compression and metadata extraction.
+* **Pipeline Tools** (``clabtoolkit.pipelinetools``): processing-status tables and inventories of
+  derivatives, with JSON and SQLite export.
 
-**Parcellation Tools** (``clabtoolkit.parcellationtools``)
-    * Brain parcellation scheme handling
-    * Region-of-interest (ROI) extraction
-    * Atlas-based analysis tools
-    * Custom parcellation creation
+**Images and diffusion**
 
-**Surface Tools** (``clabtoolkit.surfacetools``)
-    * Surface mesh processing and analysis
-    * Cortical surface manipulation
-    * Surface-based statistics
-    * Visualization of surface data
+* **Image Tools** (``clabtoolkit.imagetools``): voxel/world conversions, cropping, morphology,
+  interpolation, 4D volume handling and image simulation.
+* **DWI Tools** (``clabtoolkit.dwitools``): volume removal by index or b-value, B0 extraction,
+  acquisition schemes from bvec/bval files, q-space visualization and tensor-derived maps (FA, MD, AD, RD).
+* **Tract Tools** (``clabtoolkit.tracttools``): the ``Tractogram`` class, with streamline filtering,
+  resampling, image interpolation along streamlines, merging and TRK/TCK conversion.
+* **Segmentation Tools** (``clabtoolkit.segmentationtools``): atlas-based parcellation and tissue
+  segmentation tables.
 
-**DWI Tools** (``clabtoolkit.dwitools``)
-    * DWI volume removal by index or b-value and B0 extraction
-    * Acquisition schemes from bvec/bval files or b-matrices
-    * q-space visualization of the scheme (window, notebook, image or HTML)
-    * Scalar maps from the tensor eigenvalues (FA, MD, AD, RD and more)
+**Surfaces and parcellations**
 
-**Quality Control Tools** (``clabtoolkit.qcqatools``)
-    * Automated quality assessment
-    * Image artifact detection
-    * Quality metrics computation
-    * Reporting and visualization
+* **Surface Tools** (``clabtoolkit.surfacetools``): the ``Surface`` class, with scalar maps, annotations,
+  volume-to-surface mapping, smoothing and export.
+* **Parcellation Tools** (``clabtoolkit.parcellationtools``): the ``Parcellation`` class, with region
+  selection by name or code, centroids, volumes, region-wise time series and functional connectivity.
+* **FreeSurfer Tools** (``clabtoolkit.freesurfertools``): FreeSurfer subjects, annotations, statistics
+  tables and transforms.
+* **Morphometry Tools** (``clabtoolkit.morphometrytools``): region-wise area, volume and Euler number,
+  and parsing of FreeSurfer statistics.
+* **Point Tools** (``clabtoolkit.pointstools``): point clouds, merging and curve smoothing.
 
-**Visualization Tools** (``clabtoolkit.visualizationtools``)
-    * Brain visualization utilities
-    * Interactive plotting capabilities
-    * Publication-ready figures
-    * Multi-modal data visualization
+**Connectivity and networks**
+
+* **Connectivity Tools** (``clabtoolkit.connectivitytools``): the ``Connectome`` class, with thresholding,
+  graph metrics, matrix plotting, 3D visualization and CSV/HDF5 I/O.
+* **Network Tools** (``clabtoolkit.networktools``): sparse-matrix conversion and connected components.
+
+**Visualization and utilities**
+
+* **Visualization Tools** (``clabtoolkit.visualizationtools``): ``BrainPlotter`` for surfaces, tractograms
+  and volumes, multi-view layouts and carpet plots.
+* **Plot Tools** (``clabtoolkit.plottools``): figure layout and font helpers for the plotting classes.
+* **Colors Tools** (``clabtoolkit.colorstools``): color validation, RGB/hex conversion and color tables.
+* **Quality Control Tools** (``clabtoolkit.qcqatools``): slice generation and HTML pages for visual quality control.
+* **Misc Tools** (``clabtoolkit.misctools``): condition-based selection and general-purpose helpers.
 
 Quick Start
 -----------
@@ -169,13 +177,8 @@ To plot your own data, load a surface with ``cltsurf.Surface("lh.pial")`` and it
 Contributing
 ------------
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
-
-1. Fork the repository
-2. Create your feature branch (``git checkout -b feature/amazing-feature``)
-3. Commit your changes (``git commit -m 'Add some amazing feature'``)
-4. Push to the branch (``git push origin feature/amazing-feature``)
-5. Open a Pull Request
+Contributions are welcome! Please open an issue first to discuss major changes. See
+`CONTRIBUTING.rst <CONTRIBUTING.rst>`_ for the full guidelines.
 
 Testing
 -------
@@ -193,10 +196,16 @@ Changelog
 
 See `HISTORY.rst <HISTORY.rst>`_ for a detailed changelog.
 
+Citing
+------
+
+If you use clabtoolkit in your work, please cite it::
+
+    Alemán-Gómez, Y., et al. clabtoolkit: a toolkit for neuroimaging data processing and analysis.
+    https://github.com/connectomicslab/clabtoolkit
+
 Credits
 -------
 
-This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypackage`_ project template.
-
-.. _Cookiecutter: https://github.com/audreyr/cookiecutter
-.. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+Developed by Yasser Alemán-Gómez and collaborators at the Connectomics Lab. See
+`AUTHORS.rst <AUTHORS.rst>`_ for the full list.
