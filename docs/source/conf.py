@@ -8,118 +8,17 @@ import sys
 
 sys.path.insert(0, os.path.abspath("../../"))
 
-# Mock imports for ReadTheDocs build - comprehensive list
-autodoc_mock_imports = [
-    # 3D Visualization
-    "pyvista",
-    "vtk",
-    "fury",
-    "trame",
-    "trame_client",
-    "trame_server",
-    "trame_vtk",
-    "trame_vuetify",
-    "trame_common",
-    "trame.app",
-    "trame.widgets",
-    "trame.html",
-    # Neuroimaging
-    "dipy",
-    "dipy.io",
-    "dipy.io.streamline",
-    "dipy.io.stateful_tractogram",
-    "dipy.segment",
-    "dipy.segment.clustering",
-    "dipy.tracking",
-    "dipy.tracking.streamline",
-    "nilearn",
-    "nilearn.plotting",
-    "nilearn.maskers",
-    "pydicom",
-    "nibabel",
-    "nibabel.streamlines",
-    "nibabel.orientations",
-    "nibabel.processing",
-    # Image Processing
-    "skimage",
-    "skimage.measure",
-    "skimage.morphology",
-    "skimage.filters",
-    "cv2",
-    # Scientific Computing - additional submodules
-    "scipy.sparse",
-    "scipy.ndimage",
-    "scipy.spatial",
-    "scipy.interpolate",
-    "scipy.optimize",
-    # Plotting and UI
-    "matplotlib",
-    "matplotlib.pyplot",
-    "matplotlib.patches",
-    "matplotlib.colors",
-    "matplotlib.figure",
-    "matplotlib.axes",
-    "seaborn",
-    "plotly",
-    "rich",
-    "rich.progress",
-    "rich.console",
-    "rich.panel",
-    "colorama",
-    "screeninfo",
-    # Interactive Computing
-    "ipython",
-    "IPython",
-    "IPython.display",
-    "jupyter",
-    "ipywidgets",
-    # GUI and System
-    "tkinter",
-    "pygame",
-    # Data Processing
-    "h5py",
-    "openpyxl",
-    "lxml",
-    "beautifulsoup4",
-    "bs4",
-    # Parallel and Performance
-    "joblib",
-    "numba",
-    "cupy",
-    "dask",
-    # Machine Learning
-    "sklearn",
-    "scikit-learn",
-    "torch",
-    "tensorflow",
-    # Network Analysis
-    "networkx",
-    "igraph",
-    # Statistical Analysis
-    "statsmodels",
-    "pingouin",
-    "patsy",
-    # Misc utilities
-    "tqdm",
-    "click",
-    "typer",
-    "pydantic",
-    "marshmallow",
-    "requests",
-    "urllib3",
-    "certifi",
-    "fsspec",
-    "pooch",
-    "duecredit",
-]
+# All the dependencies are installed when the documentation is built (pip install -e .),
+# so nothing is mocked: mocked types cannot be used in annotations such as "np.ndarray | csr_matrix".
+autodoc_mock_imports = []
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "clabtoolkit"
-copyright = "2024-2025, Yasser Alemán-Gómez"
+copyright = "2024-2026, Yasser Alemán-Gómez"
 author = "Yasser Alemán-Gómez"
-release = "0.4.0"
+release = "0.4.5"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -193,7 +92,6 @@ html_theme_options = {
     "canonical_url": "",
     "analytics_id": "",
     "logo_only": False,
-    "display_version": True,
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,
     "vcs_pageview_mode": "",
