@@ -30,6 +30,9 @@ Loading:
 - ``load_from_arrays()``: Build a surface from vertex and face arrays
 - ``load_from_mesh()``: Build a surface from an existing mesh
 - ``is_loaded()``: Check whether surface data is loaded
+- ``simulate_surface()``: Class method that creates a simulated surface (sphere, torus...) with simulated maps
+- ``create_mesh_from_arrays()``: Create a PyVista mesh from vertex and face arrays
+- ``get_info()``: Display and return the surface information
 
 Geometry:
 - ``get_vertices()`` / ``get_faces()``: Access the mesh arrays
@@ -37,9 +40,14 @@ Geometry:
 - ``compute_normals()`` / ``get_normals()``: Surface normals
 - ``separate_mesh_components()``: Split the mesh into connected components
 - ``add_surface()``: Merge another surface into this one
+- ``get_bounding_box()``: Axis-aligned bounding box of the mesh
+- ``apply_affine()`` / ``apply_cras()``: Transform the mesh
+- ``smooth()``: Taubin smoothing of the mesh
 
 Overlays and Annotations:
 - ``load_scalar_maps()``: Load and attach scalar data to the surface
+- ``simulate_map()``: Simulate a vertex-wise map and store it as an overlay
+- ``export_map()``: Export an overlay as a vertex-wise map or an annotation file
 - ``load_annotation()``: Load a parcellation annotation overlay
 - ``list_overlays()``: List the attached overlays
 - ``set_active_overlay()`` / ``remove_overlay()``: Manage the active overlay
@@ -47,6 +55,7 @@ Overlays and Annotations:
 - ``get_region_vertices()``: Get the vertices of a named region
 - ``get_vertexwise_colors()`` / ``prepare_colors()``: Compute per-vertex colours
 - ``map_volume_to_surface()``: Project 3D/4D volumetric data onto the mesh
+- ``simulate_image()``: Simulate a NIfTI volume covering the bounding box of the surface
 
 Visualization and Export:
 - ``plot()``: Interactive 3D visualization
@@ -124,9 +133,9 @@ Volume-to-surface mapping::
     # Project 4D functional data, storing it as a named overlay
     functional_values = surface.map_volume_to_surface(
         image="/path/to/functional_4d.nii.gz",
-        method="custom",
+        method="clabtoolkit",
         interp_method="linear",
-        maps="activation"
+        overlay_name="activation"
     )
 
 Export::

@@ -46,6 +46,7 @@ Utility Functions
 - ``network_metrics_to_table()``: Compute network metrics from a connectivity matrix
 - ``stats_from_vector()``: Compute summary statistics from a vector
 - ``get_units()``: Get the measurement units for a list of metrics
+- ``convert_from_mm()``: Convert areas (mm²) or volumes (mm³) to the units defined in the configuration file
 
 Common Usage Examples
 ---------------------

@@ -34,6 +34,10 @@ Accessors:
 - ``get_space_id()`` / ``set_space_id()``: Space identifier
 - ``get_parcellation_id()``: Parcellation identifier
 - ``get_info()``: Summary information
+- ``get_regions_info()``: Name, colour, voxel count and volume of the regions
+- ``names_to_labels()`` / ``labels_to_names()``: Convert between region names and codes
+- ``get_voxels_by_code()`` / ``get_voxels_by_name()``: Voxel coordinates of the regions
+- ``simulate_parcellation()``: Class method that simulates a brain-like parcellation
 
 Region Selection:
 - ``keep_by_name()``: Keep only the named regions
@@ -52,7 +56,9 @@ Analysis:
 - ``get_regionwise_timeseries()``: Extract regionwise time series from 4D data
 - ``compute_fc_matrix()``: Compute a functional connectivity matrix
 - ``surface_extraction()``: Extract surfaces from the parcellation
-- ``prepare_for_tracking()``: Prepare the parcellation for tractography
+- ``prepare_for_connectomics()``: Merge cortical white matter into the cortical regions to prepare the parcellation for connectomics
+- ``merge_ctx_wm()``: Merge cortical gray matter and its adjacent white matter
+- ``create_5tt()``: Create a 5-tissue-type image
 
 Colour Tables and I/O:
 - ``load_colortable()``: Load and attach a colour lookup table
@@ -62,7 +68,8 @@ Colour Tables and I/O:
 
 Maintenance:
 - ``adjust_values()``: Adjust the parcellation values
-- ``replace_values()``: Replace specific values
+- ``replace_labels()`` / ``replace_names()``: Replace region codes or names, including group replacements
+- ``relabel_regions()`` / ``rename_regions()``: Relabel or rename regions with a dictionary
 - ``sort_index()``: Sort the region index
 - ``rearrange()``: Rearrange the region codes
 - ``harmonize()``: Harmonize the parcellation against a reference

@@ -66,6 +66,7 @@ Validation
 
 Palette Generation
 ~~~~~~~~~~~~~~~~~~
+- ``generate_colortable()``: Create a colour table with random colours for testing
 - ``create_random_colors()``: Generate colours randomly or from a matplotlib colormap
 - ``create_distinguishable_colors()``: Generate maximally distinguishable colours by perceptual spacing
 - ``get_predefined_distinguishable_colors()``: Retrieve a predefined distinguishable palette

@@ -6,74 +6,75 @@ plottools module
    :undoc-members:
    :show-inheritance:
 
-The plottools module provides low-level plotting infrastructure and layout calculation utilities that support visualization across the clabtoolkit package.
+The plottools module contains the layout, screen and font helpers used by the plotting classes of clabtoolkit (for example ``BrainPlotter``). They can also be used on their own to size and arrange Matplotlib or PyVista figures.
 
 Key Features
 ------------
-- Dynamic subplot grid calculation
-- Screen size detection and multi-monitor support
-- Optimal layout computation for complex visualizations
-- Monitor resolution detection
-- Flexible plotting utilities
+- Screen and monitor size detection, and DPI estimation
+- Subplot grid computation that matches the screen proportions
+- Ready-to-use figures with proportional subplots
+- Font sizes scaled to the plot size, the monitor and the colorbar layout
+- Random points inside a sphere, used to simulate region coordinates
 
 Main Functions
 --------------
 
-Layout Calculation
-~~~~~~~~~~~~~~~~~~
-- ``calculate_optimal_subplots_grid()``: Compute optimal subplot arrangements
-- ``calculate_subplot_layout()``: Calculate subplot layout parameters
-- ``create_proportional_subplots()``: Create proportional subplot grids
-- ``get_screen_size()``: Detect screen dimensions for optimal figure sizing
-- ``get_current_monitor_size()``: Get current monitor dimensions
+Screen
+~~~~~~
+- ``get_screen_size()``, ``get_current_monitor_size()``: size in pixels
+- ``estimate_monitor_dpi(screen_width, screen_height)``: DPI estimated from the resolution
+
+Layout
+~~~~~~
+- ``calculate_optimal_subplots_grid(num_views)``: grid dimensions and cell positions
+- ``calculate_subplot_layout(n_plots, screen_width=None, screen_height=None, target_aspect_ratio=None)``: rows, columns and the aspect ratio used
+- ``create_proportional_subplots(n_plots, figsize_base=4, **layout_kwargs)``: figure, axes and layout information
+
+Fonts
+~~~~~
+- ``calculate_font_sizes(plot_width, plot_height, ...)``: font sizes (title, axis labels, ticks, colorbar) for Matplotlib
+- ``get_pyvista_fonts(plot_width, plot_height, ...)``: the same sizes as integers for PyVista
+
+Utilities
+~~~~~~~~~
+- ``generate_spherical_coords(n_regions, rng, radius=50.0)``: random points inside a sphere
 
 Common Usage Examples
 ---------------------
 
-Dynamic subplot layout::
+Subplot layout::
 
-    from clabtoolkit.plottools import calculate_optimal_subplots_grid
-    import matplotlib.pyplot as plt
-    
-    # Calculate optimal grid for 8 subplots
-    rows, cols = calculate_optimal_subplots_grid(8)
-    
-    fig, axes = plt.subplots(rows, cols, figsize=(12, 8))
-    
-    # Use calculated layout
+    from clabtoolkit.plottools import calculate_optimal_subplots_grid, calculate_subplot_layout
+
+    # Grid for 8 views: [rows, cols] and the (row, col) position of every view
+    (n_rows, n_cols), positions = calculate_optimal_subplots_grid(8)  # [2, 4]
+
+    # Layout that follows the proportions of a 1920x1080 screen
+    n_rows, n_cols, aspect = calculate_subplot_layout(8, screen_width=1920, screen_height=1080)
+    # 2, 4, 1.78
+
+Figures with proportional subplots::
+
+    from clabtoolkit.plottools import create_proportional_subplots
+
+    fig, axes, layout = create_proportional_subplots(8, figsize_base=3)
+
     for i, ax in enumerate(axes.flat):
-        if i < 8:  # Only plot actual data
+        if i < 8:
             ax.plot([1, 2, 3], [1, 4, 2])
-        else:  # Hide unused subplots
-            ax.set_visible(False)
+        else:
+            ax.set_visible(False)  # hide the unused cells
 
-Screen-aware plotting::
+Screen-aware sizes and fonts::
 
-    # Get screen dimensions for optimal figure sizing
+    from clabtoolkit.plottools import get_screen_size, calculate_font_sizes, get_pyvista_fonts
+
     screen_width, screen_height = get_screen_size()
-    
-    # Calculate figure size as proportion of screen
-    fig_width = screen_width * 0.8 / 100  # 80% of screen width in inches
-    fig_height = screen_height * 0.6 / 100  # 60% of screen height in inches
-    
-    plt.figure(figsize=(fig_width, fig_height))
 
-Proportional subplot creation::
+    fonts = calculate_font_sizes(800, 600, screen_width=1920, screen_height=1080,
+                                 auto_detect_monitor=False)
+    print(fonts["title"], fonts["tick_labels"])  # 28.0 20.0
 
-    # Create proportional subplots based on data
-    proportions = [2, 1, 3]  # Relative sizes
-    fig, axes = create_proportional_subplots(
-        proportions=proportions,
-        orientation='horizontal',
-        figsize=(12, 6)
-    )
-    
-    # Get current monitor size for optimal display
-    monitor_width, monitor_height = get_current_monitor_size()
-    print(f"Monitor: {monitor_width}x{monitor_height}")
-    
-    # Calculate layout for multiple plots
-    layout = calculate_subplot_layout(
-        n_plots=8,
-        aspect_ratio=1.5
-    )
+    # Integer sizes for PyVista
+    pv_fonts = get_pyvista_fonts(800, 600, screen_width=1920, screen_height=1080,
+                                 auto_detect_monitor=False)

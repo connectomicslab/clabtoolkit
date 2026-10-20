@@ -6,64 +6,66 @@ networktools module
    :undoc-members:
    :show-inheritance:
 
-The networktools module provides graph analysis and network theory tools specifically designed for brain connectivity and mesh-based analysis.
+The networktools module provides sparse graph tools for brain connectivity matrices and surface meshes. All the functions work with ``scipy.sparse`` CSR matrices, which keeps large graphs light in memory.
 
 Key Features
 ------------
-- Graph representation creation from brain meshes
-- Sparse matrix operations for large-scale networks  
-- Connectivity analysis utilities
-- Network topology analysis
-- Efficient storage and manipulation of large graphs
-- Integration with scipy.sparse for performance
+- Convert dense adjacency matrices, edge lists and triangulated meshes to CSR graphs
+- Find the connected components of a graph, or directly of an edge list
+- Support for symmetric (undirected) graphs and weighted edges
 
 Main Functions
 --------------
 
 Graph Conversion
 ~~~~~~~~~~~~~~~~
-- ``triangulated_mesh_to_csr()``: Convert triangulated meshes to compressed sparse row format
-- ``adjacency_matrix_to_csr()``: Convert adjacency matrices to sparse format
-- ``edges_to_csr()``: Convert edge lists to compressed sparse row format
+- ``adjacency_matrix_to_csr(adj_matrix)``: dense adjacency matrix to CSR
+- ``triangulated_mesh_to_csr(faces, n_vertices=None)``: mesh faces to a vertex adjacency graph
+- ``edges_to_csr(edges, edge_values=None, n_vertices=None, symmetric=True)``: edge list (with optional values) to CSR
+
+Connected Components
+~~~~~~~~~~~~~~~~~~~~
+- ``connected_components(csr_graph)``: components of a CSR graph
+- ``edges_to_components(edges)``: components of an edge array with arbitrary vertex indices
+
+Both functions return the number of components, the component label of each vertex and a dictionary with the size of each component.
 
 Common Usage Examples
 ---------------------
 
-Converting mesh to graph::
+Converting a mesh to a graph::
 
+    import numpy as np
     from clabtoolkit.networktools import triangulated_mesh_to_csr
-    import nibabel as nib
-    
-    # Load surface mesh
-    vertices, faces = nib.freesurfer.read_geometry("lh.pial")
-    
-    # Convert to sparse graph representation
-    graph_csr = triangulated_mesh_to_csr(vertices, faces)
-    
-    print(f"Graph shape: {graph_csr.shape}")
-    print(f"Number of edges: {graph_csr.nnz}")
+
+    # Two triangles sharing an edge (faces only: the vertex coordinates are not needed)
+    faces = np.array([[0, 1, 2], [1, 2, 3]])
+    graph = triangulated_mesh_to_csr(faces)
+
+    print(graph.shape)  # (4, 4)
+    print(graph.nnz)    # 10 non-zero entries
+
+    # With a FreeSurfer surface
+    # import nibabel as nib
+    # vertices, faces = nib.freesurfer.read_geometry("lh.pial")
+    # graph = triangulated_mesh_to_csr(faces, n_vertices=len(vertices))
 
 Working with connectivity matrices::
 
     from clabtoolkit.networktools import adjacency_matrix_to_csr
-    import numpy as np
-    
-    # Convert dense connectivity matrix to sparse format
-    connectivity_matrix = np.random.rand(100, 100)
-    connectivity_matrix = (connectivity_matrix + connectivity_matrix.T) / 2  # Make symmetric
-    
-    # Convert to sparse format for efficient processing
-    sparse_conn = adjacency_matrix_to_csr(connectivity_matrix, threshold=0.1)
-    
-    # Analyze network properties
-    print(f"Network density: {sparse_conn.nnz / (sparse_conn.shape[0]**2):.3f}")
 
-Edge list conversion::
+    conn = np.random.rand(100, 100)
+    conn = (conn + conn.T) / 2  # make it symmetric
+    sparse_conn = adjacency_matrix_to_csr(conn)
 
-    # Convert edge list to sparse matrix
-    edges = [[0, 1], [1, 2], [2, 0]]  # Triangle connectivity
-    sparse_matrix = edges_to_csr(edges, n_nodes=3)
-    
-    print(f"Graph shape: {sparse_matrix.shape}")
-    print(f"Number of edges: {sparse_matrix.nnz}")
-    print(f"Network density: {sparse_matrix.nnz / (sparse_matrix.shape[0]**2):.3f}")
+Edge lists and connected components::
+
+    from clabtoolkit.networktools import edges_to_csr, connected_components
+
+    # A triangle (0, 1, 2) and a separate edge (3, 4)
+    edges = np.array([[0, 1], [1, 2], [2, 0], [3, 4]])
+    graph = edges_to_csr(edges, n_vertices=5)
+
+    n_components, labels, sizes = connected_components(graph, verbose=False)
+    print(n_components)  # 2
+    print(sizes)         # {0: 3, 1: 2}

@@ -30,6 +30,7 @@ Loading and Saving:
 - ``create_from_data()``: Build an annotation from codes, a colour table and names
 - ``save_annotation()``: Save the annotation
 - ``is_loaded()``: Check whether annotation data is loaded
+- ``simulate_annotation()``: Class method that splits a surface into simulated regions
 
 Region Information:
 - ``get_info()``: Summary information about the annotation
@@ -41,6 +42,7 @@ Parcellation Processing:
 - ``correct_vertexwise_parcellation()``: Fix unlabeled vertices in a parcellation
 - ``fill_parcellation()``: Fill a parcellation using a label and surface file
 - ``group_into_lobes()``: Group regions into anatomical lobes
+- ``complete_table()``: Add a colour table entry for every vertex code missing from the table
 - ``map_values()``: Map regional values onto the annotation
 
 Conversion and Export:
@@ -58,7 +60,8 @@ Key Methods:
 - ``launch_freesurfer()``: Run FreeSurfer processing
 - ``set_freesurfer_directory()``: Point the object at a FreeSurfer directory
 - ``get_cras()``: Extract the CRAS coordinates for the subject
-- ``get_surface()`` / ``get_annotation()`` / ``get_vertexwise_map()``: Retrieve subject data
+- ``get_surface()`` / ``get_annotation()`` / ``get_map()``: Retrieve subject data
+- ``get_hemi_dicts()``: Dictionaries with the hemisphere-specific file paths of a subject
 - ``create_stats_table()``: Build a stats table for the subject
 - ``volume_morpho()``: Compute volume-based morphometry
 - ``surface_hemi_morpho()``: Compute surface morphometry for one hemisphere

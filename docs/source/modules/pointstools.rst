@@ -40,7 +40,7 @@ Key Methods:
 - ``get_pointwise_colors()``: Compute per-point colors for an overlay
 - ``list_maps()``: List the available scalar maps
 - ``to_dataframe()``: Convert the point cloud to a pandas DataFrame
-- ``explore_pointcloud()``: Print a comprehensive summary
+- ``get_info()``: Print a comprehensive summary
 - ``plot()``: Render the point cloud with an optional overlay
 
 Main Functions
@@ -61,7 +61,7 @@ Basic construction and inspection::
     pc = PointCloud(points=coords, name="seeds")
 
     # Print a full summary
-    pc.explore_pointcloud()
+    pc.get_info()
 
     # Geometry
     bounds = pc.get_bounds()
@@ -101,10 +101,10 @@ Export and merging::
     df = pc.to_dataframe(include_data=True)
 
     # Save to file
-    pc.save("/path/to/points.tsv")
+    pc.save("/path/to/points.npy", format="npy")
 
     # Reload later
-    pc_reloaded = PointCloud.load("/path/to/points.tsv")
+    pc_reloaded = PointCloud.load("/path/to/points.npy", format="npy")
 
     # Merge several point clouds
     merged = merge_pointclouds([pc_a, pc_b])

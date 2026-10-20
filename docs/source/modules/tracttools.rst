@@ -10,11 +10,12 @@ The tracttools module provides tractogram loading, manipulation, clustering and 
 
 Key Features
 ------------
-- Load tractograms from file or from nibabel Tractogram objects
+- Load tractograms from file or from nibabel Tractogram objects, or simulate one inside the space of a reference image
 - Per-point and per-streamline scalar maps, with conversion between the two
 - Streamline resampling, smoothing and reduction
 - Bundle clustering with QuickBundles/QuickBundlesX and centroid extraction
 - Scalar interpolation from NIfTI volumes onto streamlines
+- Selection of streamlines that touch a mask or connect pairs of regions of a parcellation
 - Colortable support and 3D rendering via PyVista
 - TRK/TCK format conversion
 
@@ -33,6 +34,9 @@ Key Methods:
 - ``smooth_streamlines()``: Smooth streamlines with a Gaussian filter
 - ``reduce_streamlines()``: Randomly reduce the streamline count by a percentage
 - ``filter()``: Filter streamlines by length
+- ``filter_by_mask()``: Select streamlines touching a mask, or connecting pairs of regions of a parcellation
+- ``split()``: Split the tractogram into one tractogram per value of a per-streamline map
+- ``apply_affine()``: Apply an affine transformation to all the streamlines
 - ``compute_streamline_lengths()``: Compute the length of every streamline
 - ``compute_centroids()``: Cluster streamlines and extract bundle centroids
 - ``label_streamlines_by_clusters()``: Label each streamline with its cluster ID
@@ -45,7 +49,10 @@ Key Methods:
 - ``list_maps()``: List the available scalar maps
 - ``get_maps_info()``: Retrieve information about the stored scalar maps
 - ``get_tractogram_info()``: Retrieve basic tractogram information
-- ``explore_tractogram()``: Print a comprehensive summary of the tractogram
+- ``get_info()``: Print a comprehensive summary of the tractogram
+- ``set_color()``: Set the color used to display the whole tractogram
+- ``get_pointwise_colors()``: Compute the color of every point from a scalar map
+- ``simulate_tractogram()``: Class method that simulates bundles inside the space of a reference image
 - ``save_tractogram()``: Save the tractogram to .trk or .tck
 - ``plot()``: Render the tractogram with an optional scalar overlay
 
@@ -59,6 +66,7 @@ Format Conversion
 
 Streamline Utilities
 ~~~~~~~~~~~~~~~~~~~~
+- ``simulate_tractogram()``: Function version of ``Tractogram.simulate_tractogram``
 - ``resample_streamlines()``: Resample a raw streamline collection to a fixed number of points
 - ``interpolate_streamline_values()``: Interpolate values between streamline coordinates
 - ``merge_tractograms()``: Merge multiple tractograms into a single tractogram
@@ -73,8 +81,11 @@ Basic loading and inspection::
     # Load a tractogram from file
     tract = Tractogram("/path/to/tractogram.trk")
 
+    # Or simulate 5 bundles inside the space of a reference image
+    # tract = Tractogram.simulate_tractogram(ref_image="/path/to/image.nii.gz", bundle_length=150)
+
     # Print a full summary of streamlines, maps and geometry
-    tract.explore_tractogram()
+    tract.get_info()
 
     # Basic information and available scalar maps
     info = tract.get_tractogram_info()
@@ -91,8 +102,11 @@ Resampling and filtering::
     # Smooth streamline geometry
     tract.smooth_streamlines(iterations=5, sigma=1.0)
 
-    # Keep only the longer streamlines
+    # Keep only the longer streamlines (the tractogram is modified in place)
     tract.filter(condition="length > 50")
+
+    # Keep the streamlines that touch a mask (or connect region pairs of a parcellation)
+    # selected = tract.filter_by_mask("/path/to/mask.nii.gz")
 
     # Randomly keep half of the streamlines
     tract.reduce_streamlines(percentage=50)
@@ -141,7 +155,7 @@ Visualization and saving::
         maps="fa",
         cmap="hot",
         views=["lateral"],
-        plot_style="tube",
+        as_tube=True,
         show_colorbar=True,
         colorbar_title="FA"
     )
