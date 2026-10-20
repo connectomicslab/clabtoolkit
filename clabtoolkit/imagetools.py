@@ -1452,11 +1452,11 @@ def merge_to_4d(
     as follows:
 
     - **.json**: merged whenever *all* inputs have an associated JSON file,
-    regardless of modality. Fields identical across files are kept as
-    scalars; differing fields use the value from the first file.
+      regardless of modality. Fields identical across files are kept as
+      scalars; differing fields use the value from the first file.
     - **.bvec / .bval**: concatenated when *all* inputs have both files
-    (DWI detection). The number of directions is cross-checked against
-    the volume count of each NIfTI.
+      (DWI detection). The number of directions is cross-checked against
+      the volume count of each NIfTI.
 
     Parameters
     ----------
@@ -1485,11 +1485,11 @@ def merge_to_4d(
         contain:
 
         - ``"bvecs"`` : np.ndarray, shape (3, N) — concatenated gradient
-            directions (DWI only).
+          directions (DWI only).
         - ``"bvals"`` : np.ndarray, shape (N,) — concatenated b-values
-            (DWI only).
+          (DWI only).
         - ``"json"``  : dict — merged JSON sidecar (all modalities with
-            JSON sidecars).
+          JSON sidecars).
 
     Raises
     ------
@@ -2062,15 +2062,16 @@ def simulate_image(
     reference : str, Path, nibabel.Nifti1Image, Parcellation, tuple, list, or np.ndarray
         Source used to define the volume's mask, shape, and (unless overridden by
         `affine`) affine. Can be:
+
         - str or Path: file path to a NIfTI image, loaded and used as a mask.
         - nibabel.Nifti1Image: used directly as a mask.
         - Parcellation: its `.data` is used as the mask and its `.affine` as the
-        affine (unless `affine` is explicitly given).
+          affine (unless `affine` is explicitly given).
         - tuple, list, or 1-D np.ndarray of length 3 or 4: a volume *shape*
-        rather than real data - (dimx, dimy, dimz) or (dimx, dimy, dimz,
-        n_volumes). Since there is no real anatomy to mask, every voxel is
-        treated as "in mask". A length-4 shape implies `n_volumes` from its
-        last value unless `n_volumes` is explicitly given (see below).
+          rather than real data - (dimx, dimy, dimz) or (dimx, dimy, dimz,
+          n_volumes). Since there is no real anatomy to mask, every voxel is
+          treated as "in mask". A length-4 shape implies `n_volumes` from its
+          last value unless `n_volumes` is explicitly given (see below).
 
         If the reference itself is 4D (a real 4D file, Nifti1Image, or
         Parcellation whose `.data` happens to be 4D), the mask used is
@@ -2094,16 +2095,18 @@ def simulate_image(
 
     n_volumes : int, optional
         Number of volumes in the output image:
+
         - If n_volumes == 1: creates a 3D image, always collapsed to pure
-        spatial dimensions even if the reference itself was 4D.
+          spatial dimensions even if the reference itself was 4D.
         - If n_volumes > 1: creates a 4D image with n_volumes timepoints.
         - If None (default): uses 1, unless `reference` is a length-4 shape,
-        in which case its last value is used instead. If both a length-4
-        shape and an explicit n_volumes are given and they disagree, the
-        explicit n_volumes wins and a warning is raised.
+          in which case its last value is used instead. If both a length-4
+          shape and an explicit n_volumes are given and they disagree, the
+          explicit n_volumes wins and a warning is raised.
 
     distribution : str, default='normal'
         Statistical distribution for random value generation. Supported options:
+
         - 'normal': Normal (Gaussian) distribution
         - 'uniform': Uniform distribution
         - 'exponential': Exponential distribution
@@ -2113,6 +2116,7 @@ def simulate_image(
 
     **dist_params : dict
         Distribution-specific parameters:
+
         - For 'normal': loc (mean, default=0), scale (std, default=1)
         - For 'uniform': low (default=0), high (default=1)
         - For 'exponential': scale (default=1)
@@ -2181,12 +2185,12 @@ def simulate_image(
     - Only voxels with non-zero values in the reference will contain random values
     - All other voxels remain zero in the output
     - When reference is a real image/Parcellation, the function preserves its
-    affine transformation and header, unless `affine` is explicitly given
+      affine transformation and header, unless `affine` is explicitly given
     - When reference is a shape, there is no real header/anatomy to preserve;
-    a default header is generated and every voxel is treated as "in mask"
+      a default header is generated and every voxel is treated as "in mask"
     - The output is always shaped from reference's spatial (x, y, z) dimensions
-    plus n_volumes - a 4D reference does not force a 4D output, and a 3D
-    reference does not prevent a multi-volume output
+      plus n_volumes - a 4D reference does not force a 4D output, and a 3D
+      reference does not prevent a multi-volume output
     - Output file extension should be .nii or .nii.gz
     """
 
@@ -2853,6 +2857,7 @@ def extract_centroid_from_volume(
     -------
     tuple
         A tuple containing:
+
         - Centroid coordinates as a numpy array of shape (3,) in voxel space
           (NaN if the volume is empty). Use vox2mm to convert them to mm.
         - Number of non-zero voxels in the original volume (before closing
@@ -3106,7 +3111,7 @@ def compute_statistics_at_nonzero_voxels(
     Compute the value of certain statistic from data_array at positions where mask_array is non-zero.
 
     Parameters
-    -----------
+    ----------
     mask_array : numpy.ndarray
         3D array with dimensions (N, M, P) - used to find non-zero positions
         Non-zero positions in this array indicate where to compute the statistic in data_array.
@@ -3121,13 +3126,14 @@ def compute_statistics_at_nonzero_voxels(
         Supported metrics: "mean", "std", "var", "median", "sum", "max", "min".
 
     Returns
-    --------
+    -------
     numpy.ndarray or float
+
         - If data_array is 3D: returns a single float value
         - If data_array is 4D: returns a 1D array of length T
 
     Raises
-    -------
+    ------
     ValueError
         If data_array is not 3D or 4D.
 
@@ -3139,12 +3145,12 @@ def compute_statistics_at_nonzero_voxels(
     - The function extracts values from data_array at positions where mask_array is non-zero.
     - For 3D data_array, it computes the mean of all selected values.
     - For 4D data_array, it computes the mean across non-zero positions for each time point,
-    returning a 1D array with the mean for each time point.
+      returning a 1D array with the mean for each time point.
     - If mask_array has no non-zero positions, the function will return NaN for 3D data_array
-    or an array of NaNs for 4D data_array.
+      or an array of NaNs for 4D data_array.
 
     Examples
-    ---------
+    --------
     >>> # Example with 3D data_array
     >>> mask = np.array([[[0, 1], [0, 0]],
     ...                  [[1, 0], [0, 1]]])
@@ -3330,7 +3336,7 @@ def region_growing(
     iparc : np.ndarray
         3D parcellation array with labeled (>0) and unlabeled (0) voxels.
 
-    mask : np.ndarray or np.bool_
+    mask : np.ndarray or bool array
         3D binary mask defining the region where growing should occur.
 
     neighborhood : str, optional
@@ -3354,6 +3360,7 @@ def region_growing(
     Notes
     -----
     The algorithm works iteratively:
+
     1. Identifies unlabeled voxels with at least `min_neighbors` labeled
        neighbors.
     2. For each candidate voxel, finds most frequent label among neighbors.
@@ -3366,6 +3373,7 @@ def region_growing(
     those voxels stay at 0.
 
     Particularly useful for:
+
     - Filling gaps in atlas-based parcellations
     - Completing partial segmentations
     - Correcting registration artifacts

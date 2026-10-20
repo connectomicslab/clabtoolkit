@@ -592,6 +592,7 @@ def calculate_font_sizes(
 
     colorbar_orientation : {'vertical', 'horizontal'}, optional
         Orientation of the colorbar, by default 'vertical'.
+
         - 'vertical': Colorbar positioned to the right/left of the plot
         - 'horizontal': Colorbar positioned above/below the plot
 
@@ -615,22 +616,22 @@ def calculate_font_sizes(
         Dictionary containing font sizes for different plot elements:
 
         - 'title' : float
-            Font size for the main plot title (8-28 pt range)
+          Font size for the main plot title (8-28 pt range)
 
         - 'axis_labels' : float
-            Font size for axis labels (6-20 pt range)
+          Font size for axis labels (6-20 pt range)
 
         - 'tick_labels' : float
-            Font size for axis tick labels (6-20 pt range)
+          Font size for axis tick labels (6-20 pt range)
 
         - 'colorbar_title' : float
-            Font size for colorbar title (6-16 pt range, orientation-dependent)
+          Font size for colorbar title (6-16 pt range, orientation-dependent)
 
         - 'colorbar_ticks' : float
-            Font size for colorbar tick labels (5-12 pt range, orientation-dependent)
+          Font size for colorbar tick labels (5-12 pt range, orientation-dependent)
 
         - '_monitor_info' : dict
-            Debug information about monitor detection and DPI calculation
+          Debug information about monitor detection and DPI calculation
 
         All font sizes are rounded to 1 decimal place.
 
@@ -712,17 +713,21 @@ def calculate_font_sizes(
     4. Combines with plot area scaling for final font sizes
 
     Font scaling algorithm:
+
     1. Calculate plot area scaling factor relative to 6×4 inch reference
     2. Calculate monitor DPI scaling factor relative to 96 DPI baseline
     3. Scale colorbar fonts based on constraining dimension:
-        - Vertical colorbars: limited by width → scale by width/0.5"
-        - Horizontal colorbars: limited by height → scale by height/0.4"
+
+       - Vertical colorbars: limited by width → scale by width/0.5"
+       - Horizontal colorbars: limited by height → scale by height/0.4"
+
     4. Apply orientation-specific bounds to ensure readability
 
     The function prioritizes readability over exact proportional scaling, applying
     reasonable minimum and maximum font sizes for each element type.
 
     Monitor configurations used for DPI estimation:
+
     - 1920×1080: 82-147 DPI (depending on screen size)
     - 2560×1440: 92-196 DPI
     - 3840×2160: 103-294 DPI

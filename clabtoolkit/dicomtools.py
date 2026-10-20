@@ -1022,9 +1022,10 @@ def compress_dicom_session(
 
     subj_ids : str, list of str, or None, optional
         Subject IDs to be considered. Can be:
+
         - None: consider all subjects in the directory (default)
         - str: path to a text file containing subject IDs (one per line),
-                or a comma-separated list of subject IDs
+          or a comma-separated list of subject IDs
         - list of str: explicit list of subject IDs
 
     remove_original : bool, optional, default=True

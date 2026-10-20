@@ -4075,6 +4075,7 @@ class Surface:
         ----------
         cras : str, Path, np.ndarray, tuple or list
             CRAS transformation to apply. It can be:
+
             - str or Path: path to a FreeSurfer ``.lta`` file (e.g.
               ``mri/transforms/talairach.lta``) from which the coordinates are read.
             - tuple, list or np.ndarray of 3 values: the (x, y, z) offset itself.
@@ -4733,6 +4734,7 @@ def merge_surfaces(
 
     surfaces : List[Union[str, Path, Surface]]
         List of surface meshes to merge. Each item can be:
+
         - Surface object
         - File path (str or Path) to a surface file
 
@@ -4740,12 +4742,13 @@ def merge_surfaces(
         Colortable dictionary defining names and colors for each surface.
         If None, a default colortable with distinguishable colors is created.
 
-        The dictionary should have the following structure:
-        {
-            "names": List[str],  # List of surface names
-            "color_table": np.ndarray,  # Nx5 array of RGBA colors and IDs
-            "lookup_table": None  # Placeholder for future use
-        }
+        The dictionary should have the following structure::
+
+            {
+                "names": List[str],  # List of surface names
+                "color_table": np.ndarray,  # Nx5 array of RGBA colors and IDs
+                "lookup_table": None  # Placeholder for future use
+            }
 
     map_name : str, default "surf_id"
         Name of the overlay map to store surface IDs in the merged surface.
@@ -4875,6 +4878,7 @@ def create_surface_colortable(
     ----------
     colors : str, List[str], or np.ndarray
         Colors for each region. Can be:
+
         - String: Single color name or hex code (applied to all regions)
         - List of strings: Color names or hex codes for each region
         - numpy.ndarray: Nx3 or Nx4 array of RGB(A) values (0-255)
@@ -4892,29 +4896,31 @@ def create_surface_colortable(
     -------
     dict
         Dictionary with keys:
+
         - 'struct_names': List of region names
         - 'color_table': Nx4 numpy array of RGBA colors (0-255)
         - 'lookup_table': None (placeholder for future use)
 
-        Raises
-        ------
-        ValueError
+    Raises
+    ------
+    ValueError
         If alpha is out of range or struct_names length does not match colors.
 
-        Examples
-        --------
-        Create a colortable with specified colors and names:
-        >>> colors = array([[255,   0,   0, 204],
-                            [  0, 255,   0, 204],
-                            [  0,   0, 255, 204]])
-        >>> names = ['Region A', 'Region B', 'Region C']
-        >>> colortable = create_surface_colortable(colors, struct_names=names, alpha=0.8)
-        >>> print(colortable)
-        {'struct_names': ['Region A', 'Region B', 'Region C'],
-        'color_table': array([[255,   0,   0, 204],
-                            [  0, 255,   0, 204],
-                            [  0,   0, 255, 204]]),
-        'lookup_table': None}
+    Examples
+    --------
+    Create a colortable with specified colors and names:
+
+    >>> colors = array([[255,   0,   0, 204],
+    ...                 [  0, 255,   0, 204],
+    ...                 [  0,   0, 255, 204]])
+    >>> names = ['Region A', 'Region B', 'Region C']
+    >>> colortable = create_surface_colortable(colors, struct_names=names, alpha=0.8)
+    >>> print(colortable)
+    {'struct_names': ['Region A', 'Region B', 'Region C'],
+    'color_table': array([[255,   0,   0, 204],
+                        [  0, 255,   0, 204],
+                        [  0,   0, 255, 204]]),
+    'lookup_table': None}
 
     """
 

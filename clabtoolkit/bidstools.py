@@ -1448,7 +1448,7 @@ def get_bids_database_table(
     containing all BIDS entities (subject, session, acquisition, etc.) and file counts.
     The output table provides an overview of the dataset composition, making it easy to
     identify data availability, missing files, and dataset structure. Only files located
-    within subject folders (sub-*) directly under root_dir are considered — each subject's
+    within subject folders (``sub-*``) directly under root_dir are considered — each subject's
     directory is scanned independently, so top-level folders such as derivatives/, code/,
     or sourcedata/ are never picked up, even if they exist inside root_dir.
 
@@ -1456,7 +1456,7 @@ def get_bids_database_table(
     ----------
     root_dir : str
         Path to the BIDS dataset root directory. This should be the top-level directory
-        containing subject folders (sub-*) and optionally a dataset_description.json file.
+        containing subject folders (``sub-*``) and optionally a dataset_description.json file.
 
     output_table : str, optional
         Path where the resulting CSV table should be saved. If None, the table is not
@@ -1490,7 +1490,7 @@ def get_bids_database_table(
     NotADirectoryError
         If root_dir exists but is not a directory.
     ValueError
-        If no subjects are found in the BIDS dataset (no sub-* folders).
+        If no subjects are found in the BIDS dataset (no ``sub-*`` folders).
 
     Examples
     --------
@@ -2294,8 +2294,9 @@ def validate_bids_structure(bids_root: str) -> list[str]:
     Notes
     -----
     This function performs basic BIDS validation including:
+
     - Checking for required files (dataset_description.json)
-    - Verifying presence of subject directories (sub-*)
+    - Verifying presence of subject directories (``sub-*``)
     - Noting presence of derivatives directory
 
     For comprehensive BIDS validation, consider using the official

@@ -3572,11 +3572,12 @@ class Parcellation:
         Parameters
         ----------
         group_dict : dict
-            {group_name: {'names': str | list[str], 'index': int,
-                        'color': (R, G, B) | hex str, 'opacity': float}}
-            'names' is required: substring(s) matched against region names.
-            'index' is the new label; defaults to the group's position (1, 2, ...).
-            'color' and 'opacity' are optional (opacity defaults to 1.0).
+            ``{group_name: {'names': str | list[str], 'index': int,
+            'color': (R, G, B) | hex str, 'opacity': float}}``
+
+            - 'names' is required: substring(s) matched against region names.
+            - 'index' is the new label; defaults to the group's position (1, 2, ...).
+            - 'color' and 'opacity' are optional (opacity defaults to 1.0).
 
         keep_ungrouped : bool, optional
             Keep regions not matched by any group, with their original code, name,
@@ -4817,6 +4818,7 @@ class Parcellation:
         ----------
         names2rep : str, list, np.ndarray, or dict
             Names to replace. Accepted forms:
+
             - dict: {old: new} or {(old1, old2): new}. new_names is ignored.
             - str: a single name (new_names must be a single name).
             - list of str: each entry is paired with one entry of new_names.
@@ -4828,12 +4830,14 @@ class Parcellation:
             Required unless names2rep is a dict.
 
         match : {"exact", "contains", "substring"}, optional
+
             - "exact": a region matches if its whole name equals an old name.
             - "contains": a region matches if its name contains an old name;
-            the WHOLE name is replaced by the new name.
+              the WHOLE name is replaced by the new name.
             - "substring": every occurrence of an old name inside a region name
-            is replaced by the new text, in a single pass
-            (e.g. "ctx-lh-" -> "ctx-left-").
+              is replaced by the new text, in a single pass
+              (e.g. "ctx-lh-" -> "ctx-left-").
+
             Default is "exact".
 
         bool_case : bool, optional

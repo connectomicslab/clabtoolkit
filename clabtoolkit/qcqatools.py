@@ -812,7 +812,7 @@ def generate_image_selection_webpage(
         Default is None.
 
     png_pattern : str, optional
-        Glob pattern for finding PNG files. Default is '**/*.png'.
+        Glob pattern for finding PNG files. Default is ``**/*.png``.
 
     title : str, optional
         HTML page title. Default is 'PNG Image Selection'.
@@ -837,6 +837,7 @@ def generate_image_selection_webpage(
     Notes
     -----
     The webpage includes:
+
     - Hierarchical display of images by folder structure
     - Checkboxes for image selection
     - Descriptions extracted from associated JSON files

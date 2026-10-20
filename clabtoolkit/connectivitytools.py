@@ -312,8 +312,8 @@ class Connectome:
         The matrix is densified, since Connectome stores region-level
         connectivity as a dense array.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         csr_graph : scipy.sparse matrix
             Square sparse connectivity matrix (CSR preferred; any sparse
             format is accepted and converted).
@@ -324,12 +324,12 @@ class Connectome:
             (region_coords, region_names, region_index, region_colors,
             modality, affine).
 
-        Returns:
-        --------
+        Returns
+        -------
         Connectome : New Connectome object
 
-        Examples:
-        ---------
+        Examples
+        --------
         >>> from scipy.sparse import random as sprandom
         >>> A = sprandom(50, 50, density=0.05, format="csr")
         >>> conn = Connectome.from_csr(A, name="sparse_example")
@@ -733,18 +733,20 @@ class Connectome:
         """
         Save Connectome to HDF5 file.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         filename : str or Path
             Output HDF5 filename
         compression : bool, optional
             Whether to use gzip compression (default: True)
         sparse : bool or "auto", optional
             How to store the connectivity matrix:
+
             - False: dense dataset "connmat/matrix"
             - True: CSR group "connmat/matrix_csr" (data, indices, indptr, shape)
             - "auto" (default): CSR if the fraction of nonzero entries in the
               full matrix is below ``sparse_density_threshold``, dense otherwise.
+
             Both layouts are read transparently by ``load_h5``.
         sparse_density_threshold : float, optional
             Nonzero fraction below which "auto" selects CSR (default: 0.1).
@@ -1089,7 +1091,7 @@ class Connectome:
         """
         Calculate the density of the connectivity matrix.
 
-        Returns:
+        Returns
         -------
         float
             Proportion of non-zero connections (excluding diagonal)
@@ -1152,13 +1154,13 @@ class Connectome:
         """
         Calculate basic graph metrics for the connectivity matrix.
 
-        Parameters:
+        Parameters
         ----------
         output_table : str or Path, optional
             Path to save the output table (default: None)
 
-        Returns:
-        --------
+        Returns
+        -------
         pd.DataFrame : DataFrame with graph metrics for each node
         """
 
@@ -1215,13 +1217,15 @@ class Connectome:
         """
         Threshold the connectivity matrix.
 
-        Parameters:
+        Parameters
         ----------
         method : {'value', 'sparsity'}
             Thresholding method:
+
             - 'value': Keep connections above threshold value
             - 'sparsity': Keep top connections to achieve target sparsity
         threshold : float
+
             - For 'value': minimum connection strength to keep
             - For 'sparsity': target sparsity level (0-1), proportion of connections to keep
         absolute : bool, optional
@@ -1231,7 +1235,7 @@ class Connectome:
         copy : bool, optional
             If True, return new Connectome object; if False, modify in place (default: True)
 
-        Returns:
+        Returns
         -------
         Connectome
             Thresholded Connectome object (new if copy=True, self if copy=False)
@@ -1328,14 +1332,14 @@ class Connectome:
         """
         Extract a subnetwork with selected regions.
 
-        Parameters:
+        Parameters
         ----------
         region_indices : np.ndarray or List[int]
             Positions (row/column indices) of regions to include
         copy : bool, optional
             If True, return new Connectome object; if False, modify in place (default: True)
 
-        Returns:
+        Returns
         -------
         Connectome
             Subnetwork Connectome object
@@ -1395,7 +1399,7 @@ class Connectome:
         """
         Create a deep copy of the Connectome.
 
-        Returns:
+        Returns
         -------
         Connectome
             Deep copy of the Connectome
@@ -1858,8 +1862,8 @@ class Connectome:
         """
         Save a 3D visualization to file.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         filename : str
             Output filename for the visualization
         **kwargs : dict

@@ -910,6 +910,7 @@ def harmonize_colors(
     ----------
     colors : list, numpy array, str, or tuple
         Input colors in various formats:
+
         - Single color: str, list, tuple, or numpy array
         - Multiple colors: list or numpy array containing:
           * Hex strings (e.g., "#FF5733")
@@ -917,6 +918,7 @@ def harmonize_colors(
           * Numpy arrays (integers 0-255 or floats 0-1)
     output_format : str, optional
         Output format ('hex', 'rgb', or 'rgbnorm'), defaults to 'hex'
+
         - 'hex': returns hexadecimal strings (e.g., '#ff5733')
         - 'rgb': returns RGB arrays with values 0-255 (uint8)
         - 'rgbnorm': returns normalized RGB arrays with values 0.0-1.0 (float64)
@@ -924,6 +926,7 @@ def harmonize_colors(
     Returns
     -------
     Union[List[str], np.ndarray]
+
         - If output_format is 'hex': List of hexadecimal color strings
         - If output_format is 'rgb' or 'rgbnorm': 2D numpy array where each row is a color
 
@@ -1123,16 +1126,19 @@ def create_random_colors(
         Number of colors to generate. Must be a positive integer.
     output_format : str, default "rgb"
         Format of the output colors. Supported formats:
+
         - "rgb": RGB values as integers in range [0, 255]
         - "rgbnorm": RGB values as floats in range [0.0, 1.0]
         - "hex": Hexadecimal color strings (e.g., "#FF5733")
     cmap : str or None, default None
         Name of matplotlib colormap to use for color generation. If None,
         colors are generated randomly. Popular options include:
+
         - "viridis", "plasma", "inferno", "magma" (perceptually uniform)
         - "PiYG", "RdYlBu", "Spectral" (diverging)
         - "Set1", "Set2", "tab10" (qualitative)
         - "Blues", "Reds", "Greens" (sequential)
+
         See matplotlib.pyplot.colormaps() for full list.
     random_seed : int or None, default None
         Seed for random number generator to ensure reproducible results.
@@ -1142,6 +1148,7 @@ def create_random_colors(
     -------
     colors : list of str or numpy.ndarray
         Generated colors in the specified format:
+
         - If output_format is "hex": list of hex color strings
         - If output_format is "rgb" or "rgbnorm": numpy array of shape (n, 3)
 
@@ -1176,9 +1183,9 @@ def create_random_colors(
     -----
     - When using a colormap, colors are evenly spaced across the colormap range
     - Random colors are generated uniformly across RGB space and may not be
-    visually harmonious
+      visually harmonious
     - For better visual results with random colors, consider using the
-    harmonize_colors() function (if available)
+      harmonize_colors() function (if available)
     - Colormaps provide better perceptual uniformity and accessibility
     """
 
@@ -1415,6 +1422,7 @@ def create_distinguishable_colors(
 
     output_format : str, default "rgb"
         Format of the output colors. Supported formats:
+
         - "rgb": RGB values as integers in range [0, 255]
         - "rgbnorm": RGB values as floats in range [0.0, 1.0]
         - "hex": Hexadecimal color strings (e.g., "#FF5733")
@@ -1441,6 +1449,7 @@ def create_distinguishable_colors(
     -------
     colors : list of str or numpy.ndarray
         Generated colors in the specified format:
+
         - If output_format is "hex": list of hex color strings
         - If output_format is "rgb" or "rgbnorm": numpy array of shape (n, 3)
 
@@ -1489,9 +1498,9 @@ def create_distinguishable_colors(
     - Saturation and lightness are varied slightly to increase distinctiveness
     - The algorithm prioritizes perceptual difference over aesthetic harmony
     - For small sets (n ≤ 6), consider also trying matplotlib's "tab10" colormap
-    with create_random_colors(n, cmap="tab10") for comparison
+      with create_random_colors(n, cmap="tab10") for comparison
     - Maximum recommended n is around 20-30 for truly distinguishable colors;
-    beyond that, some colors will inevitably appear similar
+      beyond that, some colors will inevitably appear similar
 
     See Also
     --------
@@ -1711,6 +1720,7 @@ def colortable_visualization(
     ----------
     colortable : array-like, str, Path, dict, or ColorTableLoader
         Can be one of:
+
         - Array-like with shape (N, 3), (N, 4), or (N, 5): [R, G, B] or [R, G, B, Alpha] or [R, G, B, Alpha, Value]
         - String or Path to a LUT file (.txt, .lut) or TSV file (.tsv)
         - Dictionary with keys "index", "name", and "color" (hex or RGB)
@@ -2384,61 +2394,61 @@ def visualize_colors(
     """
     Visualize a list of color codes in a clean, professional layout with configurable display options.
 
-        Parameters
-        ----------
-        colors : List[str]
-            List of hexadecimal color codes to visualize (e.g., ['#FF5733', '#33FF57'])
-        figsize : tuple, optional
-            Size of the figure in inches (width, height), by default (10, 2)
-        label_position : str, optional
-            Position of color labels relative to color bars ('above' or 'below'),
-            by default "below"
-        label_rotation : int, optional
-            Rotation angle for labels in degrees (0-90), by default 45
-        label_size : Optional[float], optional
-            Font size for labels. If None, size is automatically determined based on
-            number of colors, by default None
-        spacing : float, optional
-            Additional vertical space for labels (relative to bar height), by default 0.1
-        aspect_ratio : float, optional
-            Height/width ratio of color rectangles (0.1-1.0 recommended), by default 0.2
-        background_color : str, optional
-            Background color of the figure, by default "white"
-        edge_color : Optional[str], optional
-            Color for rectangle borders. None means no borders, by default None
+    Parameters
+    ----------
+    colors : List[str]
+        List of hexadecimal color codes to visualize (e.g., ['#FF5733', '#33FF57'])
+    figsize : tuple, optional
+        Size of the figure in inches (width, height), by default (10, 2)
+    label_position : str, optional
+        Position of color labels relative to color bars ('above' or 'below'),
+        by default "below"
+    label_rotation : int, optional
+        Rotation angle for labels in degrees (0-90), by default 45
+    label_size : Optional[float], optional
+        Font size for labels. If None, size is automatically determined based on
+        number of colors, by default None
+    spacing : float, optional
+        Additional vertical space for labels (relative to bar height), by default 0.1
+    aspect_ratio : float, optional
+        Height/width ratio of color rectangles (0.1-1.0 recommended), by default 0.2
+    background_color : str, optional
+        Background color of the figure, by default "white"
+    edge_color : Optional[str], optional
+        Color for rectangle borders. None means no borders, by default None
 
-        Returns
-        -------
-        None
-            Displays a matplotlib figure with the color visualization
+    Returns
+    -------
+    None
+        Displays a matplotlib figure with the color visualization
 
-        Raises
-        ------
-        ValueError
-            If any color code is invalid
-            If label_position is not 'above' or 'below'
+    Raises
+    ------
+    ValueError
+        If any color code is invalid
+        If label_position is not 'above' or 'below'
 
-        Examples
-        --------
-        Basic usage:
-        >>> colors = ['#FF5733', '#33FF57', '#3357FF']
-        >>> visualize_colors(colors)
+    Examples
+    --------
+    Basic usage:
+    >>> colors = ['#FF5733', '#33FF57', '#3357FF']
+    >>> visualize_colors(colors)
 
-        Customized visualization:
-        >>> visualize_colors(
-        ...     colors,
-        ...     figsize=(12, 3),
-        ...     label_position='above',
-        ...     label_rotation=30,
-        ...     background_color='#f0f0f0',
-        ...     edge_color='black'
-        ... )
+    Customized visualization:
+    >>> visualize_colors(
+    ...     colors,
+    ...     figsize=(12, 3),
+    ...     label_position='above',
+    ...     label_rotation=30,
+    ...     background_color='#f0f0f0',
+    ...     edge_color='black'
+    ... )
 
-        Notes
-        -----
-        - All hex colors will be converted to lowercase for consistency
-        - For large numbers of colors, consider increasing figsize or decreasing label_size
-        - Edge colors can be used to improve visibility against similar backgrounds
+    Notes
+    -----
+    - All hex colors will be converted to lowercase for consistency
+    - For large numbers of colors, consider increasing figsize or decreasing label_size
+    - Edge colors can be used to improve visibility against similar backgrounds
     """
 
     # Convert RGB colors to hex if needed
@@ -2677,6 +2687,7 @@ class ColorTableLoader:
         -------
         dict
             Dictionary with the following keys:
+
             - 'index': List of integer region codes (standard Python integers)
             - 'name': List of region name strings
             - 'color': List of color codes (format depends on source file)

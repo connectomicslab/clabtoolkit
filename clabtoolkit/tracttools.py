@@ -294,11 +294,11 @@ class Tractogram:
         """
         Loads a tractogram from a nibabel Tractogram object.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             tractogram (nb.streamlines.Tractogram):
                 A nibabel Tractogram object containing streamlines and metadata.
-        Returns:
+        Returns
         -------
             None
         """
@@ -344,21 +344,18 @@ class Tractogram:
         """
         Loads a colortable from a file and associates it with a specified map name.
 
-        Parameters:
-        -----------
-            lut_file : str or dict, optional
-                Path to LUT file or dictionary with index/name/color keys.
+        Parameters
+        ----------
+        lut_file : str or dict
+            Path to LUT file or dictionary with index/name/color keys.
+        map_name : str
+            Name of the map to associate with the loaded colortable.
+        opacity : float or np.ndarray
+            Opacity value(s) for the colortable. Can be a single float or an array of floats.
 
-            map_name (str):
-                Name of the map to associate with the loaded colortable.
-
-            opacity (float or np.ndarray):
-                Opacity value(s) for the colortable. Can be a single float or an array of floats.
-
-        Returns:
+        Returns
         -------
-            None
-
+        None
         """
         if isinstance(lut_file, (str, Path)):
             if os.path.exists(lut_file):
@@ -1542,15 +1539,17 @@ class Tractogram:
 
         interp_method : {'linear', 'nearest'}, default='linear'
             Interpolation method used for RegularGridInterpolator.
+
             - 'linear': Trilinear interpolation
             - 'nearest': Nearest neighbor interpolation
 
         storage_mode : {'data_per_point', 'data_per_streamline'}, default='data_per_point'
             Where to store the interpolated values:
+
             - 'data_per_point': one value per streamline point, stored in
-            `self.data_per_point[map_name]`
+              `self.data_per_point[map_name]`
             - 'data_per_streamline': one aggregated value per streamline, stored
-            in `self.data_per_streamline[f"{map_name}_{reduction}"]`
+              in `self.data_per_streamline[f"{map_name}_{reduction}"]`
 
         map_name : str, default='fa'
             Key under which to store the scalar map.
@@ -1584,11 +1583,11 @@ class Tractogram:
         - Points outside the scalar map boundaries are assigned NaN.
         - Empty streamlines are handled gracefully with empty arrays.
         - When using 'data_per_streamline' mode, the stored key is suffixed with
-        the reduction method (e.g., 'fa_mean').
+          the reduction method (e.g., 'fa_mean').
         - This method only populates the requested `storage_mode` and does not
-        touch the other one; if you need the same scalar in both storage
-        modes, call this method twice with different `storage_mode` values
-        (e.g. once with 'data_per_point' and once with 'data_per_streamline').
+          touch the other one; if you need the same scalar in both storage
+          modes, call this method twice with different `storage_mode` values
+          (e.g. once with 'data_per_point' and once with 'data_per_streamline').
 
         Examples
         --------
@@ -2570,6 +2569,7 @@ class Tractogram:
         ----------
         mask : Parcellation, str, Path, or np.ndarray
             Region(s) of interest.
+
             - Parcellation instance: used directly.
             - str/Path: loaded via `clabtoolkit.parcellationtools.Parcellation`.
             - np.ndarray: assumed to be on the voxel grid of the tractogram, i.e.
@@ -2583,6 +2583,7 @@ class Tractogram:
 
         pairs : dict, optional
             {source: target, ...}
+
             - `source` / `target` can be a single int or a list/tuple/set of ints.
             - `target=None` means "any streamline touching `source`", with no
               target constraint.

@@ -1340,7 +1340,7 @@ def network_metrics_to_table(
     The graph is classified as binary (all non-zero off-diagonal entries share one
     value) or weighted. When ``metrics`` is None, the default metrics for that
     weighting are computed. The defaults are read from the "network_metrics" entry
-    of the package config.json, which has a "binary" and a "weighted" list:
+    of the package config.json, which has a "binary" and a "weighted" list::
 
         "network_metrics": {
             "binary":   ["glob_efficiency", ..., "degree", ...],

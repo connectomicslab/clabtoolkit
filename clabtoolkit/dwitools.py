@@ -59,36 +59,31 @@ def delete_dwi_volumes(
 
     bvals_to_delete : int, list, optional
         List of bvals to delete. If None, it will assume the bvals to delete are the last B0s of the DWI image.
-        Some conditions could be used to delete the volumes.
-            For example:
-                1. If you want to delete all the volumes with bval = 0, you can use:
-                bvals_to_delete = [0]
+        Some conditions could be used to delete the volumes. For example:
 
-                2. If you want to delete all the volumes with b-values higher than 1000, you can use:
-                bvals_to_delete = ["bvals > 1000"]  or  bvals_to_delete = ["bvals >= 1000"] if you want to include the 1000 bvals.
+        - To delete all the volumes with bval = 0, use ``bvals_to_delete = [0]``.
+        - To delete all the volumes with b-values higher than 1000, use
+          ``bvals_to_delete = ["bvals > 1000"]``, or ``["bvals >= 1000"]`` to include the 1000 bvals.
+        - To delete all the volumes with b-values between 1000 and 3000, use
+          ``bvals_to_delete = ["1000 < bvals < 3000"]``, or ``["1000 <= bvals < 3000"]`` to include
+          the 1000 but not the 3000 bvals.
 
-                3. If you want to delete all the volumes with b-values between 1000 and 3000 you can use:
-                bvals_to_delete = ["1000 < bvals < 3000"] or bvals_to_delete = ["1000 <= bvals < 3000"] if you want to include the 1000 but not the 3000 bvals.
-
-            For more complex conditions, you can see the function get_indices_by_condition. Included in the clabtoolkit.misctools module.
+        For more complex conditions, see the function ``get_indices_by_condition`` in the
+        ``clabtoolkit.misctools`` module.
 
     vols_to_delete : int, list, optional
         Indices of the volumes to delete. If None, it will assume the volumes to delete are the last B0s of the DWI image.
-        Some conditions could be used to delete the volumes.
-            For example:
-                1. If you want to delete the first 3 volumes, you can use:
-                    vols_to_delete = [0, 1, 2]
+        Some conditions could be used to delete the volumes. For example:
 
-                2. If you want to delete the volumes from 0 to 10, you can use:
-                    vols_to_delete = ["0:10"] or vols_to_delete = ["0-10"]
+        - To delete the first 3 volumes, use ``vols_to_delete = [0, 1, 2]``.
+        - To delete the volumes from 0 to 10, use ``vols_to_delete = ["0:10"]`` or ``["0-10"]``.
+        - To delete the volumes from 0 to 10 and 20 to 30, use
+          ``vols_to_delete = ["0:10", "20:30"]`` or ``["0-10", "20-30"]``.
+        - To delete the volumes from 0 to 10 and the volumes 40 and 60, use
+          ``vols_to_delete = ["0:10", 40, 60]`` or ``["0-10, 40, 60"]``, etc.
 
-                3. If you want to delete the volumes from 0 to 10 and 20 to 30, you can use:
-                    vols_to_delete = ["0:10", "20:30"] or vols_to_delete = ["0-10", "20-30"]
-
-                4. If you want to delete the volumes from 0 to 10 and the volumes 40 and 60, you can use:
-                    vols_to_delete = ["0:10", 40, 60] or vols_to_delete = ["0-10, 40, 60"], etc
-
-                For more complex conditions, you can see the function build_indices. Included in the clabtoolkit.misctools module.
+        For more complex conditions, see the function ``build_indices`` in the
+        ``clabtoolkit.misctools`` module.
 
         If both bvals_to_delete and vols_to_delete are specified, the function will remove the volumes with the bvals specified
         and the volumes specified in the vols_to_delete list.
@@ -126,7 +121,7 @@ def delete_dwi_volumes(
     IMPORTANT: The function will remove the last B0s of the DWI image if no volumes are specified.
 
     Examples
-    -----------
+    --------
 
     >>> delete_dwi_volumes('dwi.nii.gz') # will remove the last B0s. The original file will be overwritten.
 

@@ -246,11 +246,12 @@ class AnnotParcellation:
         Useful for quick inspection and validation of annotation data.
 
         The method displays:
+
             - Basic annotation identification (name, ID, hemisphere, file path)
             - Vertex statistics (total vertices, unique labels found)
             - Region table properties (number of defined regions)
             - Label consistency (labels present in vertices but absent from table,
-            and regions defined in table but absent from vertices)
+              and regions defined in table but absent from vertices)
 
         Parameters
         ----------
@@ -263,33 +264,33 @@ class AnnotParcellation:
             Dictionary containing the following keys:
 
             - 'name' : str
-                Annotation filename or None if not loaded from file.
+              Annotation filename or None if not loaded from file.
 
             - 'id' : str
-                Annotation identifier string.
+              Annotation identifier string.
 
             - 'hemi' : str or None
-                Hemisphere ('lh', 'rh', or None if not detected).
+              Hemisphere ('lh', 'rh', or None if not detected).
 
             - 'filename' : str or None
-                Full path to the annotation file, or None.
+              Full path to the annotation file, or None.
 
             - 'n_vertices' : int
-                Total number of vertices in the vertex-wise label array.
+              Total number of vertices in the vertex-wise label array.
 
             - 'n_regions_table' : int
-                Number of regions defined in the color/region table (regtable).
+              Number of regions defined in the color/region table (regtable).
 
             - 'n_unique_labels' : int
-                Number of distinct label values found across all vertices.
+              Number of distinct label values found across all vertices.
 
             - 'labels_not_in_table' : list
-                List of label values present in the vertex array (codes) that
-                have no corresponding entry in the region table. Ideally empty.
+              List of label values present in the vertex array (codes) that
+              have no corresponding entry in the region table. Ideally empty.
 
             - 'regions_not_in_vertices' : list
-                List of region names whose table codes do not appear in any
-                vertex. These are defined but unused regions.
+              List of region names whose table codes do not appear in any
+              vertex. These are defined but unused regions.
 
         Notes
         -----
@@ -970,7 +971,7 @@ class AnnotParcellation:
             * A list of IDs (list[int]).
             * A NumPy array of names (dtype str/object) or IDs (dtype int).
             * A mixed list of names and IDs is *not* supported; provide a
-            homogeneous collection.
+              homogeneous collection.
 
             If None, all regions available in the annotation are returned.
 
@@ -1083,6 +1084,7 @@ class AnnotParcellation:
         Correct a vertex-wise parcellation by relabelling small disconnected clusters.
 
         For each labelled region:
+
         - If multiple components exist, zero any non-largest component below the size threshold.
             - If only one component exists, zero the whole region if it's below the size threshold.
             - Isolated single vertices with no neighbours in the same region are always zeroed out regardless of the threshold.
@@ -1476,7 +1478,7 @@ class AnnotParcellation:
         ----------
         prefix2add : str, optional
             Prefix string to prepend to all region names. This is useful for
-            distinguishing regions from different hemispheres (e.g., 'lh_' or 'rh_')
+            distinguishing regions from different hemispheres (e.g., ``lh_`` or ``rh_``)
             or different atlases. If None, original region names are preserved.
             Default is None.
 
@@ -1679,18 +1681,18 @@ class AnnotParcellation:
             Regional values to map to vertices. Can be provided in three formats:
 
             - **str**: Path to a text/CSV file containing regional values. The file
-            should have one row per region matching the parcellation. Single column
-            files are read as arrays, while multi-column CSV files can optionally
-            be read with headers when is_dataframe=True.
+              should have one row per region matching the parcellation. Single column
+              files are read as arrays, while multi-column CSV files can optionally
+              be read with headers when is_dataframe=True.
 
             - **pandas.DataFrame**: DataFrame with one row per region and columns
-            representing different measures. Must have numeric values and column
-            names. The number of rows must match the number of regions in the
-            parcellation.
+              representing different measures. Must have numeric values and column
+              names. The number of rows must match the number of regions in the
+              parcellation.
 
             - **numpy.ndarray**: Array with shape (n_regions, n_measures) where
-            n_regions matches the number of regions in the parcellation. Can be
-            1D for single measures or 2D for multiple measures.
+              n_regions matches the number of regions in the parcellation. Can be
+              1D for single measures or 2D for multiple measures.
 
         is_dataframe : bool, optional
             Whether to read text files as DataFrames with column headers. Only
@@ -1705,12 +1707,12 @@ class AnnotParcellation:
             depends on the input:
 
             - **numpy.ndarray**: Returned when input is a numpy array or a file
-            read without headers (is_dataframe=False). Shape is (n_vertices,)
-            for single measures or (n_vertices, n_measures) for multiple measures.
+              read without headers (is_dataframe=False). Shape is (n_vertices,)
+              for single measures or (n_vertices, n_measures) for multiple measures.
 
             - **pandas.DataFrame**: Returned when input is a DataFrame or a file
-            read with headers (is_dataframe=True). Has one row per vertex and
-            preserves original column names.
+              read with headers (is_dataframe=True). Has one row per vertex and
+              preserves original column names.
 
         Raises
         ------

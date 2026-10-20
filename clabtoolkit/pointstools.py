@@ -47,8 +47,8 @@ class PointCloud:
         """
         Initializes the PointCloud object.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             points (np.ndarray or pd.DataFrame, optional):
                 An array of shape (N, 3) representing the 3D coordinates of points,
                 or a DataFrame with columns ['X', 'Y', 'Z'].
@@ -73,14 +73,14 @@ class PointCloud:
             name (str, optional):
                 Name of the point cloud. Default is "default".
 
-        Raises:
-        -------
+        Raises
+        ------
             ValueError:
                 If alpha is outside the range [0, 1], if the number of region names
                 does not match the number of region colors, or if the number of region
                 colors is neither 1 nor equal to the number of points.
 
-        Examples:
+        Examples
         --------
         >>> # Single color for the whole point cloud
         >>> pc = PointCloud(points=np.random.rand(100, 3), region_colors="#FF0000")
@@ -242,7 +242,7 @@ class PointCloud:
         """
         Creates a deep copy of the PointCloud object.
 
-        Returns:
+        Returns
         -------
             PointCloud: A new PointCloud instance with copied data.
         """
@@ -296,8 +296,8 @@ class PointCloud:
         """
         Applies an affine transformation to the point coordinates.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             affine (np.ndarray):
                 A 4x4 affine transformation matrix.
 
@@ -308,18 +308,18 @@ class PointCloud:
                 If True, modifies the current object. If False, returns a new object.
                 Default is True.
 
-        Returns:
+        Returns
         -------
             PointCloud or None:
                 If inplace=False, returns a new transformed PointCloud.
                 If inplace=True, returns None.
 
-        Raises:
-        -------
+        Raises
+        ------
             ValueError: If the provided affine is not a 4x4 matrix.
 
-        Examples:
-        ---------
+        Examples
+        --------
         >>> pc = PointCloud(coords)
         >>> pc.apply_affine(affine_matrix)
 
@@ -372,8 +372,8 @@ class PointCloud:
         """
         Filters points based on spatial bounds.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             x_range (tuple, optional):
                 (min, max) range for X coordinates.
 
@@ -387,7 +387,7 @@ class PointCloud:
                 If True, modifies the current object. If False, returns a new object.
                 Default is True.
 
-        Returns:
+        Returns
         -------
             PointCloud or None:
                 If inplace=False, returns a new filtered PointCloud.
@@ -434,7 +434,7 @@ class PointCloud:
         """
         Computes the bounding box of the point cloud.
 
-        Returns:
+        Returns
         -------
             dict:
                 Dictionary with 'x', 'y', 'z' keys, each containing (min, max) tuples.
@@ -453,7 +453,7 @@ class PointCloud:
         """
         Computes the centroid (geometric center) of the point cloud.
 
-        Returns:
+        Returns
         -------
             np.ndarray:
                 Array of shape (3,) with the centroid coordinates [x, y, z].
@@ -473,10 +473,11 @@ class PointCloud:
         """
         Filters points based on coordinate values or point_data attributes.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             condition (str):
                 Condition string to filter points. Supported formats:
+
                 - 'X > value': Keep points where X coordinate is greater than value.
                 - 'Y < value': Keep points where Y coordinate is less than value.
                 - 'Z >= value': Keep points where Z coordinate is greater than or equal to value.
@@ -492,19 +493,19 @@ class PointCloud:
             **kwargs:
                 Additional keyword arguments passed to the condition parser.
 
-        Returns:
+        Returns
         -------
             PointCloud or None:
                 If inplace=False, returns a new filtered PointCloud.
                 If inplace=True, returns None.
 
-        Raises:
-        -------
+        Raises
+        ------
             ValueError:
                 If the specified attribute doesn't exist in coordinates or point_data,
                 or if no points match the condition.
 
-        Examples:
+        Examples
         --------
         >>> pc = PointCloud(points=np.random.rand(1000, 3) * 100)
         >>> pc.add_point_data(np.random.rand(1000), name="intensity")
@@ -628,8 +629,8 @@ class PointCloud:
         """
         Converts the point cloud to a pandas DataFrame.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             include_data (bool):
                 If True, includes all point_data attributes as columns.
                 Default is True.
@@ -642,19 +643,19 @@ class PointCloud:
                 Name of the colortable to use for color information.
                 Default is "default".
 
-        Returns:
+        Returns
         -------
             pd.DataFrame:
                 DataFrame with columns in order: index, name, color (if include_colortable=True),
                 X, Y, Z, and optionally additional data columns.
 
-        Raises:
-        -------
+        Raises
+        ------
             ValueError:
                 If include_colortable is True but the specified colortable doesn't exist
                 or the corresponding point_data key is missing.
 
-        Examples:
+        Examples
         --------
         >>> pc = PointCloud(points=np.random.rand(100, 3))
         >>> df = pc.to_dataframe()  # Basic: X, Y, Z columns
@@ -811,8 +812,8 @@ class PointCloud:
         """
         Loads a point cloud from a file.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             filename (str or Path):
                 Input filename.
 
@@ -820,13 +821,13 @@ class PointCloud:
                 File format. Options: 'npy', 'csv', 'txt'.
                 Default is 'npy'.
 
-        Returns:
+        Returns
         -------
             PointCloud:
                 Loaded PointCloud object.
 
-        Raises:
-        -------
+        Raises
+        ------
             ValueError:
                 If format is not supported.
 
@@ -911,35 +912,27 @@ class PointCloud:
         """
         Loads a colortable from a file and associates it with a specified map name.
 
-        Parameters:
-        -----------
-            lut_file (str or Path):
-                Path to the colortable file.
+        Parameters
+        ----------
+        lut_file : str or Path
+            Path to the colortable file.
+        map_name : str
+            Name of the map to associate with the loaded colortable.
+            Default is "default".
+        opacity : float, int, or np.ndarray
+            Opacity value(s) for the colortable. Can be a single value
+            (applied to all entries) or an array of values. Default is 1.0.
+        lut_type : str
+            Type of lookup table to load. Currently only "lut" is supported.
+            Default is "lut".
 
-            map_name (str):
-                Name of the map to associate with the loaded colortable.
-                Default is "default".
-
-            opacity (float, int, or np.ndarray):
-                Opacity value(s) for the colortable. Can be a single value
-                (applied to all entries) or an array of values. Default is 1.0.
-
-            lut_type (str):
-                Type of lookup table to load. Currently only "lut" is supported.
-                Default is "lut".
-
-        Returns:
-        -------
-            None
-
-        Raises:
-        -------
-            FileNotFoundError:
-                If the specified colortable file does not exist.
-
-            ValueError:
-                If the colortable does not cover all IDs in the data or if
-                lut_type is not supported.
+        Raises
+        ------
+        FileNotFoundError
+            If the specified colortable file does not exist.
+        ValueError
+            If the colortable does not cover all IDs in the data or if
+            lut_type is not supported.
         """
         if isinstance(lut_file, Path):
             lut_file = str(lut_file)
@@ -1004,8 +997,8 @@ class PointCloud:
         """
         Appends another PointCloud to this one by concatenating coordinates and data.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
             other (PointCloud):
                 The PointCloud object to append.
 
@@ -1018,29 +1011,30 @@ class PointCloud:
 
             handle_colortable_conflicts (str):
                 How to handle colortable name conflicts. Options:
+
                 - 'warn': Keep first colortable and warn (default)
                 - 'overwrite': Use the new colortable
                 - 'rename': Rename the new colortable as 'name_2'
                 - 'skip': Skip the new colortable silently
 
-        Returns:
+        Returns
         -------
             PointCloud or None:
                 If inplace=False, returns a new concatenated PointCloud.
                 If inplace=True, returns None.
 
-        Raises:
-        -------
+        Raises
+        ------
             ValueError:
                 If other is not a PointCloud object or if both point clouds are empty.
 
-        Notes:
+        Notes
         -----
             - If point_data keys don't match, missing values are filled with fill_value
             - Affine matrices are compared; a warning is issued if they differ
             - The name of the resulting point cloud is kept from self
 
-        Examples:
+        Examples
         --------
         >>> pc1 = PointCloud(points=np.random.rand(100, 3), name="cloud1")
         >>> pc2 = PointCloud(points=np.random.rand(50, 3), name="cloud2")
@@ -1640,6 +1634,7 @@ def merge_pointclouds(
         a color table with distinguishable colors is created, using the names of
         the point clouds (or "pointcloud_1", "pointcloud_2", ... if the names are
         not unique). The dictionary should contain:
+
             - 'names': List of names, one per point cloud.
             - 'color_table': numpy.ndarray of shape (n_pointclouds, 5) with the RGBA
               colors (0-1 range) and the ID value of each point cloud.
