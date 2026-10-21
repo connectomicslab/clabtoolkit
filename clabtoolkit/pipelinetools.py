@@ -449,13 +449,13 @@ def create_processing_status_table(
 
 
 ######################################################################################################
-def process_file(filepath: str):
+def process_file(filepath: str | Path):
     """
     Parse BIDS entities from a single file path.
 
     Parameters
     ----------
-    filepath : str
+    filepath : str or Path
         Full path to the file to be processed.
 
     Returns
@@ -466,7 +466,17 @@ def process_file(filepath: str):
         start with 'sub-' are not BIDS files and are reported as failed.
 
     """
-    if not os.path.basename(str(filepath)).startswith("sub-"):
+
+    if filepath is None:
+        raise ValueError("filepath must not be None")
+
+    if not isinstance(filepath, (str, Path)):
+        raise TypeError("filepath must be a string or Path object")
+
+    if isinstance(filepath, Path):
+        filepath = str(filepath)
+
+    if not os.path.basename(filepath).startswith("sub-"):
         return None, filepath
 
     try:
