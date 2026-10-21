@@ -2,6 +2,13 @@
 History
 =======
 
+0.5.1 (2026-10-21)
+------------------
+
+* Added CITATION.cff, with the citation of the toolkit paper (arXiv:2607.02638), so GitHub offers "Cite this repository"
+* Included CITATION.cff in the source distribution
+* Updated the release steps of CONTRIBUTING.rst: version and date of CITATION.cff, and the GitHub release that archives the version in Zenodo
+
 0.5.0 (2026-10-21)
 ------------------
 

@@ -1,0 +1,52 @@
+cff-version: 1.2.0
+message: "If you use clabtoolkit in your work, please cite the toolkit paper below."
+type: software
+title: "clabtoolkit"
+abstract: >-
+  A Python toolkit for neuroimaging data processing and analysis, designed for
+  brain connectivity data, BIDS datasets and the file formats used in
+  neuroimaging.
+version: 0.5.1
+date-released: 2026-10-21
+license: Apache-2.0
+repository-code: "https://github.com/connectomicslab/clabtoolkit"
+url: "https://clabtoolkit.readthedocs.io"
+keywords:
+  - neuroimaging
+  - image-processing
+  - bids
+  - freesurfer
+  - connectivity
+authors:
+  - family-names: "Alemán-Gómez"
+    given-names: "Yasser"
+    orcid: "https://orcid.org/0000-0001-6067-8639"
+    affiliation: "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+  - family-names: "Hervé"
+    given-names: "Nino"
+    affiliation: "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+  - family-names: "Hagmann"
+    given-names: "Patric"
+    orcid: "https://orcid.org/0000-0002-2854-6561"
+    affiliation: "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+preferred-citation:
+  type: article
+  title: "CLABTOOLKIT: An Open-Source Toolkit for Routine Processing, Manipulation, and Visualization of Neuroimaging Data"
+  authors:
+    - family-names: "Alemán-Gómez"
+      given-names: "Yasser"
+      orcid: "https://orcid.org/0000-0001-6067-8639"
+      affiliation: "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+    - family-names: "Hervé"
+      given-names: "Nino"
+      affiliation: "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+    - family-names: "Hagmann"
+      given-names: "Patric"
+      orcid: "https://orcid.org/0000-0002-2854-6561"
+      affiliation: "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+  journal: "arXiv"
+  year: 2026
+  month: 7
+  doi: "10.48550/arXiv.2607.02638"
+  notes: "arXiv:2607.02638"
+  url: "https://arxiv.org/abs/2607.02638"

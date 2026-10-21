@@ -128,12 +128,17 @@ Deploying
 
 A reminder for the maintainers on how to deploy.
 
-1. Update the version in ``pyproject.toml``, ``clabtoolkit/__init__.py`` and ``release`` in
-   ``docs/source/conf.py``. The three must match.
+1. Update the version in ``pyproject.toml``, ``clabtoolkit/__init__.py``, ``release`` in
+   ``docs/source/conf.py``, the version line of ``DOCUMENTATION.md``, and ``version`` and
+   ``date-released`` in ``CITATION.cff``. They must all match.
 2. Move the "Unreleased" entries of ``HISTORY.rst`` under the new version and date.
 3. Commit the changes, make sure the CI is green, and push to ``main``. The distribution is
    built and published to TestPyPI.
 4. Tag the release and push the tag. Tags starting with ``v`` publish the distribution to PyPI::
 
-    $ git tag v0.5.1
-    $ git push origin v0.5.1
+    $ git tag vX.Y.Z
+    $ git push origin vX.Y.Z
+
+5. Publish a GitHub Release from the tag (Releases > Draft a new release). If the repository is
+   enabled in Zenodo, publishing the release archives that version and creates its DOI. Add the
+   DOI to ``CITATION.cff`` afterwards.

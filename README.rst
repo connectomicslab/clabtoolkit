@@ -204,7 +204,8 @@ If you use clabtoolkit in your work, please cite the toolkit paper::
     Alemán-Gómez, Y., et al. clabtoolkit. arXiv:2607.02638.
     https://arxiv.org/abs/2607.02638
 
-The source code is available at https://github.com/connectomicslab/clabtoolkit.
+The repository includes a ``CITATION.cff`` file, so GitHub shows a "Cite this repository" option
+with the same reference. The source code is available at https://github.com/connectomicslab/clabtoolkit.
 
 Credits
 -------
