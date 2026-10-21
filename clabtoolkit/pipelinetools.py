@@ -782,7 +782,7 @@ def build_derivatives_inventory(
     pipe_dirs: list | None = None,
     subj_ids: str | list = None,
     extensions: list = None,
-    output_csv: str | Path = None,
+    output_table: str | Path = None,
     n_workers: int = 8,
 ) -> pd.DataFrame:
     """
