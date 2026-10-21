@@ -5791,8 +5791,8 @@ def create_cohort_stats_table(
             and os.path.isdir(os.path.join(fs_subject_dir, subj_dir))
         )
     else:
-        # Use cltpipe.get_ids2process to handle both list and file input
-        subject_ids = cltpipe.get_ids2process(ids_file)
+        # Use cltpipe.get_fullids2process to handle both list and file input
+        subject_ids = cltpipe.get_fullids2process(ids_file)
 
     # Initialize console and display summary
     console = Console()
