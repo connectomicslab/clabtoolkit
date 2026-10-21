@@ -25,6 +25,7 @@
                     "atlas": "Atlas",
                     "scale": "Scale",
                     "seg": "Segmentation",
+                    "param": "Parameter",
                     "desc": "Description"
                 },
         "raw_suffix": ["bold",
@@ -117,7 +118,8 @@
                                 "peaks", 
                                 "b0", 
                                 "tdi", 
-                                "tractography", 
+                                "tractography",
+                                "dwimap",
                                 "xfm"],
         "bids_folders": [
                     "anat",
