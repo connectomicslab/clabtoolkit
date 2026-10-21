@@ -46,23 +46,33 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="ipykernel
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-def get_ids2process(
-    ids: str | list[str] | None = None, in_dir: str = None
+def get_fullids2process(
+    ids: str | list[str] | None = None,
+    in_dir: str = None,
+    or_filter: str | list[str] = "T1w",
+    source: str = "folders",  # Can be "folders" or "files"
 ) -> list[str]:
     """
-    Get list of subject IDs to process from various input sources.
+    Get list of subject Full IDs to process. These IDs are collected from the BIDs dataset.
+    They are equal to the name of the files without the suffixes and extensions.
+    Example: if a file is named 'sub-001_ses-01_T1w.nii', the corresponding Full
+    ID will be 'sub-001_ses-01'.
 
     Parameters
     ----------
     ids : str, list of str, or None, optional
-        Subject IDs specification. Can be:
+        Subject Full IDs specification. Can be:
         - None: discover all subjects in `in_dir` (default)
-        - list: list of subject ID strings
-        - str: comma-separated IDs, single ID, or path to text file
+        - list: list of subject Full ID strings
+        - str: comma-separated IDs, single Full ID, or path to text file
 
     in_dir : str, optional
         Directory path to scan for subjects when `ids` is None.
         Only used when `ids` is None.
+
+    or_filter : str or list of str, optional
+        File extensions or patterns to filter for when scanning subject directories.
+        Default is 'T1w'. A list of strings can be provided to specify multiple patterns.
 
     Returns
     -------
@@ -81,23 +91,23 @@ def get_ids2process(
     Examples
     --------
     >>> # Discover subjects from directory
-    >>> get_ids2process(ids=None, in_dir='/data/subjects')
+    >>> get_fullids2process(ids=None, in_dir='/data/subjects')
     ['sub-001', 'sub-002', 'sub-003']
 
     >>> # From list
-    >>> get_ids2process(['sub-001', 'sub-002'])
+    >>> get_fullids2process(['sub-001', 'sub-002'])
     ['sub-001', 'sub-002']
 
     >>> # From comma-separated string
-    >>> get_ids2process('sub-001, sub-002, sub-003')
+    >>> get_fullids2process('sub-001, sub-002, sub-003')
     ['sub-001', 'sub-002', 'sub-003']
 
     >>> # Single subject ID
-    >>> get_ids2process('sub-001')
+    >>> get_fullids2process('sub-001')
     ['sub-001']
 
     >>> # From text file
-    >>> get_ids2process('/path/to/subjects.txt')
+    >>> get_fullids2process('/path/to/subjects.txt')
     ['sub-001', 'sub-002', 'sub-003']
 
     Notes
@@ -108,15 +118,52 @@ def get_ids2process(
     Text files should contain one subject ID per line. Empty lines and
     whitespace are automatically filtered out.
     """
+
+    if source not in ["folders", "files"]:
+        raise ValueError(f"source must be 'folders' or 'files', got {source}")
+
     # Handle None case - discover from directory
     if ids is None:
         if not in_dir or not os.path.isdir(in_dir):
             raise ValueError(f"Valid in_dir required when ids is None. Got: {in_dir}")
-        return [d for d in os.listdir(in_dir) if d.startswith("sub-")]
+
+        all_ids = []
+        for d in os.listdir(in_dir):
+            if d.startswith("sub-"):
+                if source == "files":
+                    tmp_files = cltmisc.get_all_files(
+                        os.path.join(in_dir, d), or_filter=or_filter
+                    )
+                    if tmp_files:
+                        tmp_files = cltmisc.filter_by_substring(
+                            tmp_files, or_filter=[".nii", ".nii.gz", ".mgz", ".mnc"]
+                        )
+                        if tmp_files:
+
+                            for t in tmp_files:
+                                # Get the filename
+                                filename = os.path.basename(t)
+                                bids_dict = cltbids.str2entity(filename)
+
+                                # Remove the extension from the bids_dict
+                                if "extension" in bids_dict.keys():
+                                    del bids_dict["extension"]
+
+                                if "suffix" in bids_dict.keys():
+                                    del bids_dict["suffix"]
+
+                                all_ids.append(cltbids.entity2str(bids_dict))
+                else:
+                    all_ids.append(d)
+        all_ids = list(set(all_ids))  # Remove duplicates
+        all_ids.sort()  # Sort the IDs for consistency
+        return all_ids
 
     # Handle list case
     if isinstance(ids, list):
-        return [str(id_).strip() for id_ in ids if str(id_).strip()]
+        all_ids = [str(id_).strip() for id_ in ids if str(id_).strip()]
+        all_ids.sort()
+        return all_ids
 
     # Handle string case
     if isinstance(ids, str):
@@ -127,10 +174,14 @@ def get_ids2process(
         # File path
         if os.path.isfile(ids):
             with open(ids, encoding="utf-8") as f:
-                return [line.strip() for line in f if line.strip()]
+                all_ids = [line.strip() for line in f if line.strip()]
+                all_ids.sort()
+                return all_ids
 
         # Comma-separated or single ID
-        return [id_.strip() for id_ in ids.split(",") if id_.strip()]
+        all_ids = [id_.strip() for id_ in ids.split(",") if id_.strip()]
+        all_ids.sort()
+        return all_ids
 
     raise ValueError(f"ids must be None, list, or string, got {type(ids)}")
 
@@ -491,7 +542,7 @@ def scan_derivatives(
     if extensions is None:
         extensions = [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"]
     if subj_ids is None:
-        subj_ids = get_ids2process(None, in_dir=pipe_dir)
+        subj_ids = get_fullids2process(None, in_dir=pipe_dir)
 
     # Clean list with the the subject IDs to look for in the file paths
     if isinstance(subj_ids, str):
@@ -624,7 +675,7 @@ def build_inventory(
     # ── Decide upfront which processing path to take ──────────────────────
     # Ensures exactly one progress task is created per pipeline.
     if subj_ids is None:
-        subj_ids = get_ids2process(
+        subj_ids = get_fullids2process(
             None, in_dir=pipe_dir
         )  # Just to check if subject folders exist
 
@@ -677,7 +728,7 @@ def build_inventory(
         progress.print(
             f"  [yellow]No matching files found — falling back to FreeSurfer subject scan for '{pipe_id}'…[/yellow]"
         )
-        fs_ids = get_ids2process(None, in_dir=pipe_dir)
+        fs_ids = get_fullids2process(None, in_dir=pipe_dir)
         task_id = progress.add_task(bar_label, total=len(fs_ids))
 
         fs_results, _ = _run_parallel(
