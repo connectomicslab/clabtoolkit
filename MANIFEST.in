@@ -3,6 +3,7 @@ include CITATION.cff
 include CONTRIBUTING.rst
 include HISTORY.rst
 include LICENSE
+include NOTICE
 include README.rst
 include pyproject.toml
 

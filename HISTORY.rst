@@ -6,6 +6,7 @@ Unreleased
 ----------
 
 * Added the Zenodo DOI of the toolkit to CITATION.cff and the README
+* Replaced the LICENSE file by the unmodified Apache-2.0 text, so GitHub recognizes the license, and moved the copyright statement to a NOTICE file
 
 0.5.1 (2026-10-21)
 ------------------
