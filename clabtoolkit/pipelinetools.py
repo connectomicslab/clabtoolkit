@@ -709,24 +709,18 @@ def build_inventory(
             df.drop_duplicates(inplace=True)
             df["Count"] = 1
 
-            priority_cols = [
-                "Count",
-                "sub",
-                "ses",
-                "run",
-                "acq",
-                "space",
-                "model",
-                "desc",
-                "res",
-                "suffix",
-                "extension",
-                "full_path",
-            ]
-            ordered = [c for c in priority_cols if c in df.columns]
+            ent_dict = cltbids.entities4table()
+            # Get all the keys from the entity dictionary
+            all_values = list(ent_dict.values())
+
+            priority_names = all_values + ["Type", "Extension", "Full_path", "Count"]
+
+            ordered = [c for c in priority_names if c in df.columns]
             remaining = [c for c in df.columns if c not in ordered]
             df = df[ordered + remaining]
-            sort_cols = [c for c in ["sub", "ses", "run"] if c in df.columns]
+            sort_cols = [
+                c for c in ["Participant", "Session", "Run"] if c in df.columns
+            ]
             if sort_cols:
                 df = df.sort_values(by=sort_cols)
         else:
