@@ -1589,7 +1589,7 @@ def get_bids_database_table(
 
     # Create column names
     column_names = list(all_dataset_entities.keys())
-    column_names.extend(["suffix", "N"])
+    column_names.extend(["Type", "N"])
 
     # Walk each subject directory separately. This is inherently safe against
     # picking up derivatives/, code/, sourcedata/, etc., since we only ever look
@@ -1618,7 +1618,7 @@ def get_bids_database_table(
                     row_dict[entity] = value
 
             # Extract suffix from filename
-            row_dict["suffix"] = ent_dict["suffix"]
+            row_dict["Type"] = ent_dict["suffix"]
 
             # Set N to 1 for individual files (we'll aggregate later)
             row_dict["N"] = 1
