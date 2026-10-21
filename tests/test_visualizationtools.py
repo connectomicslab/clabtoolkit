@@ -300,10 +300,21 @@ class TestFigureConfiguration:
         with pytest.raises(TypeError, match="must be of type"):
             plotter.update_figure_config(**kwargs)
 
-    def test_invalid_value_alone_leaves_the_configuration_unchanged(self, plotter):
+    @pytest.mark.parametrize(
+        "kwargs, error",
+        [
+            ({"background_color": "black", "title_font_size": 1000}, ValueError),
+            ({"background_color": "black", "title_font_size": "big"}, TypeError),
+            ({"background_color": "black", "bogus_param": 1}, ValueError),
+            ({"title_font_size": 1000, "background_color": "black"}, ValueError),
+        ],
+    )
+    def test_failed_update_leaves_the_configuration_unchanged(
+        self, plotter, kwargs, error
+    ):
         before = dict(plotter.figure_conf)
-        with pytest.raises(ValueError):
-            plotter.update_figure_config(title_font_size=1000)
+        with pytest.raises(error):
+            plotter.update_figure_config(**kwargs)
         assert plotter.figure_conf == before
 
     def test_list_options(self, plotter, capsys):

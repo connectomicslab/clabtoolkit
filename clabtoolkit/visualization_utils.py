@@ -1542,8 +1542,7 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
         print("Use plotter.list_figure_config_options() to see available parameters.")
         return
 
-    # Validate and update parameters
-    updated_params = []
+    # Validate every parameter first, so a failure leaves the configuration untouched
     for param, value in kwargs.items():
         if param not in valid_params:
             available_params = list(valid_params.keys())
@@ -1569,7 +1568,9 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
                     f"got {value}"
                 )
 
-        # Update the configuration
+    # Update the configuration
+    updated_params = []
+    for param, value in kwargs.items():
         old_value = plotobj.figure_conf.get(param, "Not set")
         plotobj.figure_conf[param] = value
         updated_params.append(f"  {param}: {old_value} → {value}")
