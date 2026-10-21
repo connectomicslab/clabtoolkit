@@ -1287,35 +1287,29 @@ def _write_mismatches_to_db(missmatch_summary: dict, db_path: str):
         cursor.execute("DROP TABLE IF EXISTS mismatches")
         cursor.execute("DROP TABLE IF EXISTS pipelines")
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE pipelines (
             pipeline_id TEXT PRIMARY KEY,
             ref_fullid TEXT
-        )"""
-        )
+        )""")
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE mismatches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pipeline_id TEXT,
             subject_fullid TEXT,
             FOREIGN KEY (pipeline_id) REFERENCES pipelines(pipeline_id),
             UNIQUE (pipeline_id, subject_fullid)
-        )"""
-        )
+        )""")
 
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE file_details (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mismatch_id INTEGER,
             file_path TEXT,
             status TEXT,
             FOREIGN KEY (mismatch_id) REFERENCES mismatches(id)
-        )"""
-        )
+        )""")
 
         for pipe, info in missmatch_summary.items():
             cursor.execute(
