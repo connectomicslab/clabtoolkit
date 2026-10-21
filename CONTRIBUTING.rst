@@ -135,5 +135,5 @@ A reminder for the maintainers on how to deploy.
    built and published to TestPyPI.
 4. Tag the release and push the tag. Tags starting with ``v`` publish the distribution to PyPI::
 
-    $ git tag v0.4.6
-    $ git push origin v0.4.6
+    $ git tag v0.5.1
+    $ git push origin v0.5.1
