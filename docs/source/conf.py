@@ -18,7 +18,7 @@ autodoc_mock_imports = []
 project = "clabtoolkit"
 copyright = "2024-2026, Yasser Alemán-Gómez"
 author = "Yasser Alemán-Gómez"
-release = "0.4.5"
+release = "0.5.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

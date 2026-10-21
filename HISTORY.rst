@@ -2,8 +2,8 @@
 History
 =======
 
-Unreleased
-----------
+0.5.0 (2026-10-21)
+------------------
 
 * Fixed the FA, VF, RA and GA maps of maps_from_tensor_eigenvalues in dwitools (FA used a factor of 0.5 instead of 3/2, VF and RA used the radial instead of the mean diffusivity, and GA was not the geodesic anisotropy). Maps computed with previous versions will change
 * Fixed the gradient signs recovered by DiffusionScheme.from_bmatrix_array (they were always positive)
