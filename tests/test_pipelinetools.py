@@ -72,7 +72,12 @@ def quiet_progress():
 def _remove_file(deriv_dir: Path, pipe: str, sub: str, ses: str):
     """Remove the NIfTI of one subject/session in one pipeline."""
     os.remove(
-        deriv_dir / pipe / f"sub-{sub}" / f"ses-{ses}" / "anat" / f"sub-{sub}_ses-{ses}_T1w.nii.gz"
+        deriv_dir
+        / pipe
+        / f"sub-{sub}"
+        / f"ses-{ses}"
+        / "anat"
+        / f"sub-{sub}_ses-{ses}_T1w.nii.gz"
     )
 
 
@@ -150,7 +155,9 @@ class TestGetFullIds2Process:
     def test_discover_files(self, bids_dir):
         out = cltpipe.get_fullids2process(None, in_dir=str(bids_dir), source="files")
         expected = [
-            f"sub-0{s}_ses-0{v}" for s in range(1, N_SUB + 1) for v in range(1, N_SES + 1)
+            f"sub-0{s}_ses-0{v}"
+            for s in range(1, N_SUB + 1)
+            for v in range(1, N_SES + 1)
         ]
         assert out == expected
 
@@ -166,7 +173,9 @@ class TestGetFullIds2Process:
         assert out == []
 
     def test_discover_files_with_filter(self, tmp_path):
-        bids = _simulate(tmp_path / "bids", n_subjects=2, n_visits=1, modalities=("anat", "dwi"))
+        bids = _simulate(
+            tmp_path / "bids", n_subjects=2, n_visits=1, modalities=("anat", "dwi")
+        )
         out = cltpipe.get_fullids2process(
             None, in_dir=str(bids), source="files", or_filter="dwi"
         )
@@ -220,7 +229,9 @@ class TestLoadStatusTable:
     @pytest.mark.parametrize("ext,sep", [(".tsv", "\t"), (".csv", ","), (".txt", ";")])
     def test_read_files_keeps_strings(self, tmp_path, ext, sep):
         f = tmp_path / f"table{ext}"
-        pd.DataFrame({"Participant": ["01"], "chimera": [2]}).to_csv(f, sep=sep, index=False)
+        pd.DataFrame({"Participant": ["01"], "chimera": [2]}).to_csv(
+            f, sep=sep, index=False
+        )
         out = cltpipe._load_status_table(f)
         assert out.loc[0, "Participant"] == "01"
         assert out.loc[0, "chimera"] == "2"
@@ -274,9 +285,7 @@ class TestResolvePipeDirs:
         assert selected == ["thalseg-cnn"]
 
     def test_exact_and_substring_without_duplicates(self, deriv_dir):
-        _, _, selected = cltpipe._resolve_pipe_dirs(
-            str(deriv_dir), ["chimera", "chim"]
-        )
+        _, _, selected = cltpipe._resolve_pipe_dirs(str(deriv_dir), ["chimera", "chim"])
         assert selected == ["chimera"]
 
     def test_unknown_pipeline(self, deriv_dir):
@@ -294,7 +303,9 @@ class TestRowEntities:
         assert list(out) == ["sub", "ses", "acq"]
 
     def test_skips_nan_and_empty(self):
-        row = pd.Series({"Participant": "01", "Session": float("nan"), "Acquisition": "  "})
+        row = pd.Series(
+            {"Participant": "01", "Session": float("nan"), "Acquisition": "  "}
+        )
         out = cltpipe._row_entities(row, self.ENT_LIST, list(row.index))
         assert out == {"sub": "sub-01"}
 
@@ -315,7 +326,8 @@ class TestFindFullId:
 
     def test_exact_match_preferred_over_partial(self):
         assert (
-            cltpipe._find_full_id(self.SUBJ, ["sub-01", "ses-01"], "fb") == "sub-01_ses-01"
+            cltpipe._find_full_id(self.SUBJ, ["sub-01", "ses-01"], "fb")
+            == "sub-01_ses-01"
         )
 
     def test_whole_token_matching(self):
@@ -330,7 +342,8 @@ class TestFindFullId:
 
     def test_order_of_entities_is_irrelevant(self):
         assert (
-            cltpipe._find_full_id(self.SUBJ, ["ses-02", "sub-01"], "fb") == "sub-01_ses-02"
+            cltpipe._find_full_id(self.SUBJ, ["ses-02", "sub-01"], "fb")
+            == "sub-01_ses-02"
         )
 
     def test_empty_entities_returns_fallback(self):
@@ -364,7 +377,9 @@ class TestFinalizeSummary:
 
     def test_json_dir_must_exist(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            cltpipe._finalize_summary(self.SUMMARY, False, str(tmp_path / "x" / "o.json"))
+            cltpipe._finalize_summary(
+                self.SUMMARY, False, str(tmp_path / "x" / "o.json")
+            )
 
 
 ####################################################################################################
@@ -470,7 +485,10 @@ class TestScanDerivatives:
         assert all(f.endswith(".json") for f in files)
 
     def test_extension_without_matches(self, deriv_dir):
-        assert cltpipe.scan_derivatives(str(deriv_dir / "chimera"), extensions=[".mgz"]) == []
+        assert (
+            cltpipe.scan_derivatives(str(deriv_dir / "chimera"), extensions=[".mgz"])
+            == []
+        )
 
 
 class TestRunParallel:
@@ -480,7 +498,9 @@ class TestRunParallel:
         def work(x):
             return (x * 2, None) if x % 2 == 0 else (None, x)
 
-        results, failed = cltpipe._run_parallel([1, 2, 3, 4], work, quiet_progress, task, 2)
+        results, failed = cltpipe._run_parallel(
+            [1, 2, 3, 4], work, quiet_progress, task, 2
+        )
         assert sorted(results) == [4, 8]
         assert sorted(failed) == [1, 3]
         assert quiet_progress.tasks[0].completed == 4
@@ -500,7 +520,9 @@ class TestRunParallel:
 
     def test_empty_items(self, quiet_progress):
         task = quiet_progress.add_task("t", total=0)
-        assert cltpipe._run_parallel([], lambda x: (x, None), quiet_progress, task, 2) == (
+        assert cltpipe._run_parallel(
+            [], lambda x: (x, None), quiet_progress, task, 2
+        ) == (
             [],
             [],
         )
@@ -511,9 +533,7 @@ class TestRunParallel:
 ####################################################################################################
 class TestBuildInventory:
     def test_missing_pipeline_returns_empty(self, deriv_dir, quiet_progress):
-        df = cltpipe.build_inventory(
-            str(deriv_dir), "nope", 1, 1, quiet_progress
-        )
+        df = cltpipe.build_inventory(str(deriv_dir), "nope", 1, 1, quiet_progress)
         assert isinstance(df, pd.DataFrame) and df.empty
 
     def test_bids_path(self, deriv_dir, quiet_progress):
@@ -525,7 +545,9 @@ class TestBuildInventory:
         cols = list(df.columns)
         assert cols.index("Participant") < cols.index("Session") < cols.index("Count")
         # sorted by participant/session
-        assert df[["Participant", "Session"]].apply(tuple, axis=1).is_monotonic_increasing
+        assert (
+            df[["Participant", "Session"]].apply(tuple, axis=1).is_monotonic_increasing
+        )
 
     def test_restricted_to_ids(self, deriv_dir, quiet_progress):
         df = cltpipe.build_inventory(
@@ -592,7 +614,9 @@ class TestBuildInventory:
         assert set(df["Type"]) == {"mri", "surf"}
         assert set(df["Participant"]) == {"01", "02"}
 
-    def test_freesurfer_fallback_without_readable_subjects(self, tmp_path, quiet_progress):
+    def test_freesurfer_fallback_without_readable_subjects(
+        self, tmp_path, quiet_progress
+    ):
         (tmp_path / "freesurfer").mkdir()
         df = cltpipe.build_inventory(str(tmp_path), "freesurfer", 1, 1, quiet_progress)
         assert df.empty
@@ -682,8 +706,12 @@ class TestCreateProcessingStatusTable:
         assert all(int(row[p]) == 0 for p in PIPELINES)
 
     def test_sequential_equals_parallel(self, deriv_dir, full_ids):
-        a, _ = cltpipe.create_processing_status_table(str(deriv_dir), full_ids, n_jobs=1)
-        b, _ = cltpipe.create_processing_status_table(str(deriv_dir), full_ids, n_jobs=2)
+        a, _ = cltpipe.create_processing_status_table(
+            str(deriv_dir), full_ids, n_jobs=1
+        )
+        b, _ = cltpipe.create_processing_status_table(
+            str(deriv_dir), full_ids, n_jobs=2
+        )
         pd.testing.assert_frame_equal(
             a.sort_values(["Participant", "Session"]).reset_index(drop=True),
             b.sort_values(["Participant", "Session"]).reset_index(drop=True),
@@ -763,9 +791,14 @@ class TestProcessingStatusDetailsJson:
             "sub-01_ses-02",
         ]
 
-    def test_details_report_missing_files(self, status_table, full_ids, broken_deriv_dir):
+    def test_details_report_missing_files(
+        self, status_table, full_ids, broken_deriv_dir
+    ):
         summary, _ = cltpipe.get_processing_status_details_json(
-            status_table, full_ids, str(broken_deriv_dir), pipe_dirs=["chimera", "fsl-first"]
+            status_table,
+            full_ids,
+            str(broken_deriv_dir),
+            pipe_dirs=["chimera", "fsl-first"],
         )
         chimera = summary["chimera"]["missmatch_fullid"]
         assert set(chimera) == {"sub-01_ses-01", "sub-01_ses-02"}
@@ -787,7 +820,9 @@ class TestProcessingStatusDetailsJson:
         )
         assert summary["thalseg-cnn"]["missmatch_fullid"] == {}
 
-    def test_reference_is_a_complete_subject(self, status_table, full_ids, broken_deriv_dir):
+    def test_reference_is_a_complete_subject(
+        self, status_table, full_ids, broken_deriv_dir
+    ):
         summary, _ = cltpipe.get_processing_status_details_json(
             status_table, full_ids, str(broken_deriv_dir), pipe_dirs=["chimera"]
         )
@@ -795,7 +830,14 @@ class TestProcessingStatusDetailsJson:
         assert ref not in summary["chimera"]["missmatch_fullid"]
 
     def test_extra_files_are_reported(self, deriv_dir, full_ids):
-        extra = deriv_dir / "chimera" / "sub-02" / "ses-01" / "anat" / "sub-02_ses-01_extra.json"
+        extra = (
+            deriv_dir
+            / "chimera"
+            / "sub-02"
+            / "ses-01"
+            / "anat"
+            / "sub-02_ses-01_extra.json"
+        )
         extra.write_text("{}")
         table, _ = cltpipe.create_processing_status_table(str(deriv_dir), full_ids)
         summary, _ = cltpipe.get_processing_status_details_json(
@@ -819,12 +861,18 @@ class TestProcessingStatusDetailsJson:
     def test_table_from_file_keeps_leading_zeros(
         self, broken_deriv_dir, full_ids, tmp_path
     ):
-        table, _ = cltpipe.create_processing_status_table(str(broken_deriv_dir), full_ids)
+        table, _ = cltpipe.create_processing_status_table(
+            str(broken_deriv_dir), full_ids
+        )
         for name in ("status.tsv", "status.csv"):
             path = tmp_path / name
             table.to_csv(path, sep="\t" if name.endswith("tsv") else ",", index=False)
             summary, _ = cltpipe.get_processing_status_details_json(
-                str(path), full_ids, str(broken_deriv_dir), pipe_dirs=["chimera"], only_ids=True
+                str(path),
+                full_ids,
+                str(broken_deriv_dir),
+                pipe_dirs=["chimera"],
+                only_ids=True,
             )
             assert sorted(summary["chimera"]["missmatch_fullid"]) == [
                 "sub-01_ses-01",
@@ -835,7 +883,11 @@ class TestProcessingStatusDetailsJson:
         ids_file = tmp_path / "ids.txt"
         ids_file.write_text("\n".join(full_ids))
         summary, _ = cltpipe.get_processing_status_details_json(
-            status_table, str(ids_file), str(broken_deriv_dir), pipe_dirs="chimera", only_ids=True
+            status_table,
+            str(ids_file),
+            str(broken_deriv_dir),
+            pipe_dirs="chimera",
+            only_ids=True,
         )
         assert len(summary["chimera"]["missmatch_fullid"]) == 2
 
@@ -847,7 +899,9 @@ class TestProcessingStatusDetailsJson:
         assert path == str(out)
         assert json.loads(out.read_text()) == summary
 
-    def test_json_output_dir_must_exist(self, status_table, full_ids, broken_deriv_dir, tmp_path):
+    def test_json_output_dir_must_exist(
+        self, status_table, full_ids, broken_deriv_dir, tmp_path
+    ):
         with pytest.raises(FileNotFoundError):
             cltpipe.get_processing_status_details_json(
                 status_table,
@@ -856,14 +910,18 @@ class TestProcessingStatusDetailsJson:
                 out_json=str(tmp_path / "nope" / "d.json"),
             )
 
-    def test_input_table_is_not_modified(self, status_table, full_ids, broken_deriv_dir):
+    def test_input_table_is_not_modified(
+        self, status_table, full_ids, broken_deriv_dir
+    ):
         before = status_table.copy()
         cltpipe.get_processing_status_details_json(
             status_table, full_ids, str(broken_deriv_dir)
         )
         pd.testing.assert_frame_equal(status_table, before)
 
-    def test_table_without_pipeline_column(self, status_table, full_ids, broken_deriv_dir):
+    def test_table_without_pipeline_column(
+        self, status_table, full_ids, broken_deriv_dir
+    ):
         with pytest.raises(ValueError, match="no column"):
             cltpipe.get_processing_status_details_json(
                 status_table.drop(columns=["chimera"]),
@@ -933,15 +991,22 @@ class TestProcessingStatusDetailsSqlite3:
         conn = sqlite3.connect(db)
         try:
             tables = {
-                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
             }
             assert {"pipelines", "mismatches", "file_details"} <= tables
-            assert {r[0] for r in conn.execute("SELECT pipeline_id FROM pipelines")} == {
+            assert {
+                r[0] for r in conn.execute("SELECT pipeline_id FROM pipelines")
+            } == {
                 "chimera",
                 "fsl-first",
             }
             assert conn.execute("SELECT COUNT(*) FROM mismatches").fetchone()[0] == 3
-            statuses = {r[0] for r in conn.execute("SELECT DISTINCT status FROM file_details")}
+            statuses = {
+                r[0] for r in conn.execute("SELECT DISTINCT status FROM file_details")
+            }
             assert statuses == {"missing"}
         finally:
             conn.close()
@@ -951,7 +1016,11 @@ class TestProcessingStatusDetailsSqlite3:
     ):
         db = tmp_path / "ids.db"
         summary, _ = cltpipe.get_processing_status_details_sqlite3(
-            status_table, full_ids, str(broken_deriv_dir), only_ids=True, db_path=str(db)
+            status_table,
+            full_ids,
+            str(broken_deriv_dir),
+            only_ids=True,
+            db_path=str(db),
         )
         assert isinstance(summary["chimera"]["missmatch_fullid"], list)
         conn = sqlite3.connect(db)
@@ -960,7 +1029,9 @@ class TestProcessingStatusDetailsSqlite3:
         finally:
             conn.close()
 
-    def test_existing_db_is_replaced(self, status_db, status_table, full_ids, broken_deriv_dir):
+    def test_existing_db_is_replaced(
+        self, status_db, status_table, full_ids, broken_deriv_dir
+    ):
         db, _ = status_db
         cltpipe.get_processing_status_details_sqlite3(
             status_table,
@@ -971,14 +1042,16 @@ class TestProcessingStatusDetailsSqlite3:
         )
         conn = sqlite3.connect(db)
         try:
-            assert [r[0] for r in conn.execute("SELECT pipeline_id FROM pipelines")] == [
-                "thalseg-cnn"
-            ]
+            assert [
+                r[0] for r in conn.execute("SELECT pipeline_id FROM pipelines")
+            ] == ["thalseg-cnn"]
             assert conn.execute("SELECT COUNT(*) FROM mismatches").fetchone()[0] == 0
         finally:
             conn.close()
 
-    def test_db_dir_must_exist(self, status_table, full_ids, broken_deriv_dir, tmp_path):
+    def test_db_dir_must_exist(
+        self, status_table, full_ids, broken_deriv_dir, tmp_path
+    ):
         with pytest.raises(FileNotFoundError):
             cltpipe.get_processing_status_details_sqlite3(
                 status_table,
@@ -1027,7 +1100,7 @@ class TestQueryProcessingStatusDb:
     def test_pipelines_with_mismatches(self, status_db):
         db, _ = status_db
         df = cltpipe.query_processing_status_db(str(db), "pipelines_with_mismatches")
-        assert dict(zip(df["pipeline_id"], df["subject_count"])) == {
+        assert dict(zip(df["pipeline_id"], df["subject_count"], strict=True)) == {
             "chimera": 2,
             "fsl-first": 1,
         }
@@ -1056,9 +1129,14 @@ class TestQueryProcessingStatusDb:
         assert df.empty
 
     def test_extra_files_count(self, deriv_dir, full_ids, tmp_path):
-        (deriv_dir / "chimera" / "sub-02" / "ses-01" / "anat" / "sub-02_ses-01_extra.json").write_text(
-            "{}"
-        )
+        (
+            deriv_dir
+            / "chimera"
+            / "sub-02"
+            / "ses-01"
+            / "anat"
+            / "sub-02_ses-01_extra.json"
+        ).write_text("{}")
         table, _ = cltpipe.create_processing_status_table(str(deriv_dir), full_ids)
         db = tmp_path / "extra.db"
         cltpipe.get_processing_status_details_sqlite3(
@@ -1087,7 +1165,9 @@ class TestExportDbToJson:
         assert set(exported) == set(summary)
         for pipe, info in summary.items():
             assert exported[pipe]["ref_fullid"] == info["ref_fullid"]
-            assert set(exported[pipe]["missmatch_fullid"]) == set(info["missmatch_fullid"])
+            assert set(exported[pipe]["missmatch_fullid"]) == set(
+                info["missmatch_fullid"]
+            )
             for full_id, details in info["missmatch_fullid"].items():
                 got = exported[pipe]["missmatch_fullid"][full_id]
                 assert sorted(got["missing_files"]) == sorted(details["missing_files"])
@@ -1095,4 +1175,6 @@ class TestExportDbToJson:
 
     def test_missing_db(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            cltpipe.export_db_to_json(str(tmp_path / "nope.db"), str(tmp_path / "o.json"))
+            cltpipe.export_db_to_json(
+                str(tmp_path / "nope.db"), str(tmp_path / "o.json")
+            )

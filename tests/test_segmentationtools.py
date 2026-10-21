@@ -21,7 +21,11 @@ class TestTissueSegTable:
         df = cltseg.tissue_seg_table()
         assert list(df.columns) == ["index", "name", "abbreviation", "color"]
         assert df["index"].tolist() == [1, 2, 3]
-        assert df["name"].tolist() == ["cerebro_spinal_fluid", "gray_matter", "white_matter"]
+        assert df["name"].tolist() == [
+            "cerebro_spinal_fluid",
+            "gray_matter",
+            "white_matter",
+        ]
         assert df["abbreviation"].tolist() == ["CSF", "GM", "WM"]
 
     def test_colors_are_hexadecimal(self):
@@ -90,7 +94,9 @@ class FakeAnts:
             shutil.move(cmd[1], cmd[2])
         elif tool == "antsApplyTransforms":
             out = cmd[cmd.index("-o") + 1]
-            data = self.label_data if self.label_data is not None else np.zeros((4, 4, 4))
+            data = (
+                self.label_data if self.label_data is not None else np.zeros((4, 4, 4))
+            )
             nib.save(nib.Nifti1Image(data, np.eye(4)), out)
 
     def tools(self):
@@ -102,7 +108,9 @@ class FakeAnts:
 
 @pytest.fixture
 def ants(monkeypatch):
-    fake = FakeAnts(label_data=np.array([0, 1, 2, 3] * 16, dtype=np.int16).reshape(4, 4, 4))
+    fake = FakeAnts(
+        label_data=np.array([0, 1, 2, 3] * 16, dtype=np.int16).reshape(4, 4, 4)
+    )
     monkeypatch.setattr(cltseg.subprocess, "run", fake)
     return fake
 
@@ -161,13 +169,17 @@ class TestAbasedParcellation:
     def test_spam_application(self, ants, paths):
         run(paths, atlas_type="spam", interp="BSpline")
         cmd = ants.call("antsApplyTransforms")
-        assert cmd[cmd.index("-e") + 1] == "3"  # 4D images are transformed volume by volume
+        assert (
+            cmd[cmd.index("-e") + 1] == "3"
+        )  # 4D images are transformed volume by volume
         assert cmd[cmd.index("-n") + 1] == "BSpline"
         assert cmd[cmd.index("-i") + 1] == paths["atlas"]
         assert cmd[cmd.index("-r") + 1] == paths["t1"]  # subject T1 is the reference
         transforms = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-t"]
         assert transforms[0].endswith("_desc-iwarp_xfm.nii.gz")
-        assert transforms[1].startswith("[") and transforms[1].endswith("_desc-affine_xfm.mat,1]")
+        assert transforms[1].startswith("[") and transforms[1].endswith(
+            "_desc-affine_xfm.mat,1]"
+        )
 
     def test_spam_does_not_write_lookup_tables(self, ants, paths):
         run(paths, atlas_type="spam")
@@ -218,10 +230,14 @@ class TestAbasedParcellation:
             "sub-01_from-T1w_to-MNI152_xfm",
         ],
     )
-    def test_extensions_and_suffix_are_stripped_from_the_transform_name(self, ants, paths, xfm_name):
+    def test_extensions_and_suffix_are_stripped_from_the_transform_name(
+        self, ants, paths, xfm_name
+    ):
         paths["xfm"] = str(paths["xfm_dir"] / xfm_name)
         run(paths)
-        assert (paths["xfm_dir"] / "sub-01_from-T1w_to-MNI152_desc-affine_xfm.mat").is_file()
+        assert (
+            paths["xfm_dir"] / "sub-01_from-T1w_to-MNI152_desc-affine_xfm.mat"
+        ).is_file()
 
     def test_existing_desc_entity_is_replaced(self, ants, paths):
         paths["xfm"] = str(paths["xfm_dir"] / "sub-01_from-T1w_to-MNI152_desc-reg")
@@ -239,7 +255,9 @@ class TestAbasedParcellation:
 
     def test_container_image_must_exist(self, ants, paths, tmp_path):
         with pytest.raises(ValueError):
-            run(paths, cont_tech="singularity", cont_image=str(tmp_path / "missing.sif"))
+            run(
+                paths, cont_tech="singularity", cont_image=str(tmp_path / "missing.sif")
+            )
 
     def test_container_command_wraps_ants(self, ants, paths, tmp_path):
         image = tmp_path / "ants.sif"

@@ -256,8 +256,10 @@ class TestEntitiesTables:
     def test_entities_to_table_non_bids(self):
         df = cltbids.entities_to_table("/subjects/bert", include_suffix=True)
         assert df.to_dict("records") == [{"Participant": "bert", "Type": ""}]
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             cltbids.entities_to_table(None)
+        with pytest.raises(TypeError):
+            cltbids.entities_to_table(5)
 
 
 ####################################################################################################
@@ -384,7 +386,7 @@ class TestDatabaseTable:
         df = cltbids.get_bids_database_table(
             str(bids_root), output_table=str(out), n_jobs=2
         )
-        assert df.columns.tolist() == ["Participant", "Session", "suffix", "N"]
+        assert df.columns.tolist() == ["Participant", "Session", "Type", "N"]
         assert len(df) == 8  # 2 subjects x 2 sessions x 2 image types
         assert out.is_file() and len(pd.read_csv(out)) == 8
         nii = cltbids.get_bids_database_table(

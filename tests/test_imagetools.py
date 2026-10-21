@@ -267,11 +267,15 @@ class TestDilateMm:
         assert dil.sum() == 125
 
     def test_voxel_size_changes_the_radius_in_voxels(self, seed):
-        dil = cltimg.dilate_mm(seed, np.diag([1.5, 1.5, 1.5, 1.0]), shape="cube", dilation_mm=3)
+        dil = cltimg.dilate_mm(
+            seed, np.diag([1.5, 1.5, 1.5, 1.0]), shape="cube", dilation_mm=3
+        )
         assert self.extent(dil) == (5, 5, 5)
 
     def test_anisotropic_sphere(self, seed):
-        dil = cltimg.dilate_mm(seed, np.diag([1.0, 1.0, 3.0, 1.0]), shape="sphere", dilation_mm=3)
+        dil = cltimg.dilate_mm(
+            seed, np.diag([1.0, 1.0, 3.0, 1.0]), shape="sphere", dilation_mm=3
+        )
         assert self.extent(dil) == (7, 7, 3)
 
     def test_ball_is_smaller_than_cube(self, seed, morph):
@@ -337,7 +341,9 @@ class TestVoxMm:
             cltimg.vox2mm(np.array([[1, 2], [3, 4]]), AFFINE_MNI)
 
     def test_mm2vox_mni_origin(self):
-        assert np.allclose(cltimg.mm2vox(np.array([[0.0, 0.0, 0.0]]), AFFINE_MNI), [[90, 126, 72]])
+        assert np.allclose(
+            cltimg.mm2vox(np.array([[0.0, 0.0, 0.0]]), AFFINE_MNI), [[90, 126, 72]]
+        )
 
     def test_round_trip_in_oblique_image(self):
         vox = np.array([[3, 7, 11], [40, 2, 25]])
@@ -377,7 +383,9 @@ class TestGetVoxNeighbors:
 class TestSimulateImage:
     def test_from_shape(self, tmp_path):
         out = tmp_path / "sim.nii.gz"
-        img = cltimg.simulate_image((16, 16, 10), str(out), loc=100, scale=15, random_seed=42)
+        img = cltimg.simulate_image(
+            (16, 16, 10), str(out), loc=100, scale=15, random_seed=42
+        )
         assert out.is_file()
         assert img.shape == (16, 16, 10)
         data = img.get_fdata()
@@ -423,7 +431,9 @@ class TestSimulateImage:
 
     def test_unsupported_distribution(self, tmp_path):
         with pytest.raises(ValueError):
-            cltimg.simulate_image((5, 5, 5), str(tmp_path / "bad.nii.gz"), distribution="poisson")
+            cltimg.simulate_image(
+                (5, 5, 5), str(tmp_path / "bad.nii.gz"), distribution="poisson"
+            )
 
 
 class TestSimulateArray:
@@ -435,14 +445,23 @@ class TestSimulateArray:
 
     def test_4d_uniform(self, offcenter_sphere):
         sim = cltimg.simulate_array(
-            offcenter_sphere, n_volumes=8, distribution="uniform", low=-1, high=1, random_seed=42
+            offcenter_sphere,
+            n_volumes=8,
+            distribution="uniform",
+            low=-1,
+            high=1,
+            random_seed=42,
         )
         assert sim.shape == offcenter_sphere.shape + (8,)
         assert sim.min() >= -1 and sim.max() <= 1
 
     def test_reproducible(self, offcenter_sphere):
-        a = cltimg.simulate_array(offcenter_sphere, distribution="exponential", scale=3, random_seed=7)
-        b = cltimg.simulate_array(offcenter_sphere, distribution="exponential", scale=3, random_seed=7)
+        a = cltimg.simulate_array(
+            offcenter_sphere, distribution="exponential", scale=3, random_seed=7
+        )
+        b = cltimg.simulate_array(
+            offcenter_sphere, distribution="exponential", scale=3, random_seed=7
+        )
         assert np.array_equal(a, b)
         assert a[offcenter_sphere > 0].mean() == pytest.approx(3, abs=0.4)
 
@@ -452,7 +471,9 @@ class TestSimulateArray:
 
     def test_invalid_uniform_limits(self, offcenter_sphere):
         with pytest.raises(ValueError):
-            cltimg.simulate_array(offcenter_sphere, distribution="uniform", low=5, high=1)
+            cltimg.simulate_array(
+                offcenter_sphere, distribution="uniform", low=5, high=1
+            )
 
 
 ######################################################################################################
@@ -462,7 +483,9 @@ class TestDeleteVolumes:
         return np.broadcast_to(np.arange(20, dtype=np.float32), (8, 8, 4, 20)).copy()
 
     def test_remove_individual_volumes(self, arr):
-        out, removed = cltimg.delete_volumes_from_4D_array(arr, vols_to_delete=[0, 1, 2, 19])
+        out, removed = cltimg.delete_volumes_from_4D_array(
+            arr, vols_to_delete=[0, 1, 2, 19]
+        )
         assert out.shape == (8, 8, 4, 16)
         assert out[0, 0, 0].astype(int).tolist() == list(range(3, 19))
         assert sorted(removed) == [0, 1, 2, 19]
@@ -521,13 +544,18 @@ class TestDeleteVolumesFromImages:
         cltimg.delete_volumes_from_4D_images(in_file, out, vols_to_delete=[0])
         with pytest.raises(FileExistsError):
             cltimg.delete_volumes_from_4D_images(in_file, out, vols_to_delete=[0])
-        cltimg.delete_volumes_from_4D_images(in_file, out, vols_to_delete=[0, 1], overwrite=True)
+        cltimg.delete_volumes_from_4D_images(
+            in_file, out, vols_to_delete=[0, 1], overwrite=True
+        )
         assert nib.load(out).shape[-1] == 18
 
     def test_out_of_range(self, in_file, tmp_path):
         with pytest.raises(ValueError):
             cltimg.delete_volumes_from_4D_images(
-                in_file, str(tmp_path / "bad.nii.gz"), vols_to_delete=[5, 25], overwrite=True
+                in_file,
+                str(tmp_path / "bad.nii.gz"),
+                vols_to_delete=[5, 25],
+                overwrite=True,
             )
 
 
@@ -540,14 +568,18 @@ class TestMergeTo4d:
         files = []
         for i in range(3):
             f = tmp_path / f"sub-01_run-{i + 1}_T2w.nii.gz"
-            cltimg.simulate_image((12, 12, 8), str(f), affine=self.affine, random_seed=i)
+            cltimg.simulate_image(
+                (12, 12, 8), str(f), affine=self.affine, random_seed=i
+            )
             files.append(str(f))
         return files
 
     @pytest.fixture
     def run_4d(self, tmp_path):
         f = tmp_path / "sub-01_run-4_T2w.nii.gz"
-        cltimg.simulate_image((12, 12, 8), str(f), affine=self.affine, n_volumes=4, random_seed=3)
+        cltimg.simulate_image(
+            (12, 12, 8), str(f), affine=self.affine, n_volumes=4, random_seed=3
+        )
         return str(f)
 
     def test_merge_3d_in_memory(self, runs_3d):
@@ -564,28 +596,55 @@ class TestMergeTo4d:
     def test_volume_order_is_preserved(self, runs_3d):
         merged, _ = cltimg.merge_to_4d(runs_3d)
         for i, f in enumerate(runs_3d):
-            assert np.allclose(np.asarray(merged.dataobj)[..., i], nib.load(f).get_fdata())
+            assert np.allclose(
+                np.asarray(merged.dataobj)[..., i], nib.load(f).get_fdata()
+            )
 
     def test_dwi_sidecars_are_concatenated(self, tmp_path):
         files = []
         for i, n_dirs in enumerate([6, 4]):
             stem = tmp_path / f"sub-01_run-{i + 1}_dwi"
             cltimg.simulate_image(
-                (12, 12, 8), f"{stem}.nii.gz", affine=self.affine, n_volumes=n_dirs, random_seed=i
+                (12, 12, 8),
+                f"{stem}.nii.gz",
+                affine=self.affine,
+                n_volumes=n_dirs,
+                random_seed=i,
             )
             bvecs = np.random.default_rng(i).normal(size=(3, n_dirs))
             bvecs /= np.linalg.norm(bvecs, axis=0)
             np.savetxt(f"{stem}.bvec", bvecs, fmt="%.6f")
-            np.savetxt(f"{stem}.bval", np.r_[0, np.full(n_dirs - 1, 1000 * (i + 1))][None, :], fmt="%d")
+            np.savetxt(
+                f"{stem}.bval",
+                np.r_[0, np.full(n_dirs - 1, 1000 * (i + 1))][None, :],
+                fmt="%d",
+            )
             with open(f"{stem}.json", "w") as fh:
-                json.dump({"RepetitionTime": 3.2, "PhaseEncodingDirection": "j-" if i == 0 else "j"}, fh)
+                json.dump(
+                    {
+                        "RepetitionTime": 3.2,
+                        "PhaseEncodingDirection": "j-" if i == 0 else "j",
+                    },
+                    fh,
+                )
             files.append(f"{stem}.nii.gz")
 
         out = tmp_path / "sub-01_dwi.nii.gz"
         merged, meta = cltimg.merge_to_4d(files, output_path=str(out))
         assert merged.shape[-1] == 10
         assert meta["bvecs"].shape == (3, 10)
-        assert meta["bvals"].astype(int).tolist() == [0, 1000, 1000, 1000, 1000, 1000, 0, 2000, 2000, 2000]
+        assert meta["bvals"].astype(int).tolist() == [
+            0,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            0,
+            2000,
+            2000,
+            2000,
+        ]
         assert meta["json"]["RepetitionTime"] == 3.2
         assert meta["json"]["PhaseEncodingDirection"] == "j-"  # first file wins
         assert (tmp_path / "sub-01_dwi.bval").is_file()
@@ -616,9 +675,17 @@ def brain_images(tmp_path):
     }
     nib.save(nib.Nifti1Image(brain.astype(np.uint8), affine), paths["mask"])
     cltimg.simulate_image(
-        shape, str(paths["t1"]), affine=affine, distribution="uniform", low=100, high=1000, random_seed=0
+        shape,
+        str(paths["t1"]),
+        affine=affine,
+        distribution="uniform",
+        low=100,
+        high=1000,
+        random_seed=0,
     )
-    cltimg.simulate_image(shape, str(paths["bold"]), affine=affine, n_volumes=5, random_seed=0)
+    cltimg.simulate_image(
+        shape, str(paths["bold"]), affine=affine, n_volumes=5, random_seed=0
+    )
     paths = {k: str(v) for k, v in paths.items()}
     paths["brain"] = brain
     paths["affine"] = affine
@@ -656,7 +723,9 @@ class TestCropImageFromMask:
 
     def test_crop_4d(self, brain_images, tmp_path):
         out = cltimg.crop_image_from_mask(
-            brain_images["bold"], brain_images["mask"], str(tmp_path / "crop_bold.nii.gz")
+            brain_images["bold"],
+            brain_images["mask"],
+            str(tmp_path / "crop_bold.nii.gz"),
         )
         shape = nib.load(out).shape
         assert len(shape) == 4 and shape[-1] == 5
@@ -673,7 +742,9 @@ class TestCroppedToNative:
         crop = cltimg.crop_image_from_mask(
             brain_images["t1"], brain_images["mask"], str(tmp_path / "crop.nii.gz")
         )
-        native = cltimg.cropped_to_native(crop, brain_images["t1"], str(tmp_path / "restored.nii.gz"))
+        native = cltimg.cropped_to_native(
+            crop, brain_images["t1"], str(tmp_path / "restored.nii.gz")
+        )
         restored = nib.load(native).get_fdata()
         original = nib.load(brain_images["t1"]).get_fdata()
         assert restored.shape == original.shape
@@ -683,7 +754,9 @@ class TestCroppedToNative:
 
     def test_restore_4d(self, brain_images, tmp_path):
         crop = cltimg.crop_image_from_mask(
-            brain_images["bold"], brain_images["mask"], str(tmp_path / "crop_bold.nii.gz")
+            brain_images["bold"],
+            brain_images["mask"],
+            str(tmp_path / "crop_bold.nii.gz"),
         )
         native = cltimg.cropped_to_native(
             crop, brain_images["bold"], str(tmp_path / "restored_bold.nii.gz")
@@ -691,7 +764,9 @@ class TestCroppedToNative:
         assert nib.load(native).shape == nib.load(brain_images["bold"]).shape
 
 
-@pytest.mark.skipif(shutil.which("antsApplyTransforms") is None, reason="ANTs is not installed")
+@pytest.mark.skipif(
+    shutil.which("antsApplyTransforms") is None, reason="ANTs is not installed"
+)
 class TestApplyMultiTransf:
     def test_unsupported_interpolation(self, brain_images, tmp_path):
         with pytest.raises(ValueError):
@@ -726,7 +801,9 @@ class TestSpams:
         rng = np.random.default_rng(0)
         files = []
         for subj in range(5):
-            shifted = np.roll(base, shift=tuple(rng.integers(-1, 2, size=3)), axis=(0, 1, 2))
+            shifted = np.roll(
+                base, shift=tuple(rng.integers(-1, 2, size=3)), axis=(0, 1, 2)
+            )
             f = tmp_path / f"sub-{subj + 1:02d}_atlas-sim_dseg.nii.gz"
             nib.save(nib.Nifti1Image(shifted, np.eye(4)), f)
             files.append(str(f))
@@ -737,7 +814,10 @@ class TestSpams:
         path = tmp_path / "atlas-sim.lut"
         colors = [(230, 25, 75), (60, 180, 75), (255, 225, 25), (0, 130, 200)]
         path.write_text(
-            "".join(f"{i}  region-{i:02d}  {r} {g} {b} 0\n" for i, (r, g, b) in enumerate(colors, 1))
+            "".join(
+                f"{i}  region-{i:02d}  {r} {g} {b} 0\n"
+                for i, (r, g, b) in enumerate(colors, 1)
+            )
         )
         return str(path)
 
@@ -764,7 +844,9 @@ class TestSpams:
         assert nib.load(out).shape == (20, 20, 12, 4)
         assert (tmp_path / "spam_dict_colored.nii.gz").is_file()
 
-    def test_spams2maxprob_returns_array_and_saves(self, parc_files, lut_file, tmp_path):
+    def test_spams2maxprob_returns_array_and_saves(
+        self, parc_files, lut_file, tmp_path
+    ):
         spam_file = tmp_path / "spam.nii.gz"
         cltimg.create_spams(parc_files, str(spam_file), lut_table=lut_file)
         maxprob = cltimg.spams2maxprob(str(spam_file))
@@ -776,7 +858,9 @@ class TestSpams:
     def test_spams2maxprob_subset_of_volumes(self, parc_files, lut_file, tmp_path):
         spam_file = tmp_path / "spam.nii.gz"
         cltimg.create_spams(parc_files, str(spam_file), lut_table=lut_file)
-        assert set(np.unique(cltimg.spams2maxprob(str(spam_file), vol_indexes=[0, 1]))) <= {0, 1, 2}
+        assert set(
+            np.unique(cltimg.spams2maxprob(str(spam_file), vol_indexes=[0, 1]))
+        ) <= {0, 1, 2}
 
 
 class TestSpamsFromVolume:
@@ -788,7 +872,10 @@ class TestSpamsFromVolume:
         base[2:10, 10:18, 2:10] = 5
         rng = np.random.default_rng(0)
         return np.stack(
-            [np.roll(base, shift=tuple(rng.integers(-1, 2, size=3)), axis=(0, 1, 2)) for _ in range(5)],
+            [
+                np.roll(base, shift=tuple(rng.integers(-1, 2, size=3)), axis=(0, 1, 2))
+                for _ in range(5)
+            ],
             axis=-1,
         )
 
@@ -845,7 +932,9 @@ class TestMeshAndCentroid:
     def test_mesh_in_mm(self, offcenter_sphere):
         affine = np.diag([2.0, 2.0, 2.0, 1.0])
         affine[:3, 3] = [-40, -40, -40]
-        mesh = cltimg.extract_mesh_from_volume(offcenter_sphere, affine=affine, smooth_iterations=30)
+        mesh = cltimg.extract_mesh_from_volume(
+            offcenter_sphere, affine=affine, smooth_iterations=30
+        )
         # area of a 16 mm radius sphere, within the discretization error
         assert mesh.area == pytest.approx(4 * np.pi * 16**2, rel=0.15)
 
@@ -880,8 +969,12 @@ class TestMeshAndCentroid:
     def test_smoothing_ignores_thin_spur(self, offcenter_sphere):
         spur = offcenter_sphere.copy()
         spur[12, 20, 37:40] = 1
-        c_raw, n_raw = cltimg.extract_centroid_from_volume(spur, gaussian_smooth=False, closing_iterations=0)
-        c_smooth, n_smooth = cltimg.extract_centroid_from_volume(spur, gaussian_smooth=True, sigma=1.0)
+        c_raw, n_raw = cltimg.extract_centroid_from_volume(
+            spur, gaussian_smooth=False, closing_iterations=0
+        )
+        c_smooth, n_smooth = cltimg.extract_centroid_from_volume(
+            spur, gaussian_smooth=True, sigma=1.0
+        )
         target = np.array([12, 20, 28])
         assert np.linalg.norm(c_smooth - target) < np.linalg.norm(c_raw - target)
         assert n_raw == n_smooth == spur.sum()
@@ -898,7 +991,9 @@ class TestStatisticsAtNonzeroVoxels:
     data = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
 
     def test_mean(self):
-        assert cltimg.compute_statistics_at_nonzero_voxels(self.mask, self.data) == pytest.approx(5.0)
+        assert cltimg.compute_statistics_at_nonzero_voxels(
+            self.mask, self.data
+        ) == pytest.approx(5.0)
 
     @pytest.mark.parametrize(
         "metric, expected",
@@ -913,7 +1008,9 @@ class TestStatisticsAtNonzeroVoxels:
         ],
     )
     def test_metrics(self, metric, expected):
-        value = cltimg.compute_statistics_at_nonzero_voxels(self.mask, self.data, metric=metric)
+        value = cltimg.compute_statistics_at_nonzero_voxels(
+            self.mask, self.data, metric=metric
+        )
         assert value == pytest.approx(expected)
 
     def test_4d_gives_one_value_per_volume(self):
@@ -923,13 +1020,17 @@ class TestStatisticsAtNonzeroVoxels:
 
     def test_unsupported_metric(self):
         with pytest.raises(ValueError):
-            cltimg.compute_statistics_at_nonzero_voxels(self.mask, self.data, metric="mode")
+            cltimg.compute_statistics_at_nonzero_voxels(
+                self.mask, self.data, metric="mode"
+            )
 
 
 class TestInterpolate:
     @pytest.fixture
     def ramp(self):
-        return np.broadcast_to(np.arange(20, dtype=float)[:, None, None], (20, 20, 20)).copy()
+        return np.broadcast_to(
+            np.arange(20, dtype=float)[:, None, None], (20, 20, 20)
+        ).copy()
 
     points = np.array([[2.0, 5.0, 5.0], [7.25, 3.0, 9.0], [12.6, 10.5, 1.2]])
 
@@ -937,7 +1038,9 @@ class TestInterpolate:
         assert np.allclose(cltimg.interpolate(ramp, self.points), [2.0, 7.25, 12.6])
 
     def test_nearest(self, ramp):
-        assert np.allclose(cltimg.interpolate(ramp, self.points, interp_method="nearest"), [2, 7, 13])
+        assert np.allclose(
+            cltimg.interpolate(ramp, self.points, interp_method="nearest"), [2, 7, 13]
+        )
 
     def test_4d_and_points_outside(self, ramp):
         ramp4d = np.stack([ramp, 2 * ramp, 3 * ramp], axis=-1)
@@ -1011,8 +1114,14 @@ class TestImagetoolsUtils:
 
     def test_merge_json_files_first_value_wins(self, tmp_path):
         a, b = tmp_path / "a.json", tmp_path / "b.json"
-        a.write_text(json.dumps({"RepetitionTime": 3.2, "PhaseEncodingDirection": "j-"}))
-        b.write_text(json.dumps({"RepetitionTime": 3.2, "PhaseEncodingDirection": "j", "Extra": 1}))
+        a.write_text(
+            json.dumps({"RepetitionTime": 3.2, "PhaseEncodingDirection": "j-"})
+        )
+        b.write_text(
+            json.dumps(
+                {"RepetitionTime": 3.2, "PhaseEncodingDirection": "j", "Extra": 1}
+            )
+        )
         merged = imgutils.merge_json_files([a, str(b)])
         assert merged["RepetitionTime"] == 3.2
         assert merged["PhaseEncodingDirection"] == "j-"

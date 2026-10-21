@@ -31,7 +31,12 @@ PLAN = {
         ("sub-01", "20240920", "140210", [(1, "T1w_MPRAGE", 6), (2, "FLAIR_3D", 5)]),
     ],
     "sub-02": [
-        ("sub-02", "20240402", "104000", [(1, "T1w_MPRAGE", 6), (2, "DWI_b1000_30dir", 4)]),
+        (
+            "sub-02",
+            "20240402",
+            "104000",
+            [(1, "T1w_MPRAGE", 6), (2, "DWI_b1000_30dir", 4)],
+        ),
     ],
 }
 
@@ -51,7 +56,17 @@ EXPECTED = {
 }
 
 
-def _write_slice(path, patient_id, study_date, study_time, study_uid, series_uid, ser_num, ser_desc, inst):
+def _write_slice(
+    path,
+    patient_id,
+    study_date,
+    study_time,
+    study_uid,
+    series_uid,
+    ser_num,
+    ser_desc,
+    inst,
+):
     meta = FileMetaDataset()
     meta.MediaStorageSOPClassUID = MRImageStorage
     meta.MediaStorageSOPInstanceUID = generate_uid()
@@ -88,7 +103,13 @@ def _simulate_dicom_dataset(root: Path) -> Path:
                     if folder == "sub-01":
                         sub_dir = root / folder
                     else:
-                        sub_dir = root / folder / "DICOM" / f"ST{sdate[-4:]}" / f"SE{ser_num:04d}"
+                        sub_dir = (
+                            root
+                            / folder
+                            / "DICOM"
+                            / f"ST{sdate[-4:]}"
+                            / f"SE{ser_num:04d}"
+                        )
                     sub_dir.mkdir(parents=True, exist_ok=True)
                     _write_slice(
                         sub_dir / f"IM_{count:08d}.dcm",
@@ -145,7 +166,9 @@ def _layout(root: Path) -> dict:
     layout = {}
     for subj in sorted(p for p in root.iterdir() if p.is_dir()):
         layout[subj.name] = {
-            ses.name: {ser.name: len(list(ser.iterdir())) for ser in sorted(ses.iterdir())}
+            ses.name: {
+                ser.name: len(list(ser.iterdir())) for ser in sorted(ses.iterdir())
+            }
             for ses in sorted(subj.iterdir())
         }
     return layout
@@ -186,7 +209,9 @@ class TestSelectSubjectIds:
 
 
 class TestParseAcqDate:
-    @pytest.mark.parametrize("value", ["03/12/2024", "2024-03-12", "2024-03-12 09:15:30"])
+    @pytest.mark.parametrize(
+        "value", ["03/12/2024", "2024-03-12", "2024-03-12 09:15:30"]
+    )
     def test_supported_formats(self, value):
         assert cltdicom._parse_acq_date(value).date().isoformat() == "2024-03-12"
 
@@ -198,12 +223,12 @@ class TestParseAcqDate:
 ######################################################################################################
 class TestCreateSessionSeriesNames:
     def base(self, **extra):
-        fields = dict(
-            StudyDate="20240312",
-            StudyTime="091530",
-            SeriesNumber=1,
-            SeriesDescription="T1w_MPRAGE",
-        )
+        fields = {
+            "StudyDate": "20240312",
+            "StudyTime": "091530",
+            "SeriesNumber": 1,
+            "SeriesDescription": "T1w_MPRAGE",
+        }
         fields.update(extra)
         return _dataset(**fields)
 
@@ -279,11 +304,15 @@ class TestGetDicomInfo:
         assert info == {"PatientID": "sub-01", "Modality": "MR"}
 
     def test_single_tag_as_string(self, dicom_file):
-        assert cltdicom.get_dicom_info(str(dicom_file), tags="Modality") == {"Modality": "MR"}
+        assert cltdicom.get_dicom_info(str(dicom_file), tags="Modality") == {
+            "Modality": "MR"
+        }
 
     def test_missing_tag_ignore(self, dicom_file):
         info = cltdicom.get_dicom_info(
-            str(dicom_file), tags=["PatientID", "EchoTime"], missing_tag_behavior="ignore"
+            str(dicom_file),
+            tags=["PatientID", "EchoTime"],
+            missing_tag_behavior="ignore",
         )
         assert info == {"PatientID": "sub-01"}
 
@@ -294,7 +323,9 @@ class TestGetDicomInfo:
 
     def test_missing_tag_raise(self, dicom_file):
         with pytest.raises(AttributeError):
-            cltdicom.get_dicom_info(str(dicom_file), tags=["EchoTime"], missing_tag_behavior="raise")
+            cltdicom.get_dicom_info(
+                str(dicom_file), tags=["EchoTime"], missing_tag_behavior="raise"
+            )
 
     def test_invalid_missing_tag_behavior(self, dicom_file):
         with pytest.raises(ValueError):
@@ -307,7 +338,7 @@ class TestGetDicomInfo:
     def test_not_a_dicom(self, tmp_path):
         bad = tmp_path / "notes.dcm"
         bad.write_text("not a DICOM file")
-        with pytest.raises(Exception):
+        with pytest.raises(pydicom.errors.InvalidDicomError):
             cltdicom.get_dicom_info(str(bad))
 
     @pytest.mark.parametrize("tags", [5, ("PatientID",), [1]])
@@ -320,15 +351,21 @@ class TestGetDicomInfo:
 class TestCopyDicomFile:
     def test_copy_into_hierarchy(self, dicom_file, out_dir):
         dest = cltdicom.copy_dicom_file(str(dicom_file), "sub-01", str(out_dir))
-        assert Path(dest) == out_dir / "sub-01" / "ses-20240312091530" / "0001-T1w-MPRAGE"
+        assert (
+            Path(dest) == out_dir / "sub-01" / "ses-20240312091530" / "0001-T1w-MPRAGE"
+        )
         assert (Path(dest) / dicom_file.name).is_file()
 
     def test_ses_id_overrides_the_session(self, dicom_file, out_dir):
-        dest = cltdicom.copy_dicom_file(str(dicom_file), "sub-01", str(out_dir), ses_id="baseline")
+        dest = cltdicom.copy_dicom_file(
+            str(dicom_file), "sub-01", str(out_dir), ses_id="baseline"
+        )
         assert Path(dest).parent.name == "ses-baseline"
 
     def test_ses_id_with_prefix_is_not_duplicated(self, dicom_file, out_dir):
-        dest = cltdicom.copy_dicom_file(str(dicom_file), "sub-01", str(out_dir), ses_id="ses-M00")
+        dest = cltdicom.copy_dicom_file(
+            str(dicom_file), "sub-01", str(out_dir), ses_id="ses-M00"
+        )
         assert Path(dest).parent.name == "ses-M00"
 
     def test_demographics_visit_is_appended(self, dicom_file, out_dir):
@@ -352,7 +389,9 @@ class TestCopyDicomFile:
         cltdicom.copy_dicom_file(str(dicom_file), "sub-01", str(out_dir))
         assert copied.read_bytes() == b"damaged"
 
-        cltdicom.copy_dicom_file(str(dicom_file), "sub-01", str(out_dir), overwrite=True)
+        cltdicom.copy_dicom_file(
+            str(dicom_file), "sub-01", str(out_dir), overwrite=True
+        )
         assert copied.stat().st_size == dicom_file.stat().st_size
 
     def test_not_a_dicom_is_skipped(self, tmp_path, out_dir, capsys):
@@ -375,12 +414,16 @@ class TestOrgConvDicoms:
         assert sum(len(f) for _, _, f in os.walk(raw_dir)) == before
 
     def test_demographics_define_the_visit(self, raw_dir, out_dir, demog_file):
-        cltdicom.org_conv_dicoms(str(raw_dir), str(out_dir), demog_file=str(demog_file), nthreads=1)
+        cltdicom.org_conv_dicoms(
+            str(raw_dir), str(out_dir), demog_file=str(demog_file), nthreads=1
+        )
         assert sorted(p.name for p in (out_dir / "sub-01").iterdir()) == [
             "ses-20240312091530V1",
             "ses-20240920140210V2",
         ]
-        assert [p.name for p in (out_dir / "sub-02").iterdir()] == ["ses-20240402104000V1"]
+        assert [p.name for p in (out_dir / "sub-02").iterdir()] == [
+            "ses-20240402104000V1"
+        ]
 
     @pytest.mark.parametrize("ids", ["02", "sub-02"])
     def test_subset_of_subjects(self, raw_dir, out_dir, ids):
@@ -390,7 +433,9 @@ class TestOrgConvDicoms:
     def test_ids_from_file(self, raw_dir, out_dir, tmp_path):
         ids = tmp_path / "ids.txt"
         ids.write_text("sub-01\n")
-        cltdicom.org_conv_dicoms(str(raw_dir), str(out_dir), ids_file=str(ids), nthreads=1)
+        cltdicom.org_conv_dicoms(
+            str(raw_dir), str(out_dir), ids_file=str(ids), nthreads=1
+        )
         assert list(_layout(out_dir)) == ["sub-01"]
 
     def test_ses_id_forces_the_session(self, raw_dir, out_dir):
@@ -407,7 +452,9 @@ class TestOrgConvDicoms:
             "ses-20240312091530.tar.gz",
             "ses-20240920140210.tar.gz",
         ]
-        assert [p.name for p in (out_dir / "sub-02").iterdir()] == ["ses-20240402104000.tar.gz"]
+        assert [p.name for p in (out_dir / "sub-02").iterdir()] == [
+            "ses-20240402104000.tar.gz"
+        ]
 
     def test_missing_input_folder(self, tmp_path, out_dir):
         with pytest.raises(FileNotFoundError):
@@ -420,13 +467,17 @@ class TestOrganizeDicomFiles:
         assert _layout(out_dir) == EXPECTED
 
     def test_no_sub_folder_uses_patient_id(self, raw_dir, out_dir):
-        cltdicom.organize_dicom_files(str(raw_dir), str(out_dir), no_sub_folder=True, nthreads=1)
+        cltdicom.organize_dicom_files(
+            str(raw_dir), str(out_dir), no_sub_folder=True, nthreads=1
+        )
         assert _layout(out_dir) == EXPECTED
 
     def test_arguments_are_forwarded(self, monkeypatch, raw_dir, out_dir):
         calls = {}
         monkeypatch.setattr(cltdicom, "org_conv_dicoms", lambda **kw: calls.update(kw))
-        cltdicom.organize_dicom_files(str(raw_dir), str(out_dir), ses_id="M00", overwrite=True)
+        cltdicom.organize_dicom_files(
+            str(raw_dir), str(out_dir), ses_id="M00", overwrite=True
+        )
         assert calls["ses_id"] == "M00" and calls["overwrite"] is True
 
 
@@ -451,7 +502,9 @@ class TestOrgDicomFolder:
         assert _layout(out_dir) == EXPECTED
 
     def test_compression(self, mixed_dir, out_dir):
-        cltdicom.org_dicom_folder(str(mixed_dir), str(out_dir), boolcomp=True, nthreads=1)
+        cltdicom.org_dicom_folder(
+            str(mixed_dir), str(out_dir), boolcomp=True, nthreads=1
+        )
         assert sorted(p.name for p in (out_dir / "sub-01").iterdir()) == [
             "ses-20240312091530.tar.gz",
             "ses-20240920140210.tar.gz",
@@ -478,7 +531,9 @@ class TestCompression:
         ]
 
     def test_compress_one_subject_keeping_originals(self, organized):
-        cltdicom.compress_dicom_session(str(organized), subj_ids=["sub-02"], remove_original=False)
+        cltdicom.compress_dicom_session(
+            str(organized), subj_ids=["sub-02"], remove_original=False
+        )
         assert sorted(p.name for p in (organized / "sub-02").iterdir()) == [
             "ses-20240402104000",
             "ses-20240402104000.tar.gz",
@@ -492,7 +547,11 @@ class TestCompression:
         with tarfile.open(tar_path) as tar:
             names = tar.getnames()
         series = {n.split("/")[1] for n in names if n.count("/") == 1}
-        assert series == {"0001-T1w-MPRAGE", "0002-DWI-b1000-30dir", "0003-rs-fMRI-BOLD"}
+        assert series == {
+            "0001-T1w-MPRAGE",
+            "0002-DWI-b1000-30dir",
+            "0003-rs-fMRI-BOLD",
+        }
         assert sum(n.endswith(".dcm") for n in names) == 14
 
     def test_existing_archives_are_skipped(self, organized, capsys):
@@ -507,7 +566,9 @@ class TestCompression:
         for subj, sessions in EXPECTED.items():
             for ses, series in sessions.items():
                 for ser, n_files in series.items():
-                    assert len(list((organized / subj / ses / ser).iterdir())) == n_files
+                    assert (
+                        len(list((organized / subj / ses / ser).iterdir())) == n_files
+                    )
         # tar.gz files are kept by default
         assert (organized / "sub-02" / "ses-20240402104000.tar.gz").is_file()
 
@@ -527,7 +588,9 @@ class TestCompression:
         cltdicom.org_conv_dicoms(str(raw_dir), str(out_dir), boolcomp=True, nthreads=1)
         ids = tmp_path / "subjects.txt"
         ids.write_text("sub-01\n")
-        cltdicom.uncompress_dicom_session(str(out_dir), subj_ids=str(ids), boolrmtar=True)
+        cltdicom.uncompress_dicom_session(
+            str(out_dir), subj_ids=str(ids), boolrmtar=True
+        )
         assert (out_dir / "sub-01" / "ses-20240312091530").is_dir()
         assert list((out_dir / "sub-02").glob("*.tar.gz"))
 
