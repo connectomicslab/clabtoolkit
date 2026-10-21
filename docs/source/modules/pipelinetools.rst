@@ -21,7 +21,7 @@ Main Functions
 
 Subjects
 ~~~~~~~~
-- ``get_ids2process(ids=None, in_dir=None)``: list of subject IDs from a list, a string, a text file or the ``sub-*`` folders of ``in_dir``
+- ``get_fullids2process(ids=None, in_dir=None)``: list of subject IDs from a list, a string, a text file or the ``sub-*`` folders of ``in_dir``
 
 Status tables and inventories
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -43,11 +43,11 @@ Selecting the subjects::
     import clabtoolkit.pipelinetools as cltpipe
 
     # From a derivatives folder (only the folders starting with "sub-")
-    ids = cltpipe.get_ids2process(None, in_dir="/path/to/derivatives/freesurfer")
+    ids = cltpipe.get_fullids2process(None, in_dir="/path/to/derivatives/freesurfer")
 
     # From a string or a text file
-    ids = cltpipe.get_ids2process("sub-01, sub-02")
-    ids = cltpipe.get_ids2process("/path/to/subjects.txt")
+    ids = cltpipe.get_fullids2process("sub-01, sub-02")
+    ids = cltpipe.get_fullids2process("/path/to/subjects.txt")
 
 Processing status of a derivatives folder::
 
