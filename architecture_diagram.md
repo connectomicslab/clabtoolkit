@@ -197,7 +197,7 @@ graph LR
 - **imagetools**:
   - Class: `MorphologicalOperations`
   - NIfTI image I/O, transformations, morphological operations
-- **dicomtools**: DICOM file reading and conversion
+- **dicomtools**: DICOM organization, compression and metadata extraction (no NIfTI conversion)
 - **freesurfertools**: FreeSurfer format I/O and integration
 - **dwitools**: Diffusion-weighted imaging and tractography file handling
 

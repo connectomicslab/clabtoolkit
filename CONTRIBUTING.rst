@@ -15,7 +15,7 @@ Types of Contributions
 Report Bugs
 ~~~~~~~~~~~
 
-Report bugs at https://github.com/yasseraleman/clabtoolkit/issues.
+Report bugs at https://github.com/connectomicslab/clabtoolkit/issues.
 
 If you are reporting a bug, please include:
 
@@ -45,7 +45,7 @@ articles, and such.
 Submit Feedback
 ~~~~~~~~~~~~~~~
 
-The best way to send feedback is to file an issue at https://github.com/yasseraleman/clabtoolkit/issues.
+The best way to send feedback is to file an issue at https://github.com/connectomicslab/clabtoolkit/issues.
 
 If you are proposing a feature:
 
@@ -64,11 +64,15 @@ Ready to contribute? Here's how to set up `clabtoolkit` for local development.
 
     $ git clone git@github.com:your_name_here/clabtoolkit.git
 
-3. Install your local copy into a virtualenv. Assuming you have virtualenvwrapper installed, this is how you set up your fork for local development::
+3. Install your local copy, with the development tools, into a virtual environment::
 
-    $ mkvirtualenv clabtoolkit
     $ cd clabtoolkit/
-    $ python setup.py develop
+    $ python -m venv .venv
+    $ source .venv/bin/activate
+    $ pip install -e .[dev,test]
+
+   A conda environment with the dependencies is also available in
+   ``environment.yaml``.
 
 4. Create a branch for local development::
 
@@ -76,14 +80,15 @@ Ready to contribute? Here's how to set up `clabtoolkit` for local development.
 
    Now you can make your changes locally.
 
-5. When you're done making changes, check that your changes pass flake8 and the
-   tests, including testing other Python versions with tox::
+5. When you're done making changes, check that your changes pass the linter, the
+   formatting check and the tests. These are the same checks that run in CI::
 
-    $ flake8 clabtoolkit tests
-    $ python setup.py test or pytest
-    $ tox
+    $ ruff check clabtoolkit tests
+    $ black --check clabtoolkit tests
+    $ pytest
 
-   To get flake8 and tox, just pip install them into your virtualenv.
+   CI installs the latest ``black``, whose formatting can differ slightly from older
+   releases, so keep it up to date (``pip install -U black``) before running the check.
 
 6. Commit your changes and push your branch to GitHub::
 
@@ -100,29 +105,35 @@ Before you submit a pull request, check that it meets these guidelines:
 
 1. The pull request should include tests.
 2. If the pull request adds functionality, the docs should be updated. Put
-   your new functionality into a function with a docstring, and add the
-   feature to the list in README.rst.
-3. The pull request should work for Python >3.10, and for PyPy. Check
-   https://travis-ci.com/yasseraleman/clabtoolkit/pull_requests
-   and make sure that the tests pass for all supported Python versions.
+   your new functionality into a function with a docstring, add the feature to
+   the list in README.rst, and add an entry to the "Unreleased" section of
+   HISTORY.rst.
+3. The pull request should work for Python 3.11 and newer. The tests run in CI on
+   Linux, Windows and macOS, so check that they pass on all of them.
 
 Tips
 ----
 
-To run a subset of tests::
+The tests are in the ``tests`` folder, with one ``test_<module>.py`` file per module.
+To run a subset of them::
 
+    $ pytest tests/test_dicomtools.py
+    $ pytest tests/test_imagetools.py -k morphology
 
-    $ python -m unittest tests.test_clabtoolkit
+The tests do not need a display, ANTs, FreeSurfer or any data. They use small synthetic
+files and replace the external tools with fakes, so keep new tests self-contained.
 
 Deploying
 ---------
 
 A reminder for the maintainers on how to deploy.
-Make sure all your changes are committed (including an entry in HISTORY.rst).
-Then run::
 
-$ bump2version patch # possible: major / minor / patch
-$ git push
-$ git push --tags
+1. Update the version in ``pyproject.toml``, ``clabtoolkit/__init__.py`` and ``release`` in
+   ``docs/source/conf.py``. The three must match.
+2. Move the "Unreleased" entries of ``HISTORY.rst`` under the new version and date.
+3. Commit the changes, make sure the CI is green, and push to ``main``. The distribution is
+   built and published to TestPyPI.
+4. Tag the release and push the tag. Tags starting with ``v`` publish the distribution to PyPI::
 
-Travis will then deploy to PyPI if tests pass.
+    $ git tag v0.4.6
+    $ git push origin v0.4.6

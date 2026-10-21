@@ -62,6 +62,7 @@ def get_fullids2process(
     ----------
     ids : str, list of str, or None, optional
         Subject Full IDs specification. Can be:
+
         - None: discover all subjects in `in_dir` (default)
         - list: list of subject Full ID strings
         - str: comma-separated IDs, single Full ID, or path to text file
@@ -77,7 +78,8 @@ def get_fullids2process(
 
     source : str, optional
         How to build the IDs when `ids` is None:
-        - 'folders' (default): one ID per 'sub-*' folder (e.g. 'sub-001')
+
+        - 'folders' (default): one ID per ``sub-*`` folder (e.g. 'sub-001')
         - 'files': one Full ID per image file, i.e. its entity string without
           suffix and extension (e.g. 'sub-001_ses-01_acq-mprage')
 
@@ -541,7 +543,7 @@ def scan_derivatives(
         Path to the pipeline derivatives directory to scan.
 
     full_ids : str or list, optional
-        Full ID(s) to look for. If None, all 'sub-*' folders in `pipe_dir` are used.
+        Full ID(s) to look for. If None, all ``sub-*`` folders in `pipe_dir` are used.
 
     extensions : list, optional
         File extensions to include in the scan. Default is [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"].
@@ -669,7 +671,7 @@ def build_inventory(
         Active Rich Progress instance to attach progress bars to.
 
     full_ids   : str or list, optional
-        Full ID(s) to include. If None, all 'sub-*' folders in the pipeline are used.
+        Full ID(s) to include. If None, all ``sub-*`` folders in the pipeline are used.
 
     extensions : list, optional
         File extensions to include in the scan. Defaults to [".nii.gz", ".nii", ".mgz", ".stats", ".annot", ".gii", ".gii.gz"].
@@ -821,7 +823,7 @@ def build_derivatives_inventory(
         discovered by cltbids.get_derivatives_folders() are used.
 
     full_ids   : str or list, optional
-        Full ID(s) to include. If None, all 'sub-*' folders of each pipeline are used.
+        Full ID(s) to include. If None, all ``sub-*`` folders of each pipeline are used.
 
     extensions : list, optional
         File extensions to include in the scan.

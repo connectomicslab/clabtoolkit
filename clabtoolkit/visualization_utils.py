@@ -1456,20 +1456,20 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
 
         **Title Settings:**
         - title_font_type : str (e.g., "arial", "times", "courier")
-        - title_font_size : int (6-30, default: 10)
+        - title_font_size : int (6-30, default: 11)
         - title_shadow : bool (True/False)
 
         **Colorbar Settings:**
         - colorbar_font_type : str (e.g., "arial", "times", "courier")
         - colorbar_font_size : int (6-20, default: 10)
-        - colorbar_title_font_size : int (8-25, default: 15)
+        - colorbar_title_font_size : int (8-25, default: 12)
         - colorbar_outline : bool (True/False)
         - colorbar_n_labels : int (3-15, default: 11)
 
         **Mesh Properties:**
         - mesh_ambient : float (0.0-1.0, default: 0.2)
-        - mesh_diffuse : float (0.0-1.0, default: 0.5)
-        - mesh_specular : float (0.0-1.0, default: 0.5)
+        - mesh_diffuse : float (0.0-1.0, default: 0.6)
+        - mesh_specular : float (0.0-1.0, default: 0.4)
         - mesh_specular_power : int (1-100, default: 50)
         - mesh_smooth_shading : bool (True/False)
 
@@ -1518,7 +1518,7 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
         },
         # Title Settings
         "title_font_type": {"type": str, "example": '"arial", "times", "courier"'},
-        "title_font_size": {"type": int, "range": (6, 30), "default": 10},
+        "title_font_size": {"type": int, "range": (6, 30), "default": 11},
         "title_shadow": {"type": bool, "example": "True, False"},
         # Colorbar Settings
         "colorbar_font_type": {
@@ -1526,13 +1526,13 @@ def update_figure_config(plotobj, auto_save: bool = True, **kwargs) -> None:
             "example": '"arial", "times", "courier"',
         },
         "colorbar_font_size": {"type": int, "range": (6, 20), "default": 10},
-        "colorbar_title_font_size": {"type": int, "range": (8, 25), "default": 15},
+        "colorbar_title_font_size": {"type": int, "range": (8, 25), "default": 12},
         "colorbar_outline": {"type": bool, "example": "True, False"},
         "colorbar_n_labels": {"type": int, "range": (3, 15), "default": 11},
         # Mesh Properties
         "mesh_ambient": {"type": float, "range": (0.0, 1.0), "default": 0.2},
-        "mesh_diffuse": {"type": float, "range": (0.0, 1.0), "default": 0.5},
-        "mesh_specular": {"type": float, "range": (0.0, 1.0), "default": 0.5},
+        "mesh_diffuse": {"type": float, "range": (0.0, 1.0), "default": 0.6},
+        "mesh_specular": {"type": float, "range": (0.0, 1.0), "default": 0.4},
         "mesh_specular_power": {"type": int, "range": (1, 100), "default": 50},
         "mesh_smooth_shading": {"type": bool, "example": "True, False"},
     }
@@ -1596,14 +1596,15 @@ def apply_theme(plotobj, theme_name: str, auto_save: bool = False) -> None:
 
     theme_name : str
         Name of the theme to apply. Available themes:
-        - "dark" : Dark background with white text (default)
+        - "default" : Packaged default look shipped with clabtoolkit
+        - "dark" : Dark background with white text
         - "light" : Light background with dark text
         - "high_contrast" : Maximum contrast for presentations
         - "minimal" : Clean, minimal styling
         - "publication" : Optimized for academic publications
         - "colorful" : Vibrant colors for engaging visuals
 
-    auto_save : bool, default True
+    auto_save : bool, default False
         Whether to automatically save theme to configuration file.
 
     Raises

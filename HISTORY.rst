@@ -26,6 +26,16 @@ Unreleased
 * Fixed create_session_series_names failing without SeriesNumber, StudyDate or StudyTime, and copy_dicom_file failing on files that are not DICOMs
 * org_conv_dicoms returns instead of exiting Python when no subjects are found, matches the subject IDs exactly (with or without 'sub-'), accepts acq_date as MM/DD/YYYY or YYYY-MM-DD, and matches the demographics rows by exact participant ID
 * Added the example notebooks for the imagetools, dwitools and dicomtools modules
+* Renamed get_ids2process to get_fullids2process in pipelinetools, with a source parameter ('folders' or 'files') to build the Full IDs from the sub-* folders or from the image files
+* The suffix column of get_bids_database_table is now named Type, and the tables of pipelinetools use the original names of the BIDS entities (Participant, Session, Run, ...) followed by Type, Extension, Full_path and Count. Code reading these columns by their old names must be updated
+* entities_to_table and process_file accept pathlib.Path objects. entities_to_table raises ValueError instead of TypeError when filepath is None
+* Added the param entity (Parameter) and the dwimap suffix to the BIDS configuration, for the maps derived from DWI
+* update_figure_config validates all its parameters before applying any, so a call with an invalid value no longer leaves the figure configuration partially updated
+* Corrected the docstrings of the BrainPlotter themes and figure configuration: default auto_save values, default figure settings and the list of themes
+* Added the example notebook for the pipelinetools module
+* Added test suites for the pipelinetools, dicomtools, imagetools, segmentationtools and visualizationtools modules
+* Updated CONTRIBUTING.rst (development setup, CI checks, tests, release steps and issue links), tox.ini (Python 3.11-3.13 and the lint checks) and the version and Python requirements of DOCUMENTATION.md
+* Fixed the formatting of the pipelinetools docstrings that produced warnings in the documentation build
 
 0.4.5 (2026-08-28)
 ------------------

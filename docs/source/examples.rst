@@ -25,6 +25,7 @@ Examples by module
 * `morphometrytools <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-morphometrytools-methods.ipynb>`_
 * `networktools <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-networktools-methods.ipynb>`_
 * `parcellationtools <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-parcellationtools-methods.ipynb>`_
+* `pipelinetools <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-pipelinetools-methods.ipynb>`_
 * `plottools <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-plottools-methods.ipynb>`_
 * `pointstools <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-pointstools-methods.ipynb>`_
 * `qcqatools <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-qcqatools-methods.ipynb>`_
