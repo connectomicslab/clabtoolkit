@@ -924,7 +924,7 @@ def entities4table(
 
 ####################################################################################################
 def entities_to_table(
-    filepath: str,
+    filepath: str | Path,
     entities_to_extract: str | list[str] | dict[str, str] | None = None,
     include_suffix: bool = False,
 ) -> pd.DataFrame:
@@ -935,7 +935,7 @@ def entities_to_table(
 
     Parameters
     ----------
-    filepath : str
+    filepath : str or Path
         Full path to the BIDS file from which to extract entities.
     entities_to_extract : str, list, dict, or None, default=None
         Specifies which entities to extract from the filename:
@@ -971,8 +971,14 @@ def entities_to_table(
     0          01     pre  bold
     """
     # Type checking
-    if filepath is None or not isinstance(filepath, str):
-        raise TypeError("filepath must be a string")
+    if filepath is None:
+        raise ValueError("filepath must not be None")
+
+    if not isinstance(filepath, (str, Path)):
+        raise TypeError("filepath must be a string or Path object")
+
+    if isinstance(filepath, Path):
+        filepath = str(filepath)
 
     # Reading the mapping dictionary
     cwd = os.path.dirname(os.path.abspath(__file__))
