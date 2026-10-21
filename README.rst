@@ -24,6 +24,10 @@ Connectomics Lab Toolkit
 .. image:: https://codecov.io/gh/connectomicslab/clabtoolkit/branch/main/graph/badge.svg
         :target: https://codecov.io/gh/connectomicslab/clabtoolkit
 
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.23540587.svg
+        :target: https://doi.org/10.5281/zenodo.23540587
+        :alt: Zenodo DOI
+
 
 A comprehensive Python toolkit for neuroimaging data processing and analysis, specifically designed for working with brain connectivity data, BIDS datasets, and various neuroimaging formats.
 
@@ -205,7 +209,10 @@ If you use clabtoolkit in your work, please cite the toolkit paper::
     https://arxiv.org/abs/2607.02638
 
 The repository includes a ``CITATION.cff`` file, so GitHub shows a "Cite this repository" option
-with the same reference. The source code is available at https://github.com/connectomicslab/clabtoolkit.
+with the same reference. Every release is archived in Zenodo: the DOI
+`10.5281/zenodo.23540587 <https://doi.org/10.5281/zenodo.23540587>`_ always points to the latest
+version, and each version has its own DOI listed on that page. The source code is available at
+https://github.com/connectomicslab/clabtoolkit.
 
 Credits
 -------

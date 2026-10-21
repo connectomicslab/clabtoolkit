@@ -2,6 +2,11 @@
 History
 =======
 
+Unreleased
+----------
+
+* Added the Zenodo DOI of the toolkit to CITATION.cff and the README
+
 0.5.1 (2026-10-21)
 ------------------
 
