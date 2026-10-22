@@ -50,6 +50,7 @@ def get_fullids2process(
     ids: str | list[str] | None = None,
     in_dir: str = None,
     or_filter: str | list[str] = "T1w",
+    and_filter: str | list[str] = None,
     source: str = "folders",  # Can be "folders" or "files"
 ) -> list[str]:
     """
@@ -74,6 +75,10 @@ def get_fullids2process(
     or_filter : str or list of str, optional
         File extensions or patterns to filter for when scanning subject directories.
         Default is 'T1w'. A list of strings can be provided to specify multiple patterns.
+        Only used when `ids` is None and `source` is 'files'.
+
+    and_filter : str or list of str, optional
+        Additional file extensions or patterns to filter for when scanning subject directories.
         Only used when `ids` is None and `source` is 'files'.
 
     source : str, optional
@@ -141,7 +146,9 @@ def get_fullids2process(
             if d.startswith("sub-"):
                 if source == "files":
                     tmp_files = cltmisc.get_all_files(
-                        os.path.join(in_dir, d), or_filter=or_filter
+                        os.path.join(in_dir, d),
+                        or_filter=or_filter,
+                        and_filter=and_filter,
                     )
                     if tmp_files:
                         tmp_files = cltmisc.filter_by_substring(
