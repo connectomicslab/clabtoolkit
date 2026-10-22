@@ -86,6 +86,27 @@ class TestBuildIndices:
         assert cltmisc.build_indices([(2, 5)]) == [2, 3, 4, 5]  # 2 items: range
         assert cltmisc.build_indices([(9, 1, 4)]) == [1, 4, 9]  # Other: explicit list
 
+    def test_top_level_tuples(self):
+        assert cltmisc.build_indices((1, 5)) == [1, 2, 3, 4, 5]  # 2 items: range
+        assert cltmisc.build_indices((1, 2, 3, 4, 5)) == [1, 2, 3, 4, 5]
+        assert cltmisc.build_indices((9, 1, 4)) == [1, 4, 9]
+        assert cltmisc.build_indices((7,)) == [7]
+        assert cltmisc.build_indices((1, 2, 3, 4, 5)) == cltmisc.build_indices(
+            [1, 2, 3, 4, 5]
+        )
+
+    @pytest.mark.parametrize(
+        "vec",
+        [
+            ((1, 3), (5, 7)),  # tuple of tuples
+            ([1, 2], [1, 5]),  # tuple of lists
+            ("1:2", "5:6"),  # tuple of range strings
+        ],
+    )
+    def test_nested_tuples_are_not_supported(self, vec):
+        with pytest.raises(ValueError):
+            cltmisc.build_indices(vec)
+
     def test_sorted_and_unique(self):
         assert cltmisc.build_indices([5, 3, 5, [3, 1]]) == [1, 3, 5]
 
