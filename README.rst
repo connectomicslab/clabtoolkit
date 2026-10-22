@@ -223,7 +223,7 @@ Citing
 
 If you use clabtoolkit in your work, please cite the toolkit paper:
 
-    Alemán-Gómez, Y., et al. clabtoolkit. arXiv:2607.02638.
+    Alemán-Gómez, Y., et al. CLABTOOLKIT: An Open-Source Toolkit for Routine Processing, Manipulation, and Visualization of Neuroimaging Data. arXiv:2607.02638.
     https://arxiv.org/abs/2607.02638
 
 .. code-block:: bibtex
