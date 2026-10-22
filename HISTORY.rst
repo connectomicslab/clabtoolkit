@@ -2,6 +2,12 @@
 History
 =======
 
+0.5.3 (2026-10-22)
+------------------
+
+* Pointed the documentation badge to app.readthedocs.org, so it renders on PyPI instead of showing its alt text
+* Included .zenodo.json in the source distribution (fixes the check-manifest step of the CI)
+
 0.5.2 (2026-10-22)
 ------------------
 
