@@ -2,7 +2,7 @@
 Connectomics Lab Toolkit
 ========================
 
-.. image:: docs/source/_static/clabtoolkit_logo.png
+.. image:: https://raw.githubusercontent.com/connectomicslab/clabtoolkit/main/docs/source/_static/clabtoolkit_logo.png
         :alt: clabtoolkit logo
         :align: center
         :width: 400
@@ -10,31 +10,48 @@ Connectomics Lab Toolkit
 
 .. image:: https://img.shields.io/pypi/v/clabtoolkit.svg
         :target: https://pypi.python.org/pypi/clabtoolkit
+        :alt: PyPI version
+
+.. image:: https://img.shields.io/pypi/pyversions/clabtoolkit.svg
+        :target: https://pypi.python.org/pypi/clabtoolkit
+        :alt: Python versions
+
+.. image:: https://img.shields.io/badge/License-Apache_2.0-blue.svg
+        :target: https://opensource.org/licenses/Apache-2.0
+        :alt: License: Apache 2.0
 
 .. image:: https://github.com/connectomicslab/clabtoolkit/actions/workflows/ci.yml/badge.svg
         :target: https://github.com/connectomicslab/clabtoolkit/actions/workflows/ci.yml
+        :alt: CI status
+
+.. image:: https://codecov.io/gh/connectomicslab/clabtoolkit/branch/main/graph/badge.svg
+        :target: https://codecov.io/gh/connectomicslab/clabtoolkit
+        :alt: Code coverage
 
 .. image:: https://readthedocs.org/projects/clabtoolkit/badge/?version=latest
         :target: https://clabtoolkit.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
 
-.. image:: https://img.shields.io/pypi/pyversions/clabtoolkit.svg
-        :target: https://pypi.python.org/pypi/clabtoolkit
-
-.. image:: https://codecov.io/gh/connectomicslab/clabtoolkit/branch/main/graph/badge.svg
-        :target: https://codecov.io/gh/connectomicslab/clabtoolkit
+.. image:: https://img.shields.io/badge/arXiv-2607.02638-b31b1b.svg
+        :target: https://arxiv.org/abs/2607.02638
+        :alt: arXiv
 
 .. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.23540587.svg
         :target: https://doi.org/10.5281/zenodo.23540587
         :alt: Zenodo DOI
 
 
-A comprehensive Python toolkit for neuroimaging data processing and analysis, specifically designed for working with brain connectivity data, BIDS datasets, and various neuroimaging formats.
+**clabtoolkit** (Connectomics Lab Toolkit) is a Python toolkit for neuroimaging data processing
+and analysis, with a focus on brain connectivity, BIDS datasets and common neuroimaging formats.
+
+It is built around a small set of objects (``Surface``, ``Parcellation``, ``Tractogram`` and
+``Connectome``) that share a common plotting layer (``BrainPlotter``), so surfaces, parcellations,
+streamlines and connectivity matrices can be loaded, processed and visualized with a consistent API.
+It is designed to work alongside libraries such as nibabel, nilearn and DIPY.
 
 * **Free software**: Apache Software License 2.0
 * **Documentation**: https://clabtoolkit.readthedocs.io
-* **Source Code**: https://github.com/connectomicslab/clabtoolkit
-* **Python versions**: 3.11+
+* **Source code**: https://github.com/connectomicslab/clabtoolkit
 
 Installation
 ------------
@@ -43,11 +60,11 @@ Install from PyPI::
 
     pip install clabtoolkit
 
-For development installation::
+For a development installation::
 
     git clone https://github.com/connectomicslab/clabtoolkit.git
     cd clabtoolkit
-    pip install -e .[dev]
+    pip install -e ".[dev]"
 
 Requirements and optional dependencies:
 
@@ -60,13 +77,16 @@ Requirements and optional dependencies:
 Features
 --------
 
-.. image:: docs/source/_static/clabtoolkit_ecosystem.png
+.. image:: https://raw.githubusercontent.com/connectomicslab/clabtoolkit/main/docs/source/_static/clabtoolkit_ecosystem.png
         :alt: clabtoolkit ecosystem
         :align: center
         :width: 700
 
-Each module has a notebook in ``usage_examples`` (``examples-<module>-methods.ipynb``)
-with runnable examples.
+Every module has a notebook with runnable examples in the
+`usage_examples <https://github.com/connectomicslab/clabtoolkit/tree/main/usage_examples>`_ folder
+(``examples-<module>-methods.ipynb``), and
+`clabtoolkit_examples.ipynb <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/clabtoolkit_examples.ipynb>`_
+gives an overview of the whole toolkit.
 
 **Data organization**
 
@@ -118,8 +138,6 @@ Quick Start
 -----------
 
 The examples below are self-contained: they use simulated data, so you can run them as they are.
-More examples for every module are available in the ``usage_examples`` folder
-(see ``usage_examples/clabtoolkit_examples.ipynb``).
 
 **Filter a parcellation by region name** (``keep_by_name``)
 
@@ -139,19 +157,29 @@ More examples for every module are available in the ``usage_examples`` folder
 
 To load your own parcellation, use ``cltparc.Parcellation("parc.nii.gz", color_table="lut.txt")``.
 
+.. note::
+
+   If a file called ``lut.txt`` is in the same directory as the parcellation, it is used as the
+   color table by default, so ``cltparc.Parcellation("parc.nii.gz")`` is enough.
+
 **Sample an image along the streamlines of a tractogram** (``interpolate_on_tractogram``)
 
 .. code-block:: python
 
+    import os
+    import tempfile
+
     import clabtoolkit.imagetools as cltimg
     import clabtoolkit.tracttools as clttract
 
+    image_path = os.path.join(tempfile.gettempdir(), "image.nii.gz")
+
     # Simulate a reference image and a tractogram with 5 bundles
-    cltimg.simulate_image(reference=(100, 100, 70), simulated_image="/tmp/image.nii.gz")
-    tract = clttract.Tractogram.simulate_tractogram(ref_image="/tmp/image.nii.gz")
+    cltimg.simulate_image(reference=(100, 100, 70), simulated_image=image_path)
+    tract = clttract.Tractogram.simulate_tractogram(ref_image=image_path)
 
     # Sample the image at every point of every streamline
-    tract.interpolate_on_tractogram("/tmp/image.nii.gz", map_name="fa",
+    tract.interpolate_on_tractogram(image_path, map_name="fa",
                                     storage_mode="data_per_point", interp_method="linear")
 
     print(tract.list_maps()["maps_per_point"])  # ['fa']
@@ -166,56 +194,67 @@ Use ``storage_mode="data_per_streamline"`` with ``reduction="mean"`` to store a 
     import clabtoolkit.surfacetools as cltsurf
     import clabtoolkit.visualizationtools as cltvis
 
+    # On a server without a display, set PYVISTA_OFF_SCREEN=true before running
+
     # Simulate a surface and a thickness map
     surf = cltsurf.Surface.simulate_surface(seed=42, shape="sphere")
     surf.simulate_map(map_name="thickness")
 
-    # Plot two views of the map and save the figure
+    # Option 1 (Surface object): plot the lateral and medial views of the map
+    surf.plot(views=["lateral", "medial"],
+              maps="thickness",
+              colorbar_title="Thickness (mm)")
+
+    # Option 2 (BrainPlotter): the same plot, with more control over colormaps and colorbars
     plotter = cltvis.BrainPlotter()
-    plotter.plot(objs2plot=surf, views=["lateral", "medial"], map_names="thickness",
-                 colormaps="viridis", colorbar=True, save_path="/tmp/thickness.png")
+    plotter.plot(objs2plot=surf,
+                 views=["lateral", "medial"],
+                 map_names="thickness",
+                 colormaps="hot",
+                 colorbar=True,
+                 colorbar_titles="Thickness (mm)")
 
 To plot your own data, load a surface with ``cltsurf.Surface("lh.pial")`` and its map with
 ``surf.load_scalar_maps("lh.thickness", maps_names="thickness")``.
+
+Citing
+------
+
+If you use clabtoolkit in your work, please cite the toolkit paper:
+
+    Alemán-Gómez, Y., et al. clabtoolkit. arXiv:2607.02638.
+    https://arxiv.org/abs/2607.02638
+
+.. code-block:: bibtex
+
+    @article{aleman2026clabtoolkit,
+      title   = {clabtoolkit},
+      author  = {Alem{\'a}n-G{\'o}mez, Yasser and others},
+      journal = {arXiv preprint arXiv:2607.02638},
+      year    = {2026},
+      url     = {https://arxiv.org/abs/2607.02638}
+    }
+
+The repository includes a ``CITATION.cff`` file, and every release is archived in Zenodo: the DOI
+`10.5281/zenodo.23540587 <https://doi.org/10.5281/zenodo.23540587>`_ always points to the latest
+version, and each version has its own DOI listed on that page.
 
 Contributing
 ------------
 
 Contributions are welcome! Please open an issue first to discuss major changes. See
-`CONTRIBUTING.rst <CONTRIBUTING.rst>`_ for the full guidelines.
-
-Testing
--------
-
-Run tests with::
-
-    pytest
-
-Run tests with coverage::
-
-    pytest --cov=clabtoolkit
+`CONTRIBUTING.rst <https://github.com/connectomicslab/clabtoolkit/blob/main/CONTRIBUTING.rst>`_
+for the guidelines, including how to run the test suite.
 
 Changelog
 ---------
 
-See `HISTORY.rst <HISTORY.rst>`_ for a detailed changelog.
-
-Citing
-------
-
-If you use clabtoolkit in your work, please cite the toolkit paper::
-
-    Alemán-Gómez, Y., et al. clabtoolkit. arXiv:2607.02638.
-    https://arxiv.org/abs/2607.02638
-
-The repository includes a ``CITATION.cff`` file, so GitHub shows a "Cite this repository" option
-with the same reference. Every release is archived in Zenodo: the DOI
-`10.5281/zenodo.23540587 <https://doi.org/10.5281/zenodo.23540587>`_ always points to the latest
-version, and each version has its own DOI listed on that page. The source code is available at
-https://github.com/connectomicslab/clabtoolkit.
+See `HISTORY.rst <https://github.com/connectomicslab/clabtoolkit/blob/main/HISTORY.rst>`_ for a
+detailed changelog.
 
 Credits
 -------
 
-Developed by Yasser Alemán-Gómez and collaborators at the Connectomics Lab. See
-`AUTHORS.rst <AUTHORS.rst>`_ for the full list.
+Developed by Yasser Alemán-Gómez and collaborators at the Connectomics Lab (Lausanne University
+Hospital, CHUV). See `AUTHORS.rst <https://github.com/connectomicslab/clabtoolkit/blob/main/AUTHORS.rst>`_
+for the full list.
