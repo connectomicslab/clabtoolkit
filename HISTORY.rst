@@ -2,9 +2,11 @@
 History
 =======
 
-Unreleased
-----------
+0.5.2 (2026-10-22)
+------------------
 
+* Updated the README (absolute image URLs so they render on PyPI, new badges and ecosystem figure)
+* Added .zenodo.json so the Zenodo record has a description and complete metadata
 * Added the Zenodo DOI of the toolkit to CITATION.cff and the README
 * Replaced the LICENSE file by the unmodified Apache-2.0 text, so GitHub recognizes the license, and moved the copyright statement to a NOTICE file
 

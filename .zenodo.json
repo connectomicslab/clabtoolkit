@@ -1,0 +1,36 @@
+{
+  "title": "clabtoolkit: A Python toolkit for neuroimaging data processing and analysis",
+  "upload_type": "software",
+  "description": "<p>clabtoolkit is a Python toolkit for neuroimaging data processing and analysis, designed for brain connectivity data, BIDS datasets and the file formats used in neuroimaging.</p><p>Documentation: <a href=\"https://clabtoolkit.readthedocs.io\">https://clabtoolkit.readthedocs.io</a></p>",
+  "creators": [
+    {
+      "name": "Alemán-Gómez, Yasser",
+      "orcid": "0000-0001-6067-8639",
+      "affiliation": "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+    },
+    {
+      "name": "Hervé, Nino",
+      "affiliation": "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+    },
+    {
+      "name": "Hagmann, Patric",
+      "orcid": "0000-0002-2854-6561",
+      "affiliation": "Connectomics Lab, Radiology Department, CHUV – Lausanne University Hospital"
+    }
+  ],
+  "license": "Apache-2.0",
+  "keywords": ["neuroimaging", "image-processing", "bids", "freesurfer", "connectivity"],
+  "access_right": "open",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/connectomicslab/clabtoolkit",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.48550/arXiv.2607.02638",
+      "relation": "isDescribedBy",
+      "scheme": "doi"
+    }
+  ]
+}
