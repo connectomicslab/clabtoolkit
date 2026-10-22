@@ -277,6 +277,17 @@ class TestDatasetQueries:
         (bids_root / "code").mkdir()
         assert cltbids.get_subjects(str(bids_root)) == ["sub-01", "sub-02"]
 
+    def test_get_subjects_ignores_derivatives_and_files(self, bids_root):
+        (bids_root / "sub-03_scans.tsv").write_text("")
+        (bids_root / "derivatives" / "fmriprep" / "sub-99").mkdir(parents=True)
+        assert cltbids.get_subjects(str(bids_root)) == ["sub-01", "sub-02"]
+
+    def test_get_subjects_invalid_root(self, bids_root, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            cltbids.get_subjects(str(tmp_path / "missing"))
+        with pytest.raises(NotADirectoryError):
+            cltbids.get_subjects(str(bids_root / "dataset_description.json"))
+
     def test_get_all_entities(self, bids_root):
         entities, suffixes = cltbids.get_all_entities(str(bids_root))
         assert entities == {"sub": "Participant", "ses": "Session"}

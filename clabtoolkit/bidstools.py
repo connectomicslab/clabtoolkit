@@ -1107,7 +1107,16 @@ def get_subjects(bids_dir: str) -> list:
     Returns
     -------
     list
-        List of subject IDs.
+        Sorted list of unique subject IDs. Only the ``sub-*`` directories located
+        directly under the BIDs directory are listed, so the subjects stored in
+        ``derivatives/`` are not included.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``bids_dir`` does not exist.
+    NotADirectoryError
+        If ``bids_dir`` is not a directory.
 
     Usage example:
     >>> bids_dir = "/path/to/bids"
@@ -1115,11 +1124,18 @@ def get_subjects(bids_dir: str) -> list:
     ["sub-01", "sub-02", ...]
 
     """
+    if not os.path.exists(bids_dir):
+        raise FileNotFoundError(f"The BIDs directory does not exist: {bids_dir}")
+    if not os.path.isdir(bids_dir):
+        raise NotADirectoryError(f"The BIDs path is not a directory: {bids_dir}")
+
     subjects = []
 
     dirnames = os.listdir(bids_dir)
     for dir_name in dirnames:
-        if dir_name.startswith("sub-"):
+        if dir_name.startswith("sub-") and os.path.isdir(
+            os.path.join(bids_dir, dir_name)
+        ):
             subjects.append(dir_name)
 
     # Optional: Remove duplicates and sort the list
