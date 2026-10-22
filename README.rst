@@ -159,8 +159,9 @@ To load your own parcellation, use ``cltparc.Parcellation("parc.nii.gz", color_t
 
 .. note::
 
-   If a file called ``lut.txt`` is in the same directory as the parcellation, it is used as the
-   color table by default, so ``cltparc.Parcellation("parc.nii.gz")`` is enough.
+   If a file called ``parc.lut`` is in the same directory as the parcellation, it is used as the
+   color table by default, so ``cltparc.Parcellation("parc.nii.gz")`` is enough. As long as they 
+   share the same base name, the LUT file will be automatically detected.
 
 **Sample an image along the streamlines of a tractogram** (``interpolate_on_tractogram``)
 
