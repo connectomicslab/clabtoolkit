@@ -747,6 +747,15 @@ class TestTimeSeries:
         )
         np.testing.assert_allclose(sub.matrix, np.corrcoef(rts.data[[0, 2], 5:]))
 
+    def test_region_timeseries_array_interface(self):
+        import pandas as pd
+
+        data = np.random.default_rng(6).normal(size=(3, 20))
+        rts = RegionTimeSeries(data)
+        assert rts.shape == (3, 20)
+        np.testing.assert_array_equal(np.asarray(rts), data)
+        assert pd.DataFrame(rts).shape == (3, 20)
+
     def test_region_timeseries(self, capsys):
         data = np.random.default_rng(5).normal(size=(3, 40))
         rts = RegionTimeSeries(data, region_names=["a", "b", "c"])

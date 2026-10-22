@@ -5867,6 +5867,25 @@ class RegionTimeSeries:
             self.region_colors = region_colors
 
     ##############################################################################################
+    @property
+    def shape(self) -> tuple:
+        """Shape of the underlying array, (n_regions, n_timepoints)."""
+        return self.data.shape
+
+    def __getitem__(self, key):
+        """Index the underlying array, e.g. rts[0] or rts[:, 10:]."""
+        return self.data[key]
+
+    def __iter__(self):
+        """Iterate over the rows (regions) of the underlying array."""
+        return iter(self.data)
+
+    def __array__(self, dtype=None, copy=None):
+        """NumPy array protocol, so np.asarray(rts) and pd.DataFrame(rts) work."""
+        arr = np.asarray(self.data, dtype=dtype)
+        return arr.copy() if copy else arr
+
+    ##############################################################################################
     def compute_fc_matrix(
         self,
         method: str = "pearson",
