@@ -229,8 +229,8 @@ If you use clabtoolkit in your work, please cite the toolkit paper:
 .. code-block:: bibtex
 
     @article{aleman2026clabtoolkit,
-      title   = {clabtoolkit},
-      author  = {Alem{\'a}n-G{\'o}mez, Yasser and others},
+      title   = {CLABTOOLKIT: An Open-Source Toolkit for Routine Processing, Manipulation, and Visualization of Neuroimaging Data},
+      author  = {Alem{\'a}n-G{\'o}mez, Yasser and Herv{\'e} Nino and Hagmann, Patric},
       journal = {arXiv preprint arXiv:2607.02638},
       year    = {2026},
       url     = {https://arxiv.org/abs/2607.02638}
