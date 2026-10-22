@@ -1782,131 +1782,123 @@ class Surface:
             if isinstance(maps_names, str):
                 maps_names = [maps_names]
 
-        # Load the scalar map based on its type
-        try:
-            if isinstance(scalar_map, pd.DataFrame):
-                # If map_file is a DataFrame, use it directly
-                maps_df = copy.deepcopy(scalar_map)
+        if isinstance(scalar_map, pd.DataFrame):
+            # If map_file is a DataFrame, use it directly
+            maps_df = copy.deepcopy(scalar_map)
 
-                # Filter the columns that that are equal to the maps_names if maps_names is provided
-                if maps_names is not None:
-                    maps_df = maps_df[maps_names]
-
-            elif isinstance(scalar_map, np.ndarray):
-
-                if scalar_map.ndim == 1:
-                    # If it is a row vector convert it to a column vector
-                    # If scalar_map is a 1D numpy array, convert it to a 2D array
-                    scalar_map = scalar_map[:, np.newaxis]
-
-                # If the maps names are not provided, create default names
-                if maps_names is None:
-                    # Create default names for the maps
-                    tmp_names = [f"map_{i}" for i in range(scalar_map.shape[1])]
-                    maps_df = pd.DataFrame(scalar_map, columns=tmp_names)
-                else:
-                    if len(maps_names) != scalar_map.shape[1]:
-                        raise ValueError(
-                            "Length of maps_names must match the number of columns in the numpy array"
-                        )
-                    # If scalar_map is a numpy array, convert it to a DataFrame
-                    maps_df = pd.DataFrame(scalar_map, columns=maps_names)
-
-            else:
-                if isinstance(scalar_map, Path):
-                    scalar_map = str(scalar_map)
-
-                if not os.path.isfile(scalar_map):
-                    raise FileNotFoundError(f"Map file not found: {scalar_map}")
-
-                # Read the map file into a DataFrame
-                maps_df = cltmisc.smart_read_table(scalar_map)
-                if maps_names is not None:
-                    maps_df = maps_df[maps_names]
-
-            if annotation is not None:
-                if isinstance(annotation, Path):
-                    annotation = str(annotation)
-
-                if not isinstance(annotation, (str, cltfree.AnnotParcellation)):
-                    raise ValueError(
-                        "annotation must be a string or an AnnotParcellation object"
-                    )
-
+            # Filter the columns that that are equal to the maps_names if maps_names is provided
             if maps_names is not None:
-                if isinstance(maps_names, str):
-                    maps_names = [maps_names]
+                maps_df = maps_df[maps_names]
 
-                elif not isinstance(maps_names, list):
-                    raise ValueError("maps_names must be a string or a list of strings")
+        elif isinstance(scalar_map, np.ndarray):
 
-                if len(maps_names) != maps_df.shape[1]:
+            if scalar_map.ndim == 1:
+                # If it is a row vector convert it to a column vector
+                # If scalar_map is a 1D numpy array, convert it to a 2D array
+                scalar_map = scalar_map[:, np.newaxis]
+
+            # If the maps names are not provided, create default names
+            if maps_names is None:
+                # Create default names for the maps
+                tmp_names = [f"map_{i}" for i in range(scalar_map.shape[1])]
+                maps_df = pd.DataFrame(scalar_map, columns=tmp_names)
+            else:
+                if len(maps_names) != scalar_map.shape[1]:
                     raise ValueError(
-                        "Length of maps_names must match the number of columns in the DataFrame"
+                        "Length of maps_names must match the number of columns in the numpy array"
                     )
+                # If scalar_map is a numpy array, convert it to a DataFrame
+                maps_df = pd.DataFrame(scalar_map, columns=maps_names)
 
-            else:
-                # If maps_names is not provided, use the column names from the DataFrame
-                maps_names = maps_df.columns.tolist()
+        else:
+            if isinstance(scalar_map, Path):
+                scalar_map = str(scalar_map)
 
-            # If the number of rows of the dataframe is equal to the number of vertices, we can use it directly
-            if maps_df.shape[0] == self.mesh.n_points:
-                vertex_maps = maps_df.to_numpy()
-            else:
-                if annotation is None:
-                    raise ValueError(
-                        "annotation must be provided if map_file does not match the number of vertices"
-                    )
-                # Extracting the parcellation data
-                parc = self._get_parcellation_data(annotation)
+            if not os.path.isfile(scalar_map):
+                raise FileNotFoundError(f"Map file not found: {scalar_map}")
 
-                vertex_maps = parc.map_values(
-                    regional_values=maps_df, is_dataframe=True
-                ).to_numpy()
+            # Read the map file into a DataFrame. Only a file that cannot be read
+            # as a table is treated as a FreeSurfer morphometry file.
+            try:
+                maps_df = cltmisc.smart_read_table(scalar_map)
+            except (ValueError, pd.errors.ParserError, UnicodeDecodeError):
+                self._load_morph_file(scalar_map, maps_names)
+                return
+            if maps_names is not None:
+                maps_df = maps_df[maps_names]
 
-            for i, map_name in enumerate(maps_names):
-                # Ensure the map data is a 1D array
-                map_data = vertex_maps[:, i]
+        if annotation is not None:
+            if isinstance(annotation, Path):
+                annotation = str(annotation)
 
-                # Store the map data in the mesh point data
-                self.mesh.point_data[map_name] = map_data
+            if not isinstance(annotation, (str, cltfree.AnnotParcellation)):
+                raise ValueError(
+                    "annotation must be a string or an AnnotParcellation object"
+                )
 
-        except Exception as err:
-            if isinstance(scalar_map, (str, Path)):
-                if not os.path.isfile(scalar_map):
-                    raise FileNotFoundError(
-                        f"Map file not found: {scalar_map}"
-                    ) from err
+        if maps_names is not None:
+            if isinstance(maps_names, str):
+                maps_names = [maps_names]
 
-                # Read the map file
-                tmp_map = nib.freesurfer.read_morph_data(str(scalar_map))
+            elif not isinstance(maps_names, list):
+                raise ValueError("maps_names must be a string or a list of strings")
 
-                if tmp_map.shape[0] == self.mesh.n_points:
-                    if maps_names is None:
-                        # If maps_names is not provided, use the file name as the
-                        # map name. FreeSurfer files are named <hemi>.<measure>,
-                        # so in that case the measure is the meaningful part.
-                        base_name = os.path.basename(scalar_map)
-                        map_name, extension = os.path.splitext(base_name)
-                        if map_name in ["lh", "rh"] and extension:
-                            map_name = extension.lstrip(".")
-                    else:
-                        if len(maps_names) != 1:
-                            raise ValueError(
-                                "maps_names must be a single string or a list with one name"
-                            ) from err
+            if len(maps_names) != maps_df.shape[1]:
+                raise ValueError(
+                    "Length of maps_names must match the number of columns in the DataFrame"
+                )
 
-                        map_name = maps_names[0]
+        else:
+            # If maps_names is not provided, use the column names from the DataFrame
+            maps_names = maps_df.columns.tolist()
 
-                    self.mesh.point_data[map_name] = tmp_map
+        # If the number of rows of the dataframe is equal to the number of vertices, we can use it directly
+        if maps_df.shape[0] == self.mesh.n_points:
+            vertex_maps = maps_df.to_numpy()
+        else:
+            if annotation is None:
+                raise ValueError(
+                    "annotation must be provided if map_file does not match the number of vertices"
+                )
+            # Extracting the parcellation data
+            parc = self._get_parcellation_data(annotation)
 
-                else:
-                    raise ValueError(
-                        f"Map file {scalar_map} does not match the number of vertices"
-                    ) from err
-            else:
-                # The fallback only handles files, any other failure must be visible
-                raise
+            vertex_maps = parc.map_values(
+                regional_values=maps_df, is_dataframe=True
+            ).to_numpy()
+
+        for i, map_name in enumerate(maps_names):
+            # Ensure the map data is a 1D array
+            map_data = vertex_maps[:, i]
+
+            # Store the map data in the mesh point data
+            self.mesh.point_data[map_name] = map_data
+
+    ##############################################################################################
+    def _load_morph_file(self, map_file: str, maps_names: list[str] = None) -> None:
+        """Load a FreeSurfer morphometry file (e.g. lh.thickness) as a vertex-wise map."""
+
+        tmp_map = nib.freesurfer.read_morph_data(str(map_file))
+
+        if tmp_map.shape[0] != self.mesh.n_points:
+            raise ValueError(
+                f"Map file {map_file} does not match the number of vertices"
+            )
+
+        if maps_names is None:
+            # FreeSurfer files are named <hemi>.<measure>, so in that case the
+            # measure is the meaningful part of the name.
+            map_name, extension = os.path.splitext(os.path.basename(map_file))
+            if map_name in ["lh", "rh"] and extension:
+                map_name = extension.lstrip(".")
+        else:
+            if len(maps_names) != 1:
+                raise ValueError(
+                    "maps_names must be a single string or a list with one name"
+                )
+            map_name = maps_names[0]
+
+        self.mesh.point_data[map_name] = tmp_map
 
     ##############################################################################################
     def export_map(

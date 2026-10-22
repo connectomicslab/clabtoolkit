@@ -648,6 +648,11 @@ class TestScalarMaps:
         idx = parc.get_region_vertices("Sim", annot.regnames[-1])
         assert np.allclose(parc.mesh.point_data["ct"][idx], 2.0)
 
+    def test_regionwise_csv_errors_are_not_masked(self, tmp_path, bare, regionwise):
+        regionwise.to_csv(tmp_path / "regions.csv", index=False)
+        with pytest.raises(ValueError, match="annotation must be provided"):
+            bare.load_scalar_maps(str(tmp_path / "regions.csv"))
+
     def test_errors(self, tmp_path, bare, regionwise):
         with pytest.raises(FileNotFoundError):
             bare.load_scalar_maps(str(tmp_path / "missing.thickness"))
