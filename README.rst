@@ -28,7 +28,7 @@ Connectomics Lab Toolkit
         :target: https://codecov.io/gh/connectomicslab/clabtoolkit
         :alt: Code coverage
 
-.. image:: https://readthedocs.org/projects/clabtoolkit/badge/?version=latest
+.. image:: https://app.readthedocs.org/projects/clabtoolkit/badge/?version=latest
         :target: https://clabtoolkit.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
 
