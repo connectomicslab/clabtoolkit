@@ -941,3 +941,56 @@ class TestCarpetPlot:
     def test_invalid_input(self, agg_backend, kwargs):
         with pytest.raises(ValueError):
             cltvis.create_carpet_plot(**kwargs)
+
+
+######################################################################################################
+class TestSurfacePlot:
+    """Surface.plot goes through BrainPlotter.plot, here with the fake plotter."""
+
+    @pytest.fixture(autouse=True)
+    def no_monitor(self, monkeypatch):
+        monkeypatch.setattr(
+            cltvis.visutils.cltplot, "get_current_monitor_size", lambda: (900, 300)
+        )
+
+    def test_default_map(self, fake_pyvista):
+        make_surface().plot()
+        assert fake_pyvista[0].meshes
+
+    @pytest.mark.parametrize("views", ["lateral", ["lateral", "medial"], "4_views"])
+    @pytest.mark.parametrize("maps", ["A", ["A", "B"], ["A", "Labels"]])
+    def test_maps_and_views(self, fake_pyvista, views, maps):
+        make_surface().plot(maps=maps, views=views, cmap="viridis")
+        assert fake_pyvista[0].meshes
+
+    def test_rendering_options(self, fake_pyvista):
+        make_surface().plot(
+            maps="A",
+            smooth=True,
+            smooth_iterations="5",  # converted to int
+            show_edges=True,
+            edge_color=(255, 0, 0, 255),
+            line_width=2,  # converted to float
+            vmin=0.5,
+            vmax=2.5,
+            range_min=1.0,
+            range_max=2.0,
+            use_opacity=True,
+            opacity=0.5,
+            colorbar_title="Title",
+            colorbar_position="right",
+        )
+        assert fake_pyvista[0].meshes
+
+    def test_colorbar_is_decided_for_colortable_maps(self, fake_pyvista):
+        make_surface().plot(maps="Labels", cmap=None)
+        assert fake_pyvista[0].meshes
+
+    def test_with_a_configuration_dictionary(self, fake_pyvista):
+        config = cltvis.BrainPlotter().get_figure_config()
+        full = cltvis.visutils.load_configs(
+            cltsurf.__file__.replace("surfacetools.py", "config/viz_views.json")
+        )
+        assert config and full
+        make_surface().plot(maps="A", config=full)
+        assert fake_pyvista[0].meshes
