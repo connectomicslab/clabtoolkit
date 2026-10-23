@@ -134,6 +134,32 @@ gives an overview of the whole toolkit.
 * **Quality Control Tools** (``clabtoolkit.qcqatools``): slice generation and HTML pages for visual quality control.
 * **Misc Tools** (``clabtoolkit.misctools``): condition-based selection and general-purpose helpers.
 
+What can I do with CLABTOOLKIT?
+-------------------------------
+
+A few examples of the problems it helps to solve. The
+`full list <https://clabtoolkit.readthedocs.io/en/latest/tasks.html>`_ gives, for each task, the
+functions that do it and the notebook that shows it.
+
+* Create, convert and export color tables (LUT, TSV, FSL, Nilearn)
+  (``ColorTableLoader.load_colortable``, ``ColorTableLoader.export``).
+* Remove, insert or change BIDS entities in the file names of a whole dataset
+  (``recursively_delete_entity``, ``recursively_insert_entity``, ``recursively_replace_entity_value``).
+* Remove, add and merge regions in a parcellation
+  (``Parcellation.remove_by_code``, ``Parcellation.add_parcellation``, ``Parcellation.group_by_codes``).
+* Compute a morphometry table from a parcellation (``Parcellation.compute_morphometry_table``).
+* Project region values onto surface vertices to create vertex-wise maps and colors
+  (``AnnotParcellation.map_values``, ``region_to_vertexwise``).
+* Load surfaces from several formats and save them back or export them to other formats
+  (``Surface.load_from_file``, ``Surface.save_surface``).
+* Generate structural and functional connectomes directly from a parcellation
+  (``Connectome.generate_connectome``).
+* Create unified morphometry tables, ready for statistical analyses, from FreeSurfer outputs and
+  parcellations (``FreeSurferSubject.create_stats_table``, ``create_subject_stats_table``).
+* Generate slice images and a web page to check the quality of many images quickly
+  (``generate_slices``, ``generate_image_selection_webpage``).
+* Interpolate scalar maps, such as FA, along streamlines (``Tractogram.interpolate_on_tractogram``).
+
 Quick Start
 -----------
 
