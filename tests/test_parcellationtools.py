@@ -837,3 +837,78 @@ class TestSurfaces:
             named.surface_extraction(out_filename=str(tmp_path / "missing" / "s.surf"))
         with pytest.raises(ValueError):
             named.surface_extraction(region_labels=[1], region_names="a")
+
+
+####################################################################################################
+# RegionTimeSeries.compute_fc_matrix: every method and option
+####################################################################################################
+class TestRegionTimeSeriesFC:
+    @pytest.fixture
+    def rts(self):
+        data = np.random.default_rng(10).normal(size=(5, 60))
+        return RegionTimeSeries(data, region_names=[f"r{i}" for i in range(5)])
+
+    @pytest.mark.parametrize(
+        "method", ["pearson", "spearman", "kendall", "partial", "mutual_info"]
+    )
+    def test_methods_give_a_square_symmetric_matrix(self, rts, method):
+        fc = rts.compute_fc_matrix(method=f" {method.upper()} ")
+        assert fc.matrix.shape == (5, 5)
+        np.testing.assert_allclose(fc.matrix, fc.matrix.T, atol=1e-10)
+        np.testing.assert_allclose(np.diag(fc.matrix), 1.0, atol=1e-10)
+
+    def test_kendall_matches_scipy(self, rts):
+        from scipy import stats
+
+        fc = rts.compute_fc_matrix(method="kendall")
+        tau, _ = stats.kendalltau(rts.data[0], rts.data[1])
+        assert fc.matrix[0, 1] == pytest.approx(tau)
+
+    def test_spearman_matches_scipy(self, rts):
+        from scipy import stats
+
+        fc = rts.compute_fc_matrix(method="spearman")
+        rho, _ = stats.spearmanr(rts.data[0], rts.data[1])
+        assert fc.matrix[0, 1] == pytest.approx(rho)
+
+    def test_postprocessing(self, rts):
+        base = rts.compute_fc_matrix().matrix
+        z = rts.compute_fc_matrix(z_transform=True).matrix
+        np.testing.assert_allclose(z, np.arctanh(np.clip(base, -0.9999, 0.9999)))
+        assert (rts.compute_fc_matrix(absolute=True).matrix >= 0).all()
+        thresholded = rts.compute_fc_matrix(threshold=0.2).matrix
+        assert (thresholded[np.abs(base) < 0.2] == 0).all()
+
+    def test_normalizing_rows_does_not_change_pearson(self, rts):
+        flat = RegionTimeSeries(np.vstack([rts.data[:4], np.ones((1, 60))]))
+        fc = flat.compute_fc_matrix(normalize_rows=True)  # constant row: sigma is 0
+        assert fc.matrix.shape == (5, 5)
+        scaled = RegionTimeSeries(rts.data * np.arange(1, 6)[:, None])
+        np.testing.assert_allclose(
+            scaled.compute_fc_matrix(normalize_rows=True).matrix,
+            rts.compute_fc_matrix().matrix,
+        )
+
+    def test_region_selection_by_name(self, rts):
+        two = rts.compute_fc_matrix(region_names=["r0", "r3"])
+        assert two.matrix.shape == (2, 2)
+        np.testing.assert_allclose(two.matrix, np.corrcoef(rts.data[[0, 3]]))
+
+    def test_deleting_one_volume(self, rts):
+        fc = rts.compute_fc_matrix(vols_to_delete=0)
+        np.testing.assert_allclose(fc.matrix, np.corrcoef(rts.data[:, 1:]))
+
+    def test_errors(self, rts):
+        with pytest.raises(TypeError):
+            rts.compute_fc_matrix(region_names=5)
+        with pytest.raises(TypeError):
+            rts.compute_fc_matrix(region_names=["r0", 1])
+        with pytest.raises(ValueError, match="Unknown method"):
+            rts.compute_fc_matrix(method="cosine")
+        few = RegionTimeSeries(np.random.default_rng(1).normal(size=(5, 4)))
+        with pytest.raises(ValueError, match="Partial correlation"):
+            few.compute_fc_matrix(method="partial")
+
+    def test_get_info_of_many_unnamed_regions(self, capsys):
+        RegionTimeSeries(np.random.default_rng(2).normal(size=(15, 8))).get_info()
+        assert "REGION TIME SERIES" in capsys.readouterr().out
