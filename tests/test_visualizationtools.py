@@ -553,3 +553,37 @@ class TestAddColorbars:
         plotter._add_colorbars(fake, [{"position": (0, 1), "colormap": "colortable"}])
         assert [call[0] for call in fake.calls] == ["subplot"]
         assert fake.calls[0][1] == (0, 1)
+
+
+######################################################################################################
+class TestMapOrder:
+    def test_colortable_map_between_scalar_maps(self, plotter, surface, tmp_path):
+        # The colortable map is requested in the middle. The layout used to index
+        # the maps in a different order than the plot loop, so a scalar map was
+        # drawn with the colortable settings (range_color=None) and plot() failed.
+        pv = pytest.importorskip("pyvista")
+        surface.mesh.point_data["Scalar1"] = np.array([0.0, 1.0, 2.0, 3.0])
+        surface.mesh.point_data["Scalar2"] = np.array([3.0, 2.0, 1.0, 0.0])
+        surface.mesh.point_data["Labels"] = np.array([1, 2, 1, 2])
+        surface.colortables["Labels"] = {
+            "color_table": cltsurf.create_surface_colortable(["red", "blue"])[
+                "color_table"
+            ]
+        }
+        previous = pv.OFF_SCREEN
+        pv.OFF_SCREEN = True
+        try:
+            try:
+                plotter.plot(
+                    objs2plot=surface,
+                    map_names=["Scalar1", "Labels", "Scalar2"],
+                    views=["lateral"],
+                    save_path=str(tmp_path / "out.png"),
+                )
+            except (OSError, RuntimeError) as err:  # no rendering backend
+                pytest.skip(f"no off-screen rendering available: {err}")
+        finally:
+            pv.OFF_SCREEN = previous
+
+
+#################################################################################################
