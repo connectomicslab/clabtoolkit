@@ -30,8 +30,59 @@ from .misctools_utils import ExplorerDict
 
 init(autoreset=True)
 
-# Re-export for convenient access
-__all__ = ["ExplorerDict", "update_dict"]
+# Public API, also used by the documentation. ExplorerDict is re-exported from
+# misctools_utils for convenient access.
+__all__ = [
+    "ExplorerDict",
+    "build_indices",
+    "get_indices_by_condition",
+    "get_values_by_condition",
+    "build_indices_with_conditions",
+    "build_values_with_conditions",
+    "parse_condition",
+    "is_numeric",
+    "analyze_condition",
+    "remove_duplicates",
+    "select_ids_from_file",
+    "get_indexes_by_substring",
+    "filter_by_substring",
+    "remove_substrings",
+    "replace_substrings",
+    "to_list",
+    "list_intercept",
+    "ismember",
+    "find_closest_date",
+    "get_leaf_directories",
+    "remove_trailing_separators",
+    "get_all_files",
+    "rename_folders",
+    "remove_empty_folders",
+    "create_temporary_filename",
+    "remove_consecutive_duplicates",
+    "create_names_from_indices",
+    "correct_names",
+    "get_real_basename",
+    "load_json",
+    "remove_empty_keys_or_values",
+    "save_dictionary_to_json",
+    "compare_dicts",
+    "read_file_with_separator_detection",
+    "smart_read_table",
+    "drop_empty_columns",
+    "extract_string_values",
+    "update_dict",
+    "expand_and_concatenate",
+    "generate_container_command",
+    "is_notebook",
+    "format_signature",
+    "show_module_contents",
+    "show_object_content",
+    "h5explorer",
+    "h5explorer_simple",
+    "search_methods",
+    "printprogressbar",
+    "SmartFormatter",
+]
 
 
 ####################################################################################################
@@ -52,20 +103,22 @@ def build_indices(
     NumPy arrays, or strings representing values, ranges, or comma-separated expressions.
 
     Supports:
-        - Integers: added as-is.
-        - Tuples of exactly 2 integers: treated as a range, expanded into
-        range(start, end+1) — e.g. (2, 5) -> [2, 3, 4, 5].
-        - Tuples of any other length: treated as an explicit list of
-        indices, same as a `list` input — e.g. (1, 2, 3, 4, 5) ->
-        [1, 2, 3, 4, 5].
-        - Lists or np.ndarray: flattened and added as integers.
-        - Strings:
-            - "8-10"       → [8, 9, 10]
-            - "11:13"      → [11, 12, 13]
-            - "14:2:22"    → [14, 16, 18, 20, 22]
-            - "5"          → [5]
-            - "1, 2, 3"    → [1, 2, 3]
-            - "1, 2, 4:10, 16-20, 25, 0" → parsed into all segments
+
+    - Integers: added as-is.
+    - Tuples of exactly 2 integers: treated as a range, expanded into
+      range(start, end+1), e.g. (2, 5) -> [2, 3, 4, 5].
+    - Tuples of any other length: treated as an explicit list of
+      indices, same as a `list` input, e.g. (1, 2, 3, 4, 5) ->
+      [1, 2, 3, 4, 5].
+    - Lists or np.ndarray: flattened and added as integers.
+    - Strings:
+
+      - "8-10" -> [8, 9, 10]
+      - "11:13" -> [11, 12, 13]
+      - "14:2:22" -> [14, 16, 18, 20, 22]
+      - "5" -> [5]
+      - "1, 2, 3" -> [1, 2, 3]
+      - "1, 2, 4:10, 16-20, 25, 0" -> parsed into all segments
 
     Parameters
     ----------
@@ -168,9 +221,11 @@ def get_indices_by_condition(condition: str, **kwargs):
     ----------
     condition : str
         A condition string to evaluate, e.g.:
-            - "bvals > 1000"
-            - "bmin <= bvals <= bmax"
-            - "bvals != bval"
+
+        - "bvals > 1000"
+        - "bmin <= bvals <= bmax"
+        - "bvals != bval"
+
         Supports chained comparisons and scalar literals directly in the expression.
 
     **kwargs : dict
@@ -261,9 +316,11 @@ def get_values_by_condition(condition: str, **kwargs):
     ----------
     condition : str
         A condition string to evaluate, e.g.:
-            - "bvals > 1000"
-            - "bmin <= bvals <= bmax"
-            - "bvals != bval"
+
+        - "bvals > 1000"
+        - "bmin <= bvals <= bmax"
+        - "bvals != bval"
+
         Supports chained comparisons and scalar literals directly in the expression.
 
     **kwargs : dict
@@ -493,12 +550,12 @@ def parse_condition(condition: str) -> tuple[str | None, list[str]]:
     """
     Parse a condition string to extract the main variable and limit variables.
 
-    Parameters:
+    Parameters
     ----------
     condition : str
         Condition string to parse (e.g., "bmin <= bvals <= bmax").
 
-    Returns:
+    Returns
     -------
     main_variable : str or None
         The main variable in the condition (e.g., "bvals").
@@ -506,7 +563,8 @@ def parse_condition(condition: str) -> tuple[str | None, list[str]]:
     limit_variables : list of str
         List of limit variables (e.g., ["bmin", "bmax"]).
         Returns an empty list if no limits are found.
-    Examples:
+
+    Examples
     --------
     >>> condition = "bmin <= bvals <= bmax"
     >>> var, limits = parse_condition(condition)
@@ -593,23 +651,24 @@ def analyze_condition(condition: str) -> dict:
     """
     Analyze a condition string and return detailed information.
 
-    Parameters:
+    Parameters
     ----------
     condition : str
         Condition string to analyze (e.g., "bmin <= bvals <= bmax").
 
-    Returns:
+    Returns
     -------
     info : dict
         Dictionary containing:
-            - 'original_condition': Original condition string.
-            - 'main_variable': The main variable in the condition.
-            - 'limit_variables': List of limit variables.
-            - 'operators': List of operators found in the condition.
-            - 'is_chained': Boolean indicating if the condition is chained.
-            - 'is_valid': Boolean indicating if the condition was parsed successfully.
 
-    Examples:
+        - 'original_condition': Original condition string.
+        - 'main_variable': The main variable in the condition.
+        - 'limit_variables': List of limit variables.
+        - 'operators': List of operators found in the condition.
+        - 'is_chained': Boolean indicating if the condition is chained.
+        - 'is_valid': Boolean indicating if the condition was parsed successfully.
+
+    Examples
     --------
     >>> condition = "bmin <= bvals <= bmax"
     >>> info = analyze_condition(condition)
@@ -1363,9 +1422,9 @@ def get_leaf_directories(root_dir: str) -> list:
     """
     Finds all folders inside the given directory that do not contain any subfolders.
 
-    Parameters.
+    Parameters
     ----------
-    root_dir :str
+    root_dir : str
         The path to the root directory where the search will be performed.
 
     Returns
@@ -1374,10 +1433,10 @@ def get_leaf_directories(root_dir: str) -> list:
         A list of absolute paths to folders that do not contain any subfolders.
 
     Examples
-    --------------
-        >>> root_directory = "/path/to/your/folder"
-        >>> leaf_folders = get_leaf_directories(root_directory)
-        >>> print("Leaf folders:", leaf_folders)
+    --------
+    >>> root_directory = "/path/to/your/folder"
+    >>> leaf_folders = get_leaf_directories(root_directory)
+    >>> print("Leaf folders:", leaf_folders)
     """
 
     if not os.path.isdir(root_dir):
@@ -4639,15 +4698,22 @@ def printprogressbar(
 
     Parameters
     ----------
-
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-        printend    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    iteration : int
+        Current iteration.
+    total : int
+        Total iterations.
+    prefix : str, optional
+        Prefix string.
+    suffix : str, optional
+        Suffix string.
+    decimals : int, optional
+        Positive number of decimals in percent complete.
+    length : int, optional
+        Character length of the bar.
+    fill : str, optional
+        Bar fill character.
+    printend : str, optional
+        End character, e.g. "\\r" or "\\r\\n".
 
     """
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
