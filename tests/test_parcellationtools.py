@@ -737,6 +737,11 @@ class TestTimeSeries:
         with pytest.raises(ValueError):
             named.compute_fc_matrix(str(tmp_path / "missing.nii.gz"))
 
+    def test_compute_fc_matrix_with_a_single_region(self, named):
+        data = np.random.default_rng(3).normal(size=(1, 30))  # one row per region kept
+        fc = named.compute_fc_matrix(data, region_labels=[2])
+        assert fc.matrix.shape == (1, 1) and fc.matrix[0, 0] == pytest.approx(1.0)
+
     def test_compute_fc_matrix_from_region_timeseries(self, named):
         rts = RegionTimeSeries(np.random.default_rng(4).normal(size=(4, 30)))
         fc = named.compute_fc_matrix(rts)
@@ -890,6 +895,8 @@ class TestRegionTimeSeriesFC:
         )
 
     def test_region_selection_by_name(self, rts):
+        one = rts.compute_fc_matrix(region_names="r1")
+        assert one.matrix.shape == (1, 1) and one.matrix[0, 0] == pytest.approx(1.0)
         two = rts.compute_fc_matrix(region_names=["r0", "r3"])
         assert two.matrix.shape == (2, 2)
         np.testing.assert_allclose(two.matrix, np.corrcoef(rts.data[[0, 3]]))

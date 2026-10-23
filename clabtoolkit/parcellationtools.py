@@ -5764,6 +5764,9 @@ class Parcellation:
         # ------------------------------------------------------------------
         # Post-processing
         # ------------------------------------------------------------------
+        # A single region gives a scalar: keep it as a 1x1 matrix
+        fc = np.atleast_2d(fc)
+
         # Clip numerical noise outside [-1, 1] for correlation-based methods
         if method not in {"mutual_info"}:
             fc = np.clip(fc, -1.0, 1.0)
@@ -6091,6 +6094,9 @@ class RegionTimeSeries:
         # ------------------------------------------------------------------
         # Post-processing
         # ------------------------------------------------------------------
+        # A single region gives a scalar: keep it as a 1x1 matrix
+        fc = np.atleast_2d(fc)
+
         # Clip numerical noise outside [-1, 1] for correlation-based methods
         if method not in {"mutual_info"}:
             fc = np.clip(fc, -1.0, 1.0)
