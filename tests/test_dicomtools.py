@@ -605,3 +605,153 @@ class TestHelpers:
 
     def test_safe_unlink_ignores_missing_file(self, tmp_path):
         cltdicom._safe_unlink(tmp_path / "missing")
+
+
+######################################################################################################
+class TestOrganizeEdgeCases:
+    def test_no_subjects_in_the_input_folder(self, tmp_path, out_dir, capsys):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        cltdicom.org_conv_dicoms(str(empty), str(out_dir), nthreads=1)
+        assert "No subjects found" in capsys.readouterr().out
+
+    def test_ids_file_without_any_known_subject(
+        self, raw_dir, out_dir, tmp_path, capsys
+    ):
+        ids = tmp_path / "ids.txt"
+        ids.write_text("sub-99\n")
+        cltdicom.org_conv_dicoms(
+            str(raw_dir), str(out_dir), ids_file=str(ids), nthreads=1
+        )
+        assert "None of the subjects" in capsys.readouterr().out
+
+    def test_default_number_of_threads(self, raw_dir, out_dir):
+        cltdicom.org_conv_dicoms(str(raw_dir), str(out_dir), ids_file=None)
+        assert _layout(out_dir) == EXPECTED
+
+    def test_folder_without_files(self, tmp_path, out_dir, capsys):
+        no_files = tmp_path / "no_files"
+        (no_files / "subfolder").mkdir(parents=True)  # only an empty folder
+        cltdicom.org_dicom_folder(str(no_files), str(out_dir))
+        assert "No files found" in capsys.readouterr().out
+
+    def test_empty_input_folder_is_an_error(self, tmp_path, out_dir):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        with pytest.raises(ValueError, match="empty"):
+            cltdicom.org_dicom_folder(str(empty), str(out_dir))
+
+    def test_folder_with_the_default_number_of_threads(self, raw_dir, out_dir):
+        cltdicom.org_dicom_folder(str(raw_dir), str(out_dir))
+        assert _layout(out_dir) == EXPECTED
+
+
+######################################################################################################
+class TestCompressionEdgeCases:
+    @pytest.fixture
+    def organized(self, raw_dir, out_dir):
+        cltdicom.org_conv_dicoms(str(raw_dir), str(out_dir), nthreads=1)
+        return out_dir
+
+    @pytest.mark.parametrize(
+        "function", ["compress_dicom_session", "uncompress_dicom_session"]
+    )
+    def test_invalid_folder(self, tmp_path, function):
+        run = getattr(cltdicom, function)
+        with pytest.raises(FileNotFoundError):
+            run(str(tmp_path / "missing"))
+        file = tmp_path / "file.txt"
+        file.write_text("x")
+        with pytest.raises(ValueError, match="not a directory"):
+            run(str(file))
+
+    @pytest.mark.parametrize(
+        "function", ["compress_dicom_session", "uncompress_dicom_session"]
+    )
+    def test_invalid_subject_ids(self, organized, function):
+        run = getattr(cltdicom, function)
+        with pytest.raises(ValueError, match="strings"):
+            run(str(organized), subj_ids=["sub-01", 3])
+        with pytest.raises(ValueError):
+            run(str(organized), subj_ids=5)
+
+    @pytest.mark.parametrize(
+        "function", ["compress_dicom_session", "uncompress_dicom_session"]
+    )
+    def test_nothing_to_process(self, tmp_path, function, capsys):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        assert getattr(cltdicom, function)(str(empty)) == []
+        assert "No subjects found" in capsys.readouterr().out
+
+    def test_unreadable_ids_file(self, organized, tmp_path):
+        ids = tmp_path / "ids.txt"
+        ids.write_bytes(b"\xff\xfe\x00bad")
+        with pytest.raises(ValueError, match="Error reading subject IDs file"):
+            cltdicom.compress_dicom_session(str(organized), subj_ids=str(ids))
+        with pytest.raises(ValueError, match="Error reading subject IDs file"):
+            cltdicom.uncompress_dicom_session(str(organized), subj_ids=str(ids))
+        with pytest.raises(FileNotFoundError):
+            cltdicom.uncompress_dicom_session(
+                str(organized), subj_ids=str(tmp_path / "missing.txt")
+            )
+
+    def test_compress_with_a_comma_separated_string_and_a_path(self, organized):
+        cltdicom.compress_dicom_session(
+            str(organized), subj_ids="sub-01, sub-02", remove_original=False
+        )
+        assert list((organized / "sub-02").glob("*.tar.gz"))
+        cltdicom.compress_dicom_session(
+            str(organized), subj_ids=Path(organized / "missing.txt")
+        )
+
+    def test_blank_ids_string(self, organized):
+        with pytest.raises(ValueError):
+            cltdicom.compress_dicom_session(str(organized), subj_ids=" , ")
+
+    def test_missing_subjects_and_subjects_without_sessions(self, organized, capsys):
+        (organized / "sub-03").mkdir()
+        (organized / "sub-03" / "other").mkdir()
+        cltdicom.compress_dicom_session(
+            str(organized), subj_ids=["sub-03", "sub-99"], remove_original=False
+        )
+        out = capsys.readouterr().out
+        assert "no 'ses-' directories" in out and "not found" in out
+        cltdicom.uncompress_dicom_session(str(organized), subj_ids=["sub-99"])
+        assert "not found" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        "error", [tarfile.TarError("bad"), PermissionError("no"), OSError("disk")]
+    )
+    def test_compression_errors_are_reported(
+        self, organized, monkeypatch, capsys, error
+    ):
+        def fail(*args, **kwargs):
+            raise error
+
+        monkeypatch.setattr(cltdicom.tarfile, "open", fail)
+        failed = cltdicom.compress_dicom_session(str(organized), subj_ids=["sub-02"])
+        assert len(failed) == 1 and "could not be compressed" in capsys.readouterr().out
+        assert (organized / "sub-02" / "ses-20240402104000").is_dir()  # kept
+
+    @pytest.mark.parametrize(
+        "error", [tarfile.TarError("bad"), PermissionError("no"), ValueError("odd")]
+    )
+    def test_uncompression_errors_are_reported(
+        self, raw_dir, out_dir, monkeypatch, capsys, error
+    ):
+        cltdicom.org_conv_dicoms(str(raw_dir), str(out_dir), boolcomp=True, nthreads=1)
+
+        def fail(*args, **kwargs):
+            raise error
+
+        monkeypatch.setattr(cltdicom.tarfile, "open", fail)
+        failed = cltdicom.uncompress_dicom_session(str(out_dir), subj_ids=["sub-02"])
+        assert len(failed) == 1 and "FAILED TO UNCOMPRESS" in capsys.readouterr().out
+
+    def test_safe_unlink_ignores_errors(self, tmp_path):
+        folder = tmp_path / "folder"
+        folder.mkdir()
+        (folder / "f.txt").write_text("x")
+        cltdicom._safe_unlink(folder)  # a non empty folder can not be unlinked
+        assert folder.exists()
