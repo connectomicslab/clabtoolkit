@@ -23,6 +23,7 @@ A comprehensive Python toolkit for neuroimaging data processing and analysis, sp
 
    installation
    quickstart
+   tasks
    examples
 
 .. toctree::
