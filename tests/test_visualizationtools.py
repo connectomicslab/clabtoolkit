@@ -617,3 +617,58 @@ class TestColorbarAndMapOrder:
             plotter, fake, (0, 0), 0.0, 1.0, ["map"], "viridis", "T", "horizontal"
         )
         assert len(fake.actors) == 1
+
+
+class FakePvPlotter(FakeColorbarPlotter):
+    """Stands in for pyvista.Plotter in BrainPlotter.plot: nothing is rendered."""
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.shape = kwargs["shape"]
+        self.renderers = [None] * (self.shape[0] * self.shape[1])
+        self.camera = FakeCamera()
+        self.camera_position = None
+        self.meshes = []
+        self.window_size = kwargs["window_size"]
+
+    def add_mesh(self, mesh, *args, **kwargs):
+        self.meshes.append(mesh)
+        return super().add_mesh(mesh, *args, **kwargs)
+
+    def add_text(self, *args, **kwargs):
+        pass
+
+    def link_views(self, *args, **kwargs):
+        pass
+
+
+class TestPlotMapOrder:
+    def test_colortable_map_between_scalar_maps(
+        self, plotter, surface, monkeypatch, tmp_path
+    ):
+        # With a colortable map in the middle of map_names, the layout used to give
+        # a scalar map the colortable settings (range_color=None) and plot() failed.
+        surface.mesh.point_data["Scalar1"] = np.array([0.0, 1.0, 2.0, 3.0])
+        surface.mesh.point_data["Scalar2"] = np.array([3.0, 2.0, 1.0, 0.0])
+        surface.mesh.point_data["Labels"] = np.array([1, 2, 1, 2])
+        surface.colortables["Labels"] = {
+            "color_table": cltsurf.create_surface_colortable(["red", "blue"])[
+                "color_table"
+            ]
+        }
+        created = []
+
+        def make_plotter(**kwargs):
+            created.append(FakePvPlotter(**kwargs))
+            return created[0]
+
+        monkeypatch.setattr(cltvis.pv, "Plotter", make_plotter)
+        monkeypatch.setattr(cltvis.visutils, "finalize_plot", lambda *args: None)
+        plotter.plot(
+            objs2plot=surface,
+            map_names=["Scalar1", "Labels", "Scalar2"],
+            views=["lateral"],
+            window_size=(900, 300),
+            save_path=str(tmp_path / "out.png"),
+        )
+        assert len(created[0].meshes) >= 3  # one mesh per map, all of them drawn
