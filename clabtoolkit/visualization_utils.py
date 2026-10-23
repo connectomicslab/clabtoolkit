@@ -48,8 +48,8 @@ def load_configs(config_file: str | Path) -> None:
     FileNotFoundError
         If the configuration file doesn't exist.
 
-    json.JSONDecodeError
-        If the configuration file contains invalid JSON.
+    ValueError
+        If the configuration file does not contain valid JSON.
 
     KeyError
         If required configuration keys 'figure_conf' or 'views_conf' are missing.
@@ -1239,8 +1239,8 @@ def reload_config(plotobj) -> None:
     FileNotFoundError
         If the configuration file no longer exists.
 
-    json.JSONDecodeError
-        If the configuration file contains invalid JSON.
+    ValueError
+        If the configuration file does not contain valid JSON.
 
     KeyError
         If required configuration keys 'figure_conf' or 'views_conf' are missing.
@@ -1258,6 +1258,8 @@ def reload_config(plotobj) -> None:
 
     # Create attributes
     plotobj.figure_conf = configs["figure_conf"]
+    if "objs_conf" in configs:  # files written by older versions do not have it
+        plotobj.objs_conf = configs["objs_conf"]
     plotobj.views_conf = configs["views_conf"]
     plotobj.layouts_conf = configs["layouts_conf"]
     plotobj.themes_conf = configs["themes_conf"]

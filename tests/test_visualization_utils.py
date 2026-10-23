@@ -378,13 +378,54 @@ class TestConfigurationHelpers:
         data = json.loads(config.read_text())
         data["figure_conf"]["title_font_size"] = 9
         config.write_text(json.dumps(data))
-        vu.reload_config(other)
+        other.reload_config()
         assert other.figure_conf["title_font_size"] == 9
         other.reset_figure_config()
         assert other.figure_conf["title_font_size"] == 11  # the 'default' theme
         other.reset_figure_config(auto_save=True)
         saved = json.loads(config.read_text())
         assert saved["figure_conf"]["title_font_size"] == 11
+
+    def test_reload_picks_up_every_section(self, tmp_path, capsys):
+        config = tmp_path / "conf.json"
+        plotter = cltvis.BrainPlotter()
+        plotter.save_config(config)
+        other = cltvis.BrainPlotter(config)
+        data = json.loads(config.read_text())
+        data["objs_conf"]["tracts"]["tube_radius"] = 0.77
+        data["themes_conf"]["mine"] = {"description": "mine"}
+        config.write_text(json.dumps(data))
+        other.reload_config()
+        assert other.objs_conf["tracts"]["tube_radius"] == 0.77
+        assert "mine" in other.themes_conf
+        assert "Reloading configuration" in capsys.readouterr().out
+
+    def test_reload_of_a_file_without_objects_section(self, tmp_path):
+        config = tmp_path / "conf.json"
+        plotter = cltvis.BrainPlotter()
+        plotter.save_config(config)
+        other = cltvis.BrainPlotter(config)
+        data = json.loads(config.read_text())
+        del data["objs_conf"]
+        config.write_text(json.dumps(data))
+        before = other.objs_conf
+        other.reload_config()
+        assert other.objs_conf == before
+
+    def test_reload_errors(self, tmp_path):
+        config = tmp_path / "conf.json"
+        plotter = cltvis.BrainPlotter()
+        plotter.save_config(config)
+        other = cltvis.BrainPlotter(config)
+        config.write_text("{not json")
+        with pytest.raises(ValueError, match="loading the JSON file"):
+            other.reload_config()
+        config.write_text("{}")
+        with pytest.raises(KeyError):
+            other.reload_config()
+        config.unlink()
+        with pytest.raises(FileNotFoundError):
+            other.reload_config()
 
     def test_reset_needs_a_default_theme(self):
         plotter = cltvis.BrainPlotter()

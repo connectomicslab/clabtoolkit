@@ -96,8 +96,8 @@ class BrainPlotter:
         FileNotFoundError
             If the configuration file doesn't exist.
 
-        json.JSONDecodeError
-            If the configuration file contains invalid JSON.
+        ValueError
+            If the configuration file does not contain valid JSON.
 
         KeyError
             If required keys 'figure_conf' or 'views_conf' are missing.
@@ -1829,6 +1829,34 @@ class BrainPlotter:
         """
 
         visutils.reset_figure_config(self, auto_save)
+
+    def reload_config(self) -> None:
+        """
+        Reload the configuration file to pick up any changes.
+
+        Useful when the configuration file is modified while the plotter is in use.
+        The figure, objects, views, layouts and themes sections are replaced by the
+        content of the file, so changes that were not saved are lost.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the configuration file no longer exists.
+
+        ValueError
+            If the configuration file does not contain valid JSON.
+
+        KeyError
+            If a required section of the configuration file is missing.
+
+        Examples
+        --------
+        >>> plotter = BrainPlotter("configs.json")
+        >>> # ... modify configs.json externally ...
+        >>> plotter.reload_config()  # Pick up the changes
+        """
+
+        visutils.reload_config(self)
 
     def save_config(self, config_file: str | Path = None) -> None:
         """
