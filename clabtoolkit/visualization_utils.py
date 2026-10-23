@@ -3,6 +3,7 @@ Module for visualization utilities in the clabtoolkit package.
 """
 
 import json
+import numbers
 import os
 import threading
 from pathlib import Path
@@ -632,71 +633,61 @@ def process_v_limits(
     Returns
     -------
     List[Tuple[Optional[float], Optional[float]]]
-        List of (vmin, vmax) tuples, one for each map.
+        List of (vmin, vmax) tuples, one for each map. A limit equal to None is
+        computed automatically from the data.
 
     Raises
     ------
     TypeError
-        If v_limits format is invalid.
+        If v_limits format is invalid or a limit is not a number or None.
 
     ValueError
-        If v_limits list length doesn't match number of maps.
+        If v_limits list length doesn't match number of maps, or if vmin is not
+        smaller than vmax.
+
+    Examples
+    --------
+    >>> process_v_limits((0, 1), 2)
+    [(0, 1), (0, 1)]
+    >>> process_v_limits(None, 2)
+    [(None, None), (None, None)]
     """
 
-    # Validate v_limits input
-    if v_limits is None or (isinstance(v_limits, tuple) and len(v_limits) == 2):
-        # Single tuple or None - use for all maps
-        v_limits = [v_limits] * n_maps if v_limits else [(None, None)]
+    def check(limits, label):
+        """Validate one (vmin, vmax) pair. A None limit means automatic."""
+        if not (isinstance(limits, tuple) and len(limits) == 2):
+            raise TypeError(f"{label} must be a tuple of length 2")
 
-    elif isinstance(v_limits, list) and all(
-        isinstance(limits, tuple) and len(limits) == 2 for limits in v_limits
-    ):
-        # List of tuples - validate length and content
-        if len(v_limits) != n_maps:
-            raise ValueError(
-                f"v_limits list length ({len(v_limits)}) must match number of maps ({n_maps})"
-            )
-    else:
-        raise TypeError(
-            "v_limits must be None, a tuple (vmin, vmax), or a list of tuples [(vmin1, vmax1), ...]"
-        )
+        vmin, vmax = limits
+        for value in (vmin, vmax):
+            if value is not None and not isinstance(value, numbers.Real):
+                raise TypeError(f"{label} must contain numeric values or None")
+
+        if vmin is not None and vmax is not None and vmin >= vmax:
+            raise ValueError(f"{label}: vmin ({vmin}) must be less than vmax ({vmax})")
+
+        return limits
 
     if v_limits is None:
         # Auto-compute limits for each map
         return [(None, None)] * n_maps
 
-    elif isinstance(v_limits, tuple) and len(v_limits) == 2:
+    if isinstance(v_limits, tuple):
         # Single tuple - use for all maps
-        vmin, vmax = v_limits
-        if not (isinstance(vmin, (int, float)) and isinstance(vmax, (int, float))):
-            raise TypeError("v_limits tuple must contain numeric values")
-        if vmin >= vmax:
-            raise ValueError(f"vmin ({vmin}) must be less than vmax ({vmax})")
-
-        print(f"Using same limits for all {n_maps} maps: vmin={vmin}, vmax={vmax}")
+        vmin, vmax = check(v_limits, "v_limits")
+        if vmin is not None or vmax is not None:
+            print(f"Using same limits for all {n_maps} maps: vmin={vmin}, vmax={vmax}")
         return [(vmin, vmax)] * n_maps
 
-    elif isinstance(v_limits, list):
-        # List of tuples - validate length and content
+    if isinstance(v_limits, list):
         if len(v_limits) != n_maps:
             raise ValueError(
                 f"v_limits list length ({len(v_limits)}) must match number of maps ({n_maps})"
             )
 
-        processed_limits = []
-        for i, limits in enumerate(v_limits):
-            if not (isinstance(limits, tuple) and len(limits) == 2):
-                raise TypeError(f"v_limits[{i}] must be a tuple of length 2")
-
-            vmin, vmax = limits
-            if not (isinstance(vmin, (int, float)) and isinstance(vmax, (int, float))):
-                raise TypeError(f"v_limits[{i}] must contain numeric values")
-            if vmin >= vmax:
-                raise ValueError(
-                    f"v_limits[{i}]: vmin ({vmin}) must be less than vmax ({vmax})"
-                )
-
-            processed_limits.append((vmin, vmax))
+        processed_limits = [
+            check(limits, f"v_limits[{i}]") for i, limits in enumerate(v_limits)
+        ]
 
         print(f"Using individual limits for {n_maps} maps:")
         for i, (vmin, vmax) in enumerate(processed_limits):
@@ -704,10 +695,9 @@ def process_v_limits(
 
         return processed_limits
 
-    else:
-        raise TypeError(
-            "v_limits must be None, a tuple (vmin, vmax), or a list of tuples [(vmin1, vmax1), ...]"
-        )
+    raise TypeError(
+        "v_limits must be None, a tuple (vmin, vmax), or a list of tuples [(vmin1, vmax1), ...]"
+    )
 
 
 ###############################################################################################

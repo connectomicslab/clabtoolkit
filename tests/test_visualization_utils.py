@@ -239,15 +239,36 @@ class TestLimitsAndData:
     def test_v_limits_processing(self):
         assert vu.process_v_limits((0, 1), 2) == [(0, 1), (0, 1)]
         assert vu.process_v_limits([(0, 1), (1, 2)], 2) == [(0, 1), (1, 2)]
-        for bad, error in [
-            ([(0, 1)], ValueError),
-            ((1, 0), ValueError),
-            ([(1, 0)], ValueError),
-            ([(0, "a")], TypeError),
-            ("x", TypeError),
-        ]:
-            with pytest.raises(error):
-                vu.process_v_limits(bad, 2 if bad == [(0, 1)] else 1)
+
+    def test_v_limits_that_are_automatic(self):
+        assert vu.process_v_limits(None, 3) == [(None, None)] * 3
+        assert vu.process_v_limits((None, None), 2) == [(None, None)] * 2
+        assert vu.process_v_limits((None, 5), 2) == [(None, 5)] * 2
+        assert vu.process_v_limits([(None, 1), (0, None)], 2) == [(None, 1), (0, None)]
+
+    def test_v_limits_accept_numpy_numbers(self):
+        limits = vu.process_v_limits((np.float32(0), np.int64(3)), 1)
+        assert limits == [(0, 3)]
+
+    @pytest.mark.parametrize(
+        "bad,n_maps,error",
+        [
+            ([(0, 1)], 2, ValueError),
+            ((1, 0), 1, ValueError),
+            ((1, 1), 1, ValueError),
+            ([(1, 0)], 1, ValueError),
+            ([(0, "a")], 1, TypeError),
+            (("a", 1), 1, TypeError),
+            ((0, 1, 2), 1, TypeError),
+            ([(0, 1), (0, 1, 2)], 2, TypeError),
+            ([[0, 1]], 1, TypeError),
+            ("x", 1, TypeError),
+            (5, 1, TypeError),
+        ],
+    )
+    def test_invalid_v_limits(self, bad, n_maps, error):
+        with pytest.raises(error):
+            vu.process_v_limits(bad, n_maps)
 
 
 class TestMapNames:
