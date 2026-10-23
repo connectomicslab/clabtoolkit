@@ -13,6 +13,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
+import clabtoolkit.parcellationtools as cltparc
 import clabtoolkit.pointstools as cltpts
 import clabtoolkit.surfacetools as cltsurf
 import clabtoolkit.tracttools as clttract
@@ -635,6 +636,9 @@ class FakePvPlotter(FakeColorbarPlotter):
         self.meshes.append(mesh)
         return super().add_mesh(mesh, *args, **kwargs)
 
+    def add_points(self, *args, **kwargs):
+        pass
+
     def add_text(self, *args, **kwargs):
         pass
 
@@ -733,3 +737,207 @@ class TestPlotLayouts:
             window_size=(900, 300),
         )
         assert fake_pyvista[0].meshes  # something was drawn
+
+
+######################################################################################################
+def make_point_cloud():
+    cloud = cltpts.PointCloud(points=np.random.default_rng(0).random((5, 3)))
+    cloud.point_data["A"] = np.linspace(0.0, 1.0, 5)
+    return cloud
+
+
+class TestPlotHemispheres:
+    @pytest.mark.parametrize("views", ["dorsal", ["lateral", "medial"], "8_views"])
+    @pytest.mark.parametrize("colorbar", [True, False])
+    @pytest.mark.parametrize("position", ["right", "bottom"])
+    def test_scalar_map(self, plotter, fake_pyvista, views, colorbar, position):
+        plotter.plot_hemispheres(
+            make_surface(),
+            make_surface(),
+            map_name="A",
+            views=views,
+            colorbar=colorbar,
+            colorbar_position=position,
+            window_size=(900, 300),
+        )
+        assert fake_pyvista[0].meshes
+
+    def test_limits_range_and_title(self, plotter, fake_pyvista):
+        plotter.plot_hemispheres(
+            make_surface(),
+            make_surface(),
+            map_name="A",
+            vmin=0.0,
+            vmax=3.0,
+            range_min=0.5,
+            range_max=2.5,
+            colormap="viridis",
+            colorbar_title="My map",
+            window_size=(900, 300),
+        )
+        assert fake_pyvista[0].meshes
+
+    def test_categorical_map_and_lists(self, plotter, fake_pyvista):
+        plotter.plot_hemispheres(
+            [make_surface(), make_surface()],
+            [make_surface(), make_surface()],
+            map_name="Labels",
+            views=["lateral", "medial"],
+            window_size=(900, 300),
+        )
+        assert fake_pyvista[0].meshes
+
+    def test_configuration_file(self, plotter, fake_pyvista, capsys):
+        plotter.plot_hemispheres(
+            make_surface(),
+            make_surface(),
+            map_name="A",
+            config_file={"figure_conf": {"title_font_size": 9}},
+            window_size=(900, 300),
+        )
+        assert plotter.figure_conf["title_font_size"] == 9
+
+    def test_invalid_configuration_file_is_reported(
+        self, plotter, fake_pyvista, capsys
+    ):
+        plotter.plot_hemispheres(
+            make_surface(),
+            make_surface(),
+            map_name="A",
+            config_file=5,
+            window_size=(900, 300),
+        )
+        assert "Error loading configuration file" in capsys.readouterr().out
+
+
+class TestPlotScene:
+    def test_single_surface(self, plotter, fake_pyvista):
+        plotter.plot_scene(make_surface(), window_size=(900, 300))
+        assert fake_pyvista[0].meshes
+
+    @pytest.mark.parametrize("views", ["dorsal", ["lateral", "medial"], "8_views"])
+    @pytest.mark.parametrize("colorbar", [True, False])
+    def test_several_objects(self, plotter, fake_pyvista, views, colorbar):
+        plotter.plot_scene(
+            [make_surface(), make_surface(), make_point_cloud()],
+            scene_config={0: {"map_name": "A", "opacity": 0.5}, 2: {"map_name": "A"}},
+            views=views,
+            colorbar=colorbar,
+            window_size=(900, 300),
+        )
+        assert fake_pyvista[0].meshes
+
+    def test_configuration_by_map_name(self, plotter, fake_pyvista):
+        plotter.plot_scene(
+            [make_surface(), make_surface()],
+            scene_config={
+                "A": {"colormap": "viridis", "v_limits": (0.0, 3.0)},
+                "B": {"v_range": (0.5, 2.5)},
+            },
+            window_size=(900, 300),
+        )
+        assert fake_pyvista[0].meshes
+
+    def test_invalid_configuration_file_is_reported(
+        self, plotter, fake_pyvista, capsys
+    ):
+        plotter.plot_scene(make_surface(), config_file=5, window_size=(900, 300))
+        assert "Error loading configuration file" in capsys.readouterr().out
+
+
+######################################################################################################
+@pytest.fixture
+def agg_backend():
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    previous = matplotlib.get_backend()
+    plt.switch_backend("Agg")
+    yield plt
+    plt.close("all")
+    plt.switch_backend(previous)
+
+
+class TestCarpetPlot:
+    @pytest.fixture
+    def data(self):
+        return np.random.default_rng(0).standard_normal((12, 30))
+
+    @pytest.fixture
+    def names(self):
+        return [f"Cortex_{i}" for i in range(8)] + [f"Cereb_{i}" for i in range(4)]
+
+    def test_default_plot(self, agg_backend, data):
+        out = cltvis.create_carpet_plot(data)
+        assert out["fig"] is not None and out["ax_top"] is None
+        assert out["im"].get_array().shape == data.shape
+        assert out["ax_carpet"].get_xlabel() == "Volume index"
+
+    def test_time_axis(self, agg_backend, data):
+        out = cltvis.create_carpet_plot(data, tr=2.0)
+        assert out["ax_carpet"].get_xlabel() == "Time (s)"
+        out = cltvis.create_carpet_plot(
+            data, time_points=np.arange(30) * 0.5, x_label="Seconds"
+        )
+        assert out["ax_carpet"].get_xlabel() == "Seconds"
+
+    def test_groups_by_index_and_name(self, agg_backend, data, names):
+        groups = {"Cortex": list(range(4)), "Cerebellum": ["Cereb", 5]}
+        out = cltvis.create_carpet_plot(
+            data,
+            names,
+            groups=groups,
+            group_colors=["#ff0000", "#0000ff"],
+            groups_title="Systems",
+        )
+        assert out["fig"] is not None and out["cbar"] is not None
+
+    def test_groups_with_the_default_colors(self, agg_backend, data, names):
+        out = cltvis.create_carpet_plot(
+            data, names, groups={"A": [0, 1, 2], "B": [3, 4]}, unknown_color="#222222"
+        )
+        assert out["fig"] is not None
+
+    def test_motion_and_global_signal_panels(self, agg_backend, data):
+        fd = np.abs(np.random.default_rng(1).standard_normal(30))
+        gs = np.random.default_rng(2).standard_normal(30)
+        for kwargs in (
+            {"fd_trace": fd},
+            {"global_signal": gs},
+            {"fd_trace": fd, "global_signal": gs},
+        ):
+            out = cltvis.create_carpet_plot(data, fd_threshold=0.8, **kwargs)
+            assert out["ax_top"] is not None
+
+    def test_color_scale_options(self, agg_backend, data):
+        for kwargs in (
+            {"normalize_rows": False},
+            {"center_colormap": False},
+            {"vmax": 2.0},
+            {"show_structure_names": False, "cmap": "viridis"},
+        ):
+            assert cltvis.create_carpet_plot(data, **kwargs)["fig"] is not None
+
+    def test_save_to_file(self, agg_backend, data, tmp_path):
+        target = tmp_path / "carpet.png"
+        cltvis.create_carpet_plot(data, save_path=target, dpi=50)
+        assert target.is_file()
+
+    def test_region_time_series(self, agg_backend, data, names):
+        series = cltparc.RegionTimeSeries(data, region_names=names)
+        out = cltvis.create_carpet_plot(series)
+        labels = [t.get_text() for t in out["ax_carpet"].get_yticklabels()]
+        assert labels == [] or set(labels) <= set(names)
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"data": np.zeros(5)},
+            {"data": np.zeros((3, 4)), "structure_names": ["a"]},
+            {"data": np.zeros((3, 4)), "fd_trace": np.zeros(2)},
+            {"data": np.zeros((3, 4)), "global_signal": np.zeros(9)},
+        ],
+    )
+    def test_invalid_input(self, agg_backend, kwargs):
+        with pytest.raises(ValueError):
+            cltvis.create_carpet_plot(**kwargs)
