@@ -553,3 +553,67 @@ class TestAddColorbars:
         plotter._add_colorbars(fake, [{"position": (0, 1), "colormap": "colortable"}])
         assert [call[0] for call in fake.calls] == ["subplot"]
         assert fake.calls[0][1] == (0, 1)
+
+
+######################################################################################################
+class FakeColorbarPlotter:
+    """Plotter that keeps the scalar bar actors, with no rendering."""
+
+    window_size = (3440, 1440)
+
+    def __init__(self):
+        self.actors = []
+
+    def subplot(self, *args):
+        pass
+
+    def set_background(self, *args):
+        pass
+
+    def add_mesh(self, *args, **kwargs):
+        vtk = pytest.importorskip("vtk")
+        mapper = type("Mapper", (), {"lookup_table": vtk.vtkLookupTable()})()
+        return type("Actor", (), {"mapper": mapper, "visibility": True})()
+
+    def add_actor(self, actor):
+        self.actors.append(actor)
+
+
+class TestColorbarAndMapOrder:
+    def test_maps_follow_the_requested_order(self):
+        maps = {"Labels": 1, "Scalar1": 2, "Scalar2": 3}  # colortable map first
+        ordered = cltvis.visutils.order_maps_dict(
+            maps, ["Scalar1", "Labels", "Scalar2"]
+        )
+        assert list(ordered) == ["Scalar1", "Labels", "Scalar2"]
+        assert ordered["Labels"] == 1
+
+    def test_unknown_map_names_are_skipped(self):
+        assert cltvis.visutils.order_maps_dict({"a": 1}, ["b", "a"]) == {"a": 1}
+
+    def test_font_scale_follows_the_window_and_is_bounded(self):
+        scale = cltvis.visutils.colorbar_font_scale
+        assert scale((1920, 1080)) == 1.0
+        assert scale((3840, 2160)) == 2.0
+        assert scale((3440, 1440)) == pytest.approx(1.33)  # the height is the limit
+        assert scale((300, 200)) == 0.75
+        assert scale((20000, 20000)) == 2.5
+
+    def test_colorbar_font_sizes_come_from_the_configuration(self, plotter):
+        plotter.update_figure_config(colorbar_title_font_size=20, colorbar_font_size=13)
+        fake = FakeColorbarPlotter()
+        cltvis.visutils.add_colorbar(
+            plotter, fake, (0, 0), 0.0, 1.0, "map", "viridis", "Title", "vertical"
+        )
+        scale = cltvis.visutils.colorbar_font_scale(fake.window_size)
+        bar = fake.actors[0]
+        assert bar.GetTitleTextProperty().GetFontSize() == round(20 * scale)
+        assert bar.GetLabelTextProperty().GetFontSize() == round(13 * scale)
+        assert bar.GetUnconstrainedFontSize()
+
+    def test_horizontal_colorbar(self, plotter):
+        fake = FakeColorbarPlotter()
+        cltvis.visutils.add_colorbar(
+            plotter, fake, (0, 0), 0.0, 1.0, ["map"], "viridis", "T", "horizontal"
+        )
+        assert len(fake.actors) == 1

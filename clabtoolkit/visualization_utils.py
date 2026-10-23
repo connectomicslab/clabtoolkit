@@ -711,6 +711,36 @@ def process_v_limits(
 
 
 ###############################################################################################
+def order_maps_dict(maps_dict: dict, map_names: list[str]) -> dict:
+    """
+    Order the maps dictionary following the requested map names.
+
+    The dictionary is built merging the maps with and without colortable, so its
+    order is not the one requested by the user. The plotting layout indexes the maps
+    by position, so a different order assigns the settings of one map to another.
+
+    Parameters
+    ----------
+    maps_dict : dict
+        Plotting parameters of each map, indexed by map name.
+
+    map_names : list of str
+        Map names in the requested order.
+
+    Returns
+    -------
+    dict
+        The entries of `maps_dict` in the order of `map_names`. Names that are not in
+        `maps_dict` are skipped.
+
+    Examples
+    --------
+    >>> order_maps_dict({"b": 1, "a": 2}, ["a", "b"])
+    {'a': 2, 'b': 1}
+    """
+    return {name: maps_dict[name] for name in map_names if name in maps_dict}
+
+
 def colorbar_font_scale(window_size: tuple[int, int]) -> float:
     """
     Scale factor applied to the configured colorbar font sizes.

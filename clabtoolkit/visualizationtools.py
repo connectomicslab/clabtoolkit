@@ -768,9 +768,8 @@ class BrainPlotter:
         maps_dict.update(ctab_maps_dict)
         maps_dict.update(no_ctab_maps_dict)
 
-        # Keep the order requested by the user: the layout indexes the maps by
-        # position, so it must match map_names, not the order of the merge above.
-        maps_dict = {name: maps_dict[name] for name in map_names if name in maps_dict}
+        # The layout indexes the maps by position, so they must follow map_names
+        maps_dict = visutils.order_maps_dict(maps_dict, map_names)
 
         # Assing the name of the map for the colorbar titles if not provided
         for map_name in maps_dict.keys():
