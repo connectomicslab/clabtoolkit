@@ -7,13 +7,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-# Try to import required modules at module level
-try:
-    from clabtoolkit import cltcolors
-
-    HAS_CLTCOLORS = True
-except ImportError:
-    HAS_CLTCOLORS = False
+# The colors are imported at the end of the module (see below)
+HAS_CLTCOLORS = False
 
 try:
     from IPython import get_ipython
@@ -945,3 +940,15 @@ def exist_dir(path: str | Path) -> str:
 
     """
     return str(path) if os.path.isdir(path) else ""
+
+
+##############################################################################
+# colorstools imports misctools, which imports ExplorerDict from this module. The
+# import is done here, once ExplorerDict is defined, so it works whichever of the
+# three modules is imported first.
+try:
+    from . import colorstools as cltcolors
+
+    HAS_CLTCOLORS = True
+except ImportError:
+    pass

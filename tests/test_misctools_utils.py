@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import clabtoolkit.colorstools as cltcol
 import clabtoolkit.misctools_utils as mu
 from clabtoolkit.misctools_utils import ExplorerDict
 
@@ -42,10 +41,6 @@ def sample(**kwargs) -> ExplorerDict:
 
 @pytest.fixture(params=[True, False], ids=["with_colors", "plain"])
 def colors(request, monkeypatch):
-    # misctools_utils imports `cltcolors` from clabtoolkit, which does not exist any
-    # more (it is colorstools now), so HAS_CLTCOLORS is always False. The colored
-    # output is tested by providing the module that holds bcolors.
-    monkeypatch.setattr(mu, "cltcolors", cltcol, raising=False)
     monkeypatch.setattr(mu, "HAS_CLTCOLORS", request.param)
     return request.param
 
@@ -57,6 +52,18 @@ def shown(monkeypatch):
     monkeypatch.setattr(mu, "HAS_IPYTHON", True)
     monkeypatch.setattr(mu, "display", lambda obj: html.append(obj.data))
     return html
+
+
+######################################################################################################
+class TestColors:
+    def test_the_color_module_is_found(self):
+        assert mu.HAS_CLTCOLORS and mu.cltcolors.bcolors.ENDC
+
+    def test_output_is_colored_by_default(self, capsys):
+        sample(overwrite_mode="terminal").tree()
+        assert "\x1b[" in capsys.readouterr().out
+        sample(overwrite_mode="terminal").search("age")
+        assert "\x1b[" in capsys.readouterr().out
 
 
 ######################################################################################################
