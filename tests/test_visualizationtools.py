@@ -672,3 +672,64 @@ class TestPlotMapOrder:
             save_path=str(tmp_path / "out.png"),
         )
         assert len(created[0].meshes) >= 3  # one mesh per map, all of them drawn
+
+
+######################################################################################################
+def make_surface(with_labels: bool = True):
+    """Small surface with two scalar maps and, optionally, a categorical one."""
+    vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1.0]])
+    faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
+    surf = cltsurf.Surface(vertices=vertices, faces=faces, color="#ff0000", name="t")
+    surf.mesh.point_data["A"] = np.array([0.0, 1.0, 2.0, 3.0])
+    surf.mesh.point_data["B"] = np.array([3.0, 2.0, 1.0, 0.0])
+    if with_labels:
+        surf.mesh.point_data["Labels"] = np.array([1, 2, 1, 2])
+        surf.colortables["Labels"] = {
+            "color_table": cltsurf.create_surface_colortable(["red", "blue"])[
+                "color_table"
+            ]
+        }
+    return surf
+
+
+@pytest.fixture
+def fake_pyvista(monkeypatch):
+    """BrainPlotter.plot with a fake plotter, no rendering and no monitor."""
+    created = []
+
+    def make_plotter(**kwargs):
+        created.append(FakePvPlotter(**kwargs))
+        return created[-1]
+
+    monkeypatch.setattr(cltvis.pv, "Plotter", make_plotter)
+    monkeypatch.setattr(cltvis.visutils, "finalize_plot", lambda *args: None)
+    return created
+
+
+class TestPlotLayouts:
+    """Every combination of views, maps and surfaces builds a layout and draws."""
+
+    @pytest.mark.parametrize("orientation", ["horizontal", "vertical", "grid"])
+    @pytest.mark.parametrize("style", ["individual", "shared_by_map", "shared"])
+    @pytest.mark.parametrize("n_objects", [1, 2, 3])
+    @pytest.mark.parametrize("maps", [["A"], ["A", "B"], ["A", "Labels", "B"]])
+    @pytest.mark.parametrize(
+        "views", [["lateral"], ["lateral", "medial"], "8_views", ["dorsal"] * 4]
+    )
+    def test_layout(
+        self, plotter, fake_pyvista, views, maps, n_objects, style, orientation
+    ):
+        # The position of the colorbars and their presence follow the combination
+        n = len(maps) + n_objects + len(views)
+        objs = [make_surface() for _ in range(n_objects)]
+        plotter.plot(
+            objs2plot=objs[0] if n_objects == 1 else objs,
+            map_names=maps,
+            views=views,
+            views_orientation=orientation,
+            colorbar_style=style,
+            colorbar_position=["right", "bottom"][n % 2],
+            colorbar=n % 3 != 0,
+            window_size=(900, 300),
+        )
+        assert fake_pyvista[0].meshes  # something was drawn
