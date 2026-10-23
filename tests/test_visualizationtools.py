@@ -586,4 +586,36 @@ class TestMapOrder:
             pv.OFF_SCREEN = previous
 
 
-#################################################################################################
+######################################################################################################
+class TestColorbarFonts:
+    def test_sizes_come_from_the_figure_configuration(self, plotter):
+        pv = pytest.importorskip("pyvista")
+        plotter.update_figure_config(colorbar_title_font_size=20, colorbar_font_size=13)
+        pl = pv.Plotter(off_screen=True)
+        try:
+            cltvis.visutils.add_colorbar(
+                plotter,
+                pl,
+                (0, 0),
+                0.0,
+                1.0,
+                "map",
+                "viridis",
+                "Title",
+                "vertical",
+            )
+        except (OSError, RuntimeError) as err:  # no rendering backend
+            pytest.skip(f"no off-screen rendering available: {err}")
+        bar = next(a for a in pl.renderer.GetActors2D() if hasattr(a, "GetTitle"))
+        scale = cltvis.visutils.colorbar_font_scale(pl.window_size)
+        assert bar.GetTitleTextProperty().GetFontSize() == round(20 * scale)
+        assert bar.GetLabelTextProperty().GetFontSize() == round(13 * scale)
+        pl.close()
+
+    def test_scale_follows_the_window_and_is_bounded(self):
+        scale = cltvis.visutils.colorbar_font_scale
+        assert scale((1920, 1080)) == 1.0
+        assert scale((3840, 2160)) == 2.0
+        assert scale((3440, 1440)) == pytest.approx(1.33)  # height is the limit
+        assert scale((300, 200)) == 0.75
+        assert scale((20000, 20000)) == 2.5

@@ -711,6 +711,36 @@ def process_v_limits(
 
 
 ###############################################################################################
+def colorbar_font_scale(window_size: tuple[int, int]) -> float:
+    """
+    Scale factor applied to the configured colorbar font sizes.
+
+    The configured sizes refer to a 1920x1080 window. The factor follows the
+    limiting dimension of the window, so it is the same for every colorbar of a
+    figure, and it is kept between 0.75 and 2.5 to avoid unreadable or oversized text.
+
+    Parameters
+    ----------
+    window_size : tuple of int
+        Width and height of the plotter window, in pixels.
+
+    Returns
+    -------
+    float
+        Scale factor for the colorbar font sizes.
+
+    Examples
+    --------
+    >>> colorbar_font_scale((1920, 1080))
+    1.0
+    >>> colorbar_font_scale((3440, 1440))
+    1.33
+    """
+    width, height = window_size
+    scale = min(width / 1920, height / 1080)
+    return round(min(2.5, max(0.75, scale)), 2)
+
+
 def add_colorbar(
     plotobj,
     plotter: pv.Plotter,
@@ -778,22 +808,6 @@ def add_colorbar(
     scalar_values = np.linspace(vmin, vmax, n_points)
     colorbar_mesh[map_name] = scalar_values
 
-    # Determine font sizes based on colorbar orientation and subplot size
-    # Get the current renderer
-    current_renderer = plotter.renderer
-
-    # Get viewport bounds (normalized coordinates 0-1)
-    viewport = current_renderer.GetViewport()
-    # viewport returns (xmin, ymin, xmax, ymax)
-
-    # Convert to actual pixel dimensions
-    window_size = plotter.window_size
-    subplot_width = (viewport[2] - viewport[0]) * window_size[0]
-    subplot_height = (viewport[3] - viewport[1]) * window_size[1]
-    font_sizes = cltplot.calculate_font_sizes(
-        subplot_width, subplot_height, colorbar_orientation=colorbar_position
-    )
-
     # Add invisible mesh for colorbar reference
     dummy_actor = plotter.add_mesh(
         colorbar_mesh,
@@ -856,12 +870,16 @@ def add_colorbar(
         title_prop.SetFontFamilyToTimes()  # Ensure consistent font family
         label_prop.SetFontFamilyToTimes()
 
-    base_title_size = font_sizes["colorbar_title"]
-    base_label_size = font_sizes["colorbar_ticks"]
-
-    # Apply font sizes with explicit scaling
-    title_prop.SetFontSize(int(base_title_size))
-    label_prop.SetFontSize(int(base_label_size))
+    # The configured sizes (colorbar_title_font_size and colorbar_font_size) are
+    # the ones for a 1920x1080 window. They are scaled with the size of the whole
+    # window, not with the subplot, so every colorbar of a figure gets the same size.
+    font_scale = colorbar_font_scale(plotter.window_size)
+    title_prop.SetFontSize(
+        round(plotobj.figure_conf["colorbar_title_font_size"] * font_scale)
+    )
+    label_prop.SetFontSize(
+        round(plotobj.figure_conf["colorbar_font_size"] * font_scale)
+    )
 
     # Enable/disable bold for better consistency
     title_prop.BoldOff()
@@ -878,6 +896,10 @@ def add_colorbar(
     scalar_bar.SetLabelFormat("%.2f")  # Consistent number formatting
     # scalar_bar.SetMaximumWidthInPixels(1000)  # Prevent excessive scaling
     # scalar_bar.SetMaximumHeightInPixels(1000)
+
+    # Use the font sizes exactly as set. Otherwise VTK rescales the text to fit the
+    # bar, and the title ends up with a different size in each colorbar panel.
+    scalar_bar.UnconstrainedFontSizeOn()
 
     # Set text margin for better spacing
     scalar_bar.SetTextPad(4)
