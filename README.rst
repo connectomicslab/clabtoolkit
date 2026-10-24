@@ -134,8 +134,8 @@ gives an overview of the whole toolkit.
 * **Quality Control Tools** (``clabtoolkit.qcqatools``): slice generation and HTML pages for visual quality control.
 * **Misc Tools** (``clabtoolkit.misctools``): condition-based selection and general-purpose helpers.
 
-What can I do with CLABTOOLKIT?
--------------------------------
+What can you do with CLABTOOLKIT?
+---------------------------------
 
 A few examples of the problems it helps to solve. The
 `full list <https://clabtoolkit.readthedocs.io/en/latest/tasks.html>`_ gives, for each task, the
