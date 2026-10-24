@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="bidstools">
+<style>
+.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.F{fill:#fff;stroke:#fff}
+.T{fill:#2980B9}
+</style>
+<rect width="128" height="128" rx="26" fill="#2980B9"/>
+<g class="i"><rect x="28" y="28" width="28" height="18" rx="4" /><line x1="42" y1="46" x2="42" y2="98"/><line x1="42" y1="64" x2="62" y2="64"/><line x1="42" y1="90" x2="62" y2="90"/><rect x="62" y="54" width="38" height="20" rx="4" /><rect x="62" y="80" width="38" height="20" rx="4" /></g>
+</svg>

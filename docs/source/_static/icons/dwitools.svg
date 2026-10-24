@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="dwitools">
+<style>
+.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.F{fill:#fff;stroke:#fff}
+.T{fill:#8E44AD}
+</style>
+<rect width="128" height="128" rx="26" fill="#8E44AD"/>
+<g class="i"><ellipse cx="64" cy="64" rx="38" ry="18" transform="rotate(-30 64 64)"/><line x1="34" y1="86" x2="94" y2="42"/><line x1="50" y1="40" x2="78" y2="88"/><circle cx="64" cy="64" r="6" class="F" /></g>
+</svg>

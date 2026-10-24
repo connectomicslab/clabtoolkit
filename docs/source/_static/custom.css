@@ -1,0 +1,32 @@
+/* Cards of the API Reference and Examples pages (sphinx-design) */
+.clab-card {
+  text-align: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.clab-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0.5rem 1.2rem rgba(0, 0, 0, 0.2) !important;
+}
+.clab-card img.sd-card-img-top {
+  width: 96px;
+  height: 96px;
+  margin: 1.4rem auto 0.2rem;
+  border-radius: 20px;
+}
+.clab-card .sd-card-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+.clab-card .sd-card-body {
+  padding-top: 0.4rem;
+}
+/* Keep the links of the footer clickable on top of the link of the whole card */
+.clab-card .sd-card-footer a {
+  position: relative;
+  z-index: 2;
+}
+.clab-card .sd-card-footer {
+  background: transparent;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 0.9rem;
+}

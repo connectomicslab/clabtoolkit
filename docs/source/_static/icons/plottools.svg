@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="plottools">
+<style>
+.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.F{fill:#fff;stroke:#fff}
+.T{fill:#E67E22}
+</style>
+<rect width="128" height="128" rx="26" fill="#E67E22"/>
+<g class="i"><line x1="26" y1="98" x2="102" y2="98"/><rect x="32" y="68" width="16" height="30" rx="3" class="F" stroke="none"/><rect x="56" y="48" width="16" height="50" rx="3" class="F" stroke="none"/><rect x="80" y="30" width="16" height="68" rx="3" class="F" stroke="none"/></g>
+</svg>

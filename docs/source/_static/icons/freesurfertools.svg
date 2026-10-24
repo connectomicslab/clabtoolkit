@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="freesurfertools">
+<style>
+.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.F{fill:#fff;stroke:#fff}
+.T{fill:#27AE60}
+</style>
+<rect width="128" height="128" rx="26" fill="#27AE60"/>
+<g class="i"><ellipse cx="64" cy="64" rx="38" ry="32"/><path d="M40 56q8-10 16 0t16 0t16 0"/><path d="M40 76q8-10 16 0t16 0t16 0"/></g>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="imagetools">
+<style>
+.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.F{fill:#fff;stroke:#fff}
+.T{fill:#2980B9}
+</style>
+<rect width="128" height="128" rx="26" fill="#2980B9"/>
+<g class="i"><rect x="26" y="32" width="76" height="64" rx="8" /><circle cx="50" cy="54" r="7" class="F" /><polyline points="30,90 54,68 68,82 82,66 100,88"/></g>
+</svg>

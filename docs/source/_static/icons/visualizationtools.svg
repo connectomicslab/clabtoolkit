@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="visualizationtools">
+<style>
+.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.F{fill:#fff;stroke:#fff}
+.T{fill:#E67E22}
+</style>
+<rect width="128" height="128" rx="26" fill="#E67E22"/>
+<g class="i"><path d="M20 64Q64 22 108 64Q64 106 20 64Z"/><circle cx="64" cy="64" r="14" class="F" /></g>
+</svg>

@@ -30,6 +30,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosummary",
     "myst_parser",
+    "sphinx_design",
 ]
 
 templates_path = ["_templates"]
@@ -84,6 +85,7 @@ html_theme = "sphinx_rtd_theme"
 # html_theme = 'alabaster'  # Built-in theme, no extra install needed
 
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 
 html_logo = "_static/clabtoolkit_logo.png"
 html_favicon = "_static/clabtoolkit_favicon.ico"

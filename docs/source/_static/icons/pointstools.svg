@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="pointstools">
+<style>
+.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.F{fill:#fff;stroke:#fff}
+.T{fill:#8E44AD}
+</style>
+<rect width="128" height="128" rx="26" fill="#8E44AD"/>
+<g class="i"><circle cx="36" cy="84" r="7" class="F" /><circle cx="52" cy="56" r="6" class="F" /><circle cx="70" cy="76" r="8" class="F" /><circle cx="86" cy="44" r="7" class="F" /><circle cx="96" cy="70" r="6" class="F" /><circle cx="60" cy="34" r="5" class="F" /><circle cx="38" cy="42" r="5" class="F" /></g>
+</svg>
