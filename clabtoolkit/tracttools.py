@@ -1684,11 +1684,11 @@ class Tractogram:
 
             mask = (
                 (voxel_coords[0] >= 0)
-                & (voxel_coords[0] < scalar_data.shape[0])
+                & (voxel_coords[0] <= scalar_data.shape[0] - 1)
                 & (voxel_coords[1] >= 0)
-                & (voxel_coords[1] < scalar_data.shape[1])
+                & (voxel_coords[1] <= scalar_data.shape[1] - 1)
                 & (voxel_coords[2] >= 0)
-                & (voxel_coords[2] < scalar_data.shape[2])
+                & (voxel_coords[2] <= scalar_data.shape[2] - 1)
             )
 
             values = np.full(voxel_coords.shape[1], np.nan)
