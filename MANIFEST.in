@@ -25,7 +25,7 @@ recursive-include clabtoolkit/config *.json
 recursive-include clabtoolkit/data *
 
 # Include documentation
-recursive-include docs *.rst *.md *.py *.bat *.png *.ico
+recursive-include docs *.rst *.md *.py *.bat *.png *.ico *.css *.svg
 recursive-include docs Makefile
 include docs/make.bat
 
