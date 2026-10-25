@@ -8,10 +8,11 @@
   box-shadow: 0 0.5rem 1.2rem rgba(0, 0, 0, 0.2) !important;
 }
 .clab-card img.sd-card-img-top {
-  width: 96px;
-  height: 96px;
+  width: 100%;
+  max-width: 160px;
+  height: 160px;
+  object-fit: contain;
   margin: 1.4rem auto 0.2rem;
-  border-radius: 20px;
 }
 .clab-card .sd-card-title {
   font-weight: 600;

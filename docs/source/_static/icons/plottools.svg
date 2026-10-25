@@ -1,9 +1,69 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="plottools">
-<style>
-.i{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
-.F{fill:#fff;stroke:#fff}
-.T{fill:#E67E22}
-</style>
-<rect width="128" height="128" rx="26" fill="#E67E22"/>
-<g class="i"><line x1="26" y1="98" x2="102" y2="98"/><rect x="32" y="68" width="16" height="30" rx="3" class="F" stroke="none"/><rect x="56" y="48" width="16" height="50" rx="3" class="F" stroke="none"/><rect x="80" y="30" width="16" height="68" rx="3" class="F" stroke="none"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="600" viewBox="0 0 640 600">
+  <title>Plot layout</title>
+  <defs>
+    <linearGradient id="bezel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b7280"/><stop offset="0.45" stop-color="#3b4150"/><stop offset="1" stop-color="#232733"/></linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eef1f5"/></linearGradient>
+    <linearGradient id="stand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8b93a1"/><stop offset="0.5" stop-color="#d9dde4"/><stop offset="1" stop-color="#7c8493"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5dade2"/><stop offset="1" stop-color="#2471a3"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#58d68d"/><stop offset="1" stop-color="#1e8449"/></linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5b041"/><stop offset="1" stop-color="#ca6f1e"/></linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bb8fce"/><stop offset="1" stop-color="#6c3483"/></linearGradient>
+    <radialGradient id="dot" cx="0.35" cy="0.3" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.9"/><stop offset="0.5" stop-color="#e74c3c"/><stop offset="1" stop-color="#922b21"/></radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur stdDeviation="12"/></filter>
+  </defs>
+  <!-- ground shadow -->
+  <ellipse cx="320" cy="560" rx="200" ry="16" fill="#000" opacity="0.28" filter="url(#shadow)"/>
+  <!-- stand -->
+  <path d="M270 440 L370 440 L392 520 L248 520 Z" fill="url(#stand)"/>
+  <rect x="210" y="516" width="220" height="26" rx="13" fill="url(#stand)" stroke="#6b7280" stroke-width="2"/>
+  <!-- bezel -->
+  <rect x="40" y="40" width="560" height="410" rx="34" fill="url(#bezel)"/>
+  <rect x="44" y="44" width="552" height="402" rx="31" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="2"/>
+  <rect x="64" y="64" width="512" height="362" rx="12" fill="url(#screen)"/>
+  <!-- panel frames -->
+  <g fill="#fff" stroke="#c5cbd5" stroke-width="2">
+    <rect x="82" y="82" width="214" height="150" rx="8"/>
+    <rect x="344" y="82" width="214" height="150" rx="8"/>
+    <rect x="82" y="258" width="214" height="150" rx="8"/>
+    <rect x="344" y="258" width="214" height="150" rx="8"/>
+  </g>
+  <!-- panel 1: bars -->
+  <g>
+    <path d="M102 100 V212 H280" fill="none" stroke="#4b5563" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="116" y="164" width="30" height="48" rx="3" fill="url(#blue)"/>
+    <rect x="156" y="130" width="30" height="82" rx="3" fill="url(#green)"/>
+    <rect x="196" y="148" width="30" height="64" rx="3" fill="url(#orange)"/>
+    <rect x="236" y="108" width="30" height="104" rx="3" fill="url(#purple)"/>
+  </g>
+  <!-- panel 2: lines -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M364 100 V212 H538" stroke="#4b5563" stroke-width="3"/>
+    <path d="M372 190 L408 150 L444 168 L480 118 L530 134" stroke="#2980b9" stroke-width="6"/>
+    <path d="M372 204 L408 186 L444 196 L480 164 L530 176" stroke="#e67e22" stroke-width="6"/>
+  </g>
+  <g fill="#fff" stroke="#2980b9" stroke-width="3"><circle cx="408" cy="150" r="5"/><circle cx="480" cy="118" r="5"/></g>
+  <!-- panel 3: scatter -->
+  <g>
+    <path d="M102 276 V388 H280" fill="none" stroke="#4b5563" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="url(#dot)">
+      <circle cx="132" cy="366" r="9"/><circle cx="158" cy="348" r="9"/><circle cx="178" cy="356" r="9"/><circle cx="196" cy="326" r="9"/>
+      <circle cx="222" cy="312" r="9"/><circle cx="236" cy="334" r="9"/><circle cx="256" cy="292" r="9"/><circle cx="148" cy="378" r="7"/>
+    </g>
+    <path d="M118 372 L268 288" stroke="#1f2937" stroke-width="3" stroke-dasharray="8 7" stroke-linecap="round"/>
+  </g>
+  <!-- panel 4: heatmap -->
+  <g>
+    <rect x="368" y="278" width="40" height="34" rx="4" fill="#2c3e9c"/><rect x="412" y="278" width="40" height="34" rx="4" fill="#27ae9f"/><rect x="456" y="278" width="40" height="34" rx="4" fill="#f4d03f"/>
+    <rect x="368" y="316" width="40" height="34" rx="4" fill="#27ae9f"/><rect x="412" y="316" width="40" height="34" rx="4" fill="#f4d03f"/><rect x="456" y="316" width="40" height="34" rx="4" fill="#e67e22"/>
+    <rect x="368" y="354" width="40" height="34" rx="4" fill="#f4d03f"/><rect x="412" y="354" width="40" height="34" rx="4" fill="#e67e22"/><rect x="456" y="354" width="40" height="34" rx="4" fill="#c0392b"/>
+    <rect x="510" y="278" width="14" height="110" rx="4" fill="#c0392b"/>
+    <rect x="510" y="278" width="14" height="110" rx="4" fill="url(#cb)"/>
+  </g>
+  <defs><linearGradient id="cb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c0392b"/><stop offset="0.33" stop-color="#f4d03f"/><stop offset="0.66" stop-color="#27ae9f"/><stop offset="1" stop-color="#2c3e9c"/></linearGradient></defs>
+  <!-- font badge -->
+  <g>
+    <circle cx="548" cy="446" r="52" fill="url(#bezel)"/>
+    <circle cx="548" cy="446" r="46" fill="none" stroke="#fff" stroke-opacity="0.4" stroke-width="2"/>
+    <text x="548" y="462" text-anchor="middle" font-family="Georgia, 'DejaVu Serif', serif" font-size="46" font-weight="700" fill="#fff">Aa</text>
+  </g>
 </svg>
