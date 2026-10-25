@@ -2,6 +2,25 @@
 History
 =======
 
+Unreleased
+----------
+
+* Added shape, indexing, iteration and the NumPy array protocol to ``RegionTimeSeries``
+* Added the ``reload_config`` method to ``BrainPlotter``
+* ``process_v_limits`` now accepts ``None`` and automatic limits
+* ``compute_fc_matrix`` now accepts a selection of a single region
+* ``BrainPlotter.plot`` keeps the maps in the order requested
+* Colorbars take their font sizes from the figure configuration
+* ``interpolate_on_tractogram`` keeps the points on the last voxel inside the interpolation grid
+* ``load_scalar_maps`` only falls back to the morphometry reader for non-table files
+* ``get_subjects`` validates the root directory and lists only directories
+* Imported the colors in ``misctools_utils`` from ``colorstools``
+* Documented every public function of ``misctools``, added module docstrings and an overview above the API listing in each module page
+* Reorganized the documentation: task index, card grids with module icons in the API Reference and Examples pages, and a "What can you do with CLABTOOLKIT?" section in the README and the docs
+* Usage examples no longer use fixed paths, and the examples of ``filter_by_mask`` and the simulated branches were added or fixed
+* Extended the test suite (``BrainPlotter``, ``plot_hemispheres``, ``plot_scene``, ``create_carpet_plot``, ``RegionTimeSeries``, ``dicomtools`` and the ``misctools`` helpers), using fake plotters so the tests do not need a display
+* Updated ``CONTRIBUTING.rst`` (coding standards, documentation build, maintainer-only releases) and included the css and svg files of the docs in ``MANIFEST.in``
+
 0.5.3 (2026-10-22)
 ------------------
 
