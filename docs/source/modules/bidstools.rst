@@ -1,11 +1,6 @@
 bidstools module
 ================
 
-.. automodule:: clabtoolkit.bidstools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The bidstools module provides support for Brain Imaging Data Structure (BIDS) datasets. It lets you work with BIDS naming conventions, edit entities in single filenames or across a whole dataset, copy and inspect datasets, and generate database tables from BIDS structures.
 
 Key Features
@@ -17,6 +12,14 @@ Key Features
 - Copy a subset of a BIDS dataset (with its derivatives) to a new location
 - Build a database table of all the neuroimaging files of a dataset
 - Draw the folder tree of a dataset and run a basic structure validation
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.bidstools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

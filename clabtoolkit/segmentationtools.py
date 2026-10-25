@@ -1,3 +1,7 @@
+"""The segmentationtools module provides atlas-based parcellation with ANTs and the
+standard tissue segmentation table.
+"""
+
 # pylint: disable=import-error
 import os
 import subprocess

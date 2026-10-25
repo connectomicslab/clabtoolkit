@@ -1,3 +1,11 @@
+"""The dicomtools module organizes raw DICOM files into a
+``<subject>/<session>/<series>`` folder hierarchy, compresses and uncompresses the
+session folders, and reads metadata from DICOM files.
+
+It does not convert DICOMs to NIfTI; use a converter such as dcm2niix on the organized
+folders.
+"""
+
 # Standard library
 import os
 import shutil

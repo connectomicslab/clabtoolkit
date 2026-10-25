@@ -1,11 +1,6 @@
 dicomtools module
 =================
 
-.. automodule:: clabtoolkit.dicomtools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The dicomtools module organizes raw DICOM files into a
 ``<subject>/<session>/<series>`` folder hierarchy, compresses and uncompresses the
 session folders, and reads metadata from DICOM files. It does not convert DICOMs
@@ -31,6 +26,14 @@ Session and series names
   date is appended to the session name without a separator, so the label stays
   BIDS-valid (e.g. ``ses-20240312091530V1``).
 - With ``ses_id``, every session of a subject is named ``ses-<ses_id>``.
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.dicomtools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

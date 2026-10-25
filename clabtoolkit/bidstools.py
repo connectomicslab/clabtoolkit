@@ -1,3 +1,11 @@
+"""The bidstools module provides support for Brain Imaging Data Structure (BIDS)
+datasets.
+
+It lets you work with BIDS naming conventions, edit entities in single filenames or
+across a whole dataset, copy and inspect datasets, and generate database tables from
+BIDS structures.
+"""
+
 from __future__ import annotations
 
 import json

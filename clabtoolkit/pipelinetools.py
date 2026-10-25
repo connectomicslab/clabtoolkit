@@ -1,3 +1,10 @@
+"""The pipelinetools module helps to manage batch processing of BIDS datasets.
+
+It resolves which subjects to process, scans the derivatives folders of the pipelines,
+and reports which subjects have incomplete or mismatched outputs. The reports can be
+kept as tables, JSON files or a SQLite database.
+"""
+
 # Standard library imports
 import json
 import os

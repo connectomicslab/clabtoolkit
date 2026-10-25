@@ -1,11 +1,6 @@
 imagetools module
 =================
 
-.. automodule:: clabtoolkit.imagetools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The imagetools module provides advanced neuroimaging operations, morphological processing, and image manipulation capabilities specifically designed for brain imaging data.
 
 Key Features
@@ -18,6 +13,14 @@ Key Features
 - Mesh and centroid extraction from volumes
 - 3D/4D scalar data interpolation at specified coordinates
 - Region growing and image simulation
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.imagetools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

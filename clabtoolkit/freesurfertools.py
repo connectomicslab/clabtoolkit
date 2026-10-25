@@ -1,3 +1,8 @@
+"""The freesurfertools module provides comprehensive integration with the FreeSurfer
+neuroimaging suite, enabling processing of cortical surfaces, annotation files, and
+morphometric data.
+"""
+
 import copy
 import json
 import os

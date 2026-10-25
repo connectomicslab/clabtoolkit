@@ -1,11 +1,6 @@
 parcellationtools module
 ========================
 
-.. automodule:: clabtoolkit.parcellationtools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The parcellationtools module provides comprehensive brain parcellation handling, regional analysis, and atlas-based processing capabilities.
 
 Key Features
@@ -17,6 +12,14 @@ Key Features
 - Region adjacency, centroids and regionwise time series
 - Multi-format support (NIfTI, TSV, LUT)
 - Parcellation harmonization, rearranging and value replacement
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.parcellationtools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

@@ -1,11 +1,6 @@
 misctools module
 ================
 
-.. automodule:: clabtoolkit.misctools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The misctools module collects general-purpose helpers used across the clabtoolkit package: index and condition parsing, list and string filtering, file system and JSON utilities, table reading, container commands and tools to explore Python objects and HDF5 files.
 
 Key Features
@@ -17,6 +12,14 @@ Key Features
 - Read and write JSON, merge and compare dictionaries, read delimited tables with separator detection
 - Build the command that runs a command line inside a container
 - Inspect modules, objects and HDF5 files from the terminal or a notebook
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.misctools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

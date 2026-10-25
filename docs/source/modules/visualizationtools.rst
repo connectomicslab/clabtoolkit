@@ -1,11 +1,6 @@
 visualizationtools module
 =========================
 
-.. automodule:: clabtoolkit.visualizationtools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The visualizationtools module provides publication-quality brain surface visualization with flexible layout configurations and advanced rendering capabilities.
 
 Key Features
@@ -19,6 +14,14 @@ Key Features
 - Figures displayed in a window or a Jupyter notebook, or saved as images,
   vector graphics or interactive HTML files
 - Carpet plots for time series data
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.visualizationtools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

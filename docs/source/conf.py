@@ -104,3 +104,13 @@ html_theme_options = {
     "includehidden": True,
     "titles_only": False,
 }
+
+
+def _skip_module_docstring(app, what, name, obj, options, lines):
+    """The overview of each module is written at the top of its page in modules/*.rst."""
+    if what == "module":
+        del lines[:]
+
+
+def setup(app):
+    app.connect("autodoc-process-docstring", _skip_module_docstring)

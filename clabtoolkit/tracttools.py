@@ -1,3 +1,8 @@
+"""The tracttools module provides tractogram loading, manipulation, clustering and
+visualization, with support for the TRK and TCK formats and per-point or
+per-streamline scalar maps.
+"""
+
 import copy
 import os
 from collections import defaultdict

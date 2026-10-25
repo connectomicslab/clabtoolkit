@@ -1,11 +1,6 @@
 connectivitytools module
 ========================
 
-.. automodule:: clabtoolkit.connectivitytools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The connectivitytools module provides the ``Connectome`` class, a container for brain connectivity matrices (structural or functional) together with the information of their regions (names, colors, indices and 3D coordinates).
 
 Key Features
@@ -17,6 +12,14 @@ Key Features
 - Save to and load from HDF5 (dense or sparse storage) and CSV
 - Plot the matrix as a heatmap or visualize the network in 3D with PyVista
 - Generate synthetic connectomes for testing
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.connectivitytools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Class
 ----------

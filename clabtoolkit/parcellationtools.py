@@ -1,3 +1,7 @@
+"""The parcellationtools module provides comprehensive brain parcellation handling,
+regional analysis, and atlas-based processing capabilities.
+"""
+
 import copy
 import os
 import tempfile

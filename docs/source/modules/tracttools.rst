@@ -1,11 +1,6 @@
 tracttools module
 =================
 
-.. automodule:: clabtoolkit.tracttools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The tracttools module provides tractogram loading, manipulation, clustering and visualization, with support for the TRK and TCK formats and per-point or per-streamline scalar maps.
 
 Key Features
@@ -18,6 +13,14 @@ Key Features
 - Selection of streamlines that touch a mask or connect pairs of regions of a parcellation
 - Colortable support and 3D rendering via PyVista
 - TRK/TCK format conversion
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.tracttools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

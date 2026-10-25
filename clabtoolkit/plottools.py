@@ -1,3 +1,9 @@
+"""The plottools module contains the layout, screen and font helpers used by the plotting
+classes of clabtoolkit (for example ``BrainPlotter``).
+
+They can also be used on their own to size and arrange Matplotlib or PyVista figures.
+"""
+
 import numbers
 import warnings
 

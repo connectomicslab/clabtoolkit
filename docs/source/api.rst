@@ -4,6 +4,30 @@ API Reference
 Every module of CLABTOOLKIT, grouped by what it is used for. Click a card to open the reference of the
 module, or use its *Examples* link to see it at work in a notebook.
 
+.. toctree::
+   :hidden:
+   :maxdepth: 2
+
+   modules/bidstools
+   modules/colorstools
+   modules/connectivitytools
+   modules/dicomtools
+   modules/dwitools
+   modules/freesurfertools
+   modules/imagetools
+   modules/misctools
+   modules/morphometrytools
+   modules/networktools
+   modules/parcellationtools
+   modules/pipelinetools
+   modules/plottools
+   modules/pointstools
+   modules/qcqatools
+   modules/segmentationtools
+   modules/surfacetools
+   modules/tracttools
+   modules/visualizationtools
+
 Data and formats
 ----------------
 
@@ -248,27 +272,3 @@ Figures, colors and visual checks of your data.
 
       +++
       :doc:`API <modules/colorstools>` · `Examples <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-colorstools-methods.ipynb>`__
-
-.. toctree::
-   :hidden:
-   :maxdepth: 2
-
-   modules/bidstools
-   modules/colorstools
-   modules/connectivitytools
-   modules/dicomtools
-   modules/dwitools
-   modules/freesurfertools
-   modules/imagetools
-   modules/misctools
-   modules/morphometrytools
-   modules/networktools
-   modules/parcellationtools
-   modules/pipelinetools
-   modules/plottools
-   modules/pointstools
-   modules/qcqatools
-   modules/segmentationtools
-   modules/surfacetools
-   modules/tracttools
-   modules/visualizationtools

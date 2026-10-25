@@ -1,11 +1,6 @@
 surfacetools module
 ===================
 
-.. automodule:: clabtoolkit.surfacetools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The surfacetools module provides advanced brain surface mesh processing and visualization capabilities using PyVista for 3D rendering and FreeSurfer surface format support.
 
 Key Features
@@ -17,6 +12,14 @@ Key Features
 - Volume-to-surface projection of 3D/4D data
 - Interactive 3D plotting with PyVista
 - Export to FreeSurfer, OBJ and PyVista formats
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.surfacetools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

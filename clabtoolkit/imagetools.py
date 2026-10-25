@@ -1,3 +1,8 @@
+"""The imagetools module provides advanced neuroimaging operations, morphological
+processing, and image manipulation capabilities specifically designed for brain
+imaging data.
+"""
+
 import json
 import os
 import subprocess

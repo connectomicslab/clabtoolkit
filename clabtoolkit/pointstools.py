@@ -1,3 +1,7 @@
+"""The pointstools module provides point cloud representation and manipulation, with
+per-point scalar data, spatial filtering, affine transformation and 3D visualization.
+"""
+
 import copy
 import os
 from pathlib import Path

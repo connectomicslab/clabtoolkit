@@ -1,11 +1,6 @@
 pointstools module
 ==================
 
-.. automodule:: clabtoolkit.pointstools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The pointstools module provides point cloud representation and manipulation, with per-point scalar data, spatial filtering, affine transformation and 3D visualization.
 
 Key Features
@@ -17,6 +12,14 @@ Key Features
 - Conversion to pandas DataFrames and multi-format saving
 - Merging of multiple point clouds
 - 3D rendering via PyVista
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.pointstools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

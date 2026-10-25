@@ -1,3 +1,8 @@
+"""The surfacetools module provides advanced brain surface mesh processing and
+visualization capabilities using PyVista for 3D rendering and FreeSurfer surface
+format support.
+"""
+
 import copy
 import os
 import warnings

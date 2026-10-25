@@ -1,11 +1,6 @@
 dwitools module
 ===============
 
-.. automodule:: clabtoolkit.dwitools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The dwitools module provides tools for diffusion-weighted imaging (DWI) data: volume management, b-value and gradient direction handling, and tensor-derived map generation.
 
 .. note::
@@ -22,6 +17,14 @@ Key Features
   notebook, or saved as an image, a vector graphic or an interactive HTML file
 - Tensor eigenvalue to scalar map conversion (FA, MD, and related maps)
 - b-values stored as a single row (FSL) or as a single column
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.dwitools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

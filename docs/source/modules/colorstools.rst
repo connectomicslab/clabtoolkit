@@ -1,11 +1,6 @@
 colorstools module
 ==================
 
-.. automodule:: clabtoolkit.colorstools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The colorstools module centralizes colour handling across the toolkit: format conversion and validation, palette generation, colour lookup table (LUT) loading and export, and colour visualization.
 
 Key Features
@@ -18,6 +13,14 @@ Key Features
 - Export to FreeSurfer, FSL, nilearn and TSV formats
 - Colour table and palette visualization
 - Terminal colour codes via ``bcolors``
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.colorstools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------

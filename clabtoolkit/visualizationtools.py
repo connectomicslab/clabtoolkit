@@ -1,14 +1,5 @@
-"""
-Visualization tools for neuroimaging data using PyVista.
-Provides classes and functions for plotting brain surfaces, tractograms, and point clouds
-with customizable views and color mappings.
-
-Classes:
-- BrainPlotter: A class for visualizing brain surfaces with various view configurations,
-colormaps, and optional colorbars.
-
-Functions:
-- (Additional functions can be added here as needed)
+"""The visualizationtools module provides publication-quality brain surface visualization
+with flexible layout configurations and advanced rendering capabilities.
 """
 
 from __future__ import annotations

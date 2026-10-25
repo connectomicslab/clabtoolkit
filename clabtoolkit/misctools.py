@@ -1,3 +1,9 @@
+"""The misctools module collects general-purpose helpers used across the clabtoolkit
+package: index and condition parsing, list and string filtering, file system and JSON
+utilities, table reading, container commands and tools to explore Python objects and
+HDF5 files.
+"""
+
 import argparse
 import importlib
 import inspect

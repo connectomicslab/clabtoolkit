@@ -1,3 +1,8 @@
+"""The morphometrytools module provides specialized tools for surface-based and
+volume-based morphometric analysis, enabling extraction and analysis of cortical
+measurements across brain regions.
+"""
+
 import copy
 import json
 import os

@@ -1,3 +1,8 @@
+"""The connectivitytools module provides the ``Connectome`` class, a container for brain
+connectivity matrices (structural or functional) together with the information of
+their regions (names, colors, indices and 3D coordinates).
+"""
+
 import warnings
 from pathlib import Path
 from typing import Literal

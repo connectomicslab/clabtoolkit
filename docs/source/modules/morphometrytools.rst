@@ -1,11 +1,6 @@
 morphometrytools module
 =======================
 
-.. automodule:: clabtoolkit.morphometrytools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The morphometrytools module provides specialized tools for surface-based and volume-based morphometric analysis, enabling extraction and analysis of cortical measurements across brain regions.
 
 Key Features
@@ -16,6 +11,14 @@ Key Features
 - FreeSurfer statistics file parsing and processing
 - Statistical summary generation and unit management
 - BIDS entity propagation into the output tables
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.morphometrytools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

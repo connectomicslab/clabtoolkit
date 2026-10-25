@@ -1,11 +1,6 @@
 networktools module
 ===================
 
-.. automodule:: clabtoolkit.networktools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The networktools module provides sparse graph tools for brain connectivity matrices and surface meshes. All the functions work with ``scipy.sparse`` CSR matrices, which keeps large graphs light in memory.
 
 Key Features
@@ -13,6 +8,14 @@ Key Features
 - Convert dense adjacency matrices, edge lists and triangulated meshes to CSR graphs
 - Find the connected components of a graph, or directly of an edge list
 - Support for symmetric (undirected) graphs and weighted edges
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.networktools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

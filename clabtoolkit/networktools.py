@@ -1,3 +1,10 @@
+"""The networktools module provides sparse graph tools for brain connectivity matrices
+and surface meshes.
+
+All the functions work with ``scipy.sparse`` CSR matrices, which keeps large graphs
+light in memory.
+"""
+
 import warnings
 
 import numpy as np

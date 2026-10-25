@@ -1,11 +1,6 @@
 segmentationtools module
 ========================
 
-.. automodule:: clabtoolkit.segmentationtools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The segmentationtools module provides atlas-based parcellation with ANTs and the standard tissue segmentation table.
 
 Key Features
@@ -14,6 +9,14 @@ Key Features
 - Atlases given as probability maps (SPAM) or as discrete labels (maxprob)
 - ANTs can run locally or inside a Singularity or Docker container
 - Standard lookup table of the tissue classes (CSF, GM and WM)
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.segmentationtools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

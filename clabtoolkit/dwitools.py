@@ -1,3 +1,8 @@
+"""The dwitools module provides tools for diffusion-weighted imaging (DWI) data: volume
+management, b-value and gradient direction handling, and tensor-derived map
+generation.
+"""
+
 from __future__ import annotations
 
 import os

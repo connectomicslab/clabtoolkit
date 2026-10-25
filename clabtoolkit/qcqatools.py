@@ -1,3 +1,10 @@
+"""The qcqatools module supports the visual quality control of neuroimaging data.
+
+It renders sagittal, coronal and axial slices of images as PNG files, for one image or
+a whole dataset, and builds an HTML page where the images can be reviewed and
+selected.
+"""
+
 import html
 import json
 import logging

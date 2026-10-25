@@ -1,11 +1,6 @@
 pipelinetools module
 ====================
 
-.. automodule:: clabtoolkit.pipelinetools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The pipelinetools module helps to manage batch processing of BIDS datasets. It resolves which subjects to process, scans the derivatives folders of the pipelines, and reports which subjects have incomplete or mismatched outputs. The reports can be kept as tables, JSON files or a SQLite database.
 
 Key Features
@@ -15,6 +10,14 @@ Key Features
 - File inventories of one or all the pipelines, built in parallel with progress bars
 - Detection of subjects with missing or extra files, saved as JSON or SQLite
 - Queries on the processing-status database
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.pipelinetools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

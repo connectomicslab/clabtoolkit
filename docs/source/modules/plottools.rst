@@ -1,11 +1,6 @@
 plottools module
 ================
 
-.. automodule:: clabtoolkit.plottools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The plottools module contains the layout, screen and font helpers used by the plotting classes of clabtoolkit (for example ``BrainPlotter``). They can also be used on their own to size and arrange Matplotlib or PyVista figures.
 
 Key Features
@@ -15,6 +10,14 @@ Key Features
 - Ready-to-use figures with proportional subplots
 - Font sizes scaled to the plot size, the monitor and the colorbar layout
 - Random points inside a sphere, used to simulate region coordinates
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.plottools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

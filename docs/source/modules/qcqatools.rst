@@ -1,11 +1,6 @@
 qcqatools module
 ================
 
-.. automodule:: clabtoolkit.qcqatools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The qcqatools module supports the visual quality control of neuroimaging data. It renders sagittal, coronal and axial slices of images as PNG files, for one image or a whole dataset, and builds an HTML page where the images can be reviewed and selected.
 
 Key Features
@@ -15,6 +10,14 @@ Key Features
 - Batch processing of folders with filters, parallel jobs and progress bars
 - Interactive HTML page with the images grouped by folder, descriptions from JSON files, checkboxes and a downloadable list of the selected files
 - Works with NIfTI, MGZ and MINC images
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.qcqatools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Functions
 --------------

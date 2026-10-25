@@ -1,11 +1,6 @@
 freesurfertools module
 ======================
 
-.. automodule:: clabtoolkit.freesurfertools
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 The freesurfertools module provides comprehensive integration with the FreeSurfer neuroimaging suite, enabling processing of cortical surfaces, annotation files, and morphometric data.
 
 Key Features
@@ -17,6 +12,14 @@ Key Features
 - Container technology integration (Docker/Singularity)
 - Multi-format conversion capabilities
 - Parse FreeSurfer LTA transform files and extract CRAS coordinates
+
+API reference
+-------------
+
+.. automodule:: clabtoolkit.freesurfertools
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Main Classes
 ------------
