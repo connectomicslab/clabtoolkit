@@ -2,8 +2,8 @@
 History
 =======
 
-Unreleased
-----------
+0.6.0 (2026-10-25)
+------------------
 
 * Added shape, indexing, iteration and the NumPy array protocol to ``RegionTimeSeries``
 * Added the ``reload_config`` method to ``BrainPlotter``
