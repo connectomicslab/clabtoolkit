@@ -1989,7 +1989,7 @@ class Surface:
                 "Length of maps_names must match the number of data arrays in the GIFTI file"
             )
 
-        for map_name, array in zip(maps_names, arrays):
+        for map_name, array in zip(maps_names, arrays, strict=True):
             self.mesh.point_data[map_name] = array
 
     ##############################################################################################
