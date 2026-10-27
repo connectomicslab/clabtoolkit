@@ -672,6 +672,44 @@ class TestMapsAndInformation:
             "maps_per_streamline": [],
         }
 
+    def test_remove_maps_and_its_colortable(self, sim):
+        assert "bundle_id" in sim.colortables
+        sim.remove_maps("bundle_id")
+        assert "bundle_id" not in sim.data_per_streamline
+        assert "bundle_id" not in sim.colortables
+        assert "default" in sim.colortables
+
+    def test_remove_maps_stored_per_point(self, lengths_tract):
+        lengths_tract.remove_maps("ramp")
+        assert lengths_tract.list_maps()["maps_per_point"] == []
+        assert "score" in lengths_tract.data_per_streamline
+
+    def test_remove_maps_stored_in_both(self, lengths_tract):
+        lengths_tract.data_per_point["score"] = lengths_tract.data_per_point["ramp"]
+        lengths_tract.remove_maps("score")
+        maps = lengths_tract.list_maps()
+        assert "score" not in maps["maps_per_point"]
+        assert "score" not in maps["maps_per_streamline"]
+
+    def test_remove_several_maps(self, lengths_tract):
+        lengths_tract.remove_maps(["ramp", "score"])
+        maps = lengths_tract.list_maps()
+        assert maps["maps_per_point"] == []
+        assert set(maps["maps_per_streamline"]) == {"default", "length"}
+
+    def test_remove_several_maps_is_all_or_nothing(self, lengths_tract):
+        with pytest.raises(ValueError, match="nope"):
+            lengths_tract.remove_maps(["ramp", "nope"])
+        with pytest.raises(ValueError, match="default"):
+            lengths_tract.remove_maps(["ramp", "default"])
+        assert lengths_tract.list_maps()["maps_per_point"] == ["ramp"]
+
+    def test_remove_maps_errors(self, sim):
+        with pytest.raises(ValueError, match="default"):
+            sim.remove_maps("default")
+        with pytest.raises(ValueError, match="not found"):
+            sim.remove_maps("nope")
+
     def test_maps_info(self, lengths_tract):
         info = lengths_tract.get_maps_info().set_index("map_name")
         assert isinstance(lengths_tract.get_maps_info(), pd.DataFrame)

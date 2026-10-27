@@ -2250,6 +2250,55 @@ class Tractogram:
         return map_list
 
     ##############################################################################################
+    def remove_maps(self, map_name: str | list[str]) -> None:
+        """
+        Removes one or several maps, and the colortables attached to them, from the tractogram.
+
+        Each map is removed from `data_per_point` and `data_per_streamline`, wherever
+        it is stored, together with its entry in `colortables` if it has one. All the
+        names are checked before anything is removed, so the tractogram is left
+        untouched if any of them is not valid.
+
+        Parameters
+        ----------
+        map_name : str or list of str
+            Name of the map to remove, or a list with the names of several maps.
+
+        Raises
+        ------
+        ValueError
+            If any name is 'default', which holds the colors of the streamlines, or
+            if there is no map or colortable with that name.
+
+        Examples
+        --------
+        >>> tractogram = Tractogram('input.trk')
+        >>> tractogram.remove_maps('DistanceRank')
+        >>> tractogram.remove_maps(['DistanceRank', 'score'])
+        >>> print(tractogram.list_maps())
+        """
+
+        names = [map_name] if isinstance(map_name, str) else list(map_name)
+        containers = [
+            c
+            for c in (self.data_per_point, self.data_per_streamline, self.colortables)
+            if c is not None
+        ]
+
+        if "default" in names:
+            raise ValueError(
+                "The 'default' map holds the colors of the tractogram and cannot be removed"
+            )
+
+        missing = [n for n in names if not any(n in c for c in containers)]
+        if missing:
+            raise ValueError(f"Map(s) not found in the tractogram: {missing}")
+
+        for name in names:
+            for container in containers:
+                container.pop(name, None)
+
+    ##############################################################################################
     def get_maps_info(self) -> pd.DataFrame:
         """
         Retrieves information about scalar maps stored in the tractogram.
