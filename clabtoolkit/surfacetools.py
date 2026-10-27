@@ -3682,7 +3682,7 @@ class Surface:
         Save the surface mesh to a file in the specified format.
 
         Exports the surface geometry (vertices and faces) and optionally associated
-        data to various file formats including FreeSurfer, VTK, PLY, STL, and OBJ.
+        data to various file formats including FreeSurfer, GIFTI, VTK, PLY, STL, and OBJ.
 
         Parameters
         ----------
@@ -3691,7 +3691,7 @@ class Surface:
             automatically if missing for some formats.
 
         format : str, default "freesurfer"
-            Output format: 'freesurfer', 'vtk', 'ply', 'stl', or 'obj'.
+            Output format: 'freesurfer', 'gifti', 'vtk', 'ply', 'stl', or 'obj'.
 
         save_annotation : str, optional
             Path to save annotation file (for parcellation data). Only applicable
@@ -3740,6 +3740,11 @@ class Surface:
         elif format.lower() == "obj":
             self.export_to_obj(filename, save_annotation, map_name, overwrite)
 
+        elif format.lower() == "gifti":
+            if not filename.lower().endswith(".gii"):
+                filename += ".surf.gii"
+            self.export_to_gifti(filename, save_annotation, map_name, overwrite)
+
         elif format.lower() in ["vtk", "ply", "stl"]:
 
             # Substitute the file extension to match the format
@@ -3762,7 +3767,7 @@ class Surface:
 
         else:
             raise ValueError(
-                f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl', 'obj', and 'freesurfer'."
+                f"Unsupported file format: {format}. Supported formats are 'vtk', 'ply', 'stl', 'obj', 'gifti', and 'freesurfer'."
             )
 
     ##############################################################################################
@@ -3854,6 +3859,103 @@ class Surface:
 
         print(f"Surface exported to {filename}")
 
+    ##############################################################################################
+    def export_to_gifti(
+        self,
+        filename: str,
+        save_annotation: str = None,
+        map_name: str = None,
+        overwrite: bool = False,
+    ) -> None:
+        """
+        Export the surface mesh to a GIFTI surface file.
+
+        Writes the vertex coordinates and triangular faces as a GIFTI
+        (``.surf.gii``) file, the surface format used by Connectome Workbench,
+        HCP and fMRIPrep.
+
+        Parameters
+        ----------
+        filename : str
+            Output filename, should end with .gii (e.g., ``lh.pial.surf.gii``).
+
+        save_annotation : str, optional
+            Path to save associated annotation file in FreeSurfer format.
+
+        map_name : str, optional
+            Name of parcellation/overlay to export alongside the geometry.
+
+        overwrite : bool, default False
+            Whether to overwrite existing files.
+
+        Raises
+        ------
+        ValueError
+            If filename is invalid or file exists and overwrite is False.
+        FileNotFoundError
+            If the output directory does not exist.
+
+        Notes
+        -----
+        Only the geometry is stored in the GIFTI file. When the hemisphere is
+        'lh' or 'rh', it is recorded in the ``AnatomicalStructurePrimary``
+        metadata as ``CortexLeft`` or ``CortexRight``.
+
+        Examples
+        --------
+        >>> surface.export_to_gifti("lh.pial.surf.gii")
+        >>> surface.export_to_gifti("lh.pial.surf.gii", save_annotation="lh.aparc.annot", map_name="aparc")
+        """
+
+        # Validate filename
+        if not isinstance(filename, str):
+            raise ValueError("filename must be a string")
+        if not filename:
+            raise ValueError("filename cannot be empty")
+
+        # Check if the filename exists as a valid path
+        if os.path.exists(filename) and not overwrite:
+            raise ValueError(
+                f"File '{filename}' already exists. Please set overwrite to True or choose a different name."
+            )
+
+        # Ensure the directory exists
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            raise FileNotFoundError(f"Directory '{directory}' does not exist")
+
+        # If save_annotation is provided, save the annotation data
+        if save_annotation is not None:
+            self.export_annotation(
+                filename=save_annotation, parc_name=map_name, overwrite=overwrite
+            )
+
+        structures = {"lh": "CortexLeft", "rh": "CortexRight"}
+        meta = (
+            {"AnatomicalStructurePrimary": structures[self.hemi]}
+            if self.hemi in structures
+            else {}
+        )
+
+        pointset = nib.gifti.GiftiDataArray(
+            np.asarray(self.mesh.points, dtype=np.float32),
+            intent="NIFTI_INTENT_POINTSET",
+            datatype="float32",
+        )
+        triangles = nib.gifti.GiftiDataArray(
+            np.asarray(self.mesh.regular_faces, dtype=np.int32),
+            intent="NIFTI_INTENT_TRIANGLE",
+            datatype="int32",
+        )
+        gii = nib.gifti.GiftiImage(
+            darrays=[pointset, triangles],
+            meta=nib.gifti.GiftiMetaData.from_dict(meta),
+        )
+        nib.save(gii, filename)
+
+        print(f"Surface exported to {filename}")
+
+    ##############################################################################################
     def export_to_pyvista(
         self,
         filename: str,

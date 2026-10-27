@@ -1005,6 +1005,7 @@ class TestSaveAndExport:
             ("surf.ply", "ply"),
             ("surf.stl", "stl"),
             ("surf.obj", "obj"),
+            ("surf.surf.gii", "gifti"),
         ],
     )
     def test_geometry_roundtrip(self, tmp_path, bare, name, fmt):
@@ -1028,6 +1029,36 @@ class TestSaveAndExport:
     def test_extension_is_added_for_pyvista_formats(self, tmp_path, bare):
         bare.save_surface(str(tmp_path / "surface"), format="ply")
         assert (tmp_path / "surface.ply").is_file()
+
+    def test_gifti_extension_is_added(self, tmp_path, bare):
+        bare.save_surface(str(tmp_path / "surface"), format="gifti")
+        assert (tmp_path / "surface.surf.gii").is_file()
+
+    @pytest.mark.parametrize(
+        "hemi, structure", [("lh", "CortexLeft"), ("rh", "CortexRight")]
+    )
+    def test_gifti_records_the_hemisphere(self, tmp_path, bare, hemi, structure):
+        bare.hemi = hemi
+        bare.export_to_gifti(str(tmp_path / "s.surf.gii"))
+        meta = nib.load(str(tmp_path / "s.surf.gii")).meta
+        assert meta["AnatomicalStructurePrimary"] == structure
+
+    def test_gifti_overwrite_is_guarded(self, tmp_path, bare):
+        file = str(tmp_path / "s.surf.gii")
+        bare.export_to_gifti(file)
+        with pytest.raises(ValueError, match="already exists"):
+            bare.export_to_gifti(file)
+        bare.export_to_gifti(file, overwrite=True)
+
+    def test_gifti_with_annotation(self, tmp_path, parc, annot):
+        parc.export_to_gifti(
+            str(tmp_path / "p.surf.gii"),
+            map_name="Sim",
+            save_annotation=str(tmp_path / "p.annot"),
+        )
+        loaded = Surface(tmp_path / "p.surf.gii")
+        loaded.load_annotation(str(tmp_path / "p.annot"), parc_name="Back")
+        assert loaded.get_overlay_info("Back")["num_regions"] == 10
 
     def test_format_is_case_insensitive(self, tmp_path, bare):
         bare.save_surface(str(tmp_path / "lh.pial"), format="FreeSurfer")
