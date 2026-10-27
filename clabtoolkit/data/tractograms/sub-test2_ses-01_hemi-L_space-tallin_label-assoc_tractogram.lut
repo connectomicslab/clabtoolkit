@@ -1,0 +1,13 @@
+#No. Label Name:                                         R   G   B   A
+
+# Association bundles
+ 1   brain-lh-arcuate_fasciculus                         116  41 143 0
+ 2   brain-lh-cingulum_bundle_dorsal                     204  85   0 0
+ 3   brain-lh-cingulum_bundle_ventral                    162  31 203 0
+ 4   brain-lh-inferior_longitudinal_fasciculus           217  57  75 0
+ 5   brain-lh-middle_longitudinal_fasciculus             187 185  85 0
+ 6   brain-lh-superior_longitudinal_fasciculus-seg1        6 180  66 0
+ 7   brain-lh-superior_longitudinal_fasciculus-seg2      180   6  66 0
+ 8   brain-lh-superior_longitudinal_fasciculus-seg3      250 213 165 0
+ 9   brain-lh-uncinate_fasciculus                         25 170 170 0
+
