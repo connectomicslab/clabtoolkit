@@ -103,6 +103,9 @@ class Surface:
         "myelin": (1.4, 0.25, (0.5, 3.0)),  # a.u.
     }
 
+    # File extensions read by PyVista in :meth:`load_from_file`.
+    PYVISTA_EXTENSIONS: tuple = (".vtk", ".vtp", ".ply", ".obj", ".stl")
+
     ##############################################################################################
     def __init__(
         self,
@@ -233,12 +236,14 @@ class Surface:
         hemi: str = None,
     ) -> None:
         """
-        Load surface geometry from FreeSurfer or compatible surface file.
+        Load surface geometry from a FreeSurfer, GIFTI, VTK, PLY, OBJ or STL file.
 
         Parameters
         ----------
         surface_file : str or Path
-            Path to surface file (e.g., FreeSurfer .pial, .white, .inflated).
+            Path to surface file. Supported formats are FreeSurfer geometry
+            (e.g., .pial, .white, .inflated), GIFTI (.gii, .surf.gii), and
+            VTK/PLY/OBJ/STL (.vtk, .vtp, .ply, .obj, .stl).
 
         color : str or np.ndarray, optional
             Color for the surface mesh. Can be a hex color string (e.g., '#f0f0f0')
@@ -264,7 +269,10 @@ class Surface:
         - Converts color string to RGB array if provided as hex.
         - Adds alpha channel to color for RGBA representation.
         - Creates default parcellation data for visualization.
-        - Uses nibabel to read FreeSurfer geometry files.
+        - Uses nibabel to read FreeSurfer and GIFTI geometry files, and PyVista for
+          VTK, PLY, OBJ and STL files.
+        - The mesh is always stored as triangulated ``pv.PolyData``: unstructured
+          grids are reduced to their surface and polygons are triangulated.
         - Handles both left ('lh') and right ('rh') hemisphere surfaces.
         - If color is not provided, defaults to light gray ('#f0f0f0').
 
@@ -300,28 +308,7 @@ class Surface:
         color = cltcol.harmonize_colors(color, output_format="rgb")
 
         # Load the surface geometry
-        try:
-            vertices, faces = nib.freesurfer.read_geometry(self.surf)
-
-            # Add column with 3's to faces array for PyVista
-            faces = np.c_[np.full(len(faces), 3), faces]
-
-            mesh = pv.PolyData(vertices, faces)
-
-            # Add default surface colors if not present
-
-            # Adding the mesh
-            self.mesh = mesh
-
-        except Exception as e:
-            try:
-                # Try loading with PyVista directly for other formats
-                self.mesh = pv.read(self.surf)
-            except Exception as e2:
-                raise ValueError(
-                    f"Failed to load surface file {self.surf} with error: {e}\n"
-                    f"Also failed with PyVista: {e2}"
-                ) from e2
+        self.mesh = self._read_mesh_file(self.surf)
 
         # Hemisphere detection from filename. An explicit hemisphere always wins.
         if hemi is not None:
@@ -341,6 +328,91 @@ class Surface:
             color=color,
             alpha=alpha,
         )
+
+    ##############################################################################################
+    @staticmethod
+    def _read_mesh_file(surface_file: str) -> pv.PolyData:
+        """
+        Read a surface file into a triangulated PyVista mesh.
+
+        The reader is chosen from the file extension: GIFTI (``.gii``,
+        ``.surf.gii``) is read with nibabel, the formats PyVista understands
+        (``.vtk``, ``.vtp``, ``.ply``, ``.obj``, ``.stl``) with PyVista, and
+        anything else is tried as a FreeSurfer geometry file first and then
+        with PyVista.
+
+        Parameters
+        ----------
+        surface_file : str
+            Path to an existing surface file.
+
+        Returns
+        -------
+        pv.PolyData
+            Triangulated surface mesh.
+
+        Raises
+        ------
+        ValueError
+            If the file cannot be read or does not contain a surface.
+        """
+
+        name = surface_file.lower()
+
+        if name.endswith(".gii"):
+            try:
+                gii = nib.load(surface_file)
+                vertices = gii.agg_data("pointset")
+                faces = gii.agg_data("triangle")
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load GIFTI file {surface_file}: {e}"
+                ) from e
+
+            # nibabel returns an empty tuple when the intent is not in the file
+            if isinstance(vertices, tuple) or isinstance(faces, tuple):
+                raise ValueError(
+                    f"GIFTI file {surface_file} does not contain both a pointset "
+                    "and a triangle array, so it is not a surface geometry file"
+                )
+
+            faces = np.asarray(faces)
+            return pv.PolyData(
+                np.asarray(vertices, dtype=np.float32),
+                np.c_[np.full(len(faces), 3), faces],
+            )
+
+        if name.endswith(tuple(Surface.PYVISTA_EXTENSIONS)):
+            try:
+                mesh = pv.read(surface_file)
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load surface file {surface_file} with PyVista: {e}"
+                ) from e
+        else:
+            try:
+                vertices, faces = nib.freesurfer.read_geometry(surface_file)
+                return pv.PolyData(vertices, np.c_[np.full(len(faces), 3), faces])
+            except Exception as e:
+                try:
+                    mesh = pv.read(surface_file)
+                except Exception as e2:
+                    raise ValueError(
+                        f"Failed to load surface file {surface_file} with error: {e}\n"
+                        f"Also failed with PyVista: {e2}"
+                    ) from e2
+
+        # Legacy VTK files are often unstructured grids; keep only their surface
+        if not isinstance(mesh, pv.PolyData):
+            mesh = mesh.extract_surface()
+
+        if mesh.n_points == 0 or mesh.n_cells == 0:
+            raise ValueError(f"Surface file {surface_file} does not contain a surface")
+
+        if not mesh.is_all_triangles:
+            mesh = mesh.triangulate()
+
+        return mesh
 
     ##############################################################################################
     def load_from_arrays(

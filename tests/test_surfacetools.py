@@ -230,6 +230,56 @@ class TestCreation:
         surf.load_from_file(surf_file)
         assert surf.is_loaded() and surf.mesh.n_points == N_VERTS
 
+    def test_load_from_gifti(self, tmp_path, bare):
+        verts, faces = bare.get_vertices(), bare.get_faces()
+        gii = nib.gifti.GiftiImage(
+            darrays=[
+                nib.gifti.GiftiDataArray(
+                    verts.astype(np.float32),
+                    intent="NIFTI_INTENT_POINTSET",
+                    datatype="float32",
+                ),
+                nib.gifti.GiftiDataArray(
+                    faces.astype(np.int32),
+                    intent="NIFTI_INTENT_TRIANGLE",
+                    datatype="int32",
+                ),
+            ]
+        )
+        nib.save(gii, str(tmp_path / "rh.surf.gii"))
+        surf = Surface(tmp_path / "rh.surf.gii")
+        assert surf.hemi == "rh"
+        assert surf.mesh.n_points == N_VERTS and surf.mesh.n_cells == N_FACES
+        assert np.allclose(surf.get_vertices(), verts, atol=1e-4)
+        assert np.array_equal(surf.get_faces(), faces)
+
+    def test_gifti_without_geometry_is_rejected(self, tmp_path):
+        gii = nib.gifti.GiftiImage(
+            darrays=[
+                nib.gifti.GiftiDataArray(
+                    np.zeros(5, dtype=np.float32),
+                    intent="NIFTI_INTENT_SHAPE",
+                    datatype="float32",
+                )
+            ]
+        )
+        nib.save(gii, str(tmp_path / "lh.shape.gii"))
+        with pytest.raises(ValueError, match="pointset"):
+            Surface(tmp_path / "lh.shape.gii")
+
+    @pytest.mark.parametrize("ext", ["vtk", "vtp", "ply", "obj", "stl"])
+    def test_quad_mesh_is_triangulated(self, tmp_path, ext):
+        file = tmp_path / f"quads.{ext}"
+        pv.Plane(i_resolution=2, j_resolution=2).save(str(file))
+        surf = Surface(file)
+        assert isinstance(surf.mesh, pv.PolyData) and surf.mesh.is_all_triangles
+
+    def test_unstructured_vtk_becomes_polydata(self, tmp_path):
+        file = tmp_path / "grid.vtk"
+        pv.Sphere().cast_to_unstructured_grid().save(str(file))
+        surf = Surface(file)
+        assert isinstance(surf.mesh, pv.PolyData) and surf.mesh.n_cells > 0
+
     @pytest.mark.parametrize(
         "name, expected",
         [
