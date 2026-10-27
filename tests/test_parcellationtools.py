@@ -16,7 +16,7 @@ from clabtoolkit.parcellationtools import Parcellation, RegionTimeSeries
 DATA_DIR = Path(clabtoolkit.__file__).parent / "data" / "parcellations"
 REAL_PARC = (
     DATA_DIR
-    / "sub-test2_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.nii.gz"
+    / "sub-colin27_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.nii.gz"
 )
 
 

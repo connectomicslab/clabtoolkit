@@ -1,5 +1,5 @@
-# $Id: sub-test2_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.lut 27/10/2026 17:06:12 
-# Corresponding parcellation: sub-test2_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.nii.gz 
+# $Id: sub-colin27_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.lut 27/10/2026 17:06:12 
+# Corresponding parcellation: sub-colin27_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.nii.gz 
  # Chimera parcellation code: DFMFHISIFN. Segmentation: aparc
     # 1. Cortical parcellation (D): Desikan-Killiany cortical parcellation (Desikan et al, 2006). Name: Desikan2006 (Desikan et al, 2006).
     # 2. Subcortical parcellation (F): Aseg subcortical parcellation. Name: Aseg (Fischl et al, 2002).
