@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import clabtoolkit.freesurfertools as cltfree
 import clabtoolkit.misctools as cltmisc
 
 
@@ -80,3 +81,11 @@ class TestGetSampleDataDir:
     def test_bundled_parcellations(self):
         folder = cltmisc.get_sample_data_dir("parcellations")
         assert any(folder.glob("*_dseg.nii.gz"))
+
+    def test_bundled_talairach_transform(self):
+        folder = cltmisc.get_sample_data_dir("transforms")
+        lta_file = folder / "sub-colin27_ses-01_space-tallin_desc-talairach_xfm.lta"
+        assert lta_file.is_file()
+        assert cltfree.get_cras_coordinates(str(lta_file)) == pytest.approx(
+            [0.5, -17.5, 18.5]
+        )
