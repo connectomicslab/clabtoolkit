@@ -630,6 +630,51 @@ class TestScalarMaps:
             surf.load_scalar_maps(str(tmp_path / f"lh.{name}"), maps_names=name.title())
         assert {"Thickness", "Curv"} <= set(surf.list_overlays())
 
+    def test_load_from_gifti_map_file(self, tmp_path, sphere, surf_file):
+        map_file = tmp_path / "sub-01_hemi-L_thickness.shape.gii"
+        sphere.export_map("thickness", str(map_file))
+        surf = Surface(surf_file)
+        surf.load_scalar_maps(map_file)  # name taken from the last "_" token
+        assert surf.list_overlays()["thickness"] == "scalar"
+        assert np.allclose(
+            surf.mesh.point_data["thickness"],
+            sphere.mesh.point_data["thickness"],
+            atol=1e-5,
+        )
+
+    def test_gifti_map_with_explicit_name(self, tmp_path, sphere, surf_file):
+        map_file = tmp_path / "lh.thickness.shape.gii"
+        sphere.export_map("thickness", str(map_file))
+        surf = Surface(surf_file)
+        surf.load_scalar_maps(str(map_file), maps_names="Thick")
+        assert "Thick" in surf.list_overlays()
+
+    def test_gifti_map_with_several_arrays(self, tmp_path, surf_file):
+        gii = nib.gifti.GiftiImage()
+        for k in range(2):
+            gii.add_gifti_data_array(
+                nib.gifti.GiftiDataArray(
+                    np.full(N_VERTS, k, dtype=np.float32), intent="NIFTI_INTENT_SHAPE"
+                )
+            )
+        nib.save(gii, str(tmp_path / "multi.shape.gii"))
+        surf = Surface(surf_file)
+        surf.load_scalar_maps(tmp_path / "multi.shape.gii")
+        assert {"multi_0", "multi_1"} <= set(surf.list_overlays())
+        with pytest.raises(ValueError, match="maps_names"):
+            surf.load_scalar_maps(tmp_path / "multi.shape.gii", maps_names="one")
+
+    def test_gifti_map_with_wrong_vertex_count(self, tmp_path, surf_file):
+        gii = nib.gifti.GiftiImage()
+        gii.add_gifti_data_array(
+            nib.gifti.GiftiDataArray(
+                np.zeros(N_VERTS - 1, dtype=np.float32), intent="NIFTI_INTENT_SHAPE"
+            )
+        )
+        nib.save(gii, str(tmp_path / "short.shape.gii"))
+        with pytest.raises(ValueError, match="number of vertices"):
+            Surface(surf_file).load_scalar_maps(tmp_path / "short.shape.gii")
+
     def test_vertexwise_numpy_array(self, bare):
         values = np.linspace(0, 1, N_VERTS)
         bare.load_scalar_maps(values, maps_names=["ramp"])

@@ -1894,6 +1894,10 @@ class Surface:
             if not os.path.isfile(scalar_map):
                 raise FileNotFoundError(f"Map file not found: {scalar_map}")
 
+            if scalar_map.lower().endswith(".gii"):
+                self._load_gifti_map(scalar_map, maps_names)
+                return
+
             # Read the map file into a DataFrame. Only a file that cannot be read
             # as a table is treated as a FreeSurfer morphometry file.
             try:
@@ -1950,6 +1954,43 @@ class Surface:
 
             # Store the map data in the mesh point data
             self.mesh.point_data[map_name] = map_data
+
+    ##############################################################################################
+    def _load_gifti_map(self, map_file: str, maps_names: list[str] = None) -> None:
+        """Load a GIFTI functional/shape file (e.g. thickness.shape.gii) as vertex-wise maps."""
+
+        gii = nib.load(map_file)
+        arrays = [np.squeeze(darray.data) for darray in gii.darrays]
+
+        if len(arrays) == 0:
+            raise ValueError(f"Map file {map_file} does not contain any data array")
+
+        for array in arrays:
+            if array.ndim != 1 or array.shape[0] != self.mesh.n_points:
+                raise ValueError(
+                    f"Map file {map_file} does not match the number of vertices"
+                )
+
+        if maps_names is None:
+            # BIDS-like names end with the measure (..._thickness.shape.gii)
+            stem = os.path.basename(map_file)
+            for suffix in (".shape.gii", ".func.gii", ".gii"):
+                if stem.lower().endswith(suffix):
+                    stem = stem[: -len(suffix)]
+                    break
+            stem = stem.split("_")[-1] or stem
+            maps_names = (
+                [stem]
+                if len(arrays) == 1
+                else [f"{stem}_{i}" for i in range(len(arrays))]
+            )
+        elif len(maps_names) != len(arrays):
+            raise ValueError(
+                "Length of maps_names must match the number of data arrays in the GIFTI file"
+            )
+
+        for map_name, array in zip(maps_names, arrays):
+            self.mesh.point_data[map_name] = array
 
     ##############################################################################################
     def _load_morph_file(self, map_file: str, maps_names: list[str] = None) -> None:
