@@ -16,7 +16,7 @@ from clabtoolkit.parcellationtools import Parcellation, RegionTimeSeries
 DATA_DIR = Path(clabtoolkit.__file__).parent / "data" / "parcellations"
 REAL_PARC = (
     DATA_DIR
-    / "sub-test2_ses-01_atlas-chimeraLFIIHISIFN_scale-1_desc-grow1mm_dseg.nii.gz"
+    / "sub-test2_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.nii.gz"
 )
 
 
@@ -99,12 +99,12 @@ class TestCreation:
 
     def test_from_file(self, real_parc_session):
         parc = real_parc_session
-        assert parc.dim == (256, 392, 416)
-        assert len(parc.index) == 277 and parc.index == sorted(parc.index)
-        assert parc.name[0] == "ctx-rh-lateralorbitofrontal"
-        assert parc.id == "atlas-chimeraLFIIHISIFN_scale-1_desc-grow1mm"
-        assert parc.space == "unknown"  # No space entity in the file name
-        assert parc.lut_file.endswith(".lut")  # Sidecar LUT found automatically
+        assert parc.dim == (181, 217, 181)
+        assert len(parc.index) == 224 and parc.index == sorted(parc.index)
+        assert parc.name[0] == "ctx-rh-bankssts"
+        assert parc.id == "atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm"
+        assert parc.space == "tallin"  # Taken from the space entity in the file name
+        assert parc.lut_file.endswith(".tsv")  # Sidecar LUT found automatically
         assert all(c.startswith("#") for c in parc.color)
 
     def test_space_from_file_name_and_argument(self, tmp_path, sim):
@@ -291,7 +291,7 @@ class TestSelection:
 
     def test_real_parcellation_selection(self, real_parc):
         real_parc.keep_by_name(["hipp-", "amygd-"])
-        assert len(real_parc.index) == 24
+        assert len(real_parc.index) == 8
         assert all(n.startswith(("hipp-", "amygd-")) for n in real_parc.name)
         assert set(np.unique(real_parc.data)) == {0, *real_parc.index}
 
@@ -816,7 +816,7 @@ class TestChimera:
         )  # Every labeled voxel is assigned
         merged = real_parc.create_5tt(mergectx=True)
         assert merged[..., 0].sum() > five_tt[..., 0].sum()
-        assert len(real_parc.name) == 277  # mergectx works on a copy
+        assert len(real_parc.name) == 224  # mergectx works on a copy
 
     def test_create_5tt_requires_chimera_names(self, sim):
         with pytest.warns(UserWarning), pytest.raises(ValueError, match="Chimera"):
