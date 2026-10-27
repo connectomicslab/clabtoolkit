@@ -13,7 +13,7 @@ import pytest
 import clabtoolkit
 from clabtoolkit.parcellationtools import Parcellation, RegionTimeSeries
 
-DATA_DIR = Path(clabtoolkit.__file__).parent / "data" / "parcellationtools"
+DATA_DIR = Path(clabtoolkit.__file__).parent / "data" / "parcellations"
 REAL_PARC = (
     DATA_DIR
     / "sub-test2_ses-01_atlas-chimeraLFIIHISIFN_scale-1_desc-grow1mm_dseg.nii.gz"
