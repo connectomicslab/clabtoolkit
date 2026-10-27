@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import clabtoolkit.misctools as cltmisc
+
 
 @pytest.fixture
 def temp_dir():
@@ -76,3 +78,21 @@ def mock_freesurfer_stats(temp_dir):
     stats_file = temp_dir / "lh.aparc.stats"
     stats_file.write_text(stats_content)
     return stats_file
+
+
+@pytest.fixture(scope="session")
+def sample_data_dir():
+    """
+    Function that returns the folder of a set of sample data, for example 'surfaces'.
+
+    The test is skipped if the data cannot be obtained, as when there is no network
+    connection or the Zenodo record has not been published.
+    """
+
+    def _get(folder):
+        try:
+            return cltmisc.get_sample_data_dir(folder)
+        except Exception as error:
+            pytest.skip(f"Sample data '{folder}' is not available: {error}")
+
+    return _get

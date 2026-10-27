@@ -430,6 +430,7 @@ plotter.plot(surf_lh, views=["lateral", "medial"], save_path="figure.png")  # Sa
 - File system operations
 - Color processing utilities
 - Documentation generation helpers
+- Download and cache of the sample data
 
 #### pipelinetools - Workflow Management
 

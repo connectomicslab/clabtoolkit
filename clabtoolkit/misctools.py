@@ -1,7 +1,7 @@
 """The misctools module collects general-purpose helpers used across the clabtoolkit
 package: index and condition parsing, list and string filtering, file system and JSON
-utilities, table reading, container commands and tools to explore Python objects and
-HDF5 files.
+utilities, table reading, container commands, tools to explore Python objects and
+HDF5 files, and the download of the sample data.
 """
 
 import argparse
@@ -15,6 +15,7 @@ import sys
 import tempfile
 import types
 import uuid
+import zipfile
 from collections.abc import Callable, Hashable, Iterable
 from datetime import datetime
 from pathlib import Path
@@ -88,6 +89,9 @@ __all__ = [
     "search_methods",
     "printprogressbar",
     "SmartFormatter",
+    "list_sample_data",
+    "fetch_sample_data",
+    "get_sample_data_dir",
 ]
 
 
@@ -4785,3 +4789,163 @@ class SmartFormatter(argparse.HelpFormatter):
             return text[2:].splitlines()
         # this is the RawTextHelpFormatter.split_lines
         return argparse.HelpFormatter._split_lines(self, text, width)
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############       Section 8: Methods to fetch and cache the sample data               ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+# The sample data are distributed as one zip archive per folder in a Zenodo record.
+# Each archive is downloaded once, checked against its SHA-256 checksum and unzipped
+# in a local cache folder. A folder bundled inside the package is used directly.
+
+# DOI of the Zenodo record that holds the archives. Use the DOI of a version of the
+# record, not the concept DOI, so that the checksums below always match.
+ZENODO_DOI = "10.5281/zenodo.23702131"
+
+SAMPLE_DATA_REGISTRY = {
+    "annotations.zip": "sha256:2dab53220baca926197bb6288863e23abd5b9e177c07c09c674a748ffc35f313",
+    "corticalmaps.zip": "sha256:64b92cf61cf4dd0e047def93c60f8d0a9b225de9699aa525dc231aec70815ed3",
+    "parcellations.zip": "sha256:3510100a03cff7272a9df9e915e8d7a085cfe963d78618e144eab141304e00e5",
+    "surfaces.zip": "sha256:707083657c5cdbc996e31c3dfe10478ff41cb20f0d652c741eb2b250fd876ce4",
+    "tractograms.zip": "sha256:e29fcc97c292d101b77331390ebb505559e90132b73306509f5e08d68ddce73f",
+}
+
+PACKAGE_DATA_DIR = Path(__file__).parent / "data"
+
+
+####################################################################################################
+def list_sample_data() -> list[str]:
+    """
+    List the folders of sample data that can be fetched.
+
+    Returns
+    -------
+    list of str
+        Names of the folders, for example 'surfaces' or 'tractograms'.
+
+    Examples
+    --------
+    >>> import clabtoolkit.misctools as cltmisc
+    >>> cltmisc.list_sample_data()
+    ['annotations', 'corticalmaps', 'parcellations', 'surfaces', 'tractograms']
+    """
+
+    return [Path(name).stem for name in SAMPLE_DATA_REGISTRY]
+
+
+####################################################################################################
+def fetch_sample_data(
+    folders: str | list[str] | None = None,
+    path: str | Path | None = None,
+) -> Path:
+    """
+    Download the sample data and unzip it in the local cache.
+
+    Archives that are already in the cache are not downloaded again. The cache is
+    the user cache folder of the operating system unless `path` is given or the
+    environment variable ``CLABTOOLKIT_DATA_DIR`` is set, which takes precedence.
+
+    Parameters
+    ----------
+    folders : str or list of str, optional
+        Folders to fetch, for example 'surfaces'. If None, every folder is fetched.
+
+    path : str or Path, optional
+        Cache folder. Default is the user cache folder of clabtoolkit.
+
+    Returns
+    -------
+    Path
+        Folder that contains the fetched folders, for example ``<root>/surfaces``.
+
+    Raises
+    ------
+    ValueError
+        If a folder name is not one of those returned by `list_sample_data`.
+
+    RuntimeError
+        If the DOI of the Zenodo record has not been set.
+
+    Examples
+    --------
+    >>> import clabtoolkit.misctools as cltmisc
+    >>> root = cltmisc.fetch_sample_data("surfaces")  # doctest: +SKIP
+    >>> sorted(p.name for p in (root / "surfaces").glob("*pial*"))  # doctest: +SKIP
+    """
+
+    available = list_sample_data()
+    if folders is None:
+        folders = available
+    elif isinstance(folders, str):
+        folders = [folders]
+
+    unknown = [folder for folder in folders if folder not in available]
+    if unknown:
+        raise ValueError(
+            f"Unknown sample data folder(s) {unknown}. Available folders: {available}"
+        )
+
+    if "REPLACE" in ZENODO_DOI:
+        raise RuntimeError(
+            "The DOI of the Zenodo record with the sample data has not been set in "
+            "clabtoolkit.datatools.ZENODO_DOI"
+        )
+
+    import pooch  # Imported here to keep the import of misctools light
+
+    sample_data = pooch.create(
+        path=path if path is not None else pooch.os_cache("clabtoolkit"),
+        base_url=f"doi:{ZENODO_DOI}/",
+        registry=SAMPLE_DATA_REGISTRY,
+        env="CLABTOOLKIT_DATA_DIR",
+    )
+    root = Path(sample_data.abspath) / "sample-data"
+
+    for folder in folders:
+        archive = Path(sample_data.fetch(f"{folder}.zip"))
+        if not (root / folder).is_dir():
+            with zipfile.ZipFile(archive) as zip_file:
+                zip_file.extractall(root)
+
+    return root
+
+
+####################################################################################################
+def get_sample_data_dir(folder: str, path: str | Path | None = None) -> Path:
+    """
+    Get the folder with a set of sample data, downloading it if needed.
+
+    A folder bundled inside the package (``clabtoolkit/data/<folder>``) is returned
+    as it is. Otherwise the folder is fetched with `fetch_sample_data`.
+
+    Parameters
+    ----------
+    folder : str
+        Name of the folder, for example 'surfaces'.
+
+    path : str or Path, optional
+        Cache folder used when the folder has to be downloaded.
+
+    Returns
+    -------
+    Path
+        Folder with the files.
+
+    Examples
+    --------
+    >>> import clabtoolkit.misctools as cltmisc
+    >>> surf_dir = cltmisc.get_sample_data_dir("surfaces")  # doctest: +SKIP
+    >>> pial = surf_dir / "sub-colin27_ses-01_hemi-L_space-tallin_pial.surf.gii"  # doctest: +SKIP
+    """
+
+    bundled = PACKAGE_DATA_DIR / folder
+    if bundled.is_dir() and any(bundled.iterdir()):
+        return bundled
+
+    return fetch_sample_data(folder, path=path) / folder
