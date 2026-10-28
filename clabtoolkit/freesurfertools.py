@@ -1490,8 +1490,8 @@ class AnnotParcellation:
         reg_offset : int, optional
             Integer offset to add to the parcellation IDs. This helps avoid ID
             conflicts when combining multiple parcellations or when specific ID
-            ranges are required. The offset is added to sequential indices starting
-            from 0. Default is 1000.
+            ranges are required. The offset is added to the indices of the regions.
+            Default is 1000.
 
         hemi : str, optional
             Hemisphere identifier to include in the region names (e.g., 'L' or 'R').
@@ -1515,7 +1515,8 @@ class AnnotParcellation:
         tsv_df : pandas.DataFrame
             DataFrame containing the parcellation table with the following columns:
 
-            - 'index': Sequential indices starting from 0 for each region
+            - 'index': Index of each region. The unknown (background) region has the
+              index 0 and the other regions are numbered from 1 in the order of the table
             - 'annotid': Original annotation IDs from the FreeSurfer annotation file
             - 'parcid': Parcellation IDs (index + reg_offset)
             - 'name': Region names, optionally prefixed
@@ -1539,7 +1540,8 @@ class AnnotParcellation:
         1. Converts RGB color values to hexadecimal format using the first 3 columns
         of the region table
         2. Applies optional prefix to region names using a name correction function
-        3. Creates sequential indices and applies the specified offset to parcellation IDs
+        3. Creates the indices of the regions (0 for the unknown region, if any, and
+        from 1 for the others) and applies the specified offset to parcellation IDs
         4. Combines all information into a structured DataFrame
         5. Optionally saves to TSV format with tab separation and no row indices
 
@@ -1615,10 +1617,21 @@ class AnnotParcellation:
         if prefix2add is not None:
             parc_names = cltmisc.correct_names(parc_names, prefix=prefix2add)
 
-        parc_index = np.arange(0, len(parc_names))
-
         # Selecting the Id in the annotation file
         annot_id = self.regtable[:, 4]
+
+        # The unknown (background) region has the index 0 and the other regions are
+        # numbered from 1 in the order of the table
+        parc_index = np.zeros(len(parc_names), dtype=int)
+        is_region = np.ones(len(parc_names), dtype=bool)
+        background = [
+            i
+            for i, name in enumerate(self.regnames)
+            if str(name).lower() == "unknown" or annot_id[i] == 0
+        ]
+        if background:
+            is_region[background[0]] = False
+        parc_index[is_region] = np.arange(1, is_region.sum() + 1)
 
         parc_id = reg_offset + parc_index
 
@@ -5092,9 +5105,10 @@ class FreeSurferSubject:
                     prefix2add="ctx-rh-", reg_offset=2000
                 )
 
-                # Convert the column name of the dataframe to a list
-                lh_ctx_code = df_lh["parcid"].tolist()
-                rh_ctx_code = df_rh["parcid"].tolist()
+                # As in aparc+aseg, the code of a cortical region is 1000 (lh) or 2000 (rh)
+                # plus its position in the table of the annotation
+                lh_ctx_code = (1000 + np.arange(len(df_lh))).tolist()
+                rh_ctx_code = (2000 + np.arange(len(df_rh))).tolist()
 
                 # Convert the column name of the dataframe to a list
                 lh_ctx_name = df_lh["name"].tolist()

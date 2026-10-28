@@ -788,18 +788,47 @@ class TestExportToTsv:
             "name",
             "color",
         ]
-        assert df["index"].tolist() == [0, 1, 2]
+        assert df["index"].tolist() == [1, 2, 3]  # 0 is not a region
         assert df["hemi"].tolist() == ["L", "L", "L"]
         assert df["annotid"].tolist() == [RED, GREEN, BLUE]
-        assert df["parcid"].tolist() == [1000, 1001, 1002]
+        assert df["parcid"].tolist() == [1001, 1002, 1003]
         assert df["name"].tolist() == ["alpha", "beta", "gamma"]
         assert df["color"].tolist() == ["#ff0000", "#00ff00", "#0000ff"]
 
     def test_prefix_offset_and_hemisphere(self, named):
         df, _ = named.export_to_tsv(prefix2add="rh_", reg_offset=2000, hemi="R")
         assert df["name"].tolist() == ["rh_alpha", "rh_beta", "rh_gamma"]
-        assert df["parcid"].tolist() == [2000, 2001, 2002]
+        assert df["parcid"].tolist() == [2001, 2002, 2003]
         assert set(df["hemi"]) == {"R"}
+
+    @pytest.mark.parametrize("position", [0, 1, 2])
+    def test_unknown_region_has_the_index_0(self, position):
+        names = ["alpha", "beta", "gamma"]
+        names[position] = "unknown"
+        annot = hand_annot([RED, GREEN, BLUE], names=tuple(names))
+        df, _ = annot.export_to_tsv()
+        assert df["index"][position] == 0
+        assert df["parcid"][position] == 1000
+        # The other regions are numbered from 1 in the order of the table
+        assert df["index"].drop(position).tolist() == [1, 2]
+        assert df["parcid"].drop(position).tolist() == [1001, 1002]
+
+    def test_region_with_the_code_0_has_the_index_0(self):
+        annot = AnnotParcellation()
+        regtable = np.array(
+            [[255, 0, 0, 0, RED], [0, 255, 0, 0, GREEN], [0, 0, 0, 0, 0]],
+            dtype=np.int32,
+        )
+        annot.create_from_data(
+            codes=np.array([RED, GREEN, 0], dtype=np.int32),
+            regtable=regtable,
+            regnames=["alpha", "beta", "gamma"],
+            annot_id="hand",
+            hemi="lh",
+        )
+        df, _ = annot.export_to_tsv()
+        assert df["name"].tolist() == ["alpha", "beta", "gamma"]
+        assert df["index"].tolist() == [1, 2, 0]
 
     def test_templateflow_format(self, named):
         df, _ = named.export_to_tsv(
