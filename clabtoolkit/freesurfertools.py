@@ -120,12 +120,7 @@ class AnnotParcellation:
 
     ####################################################################################################
     def load_from_file(
-        self,
-        parc_file: str | Path,
-        annot_id: str = None,
-        ref_surf: str | Path = None,
-        cont_tech: str = "local",
-        cont_image: str | Path = None,
+        self, parc_file: str | Path, annot_id: str = None, ref_surf: str | Path = None
     ):
         """
         Load parcellation data from file
@@ -140,12 +135,6 @@ class AnnotParcellation:
 
         ref_surf : str or Path, optional
             Reference surface for conversion. If None, uses the default FreeSurfer white surface.
-
-        cont_tech : str, optional
-            Container technology to use (e.g., 'local', 'docker'). Default is 'local'.
-
-        cont_image : str or Path, optional
-            Container image to use. If None, uses the default for the specified container technology.
 
         Notes
         -----
