@@ -33,7 +33,7 @@ docs/
     ├── conf.py             Sphinx configuration
     ├── index.rst           Landing page and table of contents
     ├── installation.rst    Installation and optional dependencies
-    ├── quickstart.rst      Short examples with simulated data
+    ├── quickstart.rst      Short examples with the retrieved sample data
     ├── examples.rst        Links to the notebooks of usage_examples/
     ├── api.rst             Table of contents of the module pages
     ├── contributing.rst    Includes CONTRIBUTING.rst

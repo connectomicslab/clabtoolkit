@@ -3,7 +3,8 @@ What can you do with CLABTOOLKIT?
 
 This page lists, by task, the problems that CLABTOOLKIT helps to solve. Each line gives the functions or
 methods that do the work, and a link to the notebook of the module where they are shown with runnable
-examples. The notebooks use simulated data, so they do not need any input file.
+examples. The notebooks retrieve the sample data of clabtoolkit from its Zenodo repository, so they do not
+need any input file.
 
 A dagger (†) marks a function that is not yet illustrated in its notebook.
 

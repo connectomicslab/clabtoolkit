@@ -2,14 +2,35 @@ Examples
 ========
 
 The `usage_examples <https://github.com/connectomicslab/clabtoolkit/tree/main/usage_examples>`_
-folder of the repository contains Jupyter notebooks with runnable examples. Most of them use
-simulated data, so they do not need any input file.
+folder of the repository contains Jupyter notebooks with runnable examples. They retrieve the sample
+data of clabtoolkit from its `Zenodo repository <https://doi.org/10.5281/zenodo.23702131>`_ the first time they
+need it (see ``fetch_sample_data`` in :doc:`misctools <modules/misctools>`), so they do not need any input file.
+The few images that the sample data lacks, such as functional images, are simulated.
 
 General overview
 ----------------
 
 * `clabtoolkit_examples.ipynb <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/clabtoolkit_examples.ipynb>`_:
   the core objects (``Parcellation``, ``Surface``, ``Tractogram`` and ``Connectome``), morphometry and visualization.
+
+Representative workflows
+------------------------
+
+Three end-to-end workflows that combine several modules. Click the card to open the notebook on GitHub.
+
+.. grid:: 1 2 2 3
+   :gutter: 3
+   :class-container: clab-grid
+
+   .. grid-item-card:: Representative workflows
+      :img-top: _static/icons/workflows.svg
+      :link: https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-representative-workflows.ipynb
+      :link-type: url
+      :class-card: clab-card sd-shadow-sm
+
+      Workflow A corrects a vertex-wise parcellation and computes regional statistics, workflow B selects the
+      streamlines that connect a pair of regions, and workflow C computes the functional connectivity of the
+      hippocampus and the temporal lobe.
 
 Examples by module
 ------------------

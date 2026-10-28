@@ -1,20 +1,21 @@
 Quick Start
 ===========
 
-The examples below are self-contained: they use simulated data, so you can run them as they are.
+The examples below use the sample data of clabtoolkit, which is retrieved from its Zenodo repository the first time they
+run (this needs an internet connection), so you can run them as they are.
 
 Filter a parcellation by region name
 ------------------------------------
 
 .. code-block:: python
 
+    import clabtoolkit.misctools as cltmisc
     import clabtoolkit.parcellationtools as cltparc
 
-    # Simulate a parcellation with 10 regions and name them
-    parc = cltparc.Parcellation.simulate_parcellation(n_regions=10, seed=42)
-    parc.set_names(['ctx-rh-precentral', 'ctx-lh-precentral', 'ctx-rh-postcentral', 'ctx-lh-postcentral',
-                    'ctx-rh-superiorfrontal', 'ctx-lh-superiorfrontal', 'ctx-rh-supramarginal',
-                    'ctx-lh-supramarginal', 'subc-rh-amygdala', 'subc-lh-amygdala'])
+    # Load the sample parcellation of clabtoolkit (a Chimera parcellation of the Colin27 average brain).
+    # The color table that is next to the file is found automatically
+    data_dir = cltmisc.get_sample_data_dir("parcellations")
+    parc = cltparc.Parcellation(data_dir / "sub-colin27_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.nii.gz")
 
     # Keep only the precentral regions (the object is modified in place)
     parc.keep_by_name(['ctx-rh-precentral', 'ctx-lh-precentral'])
@@ -27,33 +28,38 @@ Sample an image along the streamlines of a tractogram
 
 .. code-block:: python
 
-    import clabtoolkit.imagetools as cltimg
+    import clabtoolkit.misctools as cltmisc
     import clabtoolkit.tracttools as clttract
 
-    # Simulate a reference image and a tractogram with 5 bundles
-    cltimg.simulate_image(reference=(100, 100, 70), simulated_image="/tmp/image.nii.gz")
-    tract = clttract.Tractogram.simulate_tractogram(ref_image="/tmp/image.nii.gz")
+    # The sample tractogram is retrieved from Zenodo the first time. The sample parcellation is the image
+    tract_file = cltmisc.get_sample_data_dir("tractograms") / "sub-colin27_ses-01_space-tallin_label-cc_tractogram.trk"
+    parc_file = cltmisc.get_sample_data_dir("parcellations") / "sub-colin27_ses-01_space-tallin_atlas-chimeraDFMFHISIFN_seg-aparc_desc-grow1mm_dseg.nii.gz"
+    tract = clttract.Tractogram(tract_file)
 
-    # Sample the image at every point of every streamline
-    tract.interpolate_on_tractogram("/tmp/image.nii.gz", map_name="fa",
-                                    storage_mode="data_per_point", interp_method="linear")
+    # Sample the parcellation at every point of every streamline. The values are labels,
+    # so the nearest neighbor is used
+    tract.interpolate_on_tractogram(parc_file, map_name="label",
+                                    storage_mode="data_per_point", interp_method="nearest")
 
-    print(tract.list_maps()["maps_per_point"])  # ['fa']
-    print(tract.data_per_point["fa"][0][:5])    # values along the first streamline
+    print(tract.list_maps()["maps_per_point"])  # [..., 'label']
+    print(tract.data_per_point["label"][0][:5])  # labels along the first streamline
 
-Use ``storage_mode="data_per_streamline"`` with ``reduction="mean"`` to store a single value per streamline.
+Use ``interp_method="linear"`` for scalar images, such as FA, and ``storage_mode="data_per_streamline"`` with
+``reduction="mean"`` to store a single value per streamline.
 
 Plot a surface with a scalar map
 --------------------------------
 
 .. code-block:: python
 
+    import clabtoolkit.misctools as cltmisc
     import clabtoolkit.surfacetools as cltsurf
     import clabtoolkit.visualizationtools as cltvis
 
-    # Simulate a surface and a thickness map
-    surf = cltsurf.Surface.simulate_surface(seed=42, shape="sphere")
-    surf.simulate_map(map_name="thickness")
+    # Load the sample surface and thickness map of clabtoolkit (retrieved from Zenodo the first time)
+    surf = cltsurf.Surface(cltmisc.get_sample_data_dir("surfaces") / "sub-colin27_ses-01_hemi-L_space-tallin_pial.surf.gii")
+    surf.load_scalar_maps(cltmisc.get_sample_data_dir("corticalmaps") / "sub-colin27_ses-01_hemi-L_space-tallin_thickness.shape.gii",
+                          maps_names="thickness")
 
     # Plot two views of the map and save the figure
     plotter = cltvis.BrainPlotter()

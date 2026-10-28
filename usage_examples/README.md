@@ -17,8 +17,8 @@ The `examples` extra installs `itables`, which some notebooks use to display tab
 
 ## Requirements
 
-- **No input data is needed.** The notebooks simulate the images, surfaces, tractograms and connectomes they use, and write the simulated files to `/tmp`.
-- **FreeSurfer is optional.** The notebooks that read `FREESURFER_HOME` use the sample subjects (`bert`, `fsaverage`) when it is set, and simulated data otherwise.
+- **No input data is needed.** The notebooks retrieve the sample data of **clabtoolkit** (the surfaces, cortical maps, annotations, parcellation, tractograms and a transform of the Colin27 average brain) from its [Zenodo repository](https://doi.org/10.5281/zenodo.23702131) the first time they need it, and keep it in a local cache (set `CLABTOOLKIT_DATA_DIR` to change its location). This needs an internet connection the first time. The images that the sample data lacks, such as functional images, are simulated and written to `/tmp`.
+- **FreeSurfer is optional.** Only the examples that run FreeSurfer commands (`annot2gcs`, `gcs2annot`, `FreeSurferSubject` and the statistics tables) need it, and they skip themselves when `FREESURFER_HOME` is not set.
 - **3D plots** use PyVista and need a display. On a server, set `PYVISTA_OFF_SCREEN=true` or run the notebooks in Jupyter with a notebook backend.
 - **ANTs** is needed only for `abased_parcellation` (`segmentationtools`). That example is not executed in the notebook.
 
@@ -29,6 +29,7 @@ The `examples` extra installs `itables`, which some notebooks use to display tab
 | Notebook | Content |
 | --- | --- |
 | [`clabtoolkit_examples.ipynb`](clabtoolkit_examples.ipynb) | Core objects (`Parcellation`, `Surface`, `Tractogram`, `Connectome`), morphometry and the plotting of objects and scenes |
+| [`examples-representative-workflows.ipynb`](examples-representative-workflows.ipynb) | Three end-to-end workflows: correcting a parcellation and computing regional statistics, selecting the streamlines that connect two regions, and the connectivity of the hippocampus and the temporal lobe |
 
 ### Data organization
 
