@@ -1,7 +1,7 @@
 pointstools module
 ==================
 
-The pointstools module provides point cloud representation and manipulation, with per-point scalar data, spatial filtering, affine transformation and 3D visualization.
+The pointstools module provides point cloud representation and manipulation, with per-point scalar data, spatial filtering, affine transformation, conversion to surfaces and 3D visualization.
 
 Key Features
 ------------
@@ -11,6 +11,7 @@ Key Features
 - Colortable support for categorical point data
 - Conversion to pandas DataFrames and multi-format saving
 - Merging of multiple point clouds
+- Conversion to a surface of spheres, transferring the maps as parcellations or vertex-wise maps
 - 3D rendering via PyVista
 
 API reference
@@ -43,6 +44,7 @@ Key Methods:
 - ``get_pointwise_colors()``: Compute per-point colors for an overlay
 - ``list_maps()``: List the available scalar maps
 - ``to_dataframe()``: Convert the point cloud to a pandas DataFrame
+- ``to_surface()``: Convert the point cloud to a surface with one sphere per point, transferring its maps
 - ``get_info()``: Print a comprehensive summary
 - ``plot()``: Render the point cloud with an optional overlay
 
@@ -95,6 +97,21 @@ Colortables and visualization::
     # Attach a colortable to a categorical map and render
     pc.load_colortable("/path/to/lookup_table.lut", map_name="region")
     pc.plot(maps="fa", cmap="viridis")
+
+Conversion to a surface::
+
+    # One triangular sphere (162 vertices by default) centered on each point.
+    # The radius can be a single value or one value per point.
+    surf = pc.to_surface(radius=2.0)
+
+    # Maps with a colortable (e.g. the regions) are stored as a parcellation, so all
+    # the vertices of a sphere get the color of its point. Maps without a colortable
+    # (e.g. "fa") are stored as vertex-wise maps.
+    surf.plot(maps="default", cmap=None)
+
+    # Get the parcellation of the maps with a colortable as AnnotParcellation objects
+    surf, annots = pc.to_surface(maps="default", return_annotations=True)
+    annots["default"].save_annotation("/path/to/lh.points.annot")
 
 Export and merging::
 

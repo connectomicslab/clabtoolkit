@@ -1,5 +1,6 @@
 """The pointstools module provides point cloud representation and manipulation, with
-per-point scalar data, spatial filtering, affine transformation and 3D visualization.
+per-point scalar data, spatial filtering, affine transformation, conversion to surfaces
+and 3D visualization.
 """
 
 import copy
@@ -1429,6 +1430,182 @@ class PointCloud:
             point_colors[:, 3] *= 255
 
         return np.clip(np.round(point_colors), 0, 255).astype(np.uint8)
+
+    ###############################################################################################
+    def to_surface(
+        self,
+        radius: float | list[float] | np.ndarray = 1.0,
+        subdivisions: int = 2,
+        maps: str | list[str] | None = None,
+        hemi: str = "lh",
+        name: str | None = None,
+        return_annotations: bool = False,
+    ):
+        """
+        Convert the point cloud to a surface made of one sphere per point.
+
+        Each point becomes a triangular icosphere centered on its coordinates. All
+        the spheres are merged in a single :class:`~clabtoolkit.surfacetools.Surface`
+        whose vertices are stored sphere after sphere, following the order of the
+        points. The maps of the point cloud are transferred to the surface assigning
+        the value of each point to all the vertices of its sphere:
+
+        - A map with a colortable is stored as a parcellation, so the color of each
+          point is the color of all the vertices of its sphere. Optionally, it is
+          also returned as an :class:`~clabtoolkit.freesurfertools.AnnotParcellation`.
+        - A map without a colortable is stored as a vertex-wise map.
+
+        Parameters
+        ----------
+        radius : float, list or np.ndarray, optional
+            Radius of the spheres, in the units of the coordinates. It can be a
+            single value or one value per point. Default is 1.0.
+
+        subdivisions : int, optional
+            Number of subdivisions of the icosahedron used to build each sphere.
+            Each sphere has ``10 * 4**subdivisions + 2`` vertices (162 for the
+            default value of 2). Default is 2.
+
+        maps : str, list of str or None, optional
+            Maps of the point cloud to transfer to the surface. If None, all the maps
+            in ``point_data`` are transferred. Use an empty list to transfer none.
+
+        hemi : str, optional
+            Hemisphere assigned to the surface ('lh' or 'rh'). Default is 'lh'.
+
+        name : str, optional
+            Name of the surface. If None, the name of the point cloud is used.
+
+        return_annotations : bool, optional
+            If True, also return a dictionary with an
+            :class:`~clabtoolkit.freesurfertools.AnnotParcellation` for each
+            transferred map that has a colortable. Default is False.
+
+        Returns
+        -------
+        surface : Surface
+            Surface with ``len(self) * (10 * 4**subdivisions + 2)`` vertices.
+
+        annotations : dict[str, AnnotParcellation]
+            Only returned if ``return_annotations`` is True. Maps the name of each
+            map with a colortable to its parcellation, which can be saved with
+            ``save_annotation``.
+
+        Raises
+        ------
+        ValueError
+            If the point cloud is empty, if it has non-finite coordinates, if
+            ``subdivisions`` is negative, if a radius is not positive or the
+            number of radii does not match the number of points, or if a requested
+            map does not exist.
+
+        Notes
+        -----
+        The vertices of the point ``i`` are the ones with index ``i * n`` to
+        ``(i + 1) * n - 1``, where ``n`` is the number of vertices of a sphere.
+        If the map ``default`` is not transferred, the surface keeps its own
+        uniform ``default`` parcellation.
+
+        Examples
+        --------
+        >>> pc = PointCloud(points=centroids, region_colors=colors, region_names=names)
+        >>> pc.add_point_data(volumes, name="volume")
+        >>> surf = pc.to_surface(radius=2.0)
+        >>> surf.mesh.n_points
+        ...
+        >>>
+        >>> # Also get the parcellation of the colored map
+        >>> surf, annots = pc.to_surface(maps="default", return_annotations=True)
+        >>> annots["default"].save_annotation("spheres.annot")
+        """
+
+        # Imported here to keep the module light and avoid circular imports
+        from . import freesurfertools as cltfree
+        from . import surfacetools as cltsurf
+
+        if self.coords is None or len(self.coords) == 0:
+            raise ValueError("Cannot convert an empty point cloud to a surface")
+
+        coords = np.asarray(self.coords, dtype=float)
+        if not np.isfinite(coords).all():
+            raise ValueError("The point cloud has non-finite coordinates")
+
+        n_points = len(coords)
+
+        if subdivisions < 0:
+            raise ValueError(f"subdivisions must be >= 0, got {subdivisions}")
+
+        radius = np.asarray(radius, dtype=float)
+        if radius.ndim == 0:
+            radius = np.full(n_points, float(radius))
+        elif radius.shape != (n_points,):
+            raise ValueError(
+                f"radius must be a single value or one value per point "
+                f"({n_points}), got shape {radius.shape}"
+            )
+        if not (np.isfinite(radius).all() and (radius > 0).all()):
+            raise ValueError("radius must be positive and finite")
+
+        # Select the maps to transfer
+        if maps is None:
+            maps = list(self.point_data.keys())
+        elif isinstance(maps, str):
+            maps = [maps]
+
+        missing = [map_name for map_name in maps if map_name not in self.point_data]
+        if missing:
+            raise ValueError(
+                f"Maps not found: {', '.join(missing)}. "
+                f"Available maps: {', '.join(self.point_data)}"
+            )
+
+        # One unit sphere, replicated and moved to every point
+        import pyvista as pv
+
+        sphere = pv.Icosphere(radius=1.0, nsub=subdivisions)
+        sphere_verts = np.asarray(sphere.points)
+        sphere_faces = np.asarray(sphere.regular_faces)
+        n_verts = len(sphere_verts)
+
+        vertices = (
+            sphere_verts[None, :, :] * radius[:, None, None] + coords[:, None, :]
+        ).reshape(-1, 3)
+        faces = (
+            sphere_faces[None, :, :] + (np.arange(n_points) * n_verts)[:, None, None]
+        ).reshape(-1, 3)
+
+        surface = cltsurf.Surface(
+            vertices=vertices,
+            faces=faces,
+            hemi=hemi,
+            name=self.name if name is None else name,
+        )
+
+        annotations: dict[str, cltfree.AnnotParcellation] = {}
+        for map_name in maps:
+            vertex_values = np.repeat(self.point_data[map_name], n_verts)
+
+            if map_name in self.colortables:
+                # The colortables of both classes share the same layout. Copies are
+                # used because AnnotParcellation rescales the colors in place.
+                ctable = copy.deepcopy(self.colortables[map_name]["color_table"])
+                names = copy.deepcopy(list(self.colortables[map_name]["names"]))
+
+                surface._store_parcellation_data(
+                    vertex_values, copy.deepcopy(ctable), names, map_name
+                )
+
+                if return_annotations:
+                    annot = cltfree.AnnotParcellation()
+                    annot.create_from_data(
+                        vertex_values, ctable, names, annot_id=map_name, hemi=hemi
+                    )
+                    annotations[map_name] = annot
+
+            else:
+                surface.mesh.point_data[map_name] = vertex_values
+
+        return (surface, annotations) if return_annotations else surface
 
     ###############################################################################################
     def list_maps(self) -> list[str]:

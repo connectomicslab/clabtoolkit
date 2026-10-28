@@ -193,7 +193,7 @@ Diffusion data, tractograms, point clouds and connectomes.
       :link-type: doc
       :class-card: clab-card sd-shadow-sm
 
-      Point clouds with maps, filtering and 3D plots.
+      Point clouds with maps, filtering, 3D plots and conversion to surfaces.
 
       +++
       :doc:`API <modules/pointstools>` · `Examples <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/examples-pointstools-methods.ipynb>`__

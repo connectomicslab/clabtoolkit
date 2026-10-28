@@ -55,7 +55,7 @@ The `examples` extra installs `itables`, which some notebooks use to display tab
 | [`examples-parcellationtools-methods.ipynb`](examples-parcellationtools-methods.ipynb) | `parcellationtools` | Parcellations: region selection, centroids, volumes, time series and functional connectivity |
 | [`examples-freesurfertools-methods.ipynb`](examples-freesurfertools-methods.ipynb) | `freesurfertools` | FreeSurfer subjects, annotations and statistics tables |
 | [`examples-morphometrytools-methods.ipynb`](examples-morphometrytools-methods.ipynb) | `morphometrytools` | Regional area, volume and Euler number, and parsing of FreeSurfer statistics |
-| [`examples-pointstools-methods.ipynb`](examples-pointstools-methods.ipynb) | `pointstools` | Point clouds: filtering, transformations and merging |
+| [`examples-pointstools-methods.ipynb`](examples-pointstools-methods.ipynb) | `pointstools` | Point clouds: filtering, transformations, merging and conversion to surfaces |
 
 ### Connectivity and networks
 

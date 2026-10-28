@@ -2,6 +2,11 @@
 History
 =======
 
+Unreleased
+----------
+
+* Added ``PointCloud.to_surface``, which converts the points to a surface with one triangular sphere per point and transfers the maps: maps with a colortable become a parcellation (optionally returned as ``AnnotParcellation`` objects) and the rest vertex-wise maps
+
 0.6.0 (2026-10-25)
 ------------------
 

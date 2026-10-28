@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import clabtoolkit.freesurfertools as cltfree
 import clabtoolkit.pointstools as cltpts
 from clabtoolkit.pointstools import PointCloud
 
@@ -952,6 +953,109 @@ class TestGetInfo:
             "SCALAR DATA PER POINT (0 maps)" in out
             and "No scalar data available" in out
         )
+
+
+####################################################################################################
+# Conversion to a surface
+####################################################################################################
+class TestToSurface:
+    N_VERTS = 162  # Vertices of an icosphere with 2 subdivisions
+
+    def test_one_sphere_per_point(self, cloud):
+        surf = cloud.to_surface()
+        assert surf.mesh.n_points == 6 * self.N_VERTS
+        assert surf.mesh.n_cells == 6 * 320
+        assert surf.hemi == "lh" and surf.name == "regions"
+
+    @pytest.mark.parametrize("subdivisions", [0, 1, 3])
+    def test_subdivisions(self, plain, subdivisions):
+        surf = plain.to_surface(subdivisions=subdivisions)
+        assert surf.mesh.n_points == 6 * (10 * 4**subdivisions + 2)
+
+    def test_spheres_are_centered_on_the_points(self, cloud):
+        verts = cloud.to_surface(radius=2.5).get_vertices()
+        for i, point in enumerate(POINTS):
+            sphere = verts[i * self.N_VERTS : (i + 1) * self.N_VERTS]
+            assert np.allclose(sphere.mean(axis=0), point, atol=1e-5)
+            assert np.allclose(np.linalg.norm(sphere - point, axis=1), 2.5, atol=1e-5)
+
+    def test_radius_per_point(self, plain):
+        radii = np.arange(1, 7, dtype=float)
+        verts = plain.to_surface(radius=radii).get_vertices()
+        for i, point in enumerate(POINTS):
+            sphere = verts[i * self.N_VERTS : (i + 1) * self.N_VERTS]
+            assert np.allclose(np.linalg.norm(sphere - point, axis=1), radii[i])
+
+    def test_colortable_map_is_a_parcellation(self, cloud):
+        surf = cloud.to_surface()
+        labels = surf.mesh.point_data["default"]
+        expected = np.repeat(cloud.point_data["default"], self.N_VERTS)
+        assert np.array_equal(labels, expected)
+        assert surf.colortables["default"]["names"] == NAMES
+        assert surf.get_overlay_info("default")["num_regions"] == 6
+
+    def test_map_without_colortable_is_vertexwise(self, cloud):
+        surf = cloud.to_surface()
+        assert "val" not in surf.colortables
+        assert np.array_equal(
+            surf.mesh.point_data["val"], np.repeat(np.arange(6) * 10.0, self.N_VERTS)
+        )
+
+    def test_annotation_is_returned_for_colortable_maps(self, cloud):
+        surf, annots = cloud.to_surface(return_annotations=True)
+        assert list(annots) == ["default"]  # "val" has no colortable
+        annot = annots["default"]
+        assert annot.regnames == NAMES and annot.hemi == "lh"
+        assert np.array_equal(annot.codes, surf.mesh.point_data["default"])
+        assert annot.regtable.shape == (6, 5)
+        # Every vertex of a sphere has the color of its point
+        first = annot.regtable[annot.regtable[:, 4] == annot.codes[0], :3][0]
+        assert np.array_equal(first, [255, 0, 0])
+
+    def test_annotation_can_be_saved_and_loaded(self, tmp_path, cloud):
+        _, annots = cloud.to_surface(maps="default", return_annotations=True)
+        annots["default"].save_annotation(str(tmp_path / "lh.spheres.annot"))
+        loaded = cltfree.AnnotParcellation(tmp_path / "lh.spheres.annot")
+        assert loaded.regnames == NAMES
+        assert len(loaded.codes) == 6 * self.N_VERTS
+
+    def test_conversion_leaves_the_point_cloud_untouched(self, cloud):
+        before = cloud.colortables["default"]["color_table"].copy()
+        cloud.to_surface(return_annotations=True)
+        assert np.array_equal(cloud.colortables["default"]["color_table"], before)
+        assert set(cloud.point_data) == {"default", "val"}
+
+    def test_map_selection(self, cloud):
+        surf = cloud.to_surface(maps="val")
+        assert "val" in surf.mesh.point_data
+        # The surface keeps its own uniform default parcellation
+        assert len(np.unique(surf.mesh.point_data["default"])) == 1
+        assert list(cloud.to_surface(maps=[], return_annotations=True)[1]) == []
+
+    def test_hemisphere_and_name(self, cloud):
+        surf = cloud.to_surface(hemi="rh", name="blobs")
+        assert surf.hemi == "rh" and surf.name == "blobs"
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            ({"maps": "missing"}, "Maps not found"),
+            ({"subdivisions": -1}, "subdivisions"),
+            ({"radius": 0}, "positive"),
+            ({"radius": [1.0, 2.0]}, "one value per point"),
+        ],
+    )
+    def test_invalid_arguments(self, cloud, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            cloud.to_surface(**kwargs)
+
+    def test_empty_and_non_finite_clouds_are_rejected(self):
+        with pytest.raises(ValueError, match="empty"):
+            PointCloud().to_surface()
+        bad = POINTS.copy()
+        bad[2, 1] = np.nan
+        with pytest.raises(ValueError, match="non-finite"):
+            PointCloud(bad).to_surface()
 
 
 ####################################################################################################

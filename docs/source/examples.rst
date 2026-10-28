@@ -207,7 +207,7 @@ One notebook per module, with the examples of each function and method. Click a 
       :link-type: url
       :class-card: clab-card sd-shadow-sm
 
-      Point clouds with maps, filtering and 3D plots.
+      Point clouds with maps, filtering, 3D plots and conversion to surfaces.
 
       +++
       :doc:`API reference <modules/pointstools>`
