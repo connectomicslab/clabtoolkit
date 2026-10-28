@@ -10,8 +10,20 @@ The few images that the sample data lacks, such as functional images, are simula
 General overview
 ----------------
 
-* `clabtoolkit_examples.ipynb <https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/clabtoolkit_examples.ipynb>`_:
-  the core objects (``Parcellation``, ``Surface``, ``Tractogram`` and ``Connectome``), morphometry and visualization.
+The best place to start. Click the card to open the notebook on GitHub.
+
+.. grid:: 1 2 2 3
+   :gutter: 3
+   :class-container: clab-grid
+
+   .. grid-item-card:: clabtoolkit examples
+      :img-top: _static/icons/clabtoolkit_examples.svg
+      :link: https://github.com/connectomicslab/clabtoolkit/blob/main/usage_examples/clabtoolkit_examples.ipynb
+      :link-type: url
+      :class-card: clab-card sd-shadow-sm
+
+      The core objects (``Parcellation``, ``Surface``, ``Tractogram`` and ``Connectome``), morphometry and the
+      visualization of objects and scenes.
 
 Representative workflows
 ------------------------
