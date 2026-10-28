@@ -109,3 +109,5 @@ ENV/
 
 # Test data files (large files not suitable for repository)
 tests/testdata/
+# Sample data unpacked next to the bundled data by fetch_sample_data
+clabtoolkit/data/TestData-CLAB/
