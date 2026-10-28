@@ -72,8 +72,8 @@ def compute_reg_val_fromannot(
     Parameters
     ----------
     metric_file : str, Path or np.ndarray
-        Path to a FreeSurfer surface map (e.g. lh.thickness) or array with one
-        value per vertex.
+        Path to a FreeSurfer surface map (e.g. lh.thickness) or to a GIFTI map
+        (e.g. thickness.shape.gii), or array with one value per vertex.
 
     parc_file : str, Path or cltfree.AnnotParcellation
         Path to the annotation file or AnnotParcellation object.
@@ -146,7 +146,7 @@ def compute_reg_val_fromannot(
         filename = str(metric_file)
         if not os.path.exists(filename):
             raise FileNotFoundError(f"Metric file not found: {filename}")
-        metric_vect = nib.freesurfer.io.read_morph_data(filename)
+        metric_vect = _read_surface_metric(filename)
     elif isinstance(metric_file, np.ndarray):
         metric_vect = metric_file.ravel()
     else:
@@ -2084,6 +2084,19 @@ def _check_unique_names(names) -> None:
             f"Several regions share the same name: {duplicates}. "
             "Their values would overwrite each other in the table."
         )
+
+
+def _read_surface_metric(filename: str) -> np.ndarray:
+    """Read a vertex-wise map from a FreeSurfer morphometry file or a GIFTI (.gii) file."""
+    if filename.lower().endswith(".gii"):
+        arrays = [np.squeeze(darray.data) for darray in nib.load(filename).darrays]
+        if len(arrays) != 1:
+            raise ValueError(
+                f"The GIFTI metric file {filename} has {len(arrays)} data arrays instead of 1"
+            )
+        return arrays[0]
+
+    return nib.freesurfer.io.read_morph_data(filename)
 
 
 def _check_vertex_count(annot, n_vertices: int, what: str) -> None:

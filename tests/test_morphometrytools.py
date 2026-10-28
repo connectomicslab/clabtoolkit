@@ -1127,6 +1127,36 @@ class TestComputeRegValFromAnnot:
         assert df["Session"].unique().tolist() == ["M00"]
         assert value_of(df, "ctx-lh-regB") == pytest.approx(4.5)
 
+    def test_gifti_metric_file(self, tmp_path, annot):
+        path = tmp_path / "sub-01_ses-M00_hemi-L_thickness.shape.gii"
+        gii = nib.gifti.GiftiImage()
+        gii.add_gifti_data_array(
+            nib.gifti.GiftiDataArray(
+                self.VALUES.astype(np.float32), intent="NIFTI_INTENT_SHAPE"
+            )
+        )
+        nib.save(gii, str(path))
+        df, values, _ = cltmorph.compute_reg_val_fromannot(
+            path, annot, "lh", metric="thickness"
+        )
+        np.testing.assert_allclose(values, self.VALUES)
+        assert set(df["MetricFile"]) == {str(path)}
+        assert df["Participant"].unique().tolist() == ["01"]
+        assert value_of(df, "ctx-lh-regB") == pytest.approx(4.5)
+
+    def test_gifti_metric_file_with_several_arrays(self, tmp_path, annot):
+        path = tmp_path / "two_maps.shape.gii"
+        gii = nib.gifti.GiftiImage()
+        for _ in range(2):
+            gii.add_gifti_data_array(
+                nib.gifti.GiftiDataArray(
+                    self.VALUES.astype(np.float32), intent="NIFTI_INTENT_SHAPE"
+                )
+            )
+        nib.save(gii, str(path))
+        with pytest.raises(ValueError, match="data arrays"):
+            cltmorph.compute_reg_val_fromannot(path, annot, "lh")
+
     def test_without_bids_entities(self, tmp_path, annot):
         path = tmp_path / "sub-01_ses-M00_thickness.curv"
         nib.freesurfer.io.write_morph_data(str(path), self.VALUES.astype(np.float32))
