@@ -9,6 +9,14 @@ Unreleased
 * Added the ``groups`` option to ``Connectome.plot_matrix``, which orders the regions by group (given by region names or codes), separates the groups with lines and labels them
 * Renamed the ``PointCloud`` class to ``PointsCloud``, ``merge_pointclouds`` to ``merge_pointsclouds`` and its ``pointclouds`` parameter to ``pclouds``. The old names are not kept as aliases
 * Added ``PointsCloud.to_surface``, which converts the points to a surface with one triangular sphere per point and transfers the maps: maps with a colortable become a parcellation (optionally returned as ``AnnotParcellation`` objects) and the rest vertex-wise maps
+* Added ``list_sample_data``, ``fetch_sample_data`` and ``get_sample_data_dir`` to ``misctools``. The sample data (the Colin27 average brain in the tallin space) is published in a Zenodo record (DOI 10.5281/zenodo.23702131): the surfaces, cortical maps and tractograms are downloaded the first time they are needed with ``pooch``, checked against their SHA-256 checksums and cached in the user cache folder (set ``CLABTOOLKIT_DATA_DIR`` to use another one), while the annotations, the parcellation and the transform are shipped with the package. ``pooch`` is now a dependency
+* Reorganized the sample data of the package: ``data/parcellationtools`` is now ``data/parcellations``, the subject is ``sub-colin27``, the file names follow the BIDS entity order (``hemi`` before ``space``) and the annotations are ``.label.gii`` files. The surfaces, cortical maps and tractograms were removed from the package
+* Added ``Surface.load_from_file`` support for GIFTI, VTK, PLY, OBJ and STL surfaces, ``Surface.save_surface`` GIFTI export and GIFTI shape maps in ``Surface.load_scalar_maps``
+* ``compute_reg_val_fromannot`` now reads GIFTI maps
+* Added ``Tractogram.remove_maps``, which removes one or several maps and their colortables
+* ``AnnotParcellation.export_to_tsv`` gives the index 0 to the ``unknown`` region and numbers the other regions from 1
+* The usage notebooks, the quickstart and the README now use the sample data retrieved from Zenodo instead of simulated data or FreeSurfer outputs, and the new notebook ``examples-representative-workflows.ipynb`` and the docs cards of the workflows and ``clabtoolkit_examples.ipynb`` were added
+* The table of contents of the usage notebooks links to the headings, so it works in the VS Code outline, and typos were corrected
 
 0.6.0 (2026-10-25)
 ------------------
