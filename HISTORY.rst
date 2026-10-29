@@ -2,8 +2,8 @@
 History
 =======
 
-Unreleased
-----------
+0.6.1 (2026-10-29)
+------------------
 
 * Added the ``save_path``, ``dpi`` and ``overwrite`` options to ``Connectome.plot_matrix``, to save the figure instead of showing it
 * Added the ``groups`` option to ``Connectome.plot_matrix``, which orders the regions by group (given by region names or codes), separates the groups with lines and labels them
