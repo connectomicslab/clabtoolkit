@@ -401,7 +401,7 @@ def prepare_list_obj_for_plotting(
     prepared_objects = []
     for obj in obj2plot:
         if not isinstance(
-            obj, (cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud)
+            obj, (cltsurf.Surface, clttract.Tractogram, cltpts.PointsCloud)
         ):
             raise TypeError(
                 "All objects in obj2plot must be Surface or Tractogram instances"
@@ -556,7 +556,7 @@ def prepare_obj_for_plotting(
 
         #     obj2plot.mesh.point_data["rgba"] = rgba_colors
 
-    elif isinstance(obj2plot, cltpts.PointCloud):
+    elif isinstance(obj2plot, cltpts.PointsCloud):
         if vmin is None:
             if range_min is not None:
                 vmin = range_min
@@ -2309,7 +2309,7 @@ def get_map_characteristics(objs2plot, maps_dict: dict):
 ################################################################################################
 def get_map_limits(
     objs2plot: (
-        list[cltsurf.Surface] | list[clttract.Tractogram] | list[cltpts.PointCloud]
+        list[cltsurf.Surface] | list[clttract.Tractogram] | list[cltpts.PointsCloud]
     ),
     map_name: str,
     v_limits: tuple[float | None, float | None],
@@ -2440,7 +2440,7 @@ def get_data_from_object(obj, map_name):
     if isinstance(obj, cltsurf.Surface):
         return obj.mesh.point_data[map_name]
 
-    elif isinstance(obj, cltpts.PointCloud):
+    elif isinstance(obj, cltpts.PointsCloud):
         return obj.point_data[map_name]
 
     elif isinstance(obj, clttract.Tractogram):
@@ -2453,7 +2453,7 @@ def get_data_from_object(obj, map_name):
     else:
         raise TypeError(
             f"Unsupported object type: {type(obj)}. "
-            "Expected cltsurf.Surface, cltpts.PointCloud, clttract.Tractogram."
+            "Expected cltsurf.Surface, cltpts.PointsCloud, clttract.Tractogram."
         )
 
 
@@ -2510,7 +2510,7 @@ def create_default_object_config(obj2plot):
                 (name, sing_obj.mesh.point_data[name]) for name in all_maps
             ]
 
-        elif isinstance(sing_obj, cltpts.PointCloud):
+        elif isinstance(sing_obj, cltpts.PointsCloud):
             all_maps = list(sing_obj.point_data.keys())
             map_data_pairs = [(name, sing_obj.point_data[name]) for name in all_maps]
 
@@ -2644,7 +2644,7 @@ def create_default_map_config(obj2plot):
                 data = sing_obj.mesh.point_data[map_name]
                 process_map(map_name, data, has_colortable, obj_idx)
 
-        elif isinstance(sing_obj, cltpts.PointCloud):
+        elif isinstance(sing_obj, cltpts.PointsCloud):
             for map_name in sing_obj.point_data.keys():
                 has_colortable = map_name in sing_obj.colortables
                 data = sing_obj.point_data[map_name]
@@ -2979,7 +2979,7 @@ def find_common_map_names(obj2plot, map_names):
             elif isinstance(sing_obj, cltsurf.Surface):
                 available_maps = list(sing_obj.mesh.point_data.keys())
 
-            elif isinstance(sing_obj, cltpts.PointCloud):
+            elif isinstance(sing_obj, cltpts.PointsCloud):
                 available_maps = list(sing_obj.point_data.keys())
 
             # Check if colortable is missing

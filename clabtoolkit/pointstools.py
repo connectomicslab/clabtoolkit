@@ -26,7 +26,7 @@ from . import misctools as cltmisc
 ############                                                                            ############
 ####################################################################################################
 ####################################################################################################
-class PointCloud:
+class PointsCloud:
     """
     A class to represent and manipulate point clouds.
 
@@ -50,7 +50,7 @@ class PointCloud:
         name: str = "default",
     ) -> None:
         """
-        Initializes the PointCloud object.
+        Initializes the PointsCloud object.
 
         Parameters
         ----------
@@ -88,10 +88,10 @@ class PointCloud:
         Examples
         --------
         >>> # Single color for the whole point cloud
-        >>> pc = PointCloud(points=np.random.rand(100, 3), region_colors="#FF0000")
+        >>> pc = PointsCloud(points=np.random.rand(100, 3), region_colors="#FF0000")
         >>>
         >>> # One color and one name per point (e.g. region centroids)
-        >>> pc = PointCloud(
+        >>> pc = PointsCloud(
         ...     points=centroids,
         ...     region_colors=["#FF0000", "#00FF00"],
         ...     region_names=["thalamus", "putamen"],
@@ -205,7 +205,7 @@ class PointCloud:
     ###############################################################################################
     def __repr__(self) -> str:
         """
-        String representation of the PointCloud object.
+        String representation of the PointsCloud object.
 
         Returns:
         -------
@@ -214,42 +214,42 @@ class PointCloud:
         n_points = len(self)
         n_attributes = len(self.point_data)
         return (
-            f"PointCloud(name='{self.name}', "
+            f"PointsCloud(name='{self.name}', "
             f"n_points={n_points}, "
             f"n_attributes={n_attributes})"
         )
 
     ###############################################################################################
-    def __add__(self, other: "PointCloud") -> "PointCloud":
+    def __add__(self, other: "PointsCloud") -> "PointsCloud":
         """
         Concatenate two point clouds using the + operator.
 
         Parameters:
         -----------
-            other (PointCloud):
-                The PointCloud object to concatenate.
+            other (PointsCloud):
+                The PointsCloud object to concatenate.
 
         Returns:
         -------
-            PointCloud:
-                A new PointCloud containing the concatenated data.
+            PointsCloud:
+                A new PointsCloud containing the concatenated data.
 
         Examples:
         --------
-        >>> pc1 = PointCloud(points=np.random.rand(100, 3))
-        >>> pc2 = PointCloud(points=np.random.rand(50, 3))
+        >>> pc1 = PointsCloud(points=np.random.rand(100, 3))
+        >>> pc2 = PointsCloud(points=np.random.rand(50, 3))
         >>> pc3 = pc1 + pc2  # Creates new point cloud with 150 points
         """
         return self.append(other, inplace=False)
 
     ###############################################################################################
-    def copy(self) -> "PointCloud":
+    def copy(self) -> "PointsCloud":
         """
-        Creates a deep copy of the PointCloud object.
+        Creates a deep copy of the PointsCloud object.
 
         Returns
         -------
-            PointCloud: A new PointCloud instance with copied data.
+            PointsCloud: A new PointsCloud instance with copied data.
         """
         return copy.deepcopy(self)
 
@@ -297,7 +297,7 @@ class PointCloud:
     ###############################################################################################
     def apply_affine(
         self, affine: np.ndarray, inverse: bool = False, inplace: bool = True
-    ) -> Optional["PointCloud"]:
+    ) -> Optional["PointsCloud"]:
         """
         Applies an affine transformation to the point coordinates.
 
@@ -315,8 +315,8 @@ class PointCloud:
 
         Returns
         -------
-            PointCloud or None:
-                If inplace=False, returns a new transformed PointCloud.
+            PointsCloud or None:
+                If inplace=False, returns a new transformed PointsCloud.
                 If inplace=True, returns None.
 
         Raises
@@ -325,7 +325,7 @@ class PointCloud:
 
         Examples
         --------
-        >>> pc = PointCloud(coords)
+        >>> pc = PointsCloud(coords)
         >>> pc.apply_affine(affine_matrix)
 
         >>> # Keeping the original point cloud untouched
@@ -373,7 +373,7 @@ class PointCloud:
         y_range: tuple[float, float] | None = None,
         z_range: tuple[float, float] | None = None,
         inplace: bool = True,
-    ) -> Optional["PointCloud"]:
+    ) -> Optional["PointsCloud"]:
         """
         Filters points based on spatial bounds.
 
@@ -394,8 +394,8 @@ class PointCloud:
 
         Returns
         -------
-            PointCloud or None:
-                If inplace=False, returns a new filtered PointCloud.
+            PointsCloud or None:
+                If inplace=False, returns a new filtered PointsCloud.
                 If inplace=True, returns None.
         """
         if self.coords is None:
@@ -474,7 +474,7 @@ class PointCloud:
         condition: str,
         inplace: bool = True,
         **kwargs,
-    ) -> Optional["PointCloud"]:
+    ) -> Optional["PointsCloud"]:
         """
         Filters points based on coordinate values or point_data attributes.
 
@@ -500,8 +500,8 @@ class PointCloud:
 
         Returns
         -------
-            PointCloud or None:
-                If inplace=False, returns a new filtered PointCloud.
+            PointsCloud or None:
+                If inplace=False, returns a new filtered PointsCloud.
                 If inplace=True, returns None.
 
         Raises
@@ -512,7 +512,7 @@ class PointCloud:
 
         Examples
         --------
-        >>> pc = PointCloud(points=np.random.rand(1000, 3) * 100)
+        >>> pc = PointsCloud(points=np.random.rand(1000, 3) * 100)
         >>> pc.add_point_data(np.random.rand(1000), name="intensity")
 
         >>> # Filter by coordinate
@@ -614,8 +614,8 @@ class PointCloud:
             self.colortables = filtered_colortables
             return None
         else:
-            # Create new PointCloud with filtered data
-            new_pc = PointCloud(
+            # Create new PointsCloud with filtered data
+            new_pc = PointsCloud(
                 points=filtered_coords,
                 affine=self.affine.copy(),
                 name=f"{self.name}_filtered",
@@ -662,7 +662,7 @@ class PointCloud:
 
         Examples
         --------
-        >>> pc = PointCloud(points=np.random.rand(100, 3))
+        >>> pc = PointsCloud(points=np.random.rand(100, 3))
         >>> df = pc.to_dataframe()  # Basic: X, Y, Z columns
 
         >>> df = pc.to_dataframe(include_colortable=True)
@@ -813,7 +813,7 @@ class PointCloud:
 
     ###############################################################################################
     @classmethod
-    def load(cls, filename: str | Path, format: str = "npy") -> "PointCloud":
+    def load(cls, filename: str | Path, format: str = "npy") -> "PointsCloud":
         """
         Loads a point cloud from a file.
 
@@ -828,8 +828,8 @@ class PointCloud:
 
         Returns
         -------
-            PointCloud:
-                Loaded PointCloud object.
+            PointsCloud:
+                Loaded PointsCloud object.
 
         Raises
         ------
@@ -994,18 +994,18 @@ class PointCloud:
     ###############################################################################################
     def append(
         self,
-        other: "PointCloud",
+        other: "PointsCloud",
         inplace: bool = True,
         fill_value: float = np.nan,
         handle_colortable_conflicts: str = "warn",
-    ) -> Optional["PointCloud"]:
+    ) -> Optional["PointsCloud"]:
         """
-        Appends another PointCloud to this one by concatenating coordinates and data.
+        Appends another PointsCloud to this one by concatenating coordinates and data.
 
         Parameters
         ----------
-            other (PointCloud):
-                The PointCloud object to append.
+            other (PointsCloud):
+                The PointsCloud object to append.
 
             inplace (bool):
                 If True, modifies the current object. If False, returns a new object.
@@ -1024,14 +1024,14 @@ class PointCloud:
 
         Returns
         -------
-            PointCloud or None:
-                If inplace=False, returns a new concatenated PointCloud.
+            PointsCloud or None:
+                If inplace=False, returns a new concatenated PointsCloud.
                 If inplace=True, returns None.
 
         Raises
         ------
             ValueError:
-                If other is not a PointCloud object or if both point clouds are empty.
+                If other is not a PointsCloud object or if both point clouds are empty.
 
         Notes
         -----
@@ -1041,8 +1041,8 @@ class PointCloud:
 
         Examples
         --------
-        >>> pc1 = PointCloud(points=np.random.rand(100, 3), name="cloud1")
-        >>> pc2 = PointCloud(points=np.random.rand(50, 3), name="cloud2")
+        >>> pc1 = PointsCloud(points=np.random.rand(100, 3), name="cloud1")
+        >>> pc2 = PointsCloud(points=np.random.rand(50, 3), name="cloud2")
         >>> pc1.append(pc2)  # pc1 now has 150 points
 
         >>> # Or create a new combined cloud
@@ -1051,8 +1051,8 @@ class PointCloud:
         import warnings
 
         # Validate input
-        if not isinstance(other, PointCloud):
-            raise ValueError("Can only append another PointCloud object")
+        if not isinstance(other, PointsCloud):
+            raise ValueError("Can only append another PointsCloud object")
 
         # Handle empty point clouds
         if self.coords is None and other.coords is None:
@@ -1180,7 +1180,7 @@ class PointCloud:
 
         Examples
         --------
-        >>> pc = PointCloud(points=np.random.rand(10000, 3))
+        >>> pc = PointsCloud(points=np.random.rand(10000, 3))
         >>> pc.add_point_data(np.random.rand(10000), name="intensity")
         >>> pc.get_info()
         ╔════════════════════════════════════════════════════════════════╗
@@ -1508,7 +1508,7 @@ class PointCloud:
 
         Examples
         --------
-        >>> pc = PointCloud(points=centroids, region_colors=colors, region_names=names)
+        >>> pc = PointsCloud(points=centroids, region_colors=colors, region_names=names)
         >>> pc.add_point_data(volumes, name="volume")
         >>> surf = pc.to_surface(radius=2.0)
         >>> surf.mesh.n_points
@@ -1619,7 +1619,7 @@ class PointCloud:
 
         Examples:
         ---------
-        >>> points = PointCloud(points)
+        >>> points = PointsCloud(points)
         >>> maps = points.list_maps()
         >>> print("Available maps per point:", maps)
 
@@ -1791,23 +1791,23 @@ class PointCloud:
 
 
 ###############################################################################################
-def merge_pointclouds(
-    pointclouds: list[str | Path | PointCloud],
+def merge_pointsclouds(
+    pclouds: list[str | Path | PointsCloud],
     color_table: dict = None,
     map_name: str = "point_id",
-) -> PointCloud | None:
+) -> PointsCloud | None:
     """
     Merges multiple point clouds into a single point cloud.
 
     It combines all points and associated data from the input point clouds
-    into a new PointCloud object. The points of each input point cloud are
+    into a new PointsCloud object. The points of each input point cloud are
     labelled with a unique ID stored in the map `map_name`, and a color table
     is created to differentiate them.
 
     Parameters
     ----------
-    pointclouds : list of PointCloud, str or Path
-        Point clouds to merge. File paths are loaded with PointCloud.load
+    pclouds : list of PointsCloud, str or Path
+        Point clouds to merge. File paths are loaded with PointsCloud.load
         (npy format).
 
     color_table : dict, optional
@@ -1817,7 +1817,7 @@ def merge_pointclouds(
         not unique). The dictionary should contain:
 
             - 'names': List of names, one per point cloud.
-            - 'color_table': numpy.ndarray of shape (n_pointclouds, 5) with the RGBA
+            - 'color_table': numpy.ndarray of shape (n_pclouds, 5) with the RGBA
               colors (0-1 range) and the ID value of each point cloud.
             - 'lookup_table': Optional, can be None.
 
@@ -1827,14 +1827,14 @@ def merge_pointclouds(
 
     Returns
     -------
-    PointCloud or None
-        A new PointCloud containing all the points and associated data of the
+    PointsCloud or None
+        A new PointsCloud containing all the points and associated data of the
         input point clouds. None if the input list is empty.
 
     Raises
     ------
     TypeError
-        If pointclouds is not a list, contains items that are not PointCloud
+        If pclouds is not a list, contains items that are not PointsCloud
         objects or file paths, or if color_table is not a dictionary.
 
     ValueError
@@ -1843,32 +1843,32 @@ def merge_pointclouds(
 
     Examples
     --------
-    >>> pc1 = PointCloud(points=np.random.rand(100, 3), name="left")
-    >>> pc2 = PointCloud(points=np.random.rand(50, 3), name="right")
-    >>> merged = merge_pointclouds([pc1, pc2])
+    >>> pc1 = PointsCloud(points=np.random.rand(100, 3), name="left")
+    >>> pc2 = PointsCloud(points=np.random.rand(50, 3), name="right")
+    >>> merged = merge_pointsclouds([pc1, pc2])
     >>> len(merged)
     150
     >>> merged.colortables["point_id"]["names"]
     ['left', 'right']
     """
 
-    if not isinstance(pointclouds, list):
-        raise TypeError("pointclouds must be a list")
+    if not isinstance(pclouds, list):
+        raise TypeError("pclouds must be a list")
 
-    if any(not isinstance(pc, (str, Path, PointCloud)) for pc in pointclouds):
+    if any(not isinstance(pc, (str, Path, PointsCloud)) for pc in pclouds):
         raise TypeError(
-            "All items in pointclouds must be PointCloud objects, file paths, or Path objects"
+            "All items in pclouds must be PointsCloud objects, file paths, or Path objects"
         )
 
     # If the list is empty, return None
-    if not pointclouds:
+    if not pclouds:
         return None
 
     # Load the point clouds supplied as files
-    pointclouds = [
-        PointCloud.load(pc) if isinstance(pc, (str, Path)) else pc for pc in pointclouds
+    pclouds = [
+        PointsCloud.load(pc) if isinstance(pc, (str, Path)) else pc for pc in pclouds
     ]
-    n_clouds = len(pointclouds)
+    n_clouds = len(pclouds)
 
     if color_table is not None:
         if not isinstance(color_table, dict):
@@ -1900,7 +1900,7 @@ def merge_pointclouds(
         )
         ctable[:, :3] = ctable[:, :3] / 255  # Ensure colors are between 0 and 1
 
-        cloud_names = [pc.name for pc in pointclouds]
+        cloud_names = [pc.name for pc in pclouds]
         if len(set(cloud_names)) != n_clouds:
             cloud_names = [f"pointcloud_{i + 1}" for i in range(n_clouds)]
 
@@ -1913,10 +1913,10 @@ def merge_pointclouds(
     cloud_values = color_table_dict["color_table"][:, 4].astype(int)
 
     # Concatenate the point clouds and label the points of each one with its ID
-    merged = pointclouds[0].copy()
-    point_ids = [np.full(len(pointclouds[0]), cloud_values[0], dtype=int)]
+    merged = pclouds[0].copy()
+    point_ids = [np.full(len(pclouds[0]), cloud_values[0], dtype=int)]
 
-    for i, pc in enumerate(pointclouds[1:], start=1):
+    for i, pc in enumerate(pclouds[1:], start=1):
         merged.append(pc, inplace=True, handle_colortable_conflicts="skip")
         point_ids.append(np.full(len(pc), cloud_values[i], dtype=int))
 

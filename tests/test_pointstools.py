@@ -10,7 +10,7 @@ import pytest
 
 import clabtoolkit.freesurfertools as cltfree
 import clabtoolkit.pointstools as cltpts
-from clabtoolkit.pointstools import PointCloud
+from clabtoolkit.pointstools import PointsCloud
 
 # Six points, one per region
 POINTS = np.array(
@@ -46,7 +46,7 @@ def _quiet():
 @pytest.fixture
 def cloud():
     """Six regions (one per point) and a scalar map with the values 0, 10, ..., 50."""
-    pc = PointCloud(
+    pc = PointsCloud(
         POINTS.copy(), region_colors=COLORS, region_names=NAMES, name="regions"
     )
     pc.add_point_data(np.arange(6) * 10.0, name="val")
@@ -56,7 +56,7 @@ def cloud():
 @pytest.fixture
 def plain():
     """Six points sharing one region, without any map but the default one."""
-    return PointCloud(POINTS.copy(), name="plain")
+    return PointsCloud(POINTS.copy(), name="plain")
 
 
 @pytest.fixture
@@ -83,11 +83,11 @@ def apply(points, affine):
 ####################################################################################################
 class TestCreation:
     def test_empty(self):
-        pc = PointCloud()
+        pc = PointsCloud()
         assert pc.coords is None and len(pc) == 0 and pc.name == "default"
         assert pc.point_data == {} and np.array_equal(pc.affine, np.eye(4))
         assert list(pc.colortables) == ["default"]
-        assert repr(pc) == "PointCloud(name='default', n_points=0, n_attributes=0)"
+        assert repr(pc) == "PointsCloud(name='default', n_points=0, n_attributes=0)"
 
     def test_one_region_for_all_the_points(self, plain):
         assert len(plain) == 6 and np.array_equal(plain.coords, POINTS)
@@ -99,7 +99,7 @@ class TestCreation:
             np.array([191, 189, 189]) / 255
         )
         assert table["color_table"][0, 3:].tolist() == [1.0, 1.0]
-        assert repr(plain) == "PointCloud(name='plain', n_points=6, n_attributes=1)"
+        assert repr(plain) == "PointsCloud(name='plain', n_points=6, n_attributes=1)"
 
     def test_one_region_per_point(self, cloud):
         assert cloud.point_data["default"].tolist() == [1, 2, 3, 4, 5, 6]
@@ -113,34 +113,34 @@ class TestCreation:
         ["#ff0000", "red", (255, 0, 0), [255, 0, 0], np.array([255, 0, 0])],
     )
     def test_a_single_color_in_any_form(self, color):
-        pc = PointCloud(POINTS, region_colors=color)
+        pc = PointsCloud(POINTS, region_colors=color)
         assert pc.colortables["default"]["color_table"][0, :3].tolist() == [1, 0, 0]
         assert pc.point_data["default"].tolist() == [1] * 6
 
     def test_alpha(self):
-        pc = PointCloud(POINTS, region_colors="#ff0000", alpha=0.25)
+        pc = PointsCloud(POINTS, region_colors="#ff0000", alpha=0.25)
         assert pc.colortables["default"]["color_table"][0, 3] == 0.25
         assert (
-            PointCloud(POINTS, alpha=1).colortables["default"]["color_table"][0, 3]
+            PointsCloud(POINTS, alpha=1).colortables["default"]["color_table"][0, 3]
             == 1.0
         )
 
     def test_a_single_name_can_be_a_string(self):
-        pc = PointCloud(POINTS, region_names="only")
+        pc = PointsCloud(POINTS, region_names="only")
         assert pc.colortables["default"]["names"] == ["only"]
 
     def test_affine_and_name(self):
-        pc = PointCloud(POINTS, affine=np.diag([2.0, 2.0, 2.0, 1.0]), name="mine")
+        pc = PointsCloud(POINTS, affine=np.diag([2.0, 2.0, 2.0, 1.0]), name="mine")
         assert pc.name == "mine" and pc.affine[0, 0] == 2.0
 
     def test_points_from_a_dataframe(self):
         frame = pd.DataFrame(POINTS, columns=["X", "Y", "Z"])
         frame["ignored"] = 1.0
-        pc = PointCloud(frame)
+        pc = PointsCloud(frame)
         assert np.array_equal(pc.coords, POINTS) and list(pc.point_data) == ["default"]
 
     def test_two_dimensional_points_get_a_zero_z(self):
-        pc = PointCloud(POINTS[:, :2])
+        pc = PointsCloud(POINTS[:, :2])
         assert pc.coords.shape == (6, 3) and (pc.coords[:, 2] == 0).all()
         assert np.array_equal(pc.coords[:, :2], POINTS[:, :2])
 
@@ -169,7 +169,7 @@ class TestCreation:
     )
     def test_errors(self, kwargs, message):
         with pytest.raises(ValueError, match=message):
-            PointCloud(**kwargs)
+            PointsCloud(**kwargs)
 
     def test_copy_is_independent(self, cloud):
         clone = cloud.copy()
@@ -214,11 +214,11 @@ class TestPointData:
         with pytest.raises(ValueError, match=r"Data length \(5\)"):
             plain.add_point_data(np.zeros(5), name="short")
         with pytest.raises(ValueError, match="empty point cloud"):
-            PointCloud().add_point_data(np.zeros(3), name="x")
+            PointsCloud().add_point_data(np.zeros(3), name="x")
 
     def test_list_maps(self, cloud):
         assert cloud.list_maps() == ["default", "val"]
-        assert PointCloud().list_maps() is None  # No maps at all
+        assert PointsCloud().list_maps() is None  # No maps at all
 
 
 ####################################################################################################
@@ -233,8 +233,8 @@ class TestGeometry:
         assert cloud.get_centroid() == pytest.approx([20 / 3, 5 / 6, 25 / 6])
 
     def test_bounds_and_centroid_of_an_empty_cloud(self):
-        assert PointCloud().get_bounds() == {"x": (0, 0), "y": (0, 0), "z": (0, 0)}
-        assert PointCloud().get_centroid().tolist() == [0, 0, 0]
+        assert PointsCloud().get_bounds() == {"x": (0, 0), "y": (0, 0), "z": (0, 0)}
+        assert PointsCloud().get_centroid().tolist() == [0, 0, 0]
 
     def test_apply_affine(self, cloud):
         assert cloud.apply_affine(AFFINE) is None
@@ -257,7 +257,7 @@ class TestGeometry:
 
     def test_a_transformed_copy(self, cloud):
         moved = cloud.apply_affine(AFFINE, inplace=False)
-        assert isinstance(moved, PointCloud) and moved is not cloud
+        assert isinstance(moved, PointsCloud) and moved is not cloud
         assert moved.coords == pytest.approx(apply(POINTS, AFFINE))
         assert np.array_equal(moved.affine, AFFINE)
         assert np.array_equal(cloud.coords, POINTS) and np.array_equal(
@@ -266,8 +266,10 @@ class TestGeometry:
         assert moved.point_data["val"].tolist() == [0, 10, 20, 30, 40, 50]
 
     def test_affine_of_an_empty_cloud(self):
-        assert PointCloud().apply_affine(AFFINE) is None
-        assert isinstance(PointCloud().apply_affine(AFFINE, inplace=False), PointCloud)
+        assert PointsCloud().apply_affine(AFFINE) is None
+        assert isinstance(
+            PointsCloud().apply_affine(AFFINE, inplace=False), PointsCloud
+        )
 
     def test_affine_needs_a_4x4_matrix(self, cloud):
         with pytest.raises(ValueError, match="4x4"):
@@ -312,9 +314,9 @@ class TestFilterByBounds:
         assert len(empty) == 0 and empty.point_data["val"].size == 0
 
     def test_empty_cloud(self):
-        assert PointCloud().filter_by_bounds(x_range=(0, 1)) is None
+        assert PointsCloud().filter_by_bounds(x_range=(0, 1)) is None
         assert isinstance(
-            PointCloud().filter_by_bounds(x_range=(0, 1), inplace=False), PointCloud
+            PointsCloud().filter_by_bounds(x_range=(0, 1), inplace=False), PointsCloud
         )
 
 
@@ -393,7 +395,7 @@ class TestFilter:
 
     def test_empty_cloud(self):
         with pytest.raises(ValueError, match="empty point cloud"):
-            PointCloud().filter("X > 1")
+            PointsCloud().filter("X > 1")
 
 
 ####################################################################################################
@@ -450,8 +452,8 @@ class TestDataFrame:
             cloud.to_dataframe(include_colortable=True, colortable_name="without_data")
 
     def test_empty_cloud(self):
-        assert list(PointCloud().to_dataframe().columns) == ["X", "Y", "Z"]
-        frame = PointCloud().to_dataframe(include_colortable=True)
+        assert list(PointsCloud().to_dataframe().columns) == ["X", "Y", "Z"]
+        frame = PointsCloud().to_dataframe(include_colortable=True)
         assert (
             list(frame.columns) == ["index", "name", "color", "X", "Y", "Z"]
             and frame.empty
@@ -468,7 +470,7 @@ class TestSaveAndLoad:
         cloud.apply_affine(AFFINE)
         cloud.save(str(file) if as_str else file)
         assert [p.name for p in tmp_path.iterdir()] == ["cloud.npy"]  # No .npz appended
-        loaded = PointCloud.load(str(file) if as_str else file)
+        loaded = PointsCloud.load(str(file) if as_str else file)
         assert loaded.name == "regions" and len(loaded) == 6
         assert loaded.coords == pytest.approx(cloud.coords)
         assert loaded.affine == pytest.approx(AFFINE)
@@ -482,7 +484,7 @@ class TestSaveAndLoad:
         lines = file.read_text().splitlines()
         assert lines[0] == separator.join(["X", "Y", "Z", "default", "val"])
         assert len(lines) == 7
-        loaded = PointCloud.load(file, format=fmt)
+        loaded = PointsCloud.load(file, format=fmt)
         assert loaded.coords == pytest.approx(POINTS)
         assert set(loaded.point_data) == {"default", "val"}
         assert loaded.point_data["val"].tolist() == [0, 10, 20, 30, 40, 50]
@@ -502,7 +504,7 @@ class TestSaveAndLoad:
             }
         )
         table.to_csv(tmp_path / "seeds.txt", sep="\t", index=False)
-        loaded = PointCloud.load(tmp_path / "seeds.txt", format="txt")
+        loaded = PointsCloud.load(tmp_path / "seeds.txt", format="txt")
         assert len(loaded) == 3 and loaded.point_data["fa"].tolist() == [
             0.45,
             0.61,
@@ -515,7 +517,7 @@ class TestSaveAndLoad:
         self, tmp_path, cloud, fmt
     ):
         cloud.save(tmp_path / f"cloud.{fmt}", format=fmt, include_colortable=True)
-        loaded = PointCloud.load(tmp_path / f"cloud.{fmt}", format=fmt)
+        loaded = PointsCloud.load(tmp_path / f"cloud.{fmt}", format=fmt)
         table = loaded.colortables["default"]
         assert table["names"] == NAMES
         assert table["color_table"][:, 4].tolist() == [1, 2, 3, 4, 5, 6]
@@ -528,7 +530,7 @@ class TestSaveAndLoad:
 
     def test_a_reloaded_cloud_behaves_like_the_original(self, tmp_path, cloud):
         cloud.save(tmp_path / "cloud.csv", format="csv", include_colortable=True)
-        loaded = PointCloud.load(tmp_path / "cloud.csv", format="csv")
+        loaded = PointsCloud.load(tmp_path / "cloud.csv", format="csv")
         assert np.array_equal(
             loaded.get_pointwise_colors(), cloud.get_pointwise_colors()
         )
@@ -540,7 +542,7 @@ class TestSaveAndLoad:
     def test_only_the_regions_in_use_are_restored(self, tmp_path, cloud):
         kept = quiet_call(cloud.filter, "val >= 30", inplace=False)
         kept.save(tmp_path / "kept.csv", format="csv", include_colortable=True)
-        loaded = PointCloud.load(tmp_path / "kept.csv", format="csv")
+        loaded = PointsCloud.load(tmp_path / "kept.csv", format="csv")
         assert loaded.colortables["default"]["names"] == ["d", "e", "f"]
         assert loaded.point_data["default"].tolist() == [4, 5, 6]
 
@@ -555,7 +557,7 @@ class TestSaveAndLoad:
             include_colortable=True,
             colortable_name="hemisphere",
         )
-        loaded = PointCloud.load(tmp_path / "hemi.csv", format="csv")
+        loaded = PointsCloud.load(tmp_path / "hemi.csv", format="csv")
         # The file does not say which map the table describes: nothing is restored
         assert {"index", "name", "color", "default", "val"} <= set(loaded.point_data)
         assert loaded.colortables["default"]["names"] == ["region_1"]
@@ -563,17 +565,17 @@ class TestSaveAndLoad:
 
     def test_errors(self, tmp_path, cloud):
         with pytest.raises(ValueError, match="Cannot save an empty"):
-            PointCloud().save(tmp_path / "empty.npy")
+            PointsCloud().save(tmp_path / "empty.npy")
         with pytest.raises(ValueError, match="Unsupported format"):
             cloud.save(tmp_path / "cloud.xyz", format="xyz")
         cloud.save(tmp_path / "cloud.npy")
         with pytest.raises(ValueError, match="Unsupported format"):
-            PointCloud.load(tmp_path / "cloud.npy", format="xyz")
+            PointsCloud.load(tmp_path / "cloud.npy", format="xyz")
         with pytest.raises(FileNotFoundError):
-            PointCloud.load(tmp_path / "missing.npy")
+            PointsCloud.load(tmp_path / "missing.npy")
         (tmp_path / "other.csv").write_text("a,b\n1,2\n")
         with pytest.raises(ValueError, match="X, Y, Z"):
-            PointCloud.load(tmp_path / "other.csv", format="csv")
+            PointsCloud.load(tmp_path / "other.csv", format="csv")
 
 
 ####################################################################################################
@@ -655,16 +657,16 @@ class TestLoadColortable:
 class TestAppend:
     @pytest.fixture
     def pair(self):
-        first = PointCloud(POINTS[:4].copy(), name="first")
+        first = PointsCloud(POINTS[:4].copy(), name="first")
         first.add_point_data(np.arange(4.0), name="val")
-        second = PointCloud(POINTS[4:].copy(), name="second")
+        second = PointsCloud(POINTS[4:].copy(), name="second")
         second.add_point_data(np.arange(2.0) + 100, name="other")
         return first, second
 
     def test_append_returns_a_new_cloud(self, pair):
         first, second = pair
         joined = first.append(second, inplace=False)
-        assert isinstance(joined, PointCloud) and joined.name == "first"
+        assert isinstance(joined, PointsCloud) and joined.name == "first"
         assert np.array_equal(joined.coords, POINTS)
         assert (len(first), len(second)) == (4, 2)
 
@@ -696,14 +698,14 @@ class TestAppend:
         assert joined.point_data["default"].tolist() == [1] * 6
 
     def test_appending_to_an_empty_cloud(self, pair):
-        empty = PointCloud()
+        empty = PointsCloud()
         empty.append(pair[0])
         assert len(empty) == 4 and set(empty.point_data) == {"default", "val"}
-        assert len(PointCloud().append(pair[0], inplace=False)) == 4
+        assert len(PointsCloud().append(pair[0], inplace=False)) == 4
 
     def test_appending_an_empty_cloud(self, pair):
-        assert pair[0].append(PointCloud()) is None and len(pair[0]) == 4
-        assert len(pair[0].append(PointCloud(), inplace=False)) == 4
+        assert pair[0].append(PointsCloud()) is None and len(pair[0]) == 4
+        assert len(pair[0].append(PointsCloud(), inplace=False)) == 4
 
     def test_different_affines_warn_and_keep_the_first(self, pair):
         moved = pair[1].apply_affine(AFFINE, inplace=False)
@@ -747,10 +749,10 @@ class TestAppend:
         assert "extra" in joined.colortables
 
     def test_errors(self, pair):
-        with pytest.raises(ValueError, match="Can only append another PointCloud"):
+        with pytest.raises(ValueError, match="Can only append another PointsCloud"):
             pair[0].append("not a cloud")
         with pytest.raises(ValueError, match="two empty"):
-            PointCloud().append(PointCloud())
+            PointsCloud().append(PointsCloud())
         with pytest.raises(ValueError, match="Unknown handle_colortable_conflicts"):
             pair[0].append(pair[1], inplace=False, handle_colortable_conflicts="nope")
 
@@ -758,39 +760,39 @@ class TestAppend:
 class TestMerge:
     @pytest.fixture
     def pair(self):
-        first = PointCloud(POINTS[:4].copy(), name="left")
+        first = PointsCloud(POINTS[:4].copy(), name="left")
         first.add_point_data(np.arange(4.0), name="val")
-        second = PointCloud(POINTS[4:].copy(), name="right")
+        second = PointsCloud(POINTS[4:].copy(), name="right")
         return first, second
 
     def test_points_and_labels(self, pair):
-        merged = cltpts.merge_pointclouds(list(pair))
-        assert isinstance(merged, PointCloud) and np.array_equal(merged.coords, POINTS)
+        merged = cltpts.merge_pointsclouds(list(pair))
+        assert isinstance(merged, PointsCloud) and np.array_equal(merged.coords, POINTS)
         assert merged.point_data["point_id"].tolist() == [1, 1, 1, 1, 2, 2]
         table = merged.colortables["point_id"]
         assert table["names"] == ["left", "right"]  # Named after the point clouds
         assert table["color_table"][:, 4].tolist() == [1, 2]
 
     def test_other_maps_are_kept_and_filled(self, pair):
-        merged = cltpts.merge_pointclouds(list(pair))
+        merged = cltpts.merge_pointsclouds(list(pair))
         assert merged.point_data["val"][:4].tolist() == [0, 1, 2, 3]
         assert np.isnan(merged.point_data["val"][4:]).all()
 
     def test_the_sources_are_untouched(self, pair):
-        cltpts.merge_pointclouds(list(pair))
+        cltpts.merge_pointsclouds(list(pair))
         assert (len(pair[0]), len(pair[1])) == (4, 2)
         assert "point_id" not in pair[0].point_data
 
     def test_repeated_names_are_replaced(self, pair):
         pair[1].name = "left"
-        merged = cltpts.merge_pointclouds(list(pair))
+        merged = cltpts.merge_pointsclouds(list(pair))
         assert merged.colortables["point_id"]["names"] == [
             "pointcloud_1",
             "pointcloud_2",
         ]
 
     def test_map_name(self, pair):
-        merged = cltpts.merge_pointclouds(list(pair), map_name="source")
+        merged = cltpts.merge_pointsclouds(list(pair), map_name="source")
         assert "source" in merged.point_data and "source" in merged.colortables
         assert "point_id" not in merged.point_data
 
@@ -799,14 +801,14 @@ class TestMerge:
             "names": ["L", "R"],
             "color_table": np.array([[1, 0, 0, 1, 10], [0, 0, 1, 1, 20.0]]),
         }
-        merged = cltpts.merge_pointclouds(list(pair), color_table=table)
+        merged = cltpts.merge_pointsclouds(list(pair), color_table=table)
         assert np.unique(merged.point_data["point_id"]).tolist() == [10, 20]
         assert merged.colortables["point_id"]["names"] == ["L", "R"]
 
     def test_from_files(self, tmp_path, pair):
         pair[0].save(tmp_path / "left.npy")
         pair[1].save(tmp_path / "right.npy")
-        merged = cltpts.merge_pointclouds(
+        merged = cltpts.merge_pointsclouds(
             [tmp_path / "left.npy", str(tmp_path / "right.npy")]
         )
         assert len(merged) == 6 and merged.colortables["point_id"]["names"] == [
@@ -815,26 +817,28 @@ class TestMerge:
         ]
 
     def test_a_single_cloud_and_no_clouds(self, pair):
-        merged = cltpts.merge_pointclouds([pair[0]])
+        merged = cltpts.merge_pointsclouds([pair[0]])
         assert len(merged) == 4 and merged.point_data["point_id"].tolist() == [1] * 4
-        assert cltpts.merge_pointclouds([]) is None
+        assert cltpts.merge_pointsclouds([]) is None
 
     def test_errors(self, pair):
         first, second = pair
         with pytest.raises(TypeError, match="must be a list"):
-            cltpts.merge_pointclouds(first)
-        with pytest.raises(TypeError, match="PointCloud objects"):
-            cltpts.merge_pointclouds([first, 3])
+            cltpts.merge_pointsclouds(first)
+        with pytest.raises(TypeError, match="PointsCloud objects"):
+            cltpts.merge_pointsclouds([first, 3])
         with pytest.raises(TypeError, match="dictionary"):
-            cltpts.merge_pointclouds([first, second], color_table=[1])
+            cltpts.merge_pointsclouds([first, second], color_table=[1])
         with pytest.raises(ValueError, match="must contain the keys"):
-            cltpts.merge_pointclouds([first, second], color_table={"names": ["a", "b"]})
+            cltpts.merge_pointsclouds(
+                [first, second], color_table={"names": ["a", "b"]}
+            )
         wrong_names = {"names": ["only"], "color_table": np.zeros((2, 5))}
         with pytest.raises(ValueError, match="'names'"):
-            cltpts.merge_pointclouds([first, second], color_table=wrong_names)
+            cltpts.merge_pointsclouds([first, second], color_table=wrong_names)
         wrong_rows = {"names": ["a", "b"], "color_table": np.zeros((1, 5))}
         with pytest.raises(ValueError, match="Number of rows"):
-            cltpts.merge_pointclouds([first, second], color_table=wrong_rows)
+            cltpts.merge_pointsclouds([first, second], color_table=wrong_rows)
 
 
 ####################################################################################################
@@ -855,7 +859,7 @@ class TestPointwiseColors:
         assert (colors[:, 3] == 255).all()
 
     def test_opacity_of_the_colortable(self):
-        pc = PointCloud(POINTS, region_colors="#ff0000", alpha=0.25)
+        pc = PointsCloud(POINTS, region_colors="#ff0000", alpha=0.25)
         assert pc.get_pointwise_colors()[0].tolist() == [255, 0, 0, 64]
 
     def test_single_color_cloud(self, plain):
@@ -945,7 +949,7 @@ class TestGetInfo:
         assert "SCALAR DATA PER POINT (1 map)" in capsys.readouterr().out
 
     def test_empty_cloud(self, capsys):
-        PointCloud(name="empty").get_info()
+        PointsCloud(name="empty").get_info()
         out = capsys.readouterr().out
         assert "Name: empty" in out and "Points: 0" in out
         assert "Not available (empty point cloud)" in out
@@ -1051,11 +1055,11 @@ class TestToSurface:
 
     def test_empty_and_non_finite_clouds_are_rejected(self):
         with pytest.raises(ValueError, match="empty"):
-            PointCloud().to_surface()
+            PointsCloud().to_surface()
         bad = POINTS.copy()
         bad[2, 1] = np.nan
         with pytest.raises(ValueError, match="non-finite"):
-            PointCloud(bad).to_surface()
+            PointsCloud(bad).to_surface()
 
 
 ####################################################################################################

@@ -32,7 +32,7 @@ from . import freesurfertools as cltfree
 from . import imagetools as cltimg
 from . import misctools as cltmisc
 from . import surfacetools as cltsurf
-from .pointstools import PointCloud
+from .pointstools import PointsCloud
 
 
 ####################################################################################################
@@ -2774,7 +2774,7 @@ class Parcellation:
         closing_iterations: int = 2,
         centroid_table: str | Path | None = None,
         output_format: str = "dataframe",  # Options: "dataframe", "pointcloud", "none"
-    ) -> pd.DataFrame | PointCloud | None:
+    ) -> pd.DataFrame | PointsCloud | None:
         """
         Compute region centroids, voxel counts, and volumes.
 
@@ -2800,10 +2800,10 @@ class Parcellation:
 
         Returns
         -------
-        pd.DataFrame or PointCloud or None
+        pd.DataFrame or PointsCloud or None
             DataFrame with columns: index, name, color, x_vox, y_vox, z_vox,
             x_mm, y_mm, z_mm, nvoxels, volume.
-            If output_format is "pointcloud", returns a PointCloud object instead.
+            If output_format is "pointcloud", returns a PointsCloud object instead.
 
         Raises
         ------
@@ -2941,7 +2941,7 @@ class Parcellation:
         if output_format == "dataframe":
             return df
         elif output_format == "pointcloud":
-            return PointCloud(
+            return PointsCloud(
                 points=coords_mm,
                 region_colors=colors,
                 region_names=names,

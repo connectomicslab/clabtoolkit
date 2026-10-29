@@ -25,8 +25,8 @@ API reference
 Main Classes
 ------------
 
-PointCloud
-~~~~~~~~~~
+PointsCloud
+~~~~~~~~~~~
 The core class for representing and manipulating point clouds.
 
 Key Methods:
@@ -39,7 +39,7 @@ Key Methods:
 - ``filter()``: Filter points by coordinate values or point data attributes
 - ``get_bounds()``: Compute the bounding box
 - ``get_centroid()``: Compute the geometric center
-- ``append()``: Append another PointCloud to this one
+- ``append()``: Append another PointsCloud to this one
 - ``load_colortable()``: Attach a colortable to a named map
 - ``get_pointwise_colors()``: Compute per-point colors for an overlay
 - ``list_maps()``: List the available scalar maps
@@ -50,7 +50,7 @@ Key Methods:
 
 Main Functions
 --------------
-- ``merge_pointclouds()``: Merge multiple point clouds into one
+- ``merge_pointsclouds()``: Merge multiple point clouds into one
 - ``smooth_curve_coordinates()``: Smooth a 3D curve with Gaussian-weighted neighborhood averaging
 
 Common Usage Examples
@@ -59,11 +59,11 @@ Common Usage Examples
 Basic construction and inspection::
 
     import numpy as np
-    from clabtoolkit.pointstools import PointCloud
+    from clabtoolkit.pointstools import PointsCloud
 
     # Build a point cloud from an Nx3 coordinate array
     coords = np.random.rand(100, 3) * 50
-    pc = PointCloud(points=coords, name="seeds")
+    pc = PointsCloud(points=coords, name="seeds")
 
     # Print a full summary
     pc.get_info()
@@ -115,7 +115,7 @@ Conversion to a surface::
 
 Export and merging::
 
-    from clabtoolkit.pointstools import merge_pointclouds
+    from clabtoolkit.pointstools import merge_pointsclouds
 
     # Convert to a DataFrame for downstream analysis
     df = pc.to_dataframe(include_data=True)
@@ -124,10 +124,10 @@ Export and merging::
     pc.save("/path/to/points.npy", format="npy")
 
     # Reload later
-    pc_reloaded = PointCloud.load("/path/to/points.npy", format="npy")
+    pc_reloaded = PointsCloud.load("/path/to/points.npy", format="npy")
 
     # Merge several point clouds
-    merged = merge_pointclouds([pc_a, pc_b])
+    merged = merge_pointsclouds([pc_a, pc_b])
 
     # Or append in place
     pc_a.append(pc_b, inplace=True)

@@ -294,7 +294,7 @@ class BrainPlotter:
     def _add_object_to_plotter(
         self,
         plotter: pv.Plotter,
-        obj: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud,
+        obj: cltsurf.Surface | clttract.Tractogram | cltpts.PointsCloud,
         use_opacity: bool = True,
         opacity: float = None,
     ) -> None:
@@ -309,7 +309,7 @@ class BrainPlotter:
         plotter : pv.Plotter
             Plotter instance. The target subplot must be selected beforehand.
 
-        obj : Surface, Tractogram or PointCloud
+        obj : Surface, Tractogram or PointsCloud
             Object to render. It must already contain its "rgba" colors.
 
         use_opacity : bool, default True
@@ -322,7 +322,7 @@ class BrainPlotter:
         Raises
         ------
         TypeError
-            If the object is not a Surface, Tractogram or PointCloud.
+            If the object is not a Surface, Tractogram or PointsCloud.
         """
 
         # Common appearance settings shared by all the object types
@@ -371,7 +371,7 @@ class BrainPlotter:
                     poly, scalars="rgba", line_width=2, rgb=True, **mesh_kwargs
                 )
 
-        elif isinstance(obj, cltpts.PointCloud):
+        elif isinstance(obj, cltpts.PointsCloud):
             rgba_data = self._prepare_rgba(obj.point_data["rgba"], use_opacity, opacity)
 
             plotter.add_points(
@@ -411,7 +411,7 @@ class BrainPlotter:
 
         else:
             raise TypeError(
-                f"Objects to plot must be Surface, Tractogram or PointCloud instances, got {type(obj).__name__}."
+                f"Objects to plot must be Surface, Tractogram or PointsCloud instances, got {type(obj).__name__}."
             )
 
     ###############################################################################################
@@ -585,7 +585,7 @@ class BrainPlotter:
     ###############################################################################
     def plot(
         self,
-        objs2plot: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
+        objs2plot: cltsurf.Surface | clttract.Tractogram | cltpts.PointsCloud | list,
         hemi_id: str | list[str] = "lh",
         views: str | list[str] = "dorsal",
         views_orientation: str = "horizontal",
@@ -616,7 +616,7 @@ class BrainPlotter:
 
         Parameters
         ----------
-        objs2plot : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud, List]
+        objs2plot : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointsCloud, List]
             Object(s) to plot. Can be a single object or a list of objects.
 
         hemi_id : List[str], default ["lh"]
@@ -951,8 +951,8 @@ class BrainPlotter:
     ###########################################################################
     def plot_hemispheres(
         self,
-        obj_rh: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
-        obj_lh: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
+        obj_rh: cltsurf.Surface | clttract.Tractogram | cltpts.PointsCloud | list,
+        obj_lh: cltsurf.Surface | clttract.Tractogram | cltpts.PointsCloud | list,
         map_name: str = "default",
         views: str | list[str] = "dorsal",
         vmin: float | None = None,
@@ -976,11 +976,11 @@ class BrainPlotter:
 
         Parameters
         ----------
-        obj_rh : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud]
-            Right hemisphere object to plot. Can be a Surface, Tractogram, or PointCloud.
+        obj_rh : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointsCloud]
+            Right hemisphere object to plot. Can be a Surface, Tractogram, or PointsCloud.
 
-        obj_lh : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointCloud]
-            Left hemisphere object to plot. Can be a Surface, Tractogram, or PointCloud.
+        obj_lh : Union[cltsurf.Surface, clttract.Tractogram, cltpts.PointsCloud]
+            Left hemisphere object to plot. Can be a Surface, Tractogram, or PointsCloud.
 
         map_name : str "default"
             Name of the data maps to visualize. Must be present in all the objects.
@@ -1243,7 +1243,9 @@ class BrainPlotter:
     ###########################################################################
     def plot_scene(
         self,
-        scene_objects: cltsurf.Surface | clttract.Tractogram | cltpts.PointCloud | list,
+        scene_objects: (
+            cltsurf.Surface | clttract.Tractogram | cltpts.PointsCloud | list
+        ),
         scene_config: dict = None,
         views: str | list[str] = "dorsal",
         notebook: bool = False,
@@ -1264,7 +1266,7 @@ class BrainPlotter:
 
         Parameters
         ----------
-        scene_objects : Surface, Tractogram, PointCloud or List
+        scene_objects : Surface, Tractogram, PointsCloud or List
             Object or list of objects composing the scene. All of them are rendered
             on every requested view.
 

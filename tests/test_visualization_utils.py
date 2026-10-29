@@ -48,7 +48,7 @@ def make_tractogram():
 
 
 def make_cloud():
-    cloud = cltpts.PointCloud(points=np.random.default_rng(0).random((5, 3)))
+    cloud = cltpts.PointsCloud(points=np.random.default_rng(0).random((5, 3)))
     cloud.point_data["C"] = np.linspace(5.0, 6.0, 5)
     return cloud
 

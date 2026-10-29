@@ -491,7 +491,7 @@ class TestAddObjectToPlotter:
         assert fake.calls[0][1][0].point_data["rgba"].shape == (4, 3)
 
     def test_point_cloud(self, plotter, fake):
-        cloud = cltpts.PointCloud(points=np.random.default_rng(0).random((5, 3)))
+        cloud = cltpts.PointsCloud(points=np.random.default_rng(0).random((5, 3)))
         cloud.point_data["rgba"] = np.tile([0.0, 1.0, 0.0, 1.0], (5, 1))
         plotter._add_object_to_plotter(fake, cloud, opacity=0.4)
         kind, args, kwargs = fake.calls[0]
@@ -741,7 +741,7 @@ class TestPlotLayouts:
 
 ######################################################################################################
 def make_point_cloud():
-    cloud = cltpts.PointCloud(points=np.random.default_rng(0).random((5, 3)))
+    cloud = cltpts.PointsCloud(points=np.random.default_rng(0).random((5, 3)))
     cloud.point_data["A"] = np.linspace(0.0, 1.0, 5)
     return cloud
 
