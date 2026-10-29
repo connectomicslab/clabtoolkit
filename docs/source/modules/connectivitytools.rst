@@ -68,6 +68,9 @@ Plotting::
     conn.plot_matrix(figsize=(5, 4))
     conn.plot_matrix(threshold=0.3, log_scale=True, cmap="viridis", figsize=(5, 4))
 
+    # Save the figure instead of showing it (the format is given by the extension)
+    conn.plot_matrix(save_path="matrix.png", dpi=300)
+
 Saving and loading::
 
     conn.save_h5("connectome.h5")

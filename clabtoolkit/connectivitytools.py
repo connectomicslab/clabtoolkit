@@ -1438,6 +1438,9 @@ class Connectome:
         cmap: str = "RdBu_r",
         threshold: float | None = None,
         threshold_mode: str = "absolute",
+        save_path: str | Path | None = None,
+        dpi: int = 150,
+        overwrite: bool = True,
     ) -> None:
         """
         Plot the connectivity matrix as a heatmap.
@@ -1454,11 +1457,45 @@ class Connectome:
             Threshold value for displaying connections. Values below threshold will be set to 0.
         threshold_mode : str
             How to apply threshold: 'absolute' (abs(value) > threshold) or 'raw' (value > threshold)
+        save_path : str or Path, optional
+            Destination file for the figure. The format is given by the extension
+            (e.g. .png, .pdf, .svg). When it is provided the figure is saved and
+            closed instead of being shown. Default is None (the figure is shown).
+        dpi : int
+            Resolution of the saved figure. Only used when ``save_path`` is given.
+            Default is 150.
+        overwrite : bool
+            Whether to overwrite ``save_path`` if it already exists. Default is True.
+
+        Raises:
+        -------
+        ValueError
+            If there is no connectivity matrix, or if ``save_path`` exists and
+            ``overwrite`` is False.
+        FileNotFoundError
+            If the directory of ``save_path`` does not exist.
+
+        Examples:
+        ---------
+        >>> conn.plot_matrix(threshold=0.3)  # Show the figure
+        >>> conn.plot_matrix(save_path="matrix.png", dpi=300)  # Save it instead
         """
         if self.matrix is None:
             raise ValueError("No connectivity matrix available")
 
-        plt.figure(figsize=figsize)
+        # Validate the output file before drawing anything
+        if save_path is not None:
+            save_path = Path(save_path)
+            if not save_path.parent.exists():
+                raise FileNotFoundError(
+                    f"Directory '{save_path.parent}' does not exist"
+                )
+            if save_path.exists() and not overwrite:
+                raise ValueError(
+                    f"File '{save_path}' already exists. Please set overwrite to True or choose a different name."
+                )
+
+        fig = plt.figure(figsize=figsize)
 
         # Apply threshold if specified
         matrix_to_plot = self.matrix.copy()
@@ -1502,7 +1539,13 @@ class Connectome:
         plt.xlabel("Brain Regions")
         plt.ylabel("Brain Regions")
         plt.tight_layout()
-        plt.show()
+
+        if save_path is not None:
+            fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+            plt.close(fig)
+            print(f"Matrix plot saved to: {save_path}")
+        else:
+            plt.show()
 
     #################################################################################
     @classmethod

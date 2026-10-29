@@ -3,6 +3,8 @@
 import warnings
 
 import h5py
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -1117,3 +1119,63 @@ class TestGetInfo:
         known.get_info()
         out = capsys.readouterr().out
         assert out.count("✘") == 3
+
+
+####################################################################################################
+# Plotting the matrix
+####################################################################################################
+class TestPlotMatrix:
+    @pytest.fixture(autouse=True)
+    def _agg_backend(self, monkeypatch):
+        """Draw off-screen and count the calls that would open a window."""
+        previous = matplotlib.get_backend()
+        plt.switch_backend("Agg")
+        self.shown = []
+        monkeypatch.setattr(plt, "show", lambda *a, **k: self.shown.append(1))
+        yield
+        plt.close("all")
+        plt.switch_backend(previous)
+
+    def test_shown_when_not_saving(self, known):
+        known.plot_matrix(figsize=(3, 3))
+        assert self.shown == [1]
+
+    @pytest.mark.parametrize("ext", ["png", "pdf", "svg"])
+    def test_saves_the_figure(self, tmp_path, known, ext):
+        out = tmp_path / f"matrix.{ext}"
+        known.plot_matrix(figsize=(3, 3), save_path=str(out))
+        assert out.is_file() and out.stat().st_size > 0
+
+    def test_saving_does_not_show_and_closes_the_figure(self, tmp_path, known):
+        known.plot_matrix(figsize=(3, 3), save_path=tmp_path / "matrix.png")
+        assert self.shown == []
+        assert plt.get_fignums() == []
+
+    def test_dpi_sets_the_resolution(self, tmp_path, known):
+        low, high = tmp_path / "low.png", tmp_path / "high.png"
+        known.plot_matrix(figsize=(3, 3), save_path=low, dpi=50)
+        known.plot_matrix(figsize=(3, 3), save_path=high, dpi=200)
+        assert high.stat().st_size > low.stat().st_size
+
+    def test_threshold_and_log_scale_can_be_saved(self, tmp_path, known):
+        out = tmp_path / "matrix.png"
+        known.plot_matrix(figsize=(3, 3), threshold=0.3, log_scale=True, save_path=out)
+        assert out.is_file()
+
+    def test_overwrite(self, tmp_path, known):
+        out = tmp_path / "matrix.png"
+        out.write_bytes(b"old")
+        with pytest.raises(ValueError, match="already exists"):
+            known.plot_matrix(figsize=(3, 3), save_path=out, overwrite=False)
+        assert out.read_bytes() == b"old"
+        known.plot_matrix(figsize=(3, 3), save_path=out)  # Overwrites by default
+        assert out.read_bytes() != b"old"
+
+    def test_missing_directory_is_reported_before_drawing(self, tmp_path, known):
+        with pytest.raises(FileNotFoundError, match="does not exist"):
+            known.plot_matrix(save_path=tmp_path / "missing" / "matrix.png")
+        assert plt.get_fignums() == []
+
+    def test_requires_a_matrix(self, tmp_path):
+        with pytest.raises(ValueError, match="No connectivity matrix"):
+            Connectome().plot_matrix(save_path=tmp_path / "matrix.png")
