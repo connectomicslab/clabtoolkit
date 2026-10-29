@@ -1179,3 +1179,117 @@ class TestPlotMatrix:
     def test_requires_a_matrix(self, tmp_path):
         with pytest.raises(ValueError, match="No connectivity matrix"):
             Connectome().plot_matrix(save_path=tmp_path / "matrix.png")
+
+
+####################################################################################################
+# Grouping the regions in the plot
+####################################################################################################
+class TestPlotMatrixGroups:
+    @pytest.fixture(autouse=True)
+    def _agg_backend(self, monkeypatch):
+        previous = matplotlib.get_backend()
+        plt.switch_backend("Agg")
+        monkeypatch.setattr(plt, "show", lambda *a, **k: None)
+        yield
+        plt.close("all")
+        plt.switch_backend(previous)
+
+    @staticmethod
+    def plotted():
+        """Matrix, tick labels and tick positions of the current figure."""
+        ax = plt.gcf().axes[0]
+        return (
+            np.asarray(ax.images[0].get_array()),
+            [label.get_text() for label in ax.get_xticklabels()],
+            ax.get_xticks().tolist(),
+        )
+
+    def test_regions_are_reordered_by_group(self, known):
+        # Names are matched as substrings, groups keep the order of the dictionary
+        known.plot_matrix(figsize=(3, 3), groups={"G1": ["b", "d"], "G2": ["a", "c"]})
+        matrix, labels, ticks = self.plotted()
+        order = [1, 3, 0, 2]
+        assert np.array_equal(matrix, KNOWN[np.ix_(order, order)])
+        assert labels == ["G1", "G2"]
+        assert ticks == [0.5, 2.5]  # Centers of the two blocks
+
+    def test_groups_are_separated_by_lines(self, known):
+        # Blocks: (a) | (b, c) | (d, ungrouped), so the boundaries are at 0.5 and 2.5
+        known.plot_matrix(figsize=(3, 3), groups={"G1": ["a"], "G2": ["b", "c"]})
+        lines = plt.gcf().axes[0].lines
+        vertical = [
+            line for line in lines if line.get_xdata()[0] == line.get_xdata()[1]
+        ]
+        horizontal = [
+            line for line in lines if line.get_ydata()[0] == line.get_ydata()[1]
+        ]
+        assert sorted(line.get_xdata()[0] for line in vertical) == [0.5, 2.5]
+        assert sorted(line.get_ydata()[0] for line in horizontal) == [0.5, 2.5]
+
+    def test_codes_keep_the_original_order_inside_a_group(self, known):
+        known.plot_matrix(figsize=(3, 3), groups={"X": [30, 10]})
+        matrix, labels, _ = self.plotted()
+        order = [0, 2, 1, 3]  # Group X (codes 10 and 30), then the ungrouped regions
+        assert np.array_equal(matrix, KNOWN[np.ix_(order, order)])
+        assert labels == ["X", "ungrouped"]
+
+    def test_names_and_codes_can_be_mixed(self, known):
+        known.plot_matrix(figsize=(3, 3), groups={"Mixed": ["a", 30], "Other": "d"})
+        matrix, labels, _ = self.plotted()
+        order = [0, 2, 3, 1]
+        assert np.array_equal(matrix, KNOWN[np.ix_(order, order)])
+        assert labels == ["Mixed", "Other", "ungrouped"]
+
+    def test_no_ungrouped_block_when_every_region_is_grouped(self, known):
+        known.plot_matrix(figsize=(3, 3), groups={"A": ["a", "b"], "B": ["c", "d"]})
+        assert self.plotted()[1] == ["A", "B"]
+
+    def test_threshold_is_applied_before_reordering(self, known):
+        known.plot_matrix(figsize=(3, 3), threshold=0.6, groups={"G": ["d", "c"]})
+        matrix = self.plotted()[0]
+        order = [2, 3, 0, 1]
+        expected = np.where(np.abs(KNOWN) < 0.6, 0, KNOWN)[np.ix_(order, order)]
+        assert np.array_equal(matrix, expected)
+
+    def test_group_names_are_hidden_without_labels(self, known):
+        known.plot_matrix(figsize=(3, 3), show_labels=False, groups={"G": ["a"]})
+        assert "G" not in self.plotted()[1]
+
+    def test_the_original_connectome_is_not_modified(self, known):
+        known.plot_matrix(figsize=(3, 3), groups={"G1": ["d"], "G2": ["a"]})
+        assert np.array_equal(known.matrix, KNOWN)
+        assert known.region_names == ["a", "b", "c", "d"]
+
+    def test_grouped_figure_can_be_saved(self, tmp_path, known):
+        out = tmp_path / "grouped.png"
+        known.plot_matrix(figsize=(3, 3), groups={"G": ["a", "b"]}, save_path=out)
+        assert out.is_file() and out.stat().st_size > 0
+
+    def test_group_without_matches_is_skipped_with_a_warning(self, known):
+        with pytest.warns(UserWarning, match="matched no region"):
+            known.plot_matrix(figsize=(3, 3), groups={"none": ["zzz"], "G": ["a"]})
+        assert self.plotted()[1] == ["G", "ungrouped"]
+
+    @pytest.mark.parametrize(
+        "groups, match",
+        [
+            ({}, "non-empty dictionary"),
+            (["a", "b"], "non-empty dictionary"),
+            ({"G": []}, "non-empty list"),
+            ({"G": [1.5]}, "Invalid member"),
+            ({"G": [True]}, "Invalid member"),
+            ({"G1": ["a", "b"], "G2": ["b"]}, "belongs to the groups"),
+            ({"G1": [10], "G2": ["a"]}, "belongs to the groups"),
+            ({"G": ["zzz"]}, "None of the groups"),
+        ],
+    )
+    def test_invalid_groups_are_reported_before_drawing(self, known, groups, match):
+        with pytest.raises(ValueError, match=match), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            known.plot_matrix(groups=groups)
+        assert plt.get_fignums() == []
+
+    def test_resolved_blocks(self, known):
+        blocks = known._resolve_groups({"G1": ["c"], "G2": [10, "b"]})
+        assert [name for name, _ in blocks] == ["G1", "G2", "ungrouped"]
+        assert [block.tolist() for _, block in blocks] == [[2], [0, 1], [3]]

@@ -1429,6 +1429,116 @@ class Connectome:
         )
 
     #################################################################################
+    def _resolve_groups(self, groups: dict) -> list[tuple[str, np.ndarray]]:
+        """
+        Assign the regions of the connectome to named groups.
+
+        Parameters
+        ----------
+        groups : dict
+            ``{group_name: members}``. Each member is a region code (int, matched with
+            ``region_index``) or a text (matched when it is contained in the region
+            name). ``members`` can be a single member or a list/tuple of them.
+
+        Returns
+        -------
+        list of tuple
+            ``(group_name, positions)`` for each group with at least one region, in the
+            order of ``groups``, where ``positions`` are the positions of its regions in
+            the matrix. The regions that belong to no group are returned at the end as
+            'ungrouped'.
+
+        Raises
+        ------
+        ValueError
+            If ``groups`` is empty or is not a dictionary, if a member is neither an
+            int nor a text, if no group matches any region, or if a region is assigned
+            to more than one group.
+        """
+
+        if not isinstance(groups, dict) or len(groups) == 0:
+            raise ValueError("groups must be a non-empty dictionary")
+
+        n_regions = self.n_regions
+        names = (
+            [str(name) for name in self.region_names]
+            if self.region_names is not None
+            else None
+        )
+        codes = np.asarray(self.region_index) if self.region_index is not None else None
+
+        owner = np.full(n_regions, -1, dtype=int)
+        group_names = []
+        for group_name, members in groups.items():
+            if isinstance(members, (str, int, np.integer)):
+                members = [members]
+
+            if not isinstance(members, (list, tuple, np.ndarray)) or len(members) == 0:
+                raise ValueError(
+                    f"The members of the group '{group_name}' must be a region code, a "
+                    "text or a non-empty list of them"
+                )
+
+            selected = np.zeros(n_regions, dtype=bool)
+            for member in members:
+                if isinstance(member, (int, np.integer)) and not isinstance(
+                    member, bool
+                ):
+                    if codes is None:
+                        raise ValueError(
+                            "The connectome has no region_index to match the codes of "
+                            f"the group '{group_name}'"
+                        )
+                    selected |= codes == member
+
+                elif isinstance(member, str):
+                    if names is None:
+                        raise ValueError(
+                            "The connectome has no region_names to match the names of "
+                            f"the group '{group_name}'"
+                        )
+                    selected |= np.array([member in name for name in names])
+
+                else:
+                    raise ValueError(
+                        f"Invalid member {member!r} in the group '{group_name}': use "
+                        "region codes (int) or texts contained in the region names"
+                    )
+
+            if not selected.any():
+                warnings.warn(
+                    f"The group '{group_name}' matched no region and is skipped.",
+                    stacklevel=3,
+                )
+                continue
+
+            clash = np.where(selected & (owner >= 0))[0]
+            if clash.size > 0:
+                first = int(clash[0])
+                raise ValueError(
+                    f"Region {first}"
+                    + (f" ('{names[first]}')" if names is not None else "")
+                    + f" belongs to the groups '{group_names[owner[first]]}' and "
+                    f"'{group_name}'. Use more specific members."
+                )
+
+            owner[selected] = len(group_names)
+            group_names.append(str(group_name))
+
+        if len(group_names) == 0:
+            raise ValueError("None of the groups matched any region")
+
+        blocks = [
+            (group_name, np.where(owner == i)[0])
+            for i, group_name in enumerate(group_names)
+        ]
+        ungrouped = np.where(owner < 0)[0]
+        if ungrouped.size > 0:
+            blocks.append(("ungrouped", ungrouped))
+
+        return blocks
+
+    #################################################################################
     def plot_matrix(
         self,
         figsize: tuple[int, int] = (12, 10),
@@ -1438,6 +1548,7 @@ class Connectome:
         cmap: str = "RdBu_r",
         threshold: float | None = None,
         threshold_mode: str = "absolute",
+        groups: dict | None = None,
         save_path: str | Path | None = None,
         dpi: int = 150,
         overwrite: bool = True,
@@ -1457,6 +1568,16 @@ class Connectome:
             Threshold value for displaying connections. Values below threshold will be set to 0.
         threshold_mode : str
             How to apply threshold: 'absolute' (abs(value) > threshold) or 'raw' (value > threshold)
+        groups : dict, optional
+            Groups of regions, as ``{group_name: members}``. The rows and columns are
+            reordered so that the regions of each group are contiguous, in the order of
+            the dictionary and keeping the original order inside each group, and the
+            groups are separated by lines. If ``show_labels`` is True the axes are
+            labeled with the group names (instead of the region names). Each member is
+            either a region code (int, matched with ``region_index``) or a text
+            (matched when it is contained in the region name), and ``members`` can be a
+            single member or a list of them. The regions that belong to no group are
+            placed at the end as 'ungrouped'. Default is None (no grouping).
         save_path : str or Path, optional
             Destination file for the figure. The format is given by the extension
             (e.g. .png, .pdf, .svg). When it is provided the figure is saved and
@@ -1470,8 +1591,9 @@ class Connectome:
         Raises:
         -------
         ValueError
-            If there is no connectivity matrix, or if ``save_path`` exists and
-            ``overwrite`` is False.
+            If there is no connectivity matrix, if ``groups`` is empty, malformed, matches
+            no region, or assigns a region to more than one group, or if ``save_path``
+            exists and ``overwrite`` is False.
         FileNotFoundError
             If the directory of ``save_path`` does not exist.
 
@@ -1479,6 +1601,10 @@ class Connectome:
         ---------
         >>> conn.plot_matrix(threshold=0.3)  # Show the figure
         >>> conn.plot_matrix(save_path="matrix.png", dpi=300)  # Save it instead
+        >>>
+        >>> # Group the regions by hemisphere (names) and by a range of codes
+        >>> conn.plot_matrix(groups={"Left": ["lh", "Left-"], "Right": ["rh", "Right-"]})
+        >>> conn.plot_matrix(groups={"Frontal": [1, 2, 3], "Parietal": [10, 11]})
         """
         if self.matrix is None:
             raise ValueError("No connectivity matrix available")
@@ -1495,6 +1621,8 @@ class Connectome:
                     f"File '{save_path}' already exists. Please set overwrite to True or choose a different name."
                 )
 
+        group_blocks = self._resolve_groups(groups) if groups is not None else None
+
         fig = plt.figure(figsize=figsize)
 
         # Apply threshold if specified
@@ -1510,6 +1638,11 @@ class Connectome:
             # Use symmetric log scale to handle negative values
             matrix_to_plot = np.sign(matrix_to_plot) * np.log1p(np.abs(matrix_to_plot))
 
+        # Reorder the regions so the ones of each group are contiguous
+        if group_blocks is not None:
+            order = np.concatenate([block for _, block in group_blocks])
+            matrix_to_plot = matrix_to_plot[np.ix_(order, order)]
+
         # Create heatmap
         im = plt.imshow(matrix_to_plot, cmap=cmap, aspect="equal")
         plt.colorbar(im, label="Connection Strength")
@@ -1520,8 +1653,24 @@ class Connectome:
             if threshold is not None:
                 title += f" (threshold: {threshold}, mode: {threshold_mode})"
 
+        if group_blocks is not None:
+            sizes = np.array([len(block) for _, block in group_blocks])
+            starts = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+
+            # Lines between the groups
+            for boundary in starts[1:]:
+                plt.axhline(boundary - 0.5, color="black", linewidth=0.8)
+                plt.axvline(boundary - 0.5, color="black", linewidth=0.8)
+
+            # Group names centered on their blocks
+            if show_labels:
+                centers = starts + (sizes - 1) / 2
+                names = [group_name for group_name, _ in group_blocks]
+                plt.xticks(centers, names, rotation=45, ha="right", fontsize=8)
+                plt.yticks(centers, names, fontsize=8)
+
         # Add labels if available and requested
-        if (
+        elif (
             show_labels
             and self.region_names is not None
             and len(self.region_names) < 50

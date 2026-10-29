@@ -6,6 +6,7 @@ Unreleased
 ----------
 
 * Added the ``save_path``, ``dpi`` and ``overwrite`` options to ``Connectome.plot_matrix``, to save the figure instead of showing it
+* Added the ``groups`` option to ``Connectome.plot_matrix``, which orders the regions by group (given by region names or codes), separates the groups with lines and labels them
 * Renamed the ``PointCloud`` class to ``PointsCloud``, ``merge_pointclouds`` to ``merge_pointsclouds`` and its ``pointclouds`` parameter to ``pclouds``. The old names are not kept as aliases
 * Added ``PointsCloud.to_surface``, which converts the points to a surface with one triangular sphere per point and transfers the maps: maps with a colortable become a parcellation (optionally returned as ``AnnotParcellation`` objects) and the rest vertex-wise maps
 

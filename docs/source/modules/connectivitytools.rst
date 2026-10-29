@@ -68,6 +68,11 @@ Plotting::
     conn.plot_matrix(figsize=(5, 4))
     conn.plot_matrix(threshold=0.3, log_scale=True, cmap="viridis", figsize=(5, 4))
 
+    # Group the regions: the rows and columns are reordered so each group is
+    # contiguous, with lines between the groups and the group names as labels.
+    # Members are texts contained in the region names or region codes.
+    conn.plot_matrix(groups={"Left": ["lh", "Left-"], "Right": ["rh", 30, 31]})
+
     # Save the figure instead of showing it (the format is given by the extension)
     conn.plot_matrix(save_path="matrix.png", dpi=300)
 
