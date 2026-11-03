@@ -175,7 +175,7 @@ dependencies:
           - pytest
           - python-json-logger
           - pytz
-          - pyvista
+          - pyvista[jupyter]
           - pyyaml
           - referencing
           - regex

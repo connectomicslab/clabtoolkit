@@ -16,7 +16,7 @@ nilearn==0.12.0
 dipy==1.11.0
 
 # 3D visualization and VTK
-pyvista==0.46.3
+pyvista[jupyter]==0.46.3
 vtk==9.3.1
 fury==0.12.0
 

@@ -216,7 +216,7 @@ dependencies:
           - python-multipart
           - python-slugify
           - pytz
-          - pyvista
+          - pyvista[jupyter]
           - pyyaml
           - referencing
           - regex
