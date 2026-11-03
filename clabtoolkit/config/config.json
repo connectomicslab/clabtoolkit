@@ -46,7 +46,7 @@
         "mvf": "au",
         "charm_fraction": "au",
         "charm_dpar": "mm2/s",
-        "charm_dperp": "mm^2/s",
+        "charm_dperp": "mm2/s",
         "wmti_fraction_restricted": "au",
         "wmti_fraction_hindered": "au",
         "wmti_fraction_free": "au",
