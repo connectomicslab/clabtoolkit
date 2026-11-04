@@ -1,5 +1,5 @@
 # transform file transforms/talairach.lta
-# created by yaleman on Mon Sep  1 12:01:38 2025
+# created by user on Mon Sep  1 12:01:38 2025
 
 type      = 0 # LINEAR_VOX_TO_VOX
 nxforms   = 1
