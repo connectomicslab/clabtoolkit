@@ -198,7 +198,6 @@ ignore = [
     ".editorconfig",
     ".pre-commit-config.yaml",
     ".readthedocs.yml",
-    "environment_tmp.yaml",
 ]
 
 [tool.bandit]
