@@ -2,6 +2,12 @@
 History
 =======
 
+Unreleased
+----------
+
+* Added the DOI of version 0.6.3 to ``CITATION.cff``
+* The continuous integration now also tests Python 3.12 on Windows and macOS, so every combination of the three operating systems and Python 3.11 to 3.13 is tested
+
 0.6.3 (2026-11-04)
 ------------------
 
