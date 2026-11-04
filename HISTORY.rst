@@ -2,6 +2,13 @@
 History
 =======
 
+0.6.3 (2026-11-04)
+------------------
+
+* Removed from ``examples-representative-workflows.ipynb`` a leftover call that saved the filtered tractogram to a fixed folder of the author's computer, which does not exist on other machines. The notebook already saves the TRK and TCK files to a temporary folder
+* The header of the Talairach transform of the sample data no longer contains the name of the user who created it
+* ``CITATION.cff`` lists the DOI of the concept as an identifier, and ``version`` and ``date-released`` identify the release. The DOI of each version is added to the file after its release, because Zenodo creates it when the release is published
+
 0.6.2 (2026-11-04)
 ------------------
 

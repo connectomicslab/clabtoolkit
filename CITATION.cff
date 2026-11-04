@@ -6,10 +6,13 @@ abstract: >-
   A Python toolkit for neuroimaging data processing and analysis, designed for
   brain connectivity data, BIDS datasets and the file formats used in
   neuroimaging.
-version: 0.6.2
+version: 0.6.3
 date-released: 2026-11-04
 license: Apache-2.0
-doi: "10.5281/zenodo.23540587"  # Zenodo concept DOI: always resolves to the latest version
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23540587"
+    description: "Zenodo concept DOI. It always resolves to the latest version. The DOI of each version is listed in its Zenodo record."
 repository-code: "https://github.com/connectomicslab/clabtoolkit"
 url: "https://clabtoolkit.readthedocs.io"
 keywords:
