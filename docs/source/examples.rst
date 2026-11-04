@@ -3,7 +3,7 @@ Examples
 
 The `usage_examples <https://github.com/connectomicslab/clabtoolkit/tree/main/usage_examples>`_
 folder of the repository contains Jupyter notebooks with runnable examples. They retrieve the sample
-data of clabtoolkit from its `Zenodo repository <https://doi.org/10.5281/zenodo.23702131>`_ the first time they
+data of clabtoolkit from its `Zenodo repository <https://doi.org/10.5281/zenodo.23702132>`_ the first time they
 need it (see ``fetch_sample_data`` in :doc:`misctools <modules/misctools>`), so they do not need any input file.
 The few images that the sample data lacks, such as functional images, are simulated.
 

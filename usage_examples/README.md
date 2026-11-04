@@ -17,7 +17,7 @@ The `examples` extra installs `itables`, which some notebooks use to display tab
 
 ## Requirements
 
-- **No input data is needed.** The notebooks retrieve the sample data of **clabtoolkit** (the surfaces, cortical maps, annotations, parcellation, tractograms and a transform of the Colin27 average brain) from its [Zenodo repository](https://doi.org/10.5281/zenodo.23702131) the first time they need it, and keep it in a local cache (set `CLABTOOLKIT_DATA_DIR` to change its location). This needs an internet connection the first time. The images that the sample data lacks, such as functional images, are simulated and written to `/tmp`.
+- **No input data is needed.** The notebooks retrieve the sample data of **clabtoolkit** (the surfaces, cortical maps, annotations, parcellation, tractograms and a transform of the Colin27 average brain) from its [Zenodo repository](https://doi.org/10.5281/zenodo.23702132) the first time they need it, and keep it in a local cache (set `CLABTOOLKIT_DATA_DIR` to change its location). This needs an internet connection the first time. The images that the sample data lacks, such as functional images, are simulated and written to `/tmp`.
 - **FreeSurfer is optional.** Only the examples that run FreeSurfer commands (`annot2gcs`, `gcs2annot`, `FreeSurferSubject` and the statistics tables) need it, and they skip themselves when `FREESURFER_HOME` is not set.
 - **3D plots** use PyVista and need a display. On a server, set `PYVISTA_OFF_SCREEN=true` or run the notebooks in Jupyter with a notebook backend.
 - **ANTs** is needed only for `abased_parcellation` (`segmentationtools`). That example is not executed in the notebook.

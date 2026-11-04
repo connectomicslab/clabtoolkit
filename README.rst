@@ -72,7 +72,7 @@ Requirements and optional dependencies:
 * 3D plotting (``visualizationtools``) uses PyVista and needs either a display or off-screen
   rendering (for example ``PYVISTA_OFF_SCREEN=true`` on a server).
 * FreeSurfer is **not** required. The example notebooks retrieve the sample data of clabtoolkit from its
-  `Zenodo repository <https://doi.org/10.5281/zenodo.23702131>`_ the first time they need it, which needs an
+  `Zenodo repository <https://doi.org/10.5281/zenodo.23702132>`_ the first time they need it, which needs an
   internet connection. Only the examples that run FreeSurfer commands, such as ``annot2gcs``, need FreeSurfer.
 
 Features

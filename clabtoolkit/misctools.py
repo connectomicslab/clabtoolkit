@@ -4806,7 +4806,7 @@ class SmartFormatter(argparse.HelpFormatter):
 
 # DOI of the Zenodo record that holds the archives. Use the DOI of a version of the
 # record, not the concept DOI, so that the checksums below always match.
-ZENODO_DOI = "10.5281/zenodo.23702131"
+ZENODO_DOI = "10.5281/zenodo.23702132"
 
 SAMPLE_DATA_REGISTRY = {
     "annotations.zip": "sha256:2dab53220baca926197bb6288863e23abd5b9e177c07c09c674a748ffc35f313",

@@ -2,6 +2,16 @@
 History
 =======
 
+0.6.2 (2026-11-04)
+------------------
+
+* A version tag is now published to PyPI only if the test suite passes: the publishing workflow has a ``tests`` job (``ruff`` and ``pytest``) that the PyPI job waits for
+* ``pyvista`` is now installed with its ``jupyter`` extra (``pyvista[jupyter]``) in the dependencies, the requirement files and the environment files, so the notebook rendering works without a separate installation
+* The sample data are now fetched with the DOI of the version of the Zenodo record (10.5281/zenodo.23702132) instead of the DOI of the concept (10.5281/zenodo.23702131), so the downloads keep matching their SHA-256 checksums if a new version of the record is published
+* The unit of ``charm_dperp`` in ``config/config.json`` is now ``mm2/s``, as for the other diffusion metrics
+* Removed ``config/viz_views_test.json``, which was not used
+* Added the notebook ``examples-regression-checks.ipynb``, which reproduces the problems reported during the review and shows that they are fixed, and updated the introduction of ``clabtoolkit_examples.ipynb``
+
 0.6.1 (2026-10-29)
 ------------------
 
