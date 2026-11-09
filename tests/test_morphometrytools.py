@@ -75,9 +75,10 @@ def _quiet():
 @pytest.fixture
 def cm_units(monkeypatch):
     """Report areas in cm2 and volumes in cm3, instead of the mm2 / mm3 of config.json."""
-    lookup = dict(cltmorph._default_units_lookup())
-    lookup.update({"area": "cm2", "volume": "cm3"})
-    monkeypatch.setattr(cltmorph, "_default_units_lookup", lambda: lookup)
+    lookup = {k: dict(v) for k, v in cltmorph._default_metric_lookup().items()}
+    lookup["area"]["units"] = "cm2"
+    lookup["volume"]["units"] = "cm3"
+    monkeypatch.setattr(cltmorph, "_default_metric_lookup", lambda: lookup)
 
 
 @pytest.fixture
@@ -126,7 +127,15 @@ class TestGetUnits:
     def test_unknown_metric_is_reported_as_unknown(self):
         assert cltmorph.get_units(["not_a_metric", "thickness"]) == ["unknown", "mm"]
 
-    def test_dict_with_metrics_units_key(self):
+    def test_dict_with_metric_key(self):
+        config = {"metric": {"Custom": {"fullname": "Custom metric", "units": "kg"}}}
+        assert cltmorph.get_units("custom", metrics_json=config) == ["kg"]
+
+    def test_entry_without_units_is_unknown(self):
+        config = {"metric": {"custom": {"fullname": "Custom metric"}}}
+        assert cltmorph.get_units("custom", metrics_json=config) == ["unknown"]
+
+    def test_legacy_metrics_units_key_is_still_accepted(self):
         config = {"metrics_units": {"Custom": "kg"}}
         assert cltmorph.get_units("custom", metrics_json=config) == ["kg"]
 
@@ -140,7 +149,7 @@ class TestGetUnits:
 
     def test_json_file(self, tmp_path):
         path = tmp_path / "units.json"
-        path.write_text(json.dumps({"metrics_units": {"custom": "kg"}}))
+        path.write_text(json.dumps({"metric": {"custom": {"units": "kg"}}}))
         assert cltmorph.get_units("custom", metrics_json=path) == ["kg"]
         assert cltmorph.get_units("custom", metrics_json=str(path)) == ["kg"]
 
@@ -154,15 +163,41 @@ class TestGetUnits:
         with pytest.raises(ValueError, match="Invalid JSON format"):
             cltmorph.get_units("custom", metrics_json=path)
 
-    def test_file_without_metrics_units_is_rejected(self, tmp_path):
+    def test_file_without_metric_key_is_rejected(self, tmp_path):
         path = tmp_path / "other.json"
         path.write_text(json.dumps({"something": 1}))
-        with pytest.raises(ValueError, match="metrics_units"):
+        with pytest.raises(ValueError, match="'metric'"):
             cltmorph.get_units("custom", metrics_json=path)
 
     def test_invalid_type_is_rejected(self):
         with pytest.raises(ValueError, match="metrics_json must be"):
             cltmorph.get_units("custom", metrics_json=5)
+
+
+####################################################################################################
+class TestGetFullnames:
+    def test_default_fullnames(self):
+        assert cltmorph.get_fullnames("thickness") == ["Cortical thickness"]
+        assert cltmorph.get_fullnames(["fa", "MD"]) == [
+            "Fractional anisotropy",
+            "Mean diffusivity",
+        ]
+
+    def test_unknown_metric_keeps_its_name(self):
+        assert cltmorph.get_fullnames(["not_a_metric"]) == ["not_a_metric"]
+
+    def test_custom_dictionary(self):
+        config = {"metric": {"custom": {"fullname": "Custom metric", "units": "kg"}}}
+        assert cltmorph.get_fullnames("Custom", metrics_json=config) == ["Custom metric"]
+
+    def test_entry_without_fullname_keeps_its_name(self):
+        config = {"metric": {"custom": {"units": "kg"}}}
+        assert cltmorph.get_fullnames("custom", metrics_json=config) == ["custom"]
+
+    def test_every_default_metric_has_fullname_and_units(self):
+        for name, info in cltmorph._default_metric_lookup().items():
+            assert info["fullname"] != name or name in {"volume"}, name
+            assert info["units"] != "unknown", name
 
 
 ####################################################################################################
@@ -2659,16 +2694,16 @@ class TestConfigurationFiles:
         def install(text):
             package = self.use_config(tmp_path, text)
             cltmorph.__file__ = str(package / "morphometrytools.py")
-            cltmorph._default_units_lookup.cache_clear()
+            cltmorph._default_metric_lookup.cache_clear()
             cltmorph._default_network_metrics.cache_clear()
 
         yield install
         cltmorph.__file__ = original
-        cltmorph._default_units_lookup.cache_clear()
+        cltmorph._default_metric_lookup.cache_clear()
         cltmorph._default_network_metrics.cache_clear()
 
     def test_units_are_read_from_the_configuration(self, fake_package):
-        fake_package(json.dumps({"metrics_units": {"Thickness": "um"}}))
+        fake_package(json.dumps({"metric": {"Thickness": {"fullname": "Thick", "units": "um"}}}))
         assert cltmorph.get_units("thickness") == ["um"]
 
     def test_units_with_a_missing_configuration(self, fake_package):
@@ -2708,7 +2743,7 @@ class TestConfigurationFiles:
             cltmorph._default_network_metrics()
 
     def test_default_metrics_without_the_network_metrics_entry(self, fake_package):
-        fake_package(json.dumps({"metrics_units": {}}))
+        fake_package(json.dumps({"metric": {}}))
         with pytest.raises(ValueError, match="'network_metrics' dictionary not found"):
             cltmorph._default_network_metrics()
 

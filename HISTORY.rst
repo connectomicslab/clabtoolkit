@@ -5,6 +5,7 @@ History
 Unreleased
 ----------
 
+* ``config/config.json`` now has a ``metric`` field instead of ``metrics_units``: a dictionary with one entry per metric, such as ``"thickness": {"fullname": "Cortical thickness", "units": "mm"}``. ``get_units`` reads it (a plain ``{name: units}`` mapping or the old ``metrics_units`` key are still accepted in a custom configuration), and the new ``get_fullnames`` returns the full names
 * Added the DOI of version 0.6.3 to ``CITATION.cff``
 * The continuous integration now also tests Python 3.12 on Windows and macOS, so every combination of the three operating systems and Python 3.11 to 3.13 is tested
 * Removed the unused ``.travis.yml`` (the CI runs on GitHub Actions) and the temporary ``environment_tmp.yaml``

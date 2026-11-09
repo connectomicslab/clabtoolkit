@@ -5197,7 +5197,7 @@ class Parcellation:
 
         # Read the config file in order to get default settings and units
         config = cltmisc.load_json(def_config_file)
-        vol_units = config["metrics_units"]["volume"]
+        vol_units = config["metric"]["volume"]["units"]
 
         # ------------------------------------------------------------------
         # Validate the output path first, so a bad path fails before computing

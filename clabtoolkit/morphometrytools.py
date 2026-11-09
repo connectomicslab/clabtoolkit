@@ -1776,8 +1776,10 @@ def get_units(
         Metric name(s), case-insensitive.
 
     metrics_json : str, Path or dict, optional
-        JSON file or dictionary with a "metrics_units" mapping. If None, the
-        package's config/config.json is used.
+        JSON file or dictionary with a "metric" mapping, in which every metric name
+        has a dictionary with its "units" (and "fullname"). If None, the package's
+        config/config.json is used. For convenience, a plain ``{name: units}``
+        mapping (or one under the legacy "metrics_units" key) is also accepted.
 
     Returns
     -------
@@ -1787,43 +1789,58 @@ def get_units(
     Raises
     ------
     ValueError
-        If the JSON file is invalid or lacks the "metrics_units" key.
+        If the JSON file is invalid or lacks the "metric" key.
 
     Examples
     --------
     >>> get_units(['thickness', 'area', 'volume'])
     ['mm', 'mm2', 'mm3']
-    >>> get_units('custom_metric', metrics_json={"metrics_units": {"custom_metric": "kg"}})
+    >>> cfg = {"metric": {"custom_metric": {"fullname": "Custom", "units": "kg"}}}
+    >>> get_units('custom_metric', metrics_json=cfg)
     ['kg']
     """
     if isinstance(metrics, str):
         metrics = [metrics]
+    lookup = _metric_lookup(metrics_json)
+    return [lookup.get(m.lower(), {}).get("units", "unknown") for m in metrics]
 
-    if metrics_json is None:
-        lookup_dict = _default_units_lookup()
 
-    elif isinstance(metrics_json, (str, Path)):
-        if not os.path.isfile(metrics_json):
-            raise ValueError(f"Invalid JSON file path: {metrics_json}")
-        try:
-            with open(metrics_json, encoding="utf-8") as f:
-                config_data = json.load(f)
-        except json.JSONDecodeError as err:
-            raise ValueError(f"Invalid JSON format in file: {metrics_json}") from err
+####################################################################################################
+def get_fullnames(
+    metrics: str | list[str], metrics_json: str | Path | dict | None = None
+) -> list[str]:
+    """
+    Get the full (descriptive) name of one or more metrics.
 
-        metric_dict = config_data.get("metrics_units", {})
-        if not metric_dict:
-            raise ValueError("Missing 'metrics_units' key in the provided JSON file")
-        lookup_dict = {k.lower(): v for k, v in metric_dict.items()}
+    Parameters
+    ----------
+    metrics : str or list of str
+        Metric name(s), case-insensitive.
 
-    elif isinstance(metrics_json, dict):
-        metric_dict = metrics_json.get("metrics_units", metrics_json)
-        lookup_dict = {k.lower(): v for k, v in metric_dict.items()}
+    metrics_json : str, Path or dict, optional
+        Metrics configuration, as in :func:`get_units`. If None, the package's
+        config/config.json is used.
 
-    else:
-        raise ValueError("metrics_json must be a file path, dictionary, or None")
+    Returns
+    -------
+    list of str
+        Full name of each metric. A metric without a "fullname" (or not in the
+        configuration) is reported with its own name.
 
-    return [lookup_dict.get(metric.lower(), "unknown") for metric in metrics]
+    Raises
+    ------
+    ValueError
+        If the JSON file is invalid or lacks the "metric" key.
+
+    Examples
+    --------
+    >>> get_fullnames(['thickness', 'fa'])
+    ['Cortical thickness', 'Fractional anisotropy']
+    """
+    if isinstance(metrics, str):
+        metrics = [metrics]
+    lookup = _metric_lookup(metrics_json)
+    return [lookup.get(m.lower(), {}).get("fullname", m) for m in metrics]
 
 
 ####################################################################################################
@@ -1887,9 +1904,27 @@ def convert_from_mm(
 ####################################################################################################
 # Private helpers
 ####################################################################################################
+def _normalize_metric_dict(metric_dict: dict) -> dict[str, dict[str, str]]:
+    """
+    Case-insensitive ``{name: {"fullname": ..., "units": ...}}`` mapping.
+
+    An entry may also be a plain string, which is read as the units of the metric.
+    """
+    lookup = {}
+    for name, entry in metric_dict.items():
+        if isinstance(entry, dict):
+            lookup[name.lower()] = {
+                "fullname": str(entry.get("fullname", name)),
+                "units": str(entry.get("units", "unknown")),
+            }
+        else:
+            lookup[name.lower()] = {"fullname": name, "units": str(entry)}
+    return lookup
+
+
 @lru_cache(maxsize=1)
-def _default_units_lookup() -> dict:
-    """Load and cache the case-insensitive metrics_units mapping of config.json."""
+def _default_metric_lookup() -> dict[str, dict[str, str]]:
+    """Load and cache the case-insensitive "metric" mapping of config.json."""
     config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
     try:
         with open(config_path, encoding="utf-8") as f:
@@ -1897,7 +1932,35 @@ def _default_units_lookup() -> dict:
     except (FileNotFoundError, json.JSONDecodeError) as e:
         raise ValueError(f"Error loading default configuration: {str(e)}") from e
 
-    return {k.lower(): v for k, v in config_data.get("metrics_units", {}).items()}
+    return _normalize_metric_dict(config_data.get("metric", {}))
+
+
+def _metric_lookup(metrics_json: str | Path | dict | None) -> dict[str, dict[str, str]]:
+    """Metric information (full name and units) from the default or a given configuration."""
+    if metrics_json is None:
+        return _default_metric_lookup()
+
+    if isinstance(metrics_json, (str, Path)):
+        if not os.path.isfile(metrics_json):
+            raise ValueError(f"Invalid JSON file path: {metrics_json}")
+        try:
+            with open(metrics_json, encoding="utf-8") as f:
+                config_data = json.load(f)
+        except json.JSONDecodeError as err:
+            raise ValueError(f"Invalid JSON format in file: {metrics_json}") from err
+
+        metric_dict = config_data.get("metric") or config_data.get("metrics_units")
+        if not metric_dict:
+            raise ValueError("Missing 'metric' key in the provided JSON file")
+        return _normalize_metric_dict(metric_dict)
+
+    if isinstance(metrics_json, dict):
+        metric_dict = metrics_json.get("metric") or metrics_json.get(
+            "metrics_units", metrics_json
+        )
+        return _normalize_metric_dict(metric_dict)
+
+    raise ValueError("metrics_json must be a file path, dictionary, or None")
 
 
 @lru_cache(maxsize=1)
