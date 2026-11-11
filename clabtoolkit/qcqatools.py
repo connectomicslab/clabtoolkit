@@ -15,6 +15,7 @@ import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+from urllib.parse import quote
 
 import matplotlib.pyplot as plt
 import nibabel as nib
@@ -792,8 +793,278 @@ def recursively_generate_slices(
 
 
 ####################################################################################################
+# Image formats that a web browser can show
+_WEB_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"}
+
+
+# Rating of the images in the page of generate_image_selection_webpage
+_RATING_CSS = """
+    .rating {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+    }
+
+    .rating button.rate {
+      background: #2a2a2a;
+      color: #ddd;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 6px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .rating button.rate:hover { border-color: #fff; }
+    .rating button.rate.active[data-rating="pass"] { background: #2e7d32; border-color: #2e7d32; color: white; }
+    .rating button.rate.active[data-rating="doubtful"] { background: #f9a825; border-color: #f9a825; color: black; }
+    .rating button.rate.active[data-rating="fail"] { background: #c62828; border-color: #c62828; color: white; }
+
+    .rating input.rate-comment {
+      flex: 1 1 260px;
+      background: #2a2a2a;
+      color: white;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+
+    .image-container[data-rating="pass"] { border-left-color: #2e7d32; }
+    .image-container[data-rating="doubtful"] { border-left-color: #f9a825; }
+    .image-container[data-rating="fail"] { border-left-color: #c62828; }
+    .image-container.current { outline: 1px solid #777; }
+
+    .rating-stats { margin-top: 8px; font-size: 14px; color: #ccc; }
+    .rating-hint { font-size: 12px; color: #888; }
+"""
+
+_RATING_JS = """
+  <script>
+    (function () {
+      var KEY = 'clabtoolkit-image-qc:' + location.pathname;
+      var RATINGS = ['pass', 'doubtful', 'fail'];
+      var data = {};
+      var current = -1;
+
+      function load() {
+        try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+      }
+
+      function save() {
+        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+      }
+
+      function blocks() {
+        return Array.prototype.slice.call(document.querySelectorAll('.rating'));
+      }
+
+      function entryOf(block) {
+        return data[block.dataset.key] || {};
+      }
+
+      function show(block) {
+        var entry = entryOf(block);
+        block.querySelectorAll('button.rate').forEach(function (button) {
+          button.classList.toggle('active', button.dataset.rating === entry.rating);
+        });
+        block.parentNode.dataset.rating = entry.rating || '';
+        var comment = block.querySelector('.rate-comment');
+        if (document.activeElement !== comment) { comment.value = entry.comment || ''; }
+      }
+
+      function showStats() {
+        var all = blocks();
+        var counts = { pass: 0, doubtful: 0, fail: 0 };
+        all.forEach(function (block) {
+          var rating = entryOf(block).rating;
+          if (rating) { counts[rating] += 1; }
+        });
+        var rated = counts.pass + counts.doubtful + counts.fail;
+        var text = 'Rated: ' + rated + ' / ' + all.length + ' images (pass ' + counts.pass +
+          ', doubtful ' + counts.doubtful + ', fail ' + counts.fail + ')';
+        document.querySelectorAll('.rating-stats').forEach(function (node) {
+          node.textContent = text;
+        });
+      }
+
+      function update(block, changes) {
+        var entry = entryOf(block);
+        Object.keys(changes).forEach(function (name) { entry[name] = changes[name]; });
+        if (!entry.rating && !entry.comment) {
+          delete data[block.dataset.key];
+        } else {
+          data[block.dataset.key] = entry;
+        }
+        save();
+        show(block);
+        showStats();
+      }
+
+      function rate(block, rating) {
+        // Choosing the same rating again removes it
+        update(block, { rating: entryOf(block).rating === rating ? '' : rating });
+      }
+
+      function inView() {
+        // First image below the bar of buttons, or the one chosen with j / k
+        var all = blocks();
+        if (current >= 0 && current < all.length) {
+          var box = all[current].parentNode.getBoundingClientRect();
+          if (box.bottom > 0 && box.top < window.innerHeight) { return current; }
+        }
+        for (var i = 0; i < all.length; i++) {
+          if (all[i].parentNode.getBoundingClientRect().bottom > window.innerHeight / 3) { return i; }
+        }
+        return all.length - 1;
+      }
+
+      function go(index) {
+        var all = blocks();
+        if (!all.length) { return; }
+        current = Math.max(0, Math.min(all.length - 1, index));
+        all.forEach(function (block, i) {
+          block.parentNode.classList.toggle('current', i === current);
+        });
+        var top = all[current].parentNode.getBoundingClientRect().top + window.scrollY;
+        var bar = document.querySelector('.controls');
+        window.scrollTo(0, top - (bar ? bar.offsetHeight + 30 : 0));
+      }
+
+      function clean(text) {
+        return String(text || '').replace(/[\\t\\r\\n]+/g, ' ').trim();
+      }
+
+      window.downloadRatings = function () {
+        var lines = ['image\\tname\\trating\\tcomment'];
+        blocks().forEach(function (block) {
+          var entry = entryOf(block);
+          lines.push([block.dataset.key, block.dataset.name, entry.rating || '',
+            clean(entry.comment)].join('\\t'));
+        });
+        var blob = new Blob([lines.join('\\n') + '\\n'], { type: 'text/tab-separated-values' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'image_ratings.tsv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      window.clearRatings = function () {
+        if (!confirm('Remove the ratings and comments of all the images?')) { return; }
+        data = {};
+        save();
+        blocks().forEach(show);
+        showStats();
+      };
+
+      document.addEventListener('DOMContentLoaded', function () {
+        data = load();
+        blocks().forEach(function (block) {
+          block.querySelectorAll('button.rate').forEach(function (button) {
+            button.addEventListener('click', function () { rate(block, button.dataset.rating); });
+          });
+          block.querySelector('.rate-comment').addEventListener('input', function (event) {
+            update(block, { comment: event.target.value });
+          });
+          show(block);
+        });
+        showStats();
+      });
+
+      document.addEventListener('keydown', function (event) {
+        var tag = event.target.tagName;
+        if (tag === 'INPUT' && event.target.type !== 'checkbox' || tag === 'TEXTAREA') { return; }
+        if (event.ctrlKey || event.metaKey || event.altKey) { return; }
+        var key = event.key.toLowerCase();
+        var all = blocks();
+        if (!all.length) { return; }
+        if (key === 'j') { go(inView() + (current < 0 ? 0 : 1)); }
+        else if (key === 'k') { go(inView() - 1); }
+        else if (key === 'p' || key === 'd' || key === 'f') {
+          var index = inView();
+          rate(all[index], RATINGS[['p', 'd', 'f'].indexOf(key)]);
+        }
+      });
+    })();
+  </script>"""
+
+_RATING_CONTROLS = """
+    <button class="select-btn" onclick="downloadRatings()">Download Ratings</button>
+    <button class="select-btn" onclick="clearRatings()">Clear Ratings</button>
+    <div class="rating-stats">Rated: 0 images</div>
+    <div class="rating-hint">Keys: j / k next and previous image, p pass, d doubtful, f fail (again to remove)</div>"""
+
+
+def _read_image_list(images) -> tuple[list[Path], list[Path]]:
+    """
+    Read the images given to generate_image_selection_webpage.
+
+    Parameters
+    ----------
+    images : str, Path or list
+        One image, a list of images, or a text file with one image path per line.
+
+    Returns
+    -------
+    found : list of Path
+        Absolute paths of the images that exist, without repetitions, in their order.
+
+    missing : list of Path
+        Paths that are not files.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``images`` is a text file that does not exist.
+    """
+
+    cwd = Path.cwd()
+    bases = [cwd]
+    if isinstance(images, (str, Path)):
+        list_file = Path(images).expanduser()
+        if list_file.suffix.lower() in _WEB_IMAGE_SUFFIXES:
+            entries = [list_file]
+        else:
+            if not list_file.is_file():
+                raise FileNotFoundError(
+                    f"The file with the images was not found: {list_file}"
+                )
+            lines = [
+                line.strip()
+                for line in list_file.read_text(encoding="utf-8").splitlines()
+            ]
+            entries = [
+                Path(line).expanduser()
+                for line in lines
+                if line and not line.startswith("#")
+            ]
+            # Relative paths: first from the folder of the file, then from the
+            # current folder
+            bases = [list_file.absolute().parent, cwd]
+    else:
+        entries = [Path(image).expanduser() for image in images]
+
+    found, missing, seen = [], [], set()
+    for entry in entries:
+        candidates = [entry] if entry.is_absolute() else [b / entry for b in bases]
+        candidates = [Path(os.path.normpath(c)) for c in candidates]
+        image = next((c for c in candidates if c.is_file()), candidates[0])
+        if image in seen:
+            continue
+        seen.add(image)
+        (found if image.is_file() else missing).append(image)
+
+    return found, missing
+
+
 def generate_image_selection_webpage(
-    root_directory: str | Path,
+    root_directory: str | Path | None = None,
     output_html: str | Path | None = None,
     png_pattern: str = "**/*.png",
     title: str = "PNG Image Selection",
@@ -801,6 +1072,8 @@ def generate_image_selection_webpage(
     show_descriptions: bool = True,
     image_width: str = "1400px",
     overwrite: bool = False,
+    images: str | Path | list | None = None,
+    rating: bool = True,
 ) -> str:
     """
     Generate interactive HTML webpage to display PNG images with selection checkboxes.
@@ -811,8 +1084,9 @@ def generate_image_selection_webpage(
 
     Parameters
     ----------
-    root_directory : str or Path
-        Root directory to search for PNG files.
+    root_directory : str or Path, optional
+        Root directory to search for PNG files. It can be None when ``images`` is
+        given: the root is then the folder that all the images have in common.
 
     output_html : str or Path, optional
         Output HTML file path. If None, saves as 'png_selection.html' in root directory.
@@ -836,19 +1110,49 @@ def generate_image_selection_webpage(
     overwrite : bool, optional
         Whether to overwrite existing HTML file. Default is False.
 
+    images : str, Path or list, optional
+        Images to show, instead of searching ``root_directory``: one image, a list
+        of images, or a text file with one image path per line (empty lines and lines
+        starting with ``#`` are ignored). The images can be in different folders and
+        in any format a browser shows (PNG, JPG, GIF, WebP, SVG, BMP). Relative paths
+        of a text file are looked for from the folder of that file and then from
+        the current folder. Paths that do not exist are reported and left out. With
+        ``images``, ``png_pattern`` and ``recursive`` are not used. Default is None.
+
+    rating : bool, optional
+        Whether each image gets the rating buttons (pass, doubtful or fail) and a
+        comment box. The ratings are kept in the browser and are downloaded as
+        ``image_ratings.tsv``, a table with one row per image (``image``, ``name``,
+        ``rating`` and ``comment``). Default is True.
+
     Returns
     -------
     str
         Path to generated HTML file.
 
+    Raises
+    ------
+    ValueError
+        If neither ``root_directory`` nor ``images`` is given, or if none of the
+        ``images`` exists.
+
+    FileNotFoundError
+        If ``images`` is a text file that does not exist.
+
     Notes
     -----
+    The images are linked, not copied: the page points to them with paths relative to
+    its own folder, so it keeps working if the page and the images are moved together.
+
     The webpage includes:
 
     - Hierarchical display of images by folder structure
     - Checkboxes for image selection
     - Descriptions extracted from associated JSON files
     - Select all/none buttons
+    - Rating of each image (pass, doubtful or fail) with a comment, also with the
+      keyboard (``j``/``k`` next and previous image, ``p``/``d``/``f`` rate the image
+      in view), and download of the ratings as a table
     - Download selected files list functionality
     - Dark theme optimized for neuroimaging
 
@@ -865,10 +1169,47 @@ def generate_image_selection_webpage(
     ...     title='Quality Control Images',
     ...     image_width='1000px'
     ... )
+    >>>
+    >>> # Images of different folders, from a list or from a text file
+    >>> html_file = generate_image_selection_webpage(
+    ...     images=['/data/sub-01/qc/t1.png', '/scratch/sub-02/t1.jpg'],
+    ...     output_html='/reports/quick_qc.html',
+    ... )
+    >>> html_file = generate_image_selection_webpage(
+    ...     images='/reports/images_to_check.txt',
+    ...     output_html='/reports/quick_qc.html',
+    ... )
     """
 
     console = Console()
+
+    if root_directory is None and images is None:
+        raise ValueError("Give a root_directory to search or the images to show.")
+
+    # Images given by the user: they define the root directory when it is not given
+    listed_files = None
+    image_base = None
+    if images is not None:
+        listed_files, missing = _read_image_list(images)
+        for image in missing:
+            console.print(f"[yellow]Image not found, left out: {image}")
+        if not listed_files:
+            raise ValueError("None of the images exists.")
+        try:
+            image_base = Path(os.path.commonpath([str(f.parent) for f in listed_files]))
+        except ValueError:
+            # Images in different drives
+            image_base = None
+        if root_directory is None:
+            root_directory = image_base if image_base is not None else Path.cwd()
+        else:
+            root_directory = Path(root_directory).absolute()
+            if all(f.is_relative_to(root_directory) for f in listed_files):
+                image_base = root_directory
+
     root_directory = Path(root_directory)
+    if image_base is None:
+        image_base = root_directory
 
     # Set output HTML path
     if output_html is None:
@@ -884,12 +1225,23 @@ def generate_image_selection_webpage(
         return str(output_html)
 
     # Find all PNG files
-    if recursive:
+    if listed_files is not None:
+        png_files = listed_files
+    elif recursive:
         png_files = sorted(root_directory.glob(png_pattern))
     else:
         png_files = sorted(root_directory.glob("*.png"))
 
     console.print(f"Found {len(png_files)} PNG files")
+
+    def image_link(image_file):
+        """Link to an image from the folder of the page, as a URL."""
+        try:
+            link = os.path.relpath(image_file, output_html.parent)
+        except ValueError:
+            # Different drives: no relative path
+            return Path(image_file).absolute().as_uri()
+        return quote(Path(link).as_posix(), safe="/")
 
     if not png_files:
         console.print("[yellow]No PNG files found!")
@@ -908,10 +1260,15 @@ def generate_image_selection_webpage(
                 task, completed=i + 1, description=f"[cyan]Processing: {png_file.name}"
             )
 
-            # Get relative path from root directory
+            # Folders of the image from the root directory
             try:
-                relative_path = png_file.relative_to(root_directory)
-                path_parts = relative_path.parts[:-1]  # Exclude filename
+                try:
+                    path_parts = png_file.parent.relative_to(image_base).parts
+                except ValueError:
+                    if listed_files is None:
+                        raise
+                    # Listed image outside the common folder: its own folder
+                    path_parts = (str(png_file.parent),)
 
                 # Build hierarchical structure
                 current_dict = image_dict
@@ -979,7 +1336,7 @@ def generate_image_selection_webpage(
                 # Store file information
                 file_info = {
                     "png_path": str(png_file),
-                    "relative_path": relative_path.as_posix(),
+                    "relative_path": image_link(png_file),
                     "name": png_file.stem,
                     "description": description,
                     "original_nii": original_nii,
@@ -994,6 +1351,10 @@ def generate_image_selection_webpage(
                 # PNG file is not under root_directory
                 console.print(f"[yellow]Skipping {png_file} (not under root directory)")
                 continue
+
+    rating_css = _RATING_CSS if rating else ""
+    rating_js = _RATING_JS if rating else ""
+    rating_controls = _RATING_CONTROLS if rating else ""
 
     # Generate HTML content
     html_content = f"""<!DOCTYPE html>
@@ -1123,7 +1484,7 @@ def generate_image_selection_webpage(
       padding-left: 20px;
       margin-bottom: 20px;
     }}
-  </style>
+{rating_css}  </style>
   <script>
     function downloadChecked() {{
       var checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
@@ -1186,7 +1547,7 @@ def generate_image_selection_webpage(
     window.onload = function() {{
       updateStats();
     }};
-  </script>
+  </script>{rating_js}
 </head>
 <body>
   <h1>{html.escape(title)}</h1>
@@ -1200,7 +1561,7 @@ def generate_image_selection_webpage(
     <button class="select-btn" onclick="selectAll()">Select All</button>
     <button class="select-btn" onclick="selectNone()">Select None</button>
     <button class="download-btn" onclick="downloadChecked()">Download Selection</button>
-    <div id="stats" class="stats">Loading...</div>
+    <div id="stats" class="stats">Loading...</div>{rating_controls}
   </div>
 """
 
@@ -1247,6 +1608,15 @@ def generate_image_selection_webpage(
                     f'<div class="description">📝 {html.escape(str(description))}</div>'
                 )
 
+            if rating:
+                content += f"""
+        <div class="rating" data-key="{checkbox_value}" data-name="{name}">
+          <button type="button" class="rate" data-rating="pass">Pass</button>
+          <button type="button" class="rate" data-rating="doubtful">Doubtful</button>
+          <button type="button" class="rate" data-rating="fail">Fail</button>
+          <input type="text" class="rate-comment" placeholder="Comment">
+        </div>"""
+
             content += f"""
         <img src="{png_path}" alt="{name}" onclick="document.getElementById('{image_id}').checked = !document.getElementById('{image_id}').checked; updateStats();">
       </div>"""
@@ -1264,12 +1634,12 @@ def generate_image_selection_webpage(
     html_content += render_hierarchy(image_dict)
 
     # Close HTML
-    html_content += """
+    html_content += f"""
     <div class="controls" style="margin-top: 40px;">
     <button class="select-btn" onclick="selectAll()">Select All</button>
     <button class="select-btn" onclick="selectNone()">Select None</button>
     <button class="download-btn" onclick="downloadChecked()">Download Selection</button>
-    <div id="stats" class="stats">Loading...</div>
+    <div id="stats" class="stats">Loading...</div>{rating_controls}
     </div>
 </body>
 </html>"""

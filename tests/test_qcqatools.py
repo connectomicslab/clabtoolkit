@@ -1028,6 +1028,151 @@ class TestGenerateImageSelectionWebpage:
         assert [c[0] for c in checkboxes(html)] == ["a", "b", "c"]
 
 
+def image_sources(html):
+    return re.findall(r'<img src="([^"]*)"', html)
+
+
+class TestImageSelectionWebpageFromAList:
+    def test_list_of_images_from_different_folders(self, tmp_path):
+        make_pngs(tmp_path, ["one/sub-01/a.png", "two/b.jpg"])
+        images = [tmp_path / "one/sub-01/a.png", str(tmp_path / "two/b.jpg")]
+        result = cltqcqa.generate_image_selection_webpage(images=images)
+        assert result == str(tmp_path / "png_selection.html")
+        html = Path(result).read_text(encoding="utf-8")
+        assert dict(checkboxes(html)) == {
+            "a": str(tmp_path / "one/sub-01/a.png"),
+            "b": str(tmp_path / "two/b.jpg"),
+        }
+        assert image_sources(html) == ["one/sub-01/a.png", "two/b.jpg"]
+        assert "📁 one / sub-01" in html and "📂 two" in html
+
+    def test_only_the_listed_images_are_shown(self, tmp_path):
+        make_pngs(tmp_path, ["a.png", "b.png", "c.png"])
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                tmp_path, images=[tmp_path / "c.png", tmp_path / "a.png"]
+            )
+        ).read_text(encoding="utf-8")
+        assert [c[0] for c in checkboxes(html)] == ["c", "a"]
+
+    def test_text_file_with_the_images(self, tmp_path):
+        make_pngs(tmp_path, ["data/a.png", "data/b.png", "lists/near/c.png"])
+        list_file = tmp_path / "lists" / "images.txt"
+        list_file.write_text(
+            f"# images to check\n{tmp_path / 'data/a.png'}\n\n"
+            f"  {tmp_path / 'data/b.png'}  \nnear/c.png\n{tmp_path / 'data/a.png'}\n"
+        )
+        out = tmp_path / "qc.html"
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                images=str(list_file), output_html=out
+            )
+        ).read_text(encoding="utf-8")
+        assert sorted(c[0] for c in checkboxes(html)) == ["a", "b", "c"]
+        assert sorted(image_sources(html)) == [
+            "data/a.png",
+            "data/b.png",
+            "lists/near/c.png",
+        ]
+
+    def test_one_image(self, tmp_path):
+        make_pngs(tmp_path, ["a.png"])
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(images=tmp_path / "a.png")
+        ).read_text(encoding="utf-8")
+        assert [c[0] for c in checkboxes(html)] == ["a"]
+
+    def test_links_are_relative_to_the_page(self, tmp_path):
+        make_pngs(tmp_path, ["data/my images/a#1.png"])
+        out = tmp_path / "reports" / "qc.html"
+        out.parent.mkdir()
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                images=[tmp_path / "data/my images/a#1.png"], output_html=out
+            )
+        ).read_text(encoding="utf-8")
+        assert image_sources(html) == ["../data/my%20images/a%231.png"]
+
+    def test_links_of_a_folder_with_the_page_elsewhere(self, tmp_path):
+        make_pngs(tmp_path / "data", ["sub-01/a.png"])
+        out = tmp_path / "reports" / "qc.html"
+        out.parent.mkdir()
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(tmp_path / "data", output_html=out)
+        ).read_text(encoding="utf-8")
+        assert image_sources(html) == ["../data/sub-01/a.png"]
+
+    def test_images_outside_the_root_directory(self, tmp_path):
+        make_pngs(tmp_path, ["root/a.png", "other/b.png"])
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                tmp_path / "root",
+                images=[tmp_path / "root/a.png", tmp_path / "other/b.png"],
+            )
+        ).read_text(encoding="utf-8")
+        assert sorted(c[0] for c in checkboxes(html)) == ["a", "b"]
+        assert sorted(image_sources(html)) == ["../other/b.png", "a.png"]
+
+    def test_missing_images_are_left_out(self, tmp_path, capsys):
+        make_pngs(tmp_path, ["a.png"])
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                images=[tmp_path / "a.png", tmp_path / "gone.png"]
+            )
+        ).read_text(encoding="utf-8")
+        assert [c[0] for c in checkboxes(html)] == ["a"]
+        assert "gone.png" in capsys.readouterr().out.replace("\n", "")
+
+    def test_errors(self, tmp_path):
+        with pytest.raises(ValueError, match="root_directory"):
+            cltqcqa.generate_image_selection_webpage()
+        with pytest.raises(ValueError, match="None of the images"):
+            cltqcqa.generate_image_selection_webpage(images=[tmp_path / "gone.png"])
+        with pytest.raises(FileNotFoundError):
+            cltqcqa.generate_image_selection_webpage(images=tmp_path / "list.txt")
+
+
+class TestImageSelectionWebpageRating:
+    def test_each_image_has_the_rating_buttons(self, tmp_path):
+        make_pngs(tmp_path, ["sub-01/a.png", "sub-02/b.png"])
+        (tmp_path / "sub-01" / "a.nii.gz").write_text("image")
+        html = Path(cltqcqa.generate_image_selection_webpage(tmp_path)).read_text(
+            encoding="utf-8"
+        )
+        blocks = re.findall(
+            r'<div class="rating" data-key="([^"]*)" data-name="([^"]*)">', html
+        )
+        assert blocks == [
+            (str(tmp_path / "sub-01" / "a.nii.gz"), "a"),
+            (str(tmp_path / "sub-02" / "b.png"), "b"),
+        ]
+        for rating in ("pass", "doubtful", "fail"):
+            assert html.count(f'class="rate" data-rating="{rating}"') == 2
+        assert html.count('class="rate-comment"') == 2
+
+    def test_controls_and_script_of_the_ratings(self, tmp_path):
+        make_pngs(tmp_path, ["a.png"])
+        html = Path(cltqcqa.generate_image_selection_webpage(tmp_path)).read_text(
+            encoding="utf-8"
+        )
+        assert html.count('onclick="downloadRatings()"') == 2
+        assert html.count('onclick="clearRatings()"') == 2
+        assert html.count('class="rating-stats"') == 2
+        assert "a.download = 'image_ratings.tsv'" in html
+        assert "image\\tname\\trating\\tcomment" in html
+        assert "localStorage" in html
+
+    def test_page_without_rating(self, tmp_path):
+        make_pngs(tmp_path, ["a.png"])
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(tmp_path, rating=False)
+        ).read_text(encoding="utf-8")
+        for text in ("downloadRatings", "rate-comment", "localStorage", ".rating"):
+            assert text not in html
+        assert [c[0] for c in checkboxes(html)] == ["a"]
+        assert html.count('onclick="downloadChecked()"') == 2
+
+
 class TestCreatePngWebpageFromGeneratedSlices:
     def test_page_of_generated_slices(self, tmp_path, dataset):
         out = tmp_path / "qc"
