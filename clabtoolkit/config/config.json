@@ -14,7 +14,7 @@
         "sl": {"fullname": "Sulcal length", "units": "mm"},
         "fa": {"fullname": "Fractional anisotropy", "units": "au"},
         "md": {"fullname": "Mean diffusivity", "units": "mm2/s"},
-        "cs": {"fullname": "Spherical anisotropy coefficient", "uni ts": "au"},
+        "cs": {"fullname": "Spherical anisotropy coefficient", "units": "au"},
         "cp": {"fullname": "Planar anisotropy coefficient", "units": "au"},
         "cl": {"fullname": "Linear anisotropy coefficient", "units": "au"},
         "trace": {"fullname": "Trace of the diffusion tensor", "units": "mm2/s"},
