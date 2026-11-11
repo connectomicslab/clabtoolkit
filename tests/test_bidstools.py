@@ -478,6 +478,186 @@ class TestCopyBidsFolder:
         assert "No derivatives folders" in capsys.readouterr().out
 
 
+def make_tree(root, relative_paths):
+    for rel in relative_paths:
+        path = Path(root) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("data")
+    return Path(root)
+
+
+def tree_files(root) -> list[str]:
+    """Relative POSIX paths of all the files inside root."""
+    return sorted(
+        p.relative_to(root).as_posix() for p in Path(root).rglob("*") if p.is_file()
+    )
+
+
+PREP_ANAT = "derivatives/prep/sub-01/ses-01/anat"
+
+
+@pytest.fixture
+def removable_bids(tmp_path):
+    """Raw data and two pipelines: one by subject and session, one FreeSurfer-like."""
+    return make_tree(
+        tmp_path / "ds",
+        [
+            "dataset_description.json",
+            "sub-01/sub-01_ses-01_scans.tsv",
+            "sub-01/ses-01/anat/sub-01_ses-01_acq-3T_run-01_T1w.nii.gz",
+            "sub-01/ses-01/anat/sub-01_ses-01_acq-3T_run-01_T1w.json",
+            "sub-01/ses-01/anat/sub-01_ses-01_acq-3T_run-02_T1w.nii.gz",
+            "sub-01/ses-02/anat/sub-01_ses-02_acq-3T_run-01_T1w.nii.gz",
+            "sub-02/ses-01/anat/sub-02_ses-01_acq-3T_run-01_T1w.nii.gz",
+            "sub-010/ses-01/anat/sub-010_ses-01_acq-3T_run-01_T1w.nii.gz",
+            "derivatives/prep/dataset_description.json",
+            "derivatives/prep/sub-01.html",
+            f"{PREP_ANAT}/sub-01_ses-01_acq-3T_desc-brain_run-01_mask.nii.gz",
+            f"{PREP_ANAT}/sub-01_ses-01_acq-3T_run-02_mask.nii.gz",
+            "derivatives/prep/sub-01/ses-02/anat/sub-01_ses-02_acq-3T_run-01_mask.nii.gz",
+            "derivatives/prep/sub-02/ses-01/anat/sub-02_ses-01_acq-3T_run-01_mask.nii.gz",
+            "derivatives/freesurfer/fsaverage/mri/T1.mgz",
+            "derivatives/freesurfer/sub-01_ses-01_acq-3T_run-01/mri/T1.mgz",
+            "derivatives/freesurfer/sub-01_ses-01_acq-3T_run-02/mri/T1.mgz",
+            "derivatives/freesurfer/sub-01_ses-02_acq-3T_run-01/mri/T1.mgz",
+            "derivatives/freesurfer/sub-02_ses-01_acq-3T_run-01/mri/T1.mgz",
+        ],
+    )
+
+
+class TestRemoveBidsFolder:
+    def remove(self, root, ids, **kwargs):
+        kwargs.setdefault("deriv_dir", root / "derivatives")
+        kwargs.setdefault("deriv_folders", "all")
+        return cltbids.remove_bids_folder(root, ids, **kwargs)
+
+    def test_one_acquisition_from_the_derivatives(self, removable_bids):
+        before = tree_files(removable_bids)
+        removed = self.remove(removable_bids, "sub-01_ses-01_acq-3T_run-01")
+        mask = f"{PREP_ANAT}/sub-01_ses-01_acq-3T_desc-brain_run-01_mask.nii.gz"
+        assert sorted(removed) == [
+            str(removable_bids / "derivatives/freesurfer/sub-01_ses-01_acq-3T_run-01"),
+            str(removable_bids / mask),
+        ]
+        gone = {"derivatives/freesurfer/sub-01_ses-01_acq-3T_run-01/mri/T1.mgz", mask}
+        assert tree_files(removable_bids) == sorted(set(before) - gone)
+
+    def test_session_from_the_derivatives(self, removable_bids):
+        self.remove(removable_bids, ["sub-01_ses-01"])
+        assert tree_files(removable_bids / "derivatives") == [
+            "freesurfer/fsaverage/mri/T1.mgz",
+            "freesurfer/sub-01_ses-02_acq-3T_run-01/mri/T1.mgz",
+            "freesurfer/sub-02_ses-01_acq-3T_run-01/mri/T1.mgz",
+            "prep/dataset_description.json",
+            "prep/sub-01.html",
+            "prep/sub-01/ses-02/anat/sub-01_ses-02_acq-3T_run-01_mask.nii.gz",
+            "prep/sub-02/ses-01/anat/sub-02_ses-01_acq-3T_run-01_mask.nii.gz",
+        ]
+        # The raw data are kept
+        assert (removable_bids / "sub-01/ses-01/anat").is_dir()
+
+    def test_subject_from_raw_data_and_derivatives(self, removable_bids):
+        self.remove(removable_bids, "sub-01", only_derivatives=False)
+        assert tree_files(removable_bids) == [
+            "dataset_description.json",
+            "derivatives/freesurfer/fsaverage/mri/T1.mgz",
+            "derivatives/freesurfer/sub-02_ses-01_acq-3T_run-01/mri/T1.mgz",
+            "derivatives/prep/dataset_description.json",
+            "derivatives/prep/sub-02/ses-01/anat/sub-02_ses-01_acq-3T_run-01_mask.nii.gz",
+            "sub-010/ses-01/anat/sub-010_ses-01_acq-3T_run-01_T1w.nii.gz",
+            "sub-02/ses-01/anat/sub-02_ses-01_acq-3T_run-01_T1w.nii.gz",
+        ]
+
+    def test_only_raw_data_and_empty_folders(self, removable_bids):
+        cltbids.remove_bids_folder(
+            removable_bids,
+            ["sub-01_ses-02", "sub-01_ses-01_acq-3T_run-01"],
+            only_derivatives=False,
+        )
+        assert [f for f in tree_files(removable_bids) if f.startswith("sub-01/")] == [
+            "sub-01/ses-01/anat/sub-01_ses-01_acq-3T_run-02_T1w.nii.gz",
+            "sub-01/sub-01_ses-01_scans.tsv",
+        ]
+        assert not (removable_bids / "sub-01" / "ses-02").exists()
+        assert (removable_bids / "derivatives/prep/sub-01/ses-02").is_dir()
+
+    def test_selected_derivatives_folder(self, removable_bids):
+        self.remove(removable_bids, "sub-02", deriv_folders="freesurfer")
+        deriv = removable_bids / "derivatives"
+        assert not (deriv / "freesurfer" / "sub-02_ses-01_acq-3T_run-01").exists()
+        assert (deriv / "prep" / "sub-02").is_dir()
+
+    def test_simulate_removes_nothing(self, removable_bids):
+        before = tree_files(removable_bids)
+        removed = self.remove(
+            removable_bids, "sub-01", only_derivatives=False, simulate=True
+        )
+        assert tree_files(removable_bids) == before
+        deriv = removable_bids / "derivatives"
+        assert sorted(removed) == sorted(
+            str(path)
+            for path in [
+                deriv / "freesurfer" / "sub-01_ses-01_acq-3T_run-01",
+                deriv / "freesurfer" / "sub-01_ses-01_acq-3T_run-02",
+                deriv / "freesurfer" / "sub-01_ses-02_acq-3T_run-01",
+                deriv / "prep" / "sub-01",
+                deriv / "prep" / "sub-01.html",
+                removable_bids / "sub-01",
+            ]
+        )
+
+    def test_ids_from_a_file(self, removable_bids, tmp_path):
+        ids = tmp_path / "ids.txt"
+        ids.write_text("# failed\nsub-02_ses-01_acq-3T_run-01\n\nsub-01_ses-02\n")
+        for ids_file in (str(ids), ids):
+            self.remove(removable_bids, ids_file)
+        assert tree_files(removable_bids / "derivatives" / "freesurfer") == [
+            "fsaverage/mri/T1.mgz",
+            "sub-01_ses-01_acq-3T_run-01/mri/T1.mgz",
+            "sub-01_ses-01_acq-3T_run-02/mri/T1.mgz",
+        ]
+        assert not (removable_bids / "derivatives" / "prep" / "sub-02").exists()
+
+    def test_invalid_and_missing_ids(self, removable_bids, capsys):
+        before = tree_files(removable_bids)
+        removed = self.remove(
+            removable_bids,
+            ["ses-01", "sub-01_T1w", "fsaverage", "sub-99", "sub-0", ""],
+            only_derivatives=False,
+        )
+        assert removed == []
+        assert tree_files(removable_bids) == before
+        output = capsys.readouterr().out
+        assert output.count("Not a valid ID") == 3
+        assert output.count("Nothing found") == 2
+
+    def test_symbolic_links_are_not_followed(self, removable_bids, tmp_path):
+        outside = make_tree(tmp_path / "outside", ["sub-01_ses-01_keep.txt"])
+        deriv = removable_bids / "derivatives"
+        try:
+            os.symlink(outside, deriv / "prep" / "sub-01" / "linked")
+            os.symlink(outside, deriv / "freesurfer" / "sub-01_ses-01_link")
+        except (OSError, NotImplementedError):
+            pytest.skip("Symbolic links are not available")
+        self.remove(removable_bids, "sub-01_ses-01")
+        assert (outside / "sub-01_ses-01_keep.txt").is_file()
+        assert not os.path.lexists(deriv / "freesurfer" / "sub-01_ses-01_link")
+
+    def test_errors(self, removable_bids, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            cltbids.remove_bids_folder(tmp_path / "none", "sub-01")
+        with pytest.raises(FileNotFoundError):
+            cltbids.remove_bids_folder(
+                removable_bids, "sub-01", deriv_dir=tmp_path / "none"
+            )
+        with pytest.raises(ValueError, match="only_derivatives"):
+            cltbids.remove_bids_folder(removable_bids, "sub-01")
+        with pytest.raises(ValueError, match="deriv_folders"):
+            cltbids.remove_bids_folder(
+                removable_bids, "sub-01", deriv_dir=removable_bids / "derivatives"
+            )
+
+
 ####################################################################################################
 # Recursive renaming inside a dataset
 ####################################################################################################

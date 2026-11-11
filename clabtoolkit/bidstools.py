@@ -1465,6 +1465,290 @@ def copy_bids_folder(
 
 
 ####################################################################################################
+def _read_full_ids(full_ids: list | str | Path) -> list[str]:
+    """
+    Read the identifiers given to remove_bids_folder.
+
+    Parameters
+    ----------
+    full_ids : list, str or Path
+        One identifier, a list of identifiers, or a text file with one per line.
+
+    Returns
+    -------
+    list of str
+        Identifiers without repetitions, in their order. The empty lines and the
+        lines starting with ``#`` of a text file are ignored.
+    """
+
+    if isinstance(full_ids, (str, Path)):
+        if os.path.isfile(full_ids):
+            with open(full_ids, encoding="utf-8") as f:
+                lines = [line.strip() for line in f]
+            full_ids = [line for line in lines if line and not line.startswith("#")]
+        else:
+            full_ids = [str(full_ids)]
+
+    ids = [str(full_id).strip() for full_id in full_ids]
+    return list(dict.fromkeys(i for i in ids if i))
+
+
+def _name_entities(name: str) -> dict:
+    """Entities (key-value pairs) of the name of a file or folder, as a dictionary."""
+
+    parts = name.split("_")
+    # The extension follows the last part: "sub-01.html" is of the subject 01
+    parts[-1] = parts[-1].split(".", 1)[0]
+
+    entities = {}
+    for part in parts:
+        if "-" in part:
+            key, value = part.split("-", 1)
+            entities[key] = value
+    return entities
+
+
+def _find_bids_matches(root_dir: str, target: dict) -> list[str]:
+    """
+    Find the files and folders of a BIDs tree that belong to an identifier.
+
+    Parameters
+    ----------
+    root_dir : str
+        BIDs directory or folder of a derivatives pipeline. Only its entries starting
+        with ``sub-`` are searched.
+
+    target : dict
+        Entities of the identifier, such as ``{"sub": "01", "ses": "02"}``.
+
+    Returns
+    -------
+    list of str
+        Paths that have all the entities of the identifier, taking them from their
+        own name and from the ``sub-*`` and ``ses-*`` folders that contain them. A
+        folder that matches is listed alone, without its contents. Folders of other
+        subjects or sessions and symbolic links to folders are not entered.
+    """
+
+    matches = []
+
+    def search(folder, context, top):
+        try:
+            entries = sorted(os.scandir(folder), key=lambda entry: entry.name)
+        except OSError:
+            return
+        for entry in entries:
+            if top and not entry.name.startswith("sub-"):
+                continue
+            entities = {**context, **_name_entities(entry.name)}
+            if all(entities.get(key) == value for key, value in target.items()):
+                matches.append(entry.path)
+                continue
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            # Folder of another subject, session, acquisition...
+            if any(key in target and target[key] != v for key, v in entities.items()):
+                continue
+            # Only the subject and session folders give their entities to their files
+            is_level = entry.name.startswith(("sub-", "ses-"))
+            search(entry.path, entities if is_level else context, False)
+
+    search(root_dir, {}, True)
+    return matches
+
+
+def remove_bids_folder(
+    bids_dir: str | Path,
+    full_ids: list | str | Path,
+    deriv_dir: str | Path = None,
+    deriv_folders: str | list = None,
+    only_derivatives: bool = True,
+    simulate: bool = False,
+) -> list[str]:
+    """
+    Remove subjects, sessions or acquisitions from a BIDs dataset and its derivatives.
+
+    The data of an identifier are the files and folders that have all its entities,
+    in their own name or in the ``sub-*`` and ``ses-*`` folders that contain them:
+
+    - ``sub-01`` removes the whole subject.
+    - ``sub-01_ses-02`` removes that session, and the files of the subject folder
+      named with it (such as ``sub-01_ses-02_scans.tsv``).
+    - ``sub-01_ses-02_acq-3T_run-01`` removes only the files and folders with those
+      entities (``sub-01_ses-02_acq-3T_run-01_T1w.nii.gz`` or
+      ``sub-01_ses-02_acq-3T_desc-brain_run-01_mask.nii.gz``, but not ``run-02``).
+
+    In the derivatives both layouts are handled: ``<pipeline>/sub-01/ses-02/...`` and
+    the folders named with the identifier directly inside the pipeline, as FreeSurfer
+    does (``freesurfer/sub-01_ses-02_acq-3T_run-01``). The folders left empty are
+    removed too. **The deletion cannot be undone**: run it first with
+    ``simulate=True`` to see what would be removed.
+
+    Parameters
+    ----------
+    bids_dir : str or Path
+        Path to the BIDs directory.
+
+    full_ids : list, str or Path
+        Identifiers to remove (e.g., "sub-01", "sub-01_ses-01" or
+        "sub-01_ses-01_acq-3T_run-01"): one identifier, a list, or a text file with
+        one identifier per line (empty lines and lines starting with ``#`` are
+        ignored). Identifiers without the ``sub`` entity, or with something that is
+        not a key-value pair (such as ``sub-01_T1w``), are reported and skipped.
+
+    deriv_dir : str or Path, optional
+        Path to the derivatives directory. Required if ``only_derivatives`` is True.
+        Default is None.
+
+    deriv_folders : str or list, optional
+        Derivatives folders (pipelines) to remove the data from. If "all", all the
+        folders of ``deriv_dir``. Required when ``deriv_dir`` is given.
+        Default is None.
+
+    only_derivatives : bool, optional
+        If True, only the derivatives are removed and the raw BIDs data are kept.
+        If False, the raw data are removed too. Default is True.
+
+    simulate : bool, optional
+        If True, nothing is removed: the function only returns what would be removed.
+        Default is False.
+
+    Returns
+    -------
+    list of str
+        Paths of the files and folders that were removed (or that would be removed
+        with ``simulate=True``). Folders are listed alone, without their contents.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the BIDs directory or the derivatives directory (when specified) does not
+        exist.
+
+    ValueError
+        If ``only_derivatives`` is True but ``deriv_dir`` is not specified, or if
+        ``deriv_dir`` is specified without ``deriv_folders``.
+
+    Examples
+    --------
+    >>> # See what would be removed from the FreeSurfer derivatives
+    >>> paths = remove_bids_folder(
+    ...     "/data/bids",
+    ...     ["sub-01_ses-01_acq-3T_run-01"],
+    ...     deriv_dir="/data/bids/derivatives",
+    ...     deriv_folders="freesurfer",
+    ...     simulate=True,
+    ... )
+    >>>
+    >>> # Remove the subjects of a text file from the raw data and all the derivatives
+    >>> remove_bids_folder(
+    ...     "/data/bids",
+    ...     "/data/ids_to_remove.txt",
+    ...     deriv_dir="/data/bids/derivatives",
+    ...     deriv_folders="all",
+    ...     only_derivatives=False,
+    ... )
+    """
+
+    console = Console()
+
+    bids_dir = cltmisc.remove_trailing_separators(str(bids_dir))
+    if not os.path.isdir(bids_dir):
+        raise FileNotFoundError(f"The BIDs directory {bids_dir} does not exist.")
+
+    if deriv_dir is not None:
+        deriv_dir = cltmisc.remove_trailing_separators(str(deriv_dir))
+        if not os.path.isdir(deriv_dir):
+            raise FileNotFoundError(
+                f"The derivatives directory {deriv_dir} does not exist."
+            )
+        if deriv_folders is None:
+            raise ValueError(
+                "deriv_folders must be specified with deriv_dir: 'all' or the names "
+                "of the derivatives folders."
+            )
+
+    # If only_derivatives is True, we will not delete the raw BIDs data
+    if only_derivatives and deriv_dir is None:
+        raise ValueError("If only_derivatives is True, deriv_dir must be specified.")
+
+    if full_ids is None:
+        console.print("[yellow]No IDs specified. Nothing to remove.")
+        return []
+    full_ids = _read_full_ids(full_ids)
+
+    # Folders to search: the pipelines of the derivatives and the raw data
+    roots = []
+    if deriv_dir is not None:
+        if isinstance(deriv_folders, str) and deriv_folders.lower() == "all":
+            deriv_folders = sorted(
+                name
+                for name in os.listdir(deriv_dir)
+                if not name.startswith(".")
+                and os.path.isdir(os.path.join(deriv_dir, name))
+            )
+        elif isinstance(deriv_folders, str):
+            deriv_folders = [deriv_folders]
+
+        for deriv_folder in deriv_folders:
+            pipe_dir = os.path.join(deriv_dir, deriv_folder)
+            if os.path.isdir(pipe_dir):
+                roots.append(pipe_dir)
+            else:
+                console.print(f"[yellow]Derivatives folder not found: {pipe_dir}")
+    if not only_derivatives:
+        roots.append(bids_dir)
+
+    # Files and folders of each identifier
+    to_remove = {}  # path -> folder where it was searched
+    for full_id in full_ids:
+        try:
+            parsed = str2entity(full_id)
+        except ValueError:
+            parsed = {}
+        if "sub" not in parsed or "suffix" in parsed or "extension" in parsed:
+            console.print(f"[yellow]Not a valid ID, skipped: {full_id}")
+            continue
+
+        found = False
+        for root in roots:
+            for path in _find_bids_matches(root, parsed):
+                to_remove.setdefault(path, root)
+                found = True
+        if not found:
+            console.print(f"[yellow]Nothing found for {full_id}")
+
+    removed = []
+    for path, root in to_remove.items():
+        if simulate:
+            removed.append(path)
+            continue
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except OSError as error:
+            console.print(f"[yellow]Could not remove {path}: {error}")
+            continue
+        removed.append(path)
+
+        # Remove the folders left empty, up to the folder that was searched
+        parent = os.path.dirname(path)
+        while parent != root and os.path.isdir(parent) and not os.listdir(parent):
+            try:
+                os.rmdir(parent)
+            except OSError:
+                break
+            parent = os.path.dirname(parent)
+
+    action = "Would remove" if simulate else "Removed"
+    console.print(f"{action} {len(removed)} files and folders.")
+
+    return removed
+
+
+####################################################################################################
 def get_bids_database_table(
     root_dir: str,
     output_table: str | None = None,
