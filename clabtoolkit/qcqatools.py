@@ -796,6 +796,19 @@ def recursively_generate_slices(
 # Image formats that a web browser can show
 _WEB_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"}
 
+# Volumes that are shown through a PNG with their slices
+_VOLUME_SUFFIXES = (".nii.gz", ".nii", ".mgz", ".mgh")
+
+
+def _volume_stem(image) -> str | None:
+    """Name of a volume without its extension, or None if the file is not a volume."""
+
+    name = Path(image).name
+    for suffix in _VOLUME_SUFFIXES:
+        if name.lower().endswith(suffix):
+            return name[: -len(suffix)]
+    return None
+
 
 # Rating of the images in the page of generate_image_selection_webpage
 _RATING_CSS = """
@@ -1028,7 +1041,10 @@ def _read_image_list(images) -> tuple[list[Path], list[Path]]:
     bases = [cwd]
     if isinstance(images, (str, Path)):
         list_file = Path(images).expanduser()
-        if list_file.suffix.lower() in _WEB_IMAGE_SUFFIXES:
+        if (
+            list_file.suffix.lower() in _WEB_IMAGE_SUFFIXES
+            or _volume_stem(list_file) is not None
+        ):
             entries = [list_file]
         else:
             if not list_file.is_file():
@@ -1074,6 +1090,7 @@ def generate_image_selection_webpage(
     overwrite: bool = False,
     images: str | Path | list | None = None,
     rating: bool = True,
+    slices_dir: str | Path | None = None,
 ) -> str:
     """
     Generate interactive HTML webpage to display PNG images with selection checkboxes.
@@ -1119,11 +1136,22 @@ def generate_image_selection_webpage(
         the current folder. Paths that do not exist are reported and left out. With
         ``images``, ``png_pattern`` and ``recursive`` are not used. Default is None.
 
+        Volumes (``.nii.gz``, ``.nii``, ``.mgz`` or ``.mgh``) can also be given: a
+        browser cannot show them, so a PNG with their slices is created with
+        ``generate_slices`` in ``slices_dir`` and shown in the page. The volume is the
+        value of the selection and of the ratings, and its JSON sidecar gives the
+        description. Files of any other type are reported and left out.
+
     rating : bool, optional
         Whether each image gets the rating buttons (pass, doubtful or fail) and a
         comment box. The ratings are kept in the browser and are downloaded as
         ``image_ratings.tsv``, a table with one row per image (``image``, ``name``,
         ``rating`` and ``comment``). Default is True.
+
+    slices_dir : str or Path, optional
+        Folder for the PNG files created for the volumes of ``images``. If None, it
+        is the folder ``<name of the page>_images`` next to the page. An existing
+        PNG is used again unless ``overwrite`` is True. Default is None.
 
     Returns
     -------
@@ -1225,8 +1253,45 @@ def generate_image_selection_webpage(
         return str(output_html)
 
     # Find all PNG files
+    sources = {}  # Image shown in the page -> file given by the user
     if listed_files is not None:
-        png_files = listed_files
+        if slices_dir is None:
+            slices_dir = output_html.parent / f"{output_html.stem}_images"
+        slices_dir = Path(slices_dir)
+
+        png_files = []
+        n_volumes = sum(_volume_stem(f) is not None for f in listed_files)
+        if n_volumes:
+            console.print(f"Creating the slices of {n_volumes} volumes in {slices_dir}")
+        for listed in listed_files:
+            stem = _volume_stem(listed)
+            if stem is None:
+                if listed.suffix.lower() in _WEB_IMAGE_SUFFIXES:
+                    png_files.append(listed)
+                else:
+                    console.print(
+                        f"[yellow]Not an image or a volume, left out: {listed}"
+                    )
+                continue
+
+            # Volume: PNG with its slices, in the same subfolders as the volume
+            try:
+                slices_file = slices_dir / listed.parent.relative_to(image_base)
+            except ValueError:
+                slices_file = slices_dir
+            slices_file = slices_file / f"{stem}.png"
+            try:
+                created = generate_slices(
+                    listed, output_path=slices_file, overwrite=overwrite
+                )
+            except Exception as error:
+                created = None
+                console.print(f"[yellow]{error}")
+            if created is None:
+                console.print(f"[yellow]No slices for the volume, left out: {listed}")
+                continue
+            sources[slices_file] = listed
+            png_files.append(slices_file)
     elif recursive:
         png_files = sorted(root_directory.glob(png_pattern))
     else:
@@ -1260,15 +1325,20 @@ def generate_image_selection_webpage(
                 task, completed=i + 1, description=f"[cyan]Processing: {png_file.name}"
             )
 
+            # File the image comes from: itself, or the volume of its slices. Its
+            # folder and name are the ones of the page
+            source = sources.get(png_file, png_file)
+            source_png = source.parent / f"{_volume_stem(source) or source.stem}.png"
+
             # Folders of the image from the root directory
             try:
                 try:
-                    path_parts = png_file.parent.relative_to(image_base).parts
+                    path_parts = source.parent.relative_to(image_base).parts
                 except ValueError:
                     if listed_files is None:
                         raise
                     # Listed image outside the common folder: its own folder
-                    path_parts = (str(png_file.parent),)
+                    path_parts = (str(source.parent),)
 
                 # Build hierarchical structure
                 current_dict = image_dict
@@ -1287,16 +1357,16 @@ def generate_image_selection_webpage(
                 if show_descriptions:
                     # Look for associated JSON file (try different naming patterns)
                     json_candidates = [
-                        png_file.with_suffix(".json"),  # Same name with .json
-                        png_file.parent / f"{png_file.stem}.json",  # Same directory
+                        source_png.with_suffix(".json"),  # Same name with .json
+                        source_png.parent / f"{source_png.stem}.json",  # Same directory
                     ]
 
                     # Also try to find original NIfTI file and its JSON
                     nii_candidates = [
-                        png_file.with_suffix(".nii.gz"),
-                        png_file.with_suffix(".nii"),
-                        png_file.parent / f"{png_file.stem}.nii.gz",
-                        png_file.parent / f"{png_file.stem}.nii",
+                        source_png.with_suffix(".nii.gz"),
+                        source_png.with_suffix(".nii"),
+                        source_png.parent / f"{source_png.stem}.nii.gz",
+                        source_png.parent / f"{source_png.stem}.nii",
                     ]
 
                     # Check for JSON files
@@ -1335,9 +1405,9 @@ def generate_image_selection_webpage(
 
                 # Store file information
                 file_info = {
-                    "png_path": str(png_file),
+                    "png_path": str(source),
                     "relative_path": image_link(png_file),
-                    "name": png_file.stem,
+                    "name": source_png.stem,
                     "description": description,
                     "original_nii": original_nii,
                     "hierarchy": (

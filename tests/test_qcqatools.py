@@ -1173,6 +1173,84 @@ class TestImageSelectionWebpageRating:
         assert html.count('onclick="downloadChecked()"') == 2
 
 
+def make_volume(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = np.random.default_rng(0).random((12, 14, 16)).astype(np.float32)
+    nib.save(nib.Nifti1Image(data, np.eye(4)), str(path))
+    return path
+
+
+class TestImageSelectionWebpageFromVolumes:
+    def test_volumes_are_shown_through_their_slices(self, tmp_path):
+        t1 = make_volume(tmp_path / "bids/sub-01/ses-1/anat/sub-01_ses-1_T1w.nii.gz")
+        t2 = make_volume(tmp_path / "bids/sub-02/ses-1/anat/sub-02_ses-1_T1w.nii")
+        t1.with_name("sub-01_ses-1_T1w.json").write_text(
+            json.dumps({"SeriesDescription": "mprage"})
+        )
+        out = tmp_path / "reports" / "quick_qc.html"
+        out.parent.mkdir()
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(images=[t1, t2], output_html=out)
+        ).read_text(encoding="utf-8")
+
+        slices = tmp_path / "reports" / "quick_qc_images"
+        assert (slices / "sub-01/ses-1/anat/sub-01_ses-1_T1w.png").is_file()
+        assert (slices / "sub-02/ses-1/anat/sub-02_ses-1_T1w.png").is_file()
+        assert image_sources(html) == [
+            "quick_qc_images/sub-01/ses-1/anat/sub-01_ses-1_T1w.png",
+            "quick_qc_images/sub-02/ses-1/anat/sub-02_ses-1_T1w.png",
+        ]
+        assert checkboxes(html) == [
+            ("sub-01_ses-1_T1w", str(t1)),
+            ("sub-02_ses-1_T1w", str(t2)),
+        ]
+        assert "📁 sub-01 / ses-1 / anat" in html
+        assert "📝 mprage" in html
+        # Nothing is written next to the volumes
+        assert not list((tmp_path / "bids").rglob("*.png"))
+
+    def test_one_volume_and_the_folder_of_the_slices(self, tmp_path):
+        t1 = make_volume(tmp_path / "data" / "T1.nii.gz")
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                images=str(t1),
+                output_html=tmp_path / "qc.html",
+                slices_dir=tmp_path / "pngs",
+            )
+        ).read_text(encoding="utf-8")
+        assert (tmp_path / "pngs" / "T1.png").is_file()
+        assert image_sources(html) == ["pngs/T1.png"]
+
+    def test_volumes_and_images_together(self, tmp_path):
+        t1 = make_volume(tmp_path / "data" / "T1.nii.gz")
+        make_pngs(tmp_path, ["data/figure.png"])
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                images=[t1, tmp_path / "data" / "figure.png"],
+                output_html=tmp_path / "qc.html",
+            )
+        ).read_text(encoding="utf-8")
+        assert [c[0] for c in checkboxes(html)] == ["T1", "figure"]
+
+    def test_other_files_and_bad_volumes_are_left_out(self, tmp_path, capsys):
+        make_pngs(tmp_path, ["a.png"])
+        (tmp_path / "notes.pdf").write_text("text")
+        (tmp_path / "broken.nii.gz").write_text("not a volume")
+        html = Path(
+            cltqcqa.generate_image_selection_webpage(
+                images=[
+                    tmp_path / "a.png",
+                    tmp_path / "notes.pdf",
+                    tmp_path / "broken.nii.gz",
+                ]
+            )
+        ).read_text(encoding="utf-8")
+        assert [c[0] for c in checkboxes(html)] == ["a"]
+        output = capsys.readouterr().out.replace("\n", "")
+        assert "Not an image or a volume" in output
+        assert "No slices for the volume" in output
+
+
 class TestCreatePngWebpageFromGeneratedSlices:
     def test_page_of_generated_slices(self, tmp_path, dataset):
         out = tmp_path / "qc"
