@@ -5609,8 +5609,10 @@ class FreeSurferSubject:
         Raises
         ------
         ValueError
-            If ``n_slices`` or ``overlay_alpha`` are not valid, or if the color
-            table is needed and neither ``lut_file`` nor ``FREESURFER_HOME`` are set.
+            If ``n_slices`` or ``overlay_alpha`` are not valid, if the folder of
+            the subject is not a FreeSurfer output folder (see
+            :func:`is_fs_output`), or if the color table is needed and neither
+            ``lut_file`` nor ``FREESURFER_HOME`` are set.
 
         FileNotFoundError
             If the subject has no ``T1.mgz`` or the color table does not exist.
@@ -5660,6 +5662,11 @@ class FreeSurferSubject:
             raise ValueError("overlay_alpha must be between 0 and 1")
 
         subj_dir = os.path.join(self.subjs_dir, self.subj_id)
+        if not is_fs_output(subj_dir):
+            raise ValueError(
+                f"{subj_dir} is not the output folder of a FreeSurfer subject "
+                "(see is_fs_output)"
+            )
 
         # Current processing status (it also looks for the files again)
         self.get_proc_status()
@@ -6508,9 +6515,58 @@ def create_cohort_stats_table(
 
 
 #####################################################################################################
+def is_fs_output(folder: str | Path) -> bool:
+    """
+    Check if a folder is the output folder of a FreeSurfer subject.
+
+    A subjects directory usually has other folders besides the subjects
+    (templates such as ``fsaverage``, reports, logs). The folder of a subject
+    is recognized by the folders that ``recon-all`` creates (``mri``, ``surf``,
+    ``label`` and ``scripts``) and by its first input image,
+    ``mri/orig/001.mgz``, which the templates do not have.
+
+    Parameters
+    ----------
+    folder : str or Path
+        Folder to check, for example ``<subjs_dir>/<subj_id>``.
+
+    Returns
+    -------
+    bool
+        True if the folder has the folders and the input image of a
+        FreeSurfer subject.
+
+    Notes
+    -----
+    Only the structure of the folder is checked, not how far the processing
+    went: a subject that was only imported (``recon-all -i``) is a FreeSurfer
+    output folder. See :meth:`FreeSurferSubject.get_proc_status` for the
+    processing status.
+
+    Examples
+    --------
+    >>> is_fs_output('/opt/freesurfer/subjects/bert')
+    True
+    >>> is_fs_output('/opt/freesurfer/subjects/fsaverage')
+    False
+    """
+    folder = str(folder)
+    if not os.path.isdir(folder):
+        return False
+
+    if not all(
+        os.path.isdir(os.path.join(folder, name))
+        for name in ("mri", "surf", "label", "scripts")
+    ):
+        return False
+
+    return os.path.isfile(os.path.join(folder, "mri", "orig", "001.mgz"))
+
+
+#####################################################################################################
 def generate_cohort_qc_webpage(
     subjs_dir: str | Path = None,
-    subj_ids: str | list[str] = None,
+    fs_ids: str | list[str] | Path = None,
     out_dir: str | Path = None,
     generate_reports: bool = False,
     overwrite: bool = False,
@@ -6527,7 +6583,10 @@ def generate_cohort_qc_webpage(
     the topology correction, estimated intracranial volume,
     mean cortical thickness, the rating of the subject and a link to its
     individual report (see :meth:`FreeSurferSubject.generate_qc_webpage`).
-    The table can be sorted by any column and filtered by subject or status::
+    The table can be sorted by any column. A box for each status and each
+    rating shows any combination of them, the rows can also be filtered by
+    name and left out one by one, and the identifiers of the rows shown and
+    ticked can be downloaded as a text file, which ``fs_ids`` accepts::
 
         <out_dir>/
             index.html
@@ -6544,11 +6603,15 @@ def generate_cohort_qc_webpage(
         FreeSurfer subjects directory. If None, uses the SUBJECTS_DIR
         environment variable. Default is None.
 
-    subj_ids : str or list of str, optional
-        Subjects to include: a list of identifiers or a text file with one
-        identifier per line. If None, all the folders of ``subjs_dir`` that
-        contain a ``mri``, ``surf`` or ``scripts`` folder are included, except
-        the ``fsaverage`` ones. Default is None.
+    fs_ids : str, list of str or Path, optional
+        Subjects to include: one identifier, a list of identifiers or a text
+        file with one identifier per line (such as the one downloaded from the
+        index). If None, all the folders of ``subjs_dir`` are considered. In
+        both cases only the FreeSurfer output folders are subjects of the
+        cohort (see :func:`is_fs_output`). The other ones, such as the
+        ``fsaverage`` templates, are listed at the end of the table with the
+        status "not-freesurfer", without measures or report, so they can be
+        filtered and their identifiers downloaded. Default is None.
 
     out_dir : str or Path, optional
         Folder of the index. If None, uses ``<subjs_dir>/qcqa``. Default is None.
@@ -6588,7 +6651,15 @@ def generate_cohort_qc_webpage(
         If the subjects directory is not given and SUBJECTS_DIR is not set.
 
     FileNotFoundError
-        If the subjects directory or the file of identifiers does not exist.
+        If the subjects directory does not exist, or if ``fs_ids`` is a Path
+        of a file that does not exist.
+
+    Warns
+    -----
+    UserWarning
+        If some of the identifiers of ``fs_ids`` are not FreeSurfer output
+        folders of ``subjs_dir``. They are listed in the index with the status
+        "not-freesurfer".
 
     Notes
     -----
@@ -6648,26 +6719,43 @@ def generate_cohort_qc_webpage(
     if not os.path.isdir(subjs_dir):
         raise FileNotFoundError(f"The subjects directory does not exist: {subjs_dir}")
 
-    # Subjects of the cohort
-    if subj_ids is None:
-        subj_ids = sorted(
+    out_dir = os.path.join(subjs_dir, "qcqa") if out_dir is None else str(out_dir)
+
+    # Subjects of the cohort: the requested ones, or all the folders. The folders
+    # that are not FreeSurfer output folders are listed apart
+    if fs_ids is None:
+        # Without the hidden folders and the folders of the index itself
+        own = {os.path.abspath(out_dir), os.path.join(subjs_dir, "qcqa")}
+        folders = sorted(
             name
             for name in os.listdir(subjs_dir)
-            if not name.startswith("fsaverage")
-            and any(
-                os.path.isdir(os.path.join(subjs_dir, name, folder))
-                for folder in ("mri", "surf", "scripts")
-            )
+            if os.path.isdir(os.path.join(subjs_dir, name))
+            and not name.startswith(".")
+            and os.path.join(subjs_dir, name) not in own
         )
-    elif isinstance(subj_ids, (str, Path)):
-        if not os.path.isfile(subj_ids):
-            raise FileNotFoundError(f"The file of subjects does not exist: {subj_ids}")
-        with open(subj_ids) as f:
-            subj_ids = [line.strip() for line in f if line.strip()]
+        subj_ids = [s for s in folders if is_fs_output(os.path.join(subjs_dir, s))]
+        skipped = [s for s in folders if s not in subj_ids]
     else:
-        subj_ids = [str(s) for s in subj_ids]
+        if isinstance(fs_ids, Path) and not fs_ids.is_file():
+            raise FileNotFoundError(f"The file of subjects does not exist: {fs_ids}")
+        if isinstance(fs_ids, (str, Path)) and os.path.isfile(fs_ids):
+            with open(fs_ids) as f:
+                requested = [line.strip() for line in f if line.strip()]
+        elif isinstance(fs_ids, (str, Path)):
+            requested = [str(fs_ids)]
+        else:
+            requested = [str(s) for s in fs_ids]
 
-    out_dir = os.path.join(subjs_dir, "qcqa") if out_dir is None else str(out_dir)
+        requested = list(dict.fromkeys(requested))  # without repetitions
+        subj_ids = [s for s in requested if is_fs_output(os.path.join(subjs_dir, s))]
+        skipped = [s for s in requested if s not in subj_ids]
+        if skipped:
+            warnings.warn(
+                f"{len(skipped)} of the requested subjects are not FreeSurfer output "
+                f"folders of {subjs_dir} and are left out: {', '.join(skipped)}",
+                stacklevel=2,
+            )
+
     meta_dir = os.path.join(out_dir, "metadata")
     os.makedirs(meta_dir, exist_ok=True)
 
@@ -6730,6 +6818,16 @@ def generate_cohort_qc_webpage(
         row["note"] = notes.get(subj_id)
         rows.append(row)
         ratings += fsutils.qc_rating_rows(subj_id, fsutils.qc_read_rating(subj_dir))
+
+    # Folders that are not FreeSurfer output folders: listed without measures
+    for name in skipped:
+        exists = os.path.isdir(os.path.join(subjs_dir, name))
+        rows.append(
+            fsutils.qc_cohort_other_row(
+                name,
+                "Not a FreeSurfer output folder" if exists else "The folder does not exist",
+            )
+        )
 
     # Ratings of all the subjects in a single table
     ratings_file = os.path.join(meta_dir, "cohort_ratings.tsv")
@@ -6796,7 +6894,12 @@ def generate_cohort_qc_webpage(
     table.to_csv(os.path.join(meta_dir, "cohort_qc.tsv"), sep="\t", index=False)
     with open(os.path.join(meta_dir, "cohort_qc.json"), "w") as f:
         json.dump(
-            {"subjects_dir": subjs_dir, "generated": generated, "subjects": rows},
+            {
+                "subjects_dir": subjs_dir,
+                "generated": generated,
+                "skipped": skipped,
+                "subjects": rows,
+            },
             f,
             indent=2,
         )
@@ -6805,7 +6908,12 @@ def generate_cohort_qc_webpage(
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(
             fsutils.qc_build_cohort_html(
-                rows, subjs_dir, generated, outliers, outlier_info, bool(ratings)
+                rows,
+                subjs_dir,
+                generated,
+                outliers,
+                outlier_info,
+                bool(ratings),
             )
         )
 

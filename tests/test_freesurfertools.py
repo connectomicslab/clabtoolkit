@@ -1686,6 +1686,15 @@ LEVEL3 = [
 ]  # fmt: skip
 
 
+def make_fs_folders(subj):
+    """Folders and input image that make a folder a FreeSurfer output folder."""
+    subj = Path(subj)
+    for name in ("mri", "surf", "label", "scripts"):
+        (subj / name).mkdir(parents=True, exist_ok=True)
+    touch(subj / "mri" / "orig" / "001.mgz")
+    return subj
+
+
 def make_touched_subject(root, subj_id, level):
     """Subject folder whose files exist (empty) up to the given processing level."""
     subj = Path(root) / subj_id
@@ -3805,8 +3814,7 @@ def build_qc_subject(
     subjects, files=("T1", "brainmask", "wm", "aparc+aseg"), surfaces=True
 ):
     """Subject with small conformed-like (LIA) volumes and a color table."""
-    mri = subjects / "sub-qc" / "mri"
-    mri.mkdir(parents=True)
+    mri = make_fs_folders(subjects / "sub-qc") / "mri"
     affine = np.array(
         [[-1, 0, 0, 16], [0, 0, 1, -16], [0, -1, 0, 16], [0, 0, 0, 1]], dtype=float
     )
@@ -3827,7 +3835,6 @@ def build_qc_subject(
     if surfaces:
         # Octahedra centered in the volume: the surface coordinates are 0 there
         surf = subjects / "sub-qc" / "surf"
-        surf.mkdir()
         for hemi in ("lh", "rh"):
             for name, radius in (("white", 6.0), ("pial", 10.0)):
                 nib.freesurfer.write_geometry(
@@ -4138,7 +4145,6 @@ class TestQcWebpageMeasuresAndRating:
         subj = subjects / "sub-qc"
         (subj / "stats").mkdir()
         (subj / "stats" / "aseg.stats").write_text(QC_ASEG_STATS)
-        (subj / "scripts").mkdir()
         (subj / "scripts" / "recon-all.log").write_text(QC_RECON_LOG)
         page = Path(subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40))
         meta = json.loads((subj / "qcqa" / "metadata" / "qc_metadata.json").read_text())
@@ -4194,8 +4200,7 @@ class TestGenerateCohortQcWebpage:
         """Two processed subjects with a log and stats, one empty, and fsaverage."""
         for subj_id in ("sub-01", "sub-02"):
             make_touched_subject(subjects, subj_id, 3)
-            subj = subjects / subj_id
-            (subj / "scripts").mkdir()
+            subj = make_fs_folders(subjects / subj_id)
             log = (
                 QC_RECON_LOG
                 if subj_id == "sub-01"
@@ -4203,8 +4208,10 @@ class TestGenerateCohortQcWebpage:
             )
             (subj / "scripts" / "recon-all.log").write_text(log)
             (subj / "stats" / "aseg.stats").write_text(QC_ASEG_STATS)
-        make_touched_subject(subjects, "sub-03", 1)
-        make_touched_subject(subjects, "fsaverage", 3)
+        make_fs_folders(make_touched_subject(subjects, "sub-03", 1))
+        # A template has the folders of a subject but not its input image
+        template = make_touched_subject(subjects, "fsaverage", 3)
+        (template / "scripts").mkdir()
         (subjects / "notes").mkdir()
 
     def read_rows(self, subjects):
@@ -4219,8 +4226,11 @@ class TestGenerateCohortQcWebpage:
         html = cltfree.generate_cohort_qc_webpage(subjects)
         assert html == str(subjects / "qcqa" / "index.html")
         rows = self.read_rows(subjects)
-        # fsaverage and the folders that are not subjects are left out
-        assert list(rows) == ["sub-01", "sub-02", "sub-03"]
+        # The subjects first, then the folders that are not FreeSurfer outputs
+        assert list(rows) == ["sub-01", "sub-02", "sub-03", "fsaverage", "notes"]
+        assert rows["fsaverage"]["status"] == "not-freesurfer"
+        assert rows["notes"]["note"] == "Not a FreeSurfer output folder"
+        assert rows["fsaverage"]["holes"] is None
         assert rows["sub-01"]["status"] == "processed"
         assert rows["sub-03"]["status"] == "autorecon1"
         assert "euler_lh" not in rows["sub-01"]
@@ -4267,12 +4277,101 @@ class TestGenerateCohortQcWebpage:
 
     def test_selected_subjects(self, subjects, tmp_path):
         self.make_cohort(subjects)
-        cltfree.generate_cohort_qc_webpage(subjects, subj_ids=["sub-02"])
+        cltfree.generate_cohort_qc_webpage(subjects, fs_ids=["sub-02"])
         assert list(self.read_rows(subjects)) == ["sub-02"]
+        cltfree.generate_cohort_qc_webpage(subjects, fs_ids="sub-03")
+        assert list(self.read_rows(subjects)) == ["sub-03"]
         ids_file = tmp_path / "ids.txt"
-        ids_file.write_text("sub-03\n\nsub-01\n")
-        cltfree.generate_cohort_qc_webpage(subjects, subj_ids=str(ids_file))
+        ids_file.write_text("sub-03\n\nsub-01\nsub-03\n")
+        cltfree.generate_cohort_qc_webpage(subjects, fs_ids=str(ids_file))
         assert list(self.read_rows(subjects)) == ["sub-03", "sub-01"]
+        cltfree.generate_cohort_qc_webpage(subjects, fs_ids=ids_file)
+        assert list(self.read_rows(subjects)) == ["sub-03", "sub-01"]
+
+    def test_requested_folders_that_are_not_subjects_are_left_out(self, subjects):
+        self.make_cohort(subjects)
+        with pytest.warns(UserWarning, match="fsaverage, ghost"):
+            html = cltfree.generate_cohort_qc_webpage(
+                subjects, fs_ids=["sub-01", "fsaverage", "ghost"]
+            )
+        rows = self.read_rows(subjects)
+        assert list(rows) == ["sub-01", "fsaverage", "ghost"]
+        assert (
+            rows["fsaverage"]["status"] == rows["ghost"]["status"] == "not-freesurfer"
+        )
+        assert rows["ghost"]["note"] == "The folder does not exist"
+        meta = json.loads(
+            (subjects / "qcqa" / "metadata" / "cohort_qc.json").read_text()
+        )
+        assert meta["skipped"] == ["fsaverage", "ghost"]
+        page = Path(html).read_text()
+        # They are not subjects of the cohort, but can be filtered
+        assert '<span class="key">Subjects</span><span class="value">1</span>' in page
+        assert '<input type="checkbox" value="not-freesurfer" checked>' in page
+        assert 'data-subject="ghost" data-status="not-freesurfer"' in page
+
+    def test_missing_file_of_subjects(self, subjects, tmp_path):
+        self.make_cohort(subjects)
+        with pytest.raises(FileNotFoundError):
+            cltfree.generate_cohort_qc_webpage(subjects, fs_ids=tmp_path / "none.txt")
+
+    def test_filters_and_download_of_the_identifiers(self, subjects):
+        self.make_cohort(subjects)
+        page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
+        assert 'id="cohort-download"' in page
+        assert 'data-status="autorecon1" data-rating="none"' in page
+        # One box per status of the cohort, with its number of rows, and per rating
+        status = page[
+            page.index('id="cohort-status"') : page.index('id="cohort-rating"')
+        ]
+        assert status.count('type="checkbox"') == 3
+        assert (
+            '<input type="checkbox" value="processed" checked>'
+            '<span class="badge processed">processed</span><span class="n">2</span>'
+        ) in status
+        assert 'value="unprocessed"' not in status
+        rating = page[
+            page.index('id="cohort-rating"') : page.index('class="caption hint"')
+        ]
+        assert [v in rating for v in ('"pass"', '"doubtful"', '"fail"', '"none"')] == [
+            True
+        ] * 4
+        assert (
+            '<span class="badge none">not rated</span><span class="n">5</span>'
+            in rating
+        )
+        # One box per row and one for all the rows shown
+        assert page.count('class="pick" checked') == 5
+        assert 'id="pick-all" checked' in page
+
+    def test_folder_of_the_index_and_hidden_folders_are_not_listed(self, subjects):
+        self.make_cohort(subjects)
+        (subjects / ".cache").mkdir()
+        touch(subjects / "notes.txt")
+        cltfree.generate_cohort_qc_webpage(subjects)
+        cltfree.generate_cohort_qc_webpage(subjects)
+        # Also with the index in another folder of the subjects directory
+        cltfree.generate_cohort_qc_webpage(subjects, out_dir=subjects / "index")
+        rows = json.loads(
+            (subjects / "index" / "metadata" / "cohort_qc.json").read_text()
+        )["subjects"]
+        assert "qcqa" not in [r["subject_id"] for r in rows]
+        assert "index" not in [r["subject_id"] for r in rows]
+        assert list(self.read_rows(subjects)) == [
+            "sub-01",
+            "sub-02",
+            "sub-03",
+            "fsaverage",
+            "notes",
+        ]
+
+    def test_reports_are_not_generated_for_the_other_folders(self, subjects):
+        self.make_cohort(subjects)
+        cltfree.generate_cohort_qc_webpage(
+            subjects, fs_ids=["fsaverage", "notes"], generate_reports=True
+        )
+        assert not (subjects / "fsaverage" / "qcqa").exists()
+        assert not (subjects / "notes" / "qcqa").exists()
 
     def test_output_folder(self, subjects, tmp_path):
         self.make_cohort(subjects)
@@ -4285,8 +4384,7 @@ class TestGenerateCohortQcWebpage:
         folder = tmp_path / "cohort"
         folder.mkdir()
         subject, lut = build_qc_subject(folder)
-        make_touched_subject(folder, "sub-empty", 0)
-        (folder / "sub-empty" / "mri").mkdir()
+        make_fs_folders(folder / "sub-empty")
         cltfree.generate_cohort_qc_webpage(
             folder, generate_reports=True, n_slices=2, lut_file=lut, dpi=40
         )
@@ -4582,9 +4680,9 @@ class TestQcCohortOutliers:
         for subj_id, table in tables.items():
             meta = folder / subj_id / "qcqa" / "metadata"
             meta.mkdir(parents=True)
-            (folder / subj_id / "mri").mkdir()
+            make_fs_folders(folder / subj_id)
             table.to_csv(meta / f"{subj_id}_stats_table.csv", index=False)
-        (folder / "sub-99" / "mri").mkdir(parents=True)
+        make_fs_folders(folder / "sub-99")
         page = Path(
             cltfree.generate_cohort_qc_webpage(folder, outlier_threshold=6.0)
         ).read_text()
@@ -4602,7 +4700,7 @@ class TestQcCohortOutliers:
         assert "ctx-lh-precentral" in page
 
     def test_cohort_index_without_enough_tables(self, subjects):
-        make_touched_subject(subjects, "sub-01", 3)
+        make_fs_folders(make_touched_subject(subjects, "sub-01", 3))
         page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
         assert "at least 20 subjects have a morphometry table" in page
         assert not (subjects / "qcqa" / "metadata" / "cohort_outliers.tsv").exists()
@@ -4703,8 +4801,7 @@ class TestQcNavigationAndPrinting:
 
 class TestCohortParallelGeneration:
     def test_worker_reports_the_missing_t1(self, subjects):
-        make_touched_subject(subjects, "sub-empty", 0)
-        (subjects / "sub-empty" / "mri").mkdir()
+        make_fs_folders(subjects / "sub-empty")
         note = cltfree._generate_subject_qc_webpage("sub-empty", str(subjects), {})
         assert "T1.mgz" in note
 
@@ -4720,7 +4817,7 @@ class TestCohortParallelGeneration:
     def test_several_workers_use_a_pool_of_processes(self, tmp_path, monkeypatch):
         folder = tmp_path / "cohort"
         for subj_id in ("sub-01", "sub-02", "sub-03"):
-            make_touched_subject(folder, subj_id, 1)
+            make_fs_folders(make_touched_subject(folder, subj_id, 1))
         pools = []
 
         class FakeFuture:
@@ -4762,3 +4859,42 @@ class TestCohortParallelGeneration:
         assert rows["sub-02"]["note"] == "no T1"
         assert rows["sub-01"]["note"] is None
         assert all(r["report"] for r in rows.values())
+
+
+class TestIsFsOutput:
+    def test_folder_of_a_subject(self, tmp_path):
+        assert cltfree.is_fs_output(make_fs_folders(tmp_path / "sub-01"))
+        assert cltfree.is_fs_output(str(tmp_path / "sub-01"))
+
+    @pytest.mark.parametrize("missing", ["mri", "surf", "label", "scripts"])
+    def test_missing_folder(self, tmp_path, missing):
+        subj = make_fs_folders(tmp_path / "sub-01")
+        shutil.rmtree(subj / missing)
+        assert not cltfree.is_fs_output(subj)
+
+    def test_template_without_input_image(self, tmp_path):
+        subj = make_fs_folders(tmp_path / "fsaverage")
+        (subj / "mri" / "orig" / "001.mgz").unlink()
+        assert not cltfree.is_fs_output(subj)
+
+    def test_processed_files_are_not_enough(self, tmp_path):
+        # All the files of a processed subject, but not the folders and the input image
+        assert not cltfree.is_fs_output(make_touched_subject(tmp_path, "bert", 3))
+
+    def test_not_a_folder(self, tmp_path):
+        assert not cltfree.is_fs_output(tmp_path / "none")
+        assert not cltfree.is_fs_output(touch(tmp_path / "file.txt"))
+
+    def test_other_folders_of_the_subjects_directory(self, subjects):
+        TestGenerateCohortQcWebpage.make_cohort(subjects)
+        valid = sorted(p.name for p in subjects.iterdir() if cltfree.is_fs_output(p))
+        assert valid == ["sub-01", "sub-02", "sub-03"]
+
+    def test_report_needs_a_freesurfer_folder(self, subjects):
+        make_touched_subject(subjects, "bert", 3)
+        with pytest.raises(ValueError, match="is not the output folder"):
+            FreeSurferSubject("bert", subjects).generate_qc_webpage()
+
+    @needs_fsaverage
+    def test_fsaverage_is_a_template(self):
+        assert not cltfree.is_fs_output(FSAVERAGE)

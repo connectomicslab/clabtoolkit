@@ -581,6 +581,30 @@ def qc_rating_rows(subj_id: str, rating: dict | None) -> list:
     return rows
 
 
+def qc_cohort_other_row(name: str, note: str) -> dict:
+    """
+    Row of the index of a cohort for a folder that is not a FreeSurfer output folder.
+
+    It has the same fields as the row of a subject (see ``qc_cohort_row``),
+    with the status "not-freesurfer" and no measures, rating or report.
+    """
+    return {
+        "subject_id": name,
+        "status": "not-freesurfer",
+        "holes": None,
+        "defects": None,
+        "outliers": None,
+        "etiv_cm3": None,
+        "thickness_lh_mm": None,
+        "thickness_rh_mm": None,
+        "rating": None,
+        "rater": None,
+        "report": None,
+        "report_date": None,
+        "note": note,
+    }
+
+
 def qc_cohort_row(subject, report: str = None) -> dict:
     """
     Row of a subject in the index of the quality control reports of a cohort.
@@ -902,6 +926,7 @@ code, .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", m
 .badge.processed, .badge.ok { background: #198754; }
 .badge.autorecon2, .badge.autorecon1 { background: #b97a00; }
 .badge.unprocessed, .badge.missing, .badge.error { background: #dc3545; }
+.badge.not-freesurfer { background: #6c757d; }
 .reportlet { margin: 32px 0 0; }
 .reportlet .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .reportlet p { margin: 0 0 10px; color: #495057; max-width: 900px; }
@@ -1529,10 +1554,26 @@ def qc_build_html(metadata: dict, legends: dict, regions: list = None) -> str:
 
 QC_COHORT_CSS = """
 .toolbar { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin: 16px 0; }
+.toolbar button { font: inherit; font-size: .9rem; padding: 6px 12px; cursor: pointer; color: var(--ink);
+  background: #fff; border: 1px solid #adb5bd; border-radius: 4px; }
+.toolbar button:hover { background: var(--soft); }
 .toolbar input, .toolbar select { font: inherit; font-size: .9rem; padding: 6px 10px; color: var(--ink);
   background: #fff; border: 1px solid #ced4da; border-radius: 4px; }
 .toolbar input { flex: 0 1 280px; }
 .toolbar .caption { margin: 0; }
+.toolbar.filters { gap: 10px 32px; margin-top: 0; }
+.chips { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
+.chips .label { color: var(--muted); font-size: .875rem; }
+.chip { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: .875rem; white-space: nowrap; }
+.chip input { margin: 0; cursor: pointer; }
+.chip .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip input:not(:checked) + .badge { background: #adb5bd; }
+.chips button { font-size: .8rem; padding: 2px 8px; border-color: #ced4da; color: var(--muted); }
+.badge.none { background: #6c757d; }
+.hint { margin: 0 0 12px; }
+table.cohort .pick-cell { width: 1%; padding-right: 0; text-align: center; cursor: default; }
+table.cohort .pick-cell input { margin: 0; cursor: pointer; }
+@media print { .hint, table.cohort .pick-cell { display: none; } }
 .counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 4px; }
 .table-wrap { overflow-x: auto; }
 table.cohort { border-collapse: collapse; width: 100%; font-size: .92rem; }
@@ -1546,7 +1587,7 @@ table.cohort thead th[aria-sort="descending"]::after { content: " \\25BC"; font-
 table.cohort th.text, table.cohort td.text { text-align: left; }
 table.cohort tbody tr:hover { background: var(--soft); }
 table.cohort td.empty { color: var(--muted); }
-table.cohort td.note { color: #b02a37; white-space: normal; text-align: left; font-size: .85rem; }
+table.cohort td.note { color: var(--muted); white-space: nowrap; text-align: left; font-size: .85rem; }
 table.lobes { margin-bottom: 8px; }
 table.lobes thead tr:first-child th { text-align: center; border-bottom-width: 1px; }
 table.lobes thead tr:first-child th:first-child { text-align: left; vertical-align: bottom; }
@@ -1564,23 +1605,83 @@ QC_COHORT_JS = """
   var body = table.tBodies[0];
   var rows = Array.prototype.slice.call(body.rows);
   var search = document.getElementById('cohort-search');
-  var status = document.getElementById('cohort-status');
   var shown = document.getElementById('cohort-shown');
+  var pickAll = document.getElementById('pick-all');
+  var groups = {
+    status: document.querySelectorAll('#cohort-status input'),
+    rating: document.querySelectorAll('#cohort-rating input')
+  };
 
-  function filter() {
-    var text = search.value.trim().toLowerCase(), count = 0;
-    rows.forEach(function (row) {
-      var ok = (!text || row.dataset.subject.toLowerCase().indexOf(text) !== -1) &&
-               (!status.value || row.dataset.status === status.value);
-      row.hidden = !ok;
-      count += ok ? 1 : 0;
-    });
-    shown.textContent = count + ' of ' + rows.length + ' subjects';
+  function checked(boxes) {
+    return Array.prototype.filter.call(boxes, function (box) { return box.checked; })
+                .map(function (box) { return box.value; });
   }
+  function picked(row) { return row.querySelector('input.pick').checked; }
+  function visible() { return rows.filter(function (row) { return !row.hidden; }); }
+
+  // Rows of the checked statuses and ratings whose name has the text
+  function filter() {
+    var text = search.value.trim().toLowerCase();
+    var statuses = checked(groups.status), ratings = checked(groups.rating);
+    rows.forEach(function (row) {
+      row.hidden = !((!text || row.dataset.subject.toLowerCase().indexOf(text) !== -1) &&
+                     statuses.indexOf(row.dataset.status) !== -1 &&
+                     ratings.indexOf(row.dataset.rating) !== -1);
+    });
+    count();
+  }
+  function count() {
+    var rowsShown = visible(), selected = rowsShown.filter(picked).length;
+    shown.textContent = selected + ' selected · ' + rowsShown.length + ' of ' + rows.length + ' rows shown';
+    pickAll.checked = rowsShown.length > 0 && selected === rowsShown.length;
+    pickAll.indeterminate = selected > 0 && selected < rowsShown.length;
+  }
+
   search.addEventListener('input', filter);
-  status.addEventListener('change', filter);
+  Object.keys(groups).forEach(function (name) {
+    Array.prototype.forEach.call(groups[name], function (box) { box.addEventListener('change', filter); });
+  });
+  document.querySelectorAll('.chips button[data-set]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      Array.prototype.forEach.call(groups[button.dataset.group], function (box) {
+        box.checked = button.dataset.set === 'all';
+      });
+      filter();
+    });
+  });
+
+  // Rows ticked by hand: the box of the header ticks or unticks the rows shown
+  body.addEventListener('change', function (event) {
+    if (event.target.classList.contains('pick')) { count(); }
+  });
+  pickAll.addEventListener('change', function () {
+    visible().forEach(function (row) { row.querySelector('input.pick').checked = pickAll.checked; });
+    count();
+  });
+
+  // Identifiers of the rows shown and ticked, in the order of the table
+  function part(boxes) {
+    var values = checked(boxes);
+    if (values.length === boxes.length) { return ''; }
+    return values.map(function (v) { return v === 'none' ? 'not-rated' : v; }).join('+') || 'none';
+  }
+  document.getElementById('cohort-download').addEventListener('click', function () {
+    var rowsShown = visible();
+    var ids = rowsShown.filter(picked).map(function (row) { return row.dataset.subject; });
+    var name = ['fs_ids', part(groups.status) || 'all'];
+    if (part(groups.rating)) { name.push(part(groups.rating)); }
+    if (ids.length !== rowsShown.length || search.value.trim()) { name.push('selection'); }
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([ids.join('\\n') + (ids.length ? '\\n' : '')], {type: 'text/plain'}));
+    link.download = name.join('_') + '.txt';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  });
 
   Array.prototype.forEach.call(table.tHead.rows[0].cells, function (head, column) {
+    if (head.classList.contains('pick-cell')) { return; }
     head.addEventListener('click', function () {
       var up = head.getAttribute('aria-sort') !== 'ascending';
       Array.prototype.forEach.call(table.tHead.rows[0].cells, function (other) {
@@ -1619,6 +1720,8 @@ def qc_build_cohort_html(
     looked for) and ``outlier_info`` the threshold, the minimum number of
     subjects and the number of morphometry tables that were found.
     ``has_ratings`` tells that the table of ratings of the cohort was saved.
+    The rows with the status "not-freesurfer" are folders that are not
+    FreeSurfer output folders: they are not counted as subjects.
     """
     from html import escape
     from urllib.parse import quote
@@ -1659,7 +1762,10 @@ def qc_build_cohort_html(
             else "<td></td>"
         )
         lines.append(
-            f'<tr data-subject="{subj_id}" data-status="{escape(row["status"])}">'
+            f'<tr data-subject="{subj_id}" data-status="{escape(row["status"])}" '
+            f'data-rating="{escape(row["rating"] or "none")}">'
+            f'<td class="pick-cell"><input type="checkbox" class="pick" checked '
+            f'aria-label="Select {subj_id}"></td>'
             f'<td class="text" data-value="{subj_id}">{subject}</td>'
             + badge(row["status"])
             + cell(row["holes"])
@@ -1741,15 +1847,50 @@ def qc_build_cohort_html(
         if has_ratings
         else "no ratings found"
     )
-    statuses = ["processed", "autorecon2", "autorecon1", "unprocessed"]
+    statuses = [
+        "processed",
+        "autorecon2",
+        "autorecon1",
+        "unprocessed",
+        "not-freesurfer",
+    ]
     counts = {s: sum(r["status"] == s for r in rows) for s in statuses}
+    n_subjects = len(rows) - counts["not-freesurfer"]
     count_badges = "".join(
         f'<span class="badge {s}">{s}: {n}</span>' for s, n in counts.items() if n
     )
     n_reports = sum(bool(r["report"]) for r in rows)
     n_rated = sum(bool(r["rating"]) for r in rows)
-    options = "".join(
-        f'<option value="{s}">{s}</option>' for s in statuses if counts[s]
+
+    def chips(group, title, items):
+        boxes = "".join(
+            f'<label class="chip"><input type="checkbox" value="{value}" checked>'
+            f'<span class="badge {value}">{label}</span>'
+            f'<span class="n">{n}</span></label>'
+            for value, label, n in items
+        )
+        return (
+            f'<div class="chips" id="cohort-{group}" role="group" aria-label="{title}">'
+            f'<span class="label">{title}</span>{boxes}'
+            f'<button type="button" data-group="{group}" data-set="all">all</button>'
+            f'<button type="button" data-group="{group}" data-set="none">none</button></div>'
+        )
+
+    status_chips = chips(
+        "status", "Status", [(s, s, counts[s]) for s in statuses if counts[s]]
+    )
+    rating_chips = chips(
+        "rating",
+        "Rating",
+        [
+            (value, label, sum((r["rating"] or "none") == value for r in rows))
+            for value, label in (
+                ("pass", "pass"),
+                ("doubtful", "doubtful"),
+                ("fail", "fail"),
+                ("none", "not rated"),
+            )
+        ],
     )
 
     return f"""<!DOCTYPE html>
@@ -1776,10 +1917,11 @@ def qc_build_cohort_html(
 
   <h2 id="summary">Summary</h2>
   <ul class="summary">
-    <li><span class="key">Subjects</span><span class="value">{len(rows)}</span></li>
+    <li><span class="key">Subjects</span><span class="value">{n_subjects}</span></li>
+    <li><span class="key">Other folders</span><span class="value">{counts["not-freesurfer"]} (not FreeSurfer output folders)</span></li>
     <li><span class="key">Processing status</span><span class="value counts">{count_badges or "&ndash;"}</span></li>
-    <li><span class="key">Individual reports</span><span class="value">{n_reports} of {len(rows)}</span></li>
-    <li><span class="key">Rated subjects</span><span class="value">{n_rated} of {len(rows)}</span></li>
+    <li><span class="key">Individual reports</span><span class="value">{n_reports} of {n_subjects}</span></li>
+    <li><span class="key">Rated subjects</span><span class="value">{n_rated} of {n_subjects}</span></li>
     <li><span class="key">Table</span><span class="value"><a href="metadata/cohort_qc.tsv" target="_blank">metadata/cohort_qc.tsv</a></span></li>
     <li><span class="key">Ratings table</span><span class="value">{ratings_link}</span></li>
     <li><span class="key">Report generated</span><span class="value">{escape(generated)}</span></li>
@@ -1788,14 +1930,21 @@ def qc_build_cohort_html(
   <h2 id="subjects">Subjects</h2>
   <div class="toolbar">
     <input type="search" id="cohort-search" placeholder="Filter by subject" aria-label="Filter by subject">
-    <select id="cohort-status" aria-label="Filter by processing status">
-      <option value="">All statuses</option>{options}
-    </select>
+    <button type="button" id="cohort-download"
+      title="Text file with the identifiers of the rows shown and ticked, one per line">Download IDs (.txt)</button>
     <span id="cohort-shown" class="caption"></span>
   </div>
+  <div class="toolbar filters">
+    {status_chips}
+    {rating_chips}
+  </div>
+  <p class="caption hint">Untick a status or a rating to hide its rows, and untick the box of a row
+    to leave it out. The download has the identifiers of the rows that are shown and ticked.</p>
   <div class="table-wrap">
   <table class="cohort" id="cohort-table">
     <thead><tr>
+      <th class="pick-cell"><input type="checkbox" id="pick-all" checked
+        aria-label="Select or unselect the rows shown" title="Select or unselect the rows shown"></th>
       <th class="text">Subject</th><th class="text">Status</th>
       <th title="Holes of both surfaces before the topology correction">Holes</th>
       <th title="Defects of both surfaces found by the topology correction">Defects</th>
