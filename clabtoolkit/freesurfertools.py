@@ -5,6 +5,7 @@ morphometric data.
 
 import copy
 import json
+import multiprocessing
 import os
 import re
 import shutil
@@ -15,7 +16,7 @@ import time
 import uuid
 import warnings
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from glob import glob
 from pathlib import Path
@@ -37,6 +38,7 @@ from rich.progress import (
 
 from . import bidstools as cltbids
 from . import colorstools as cltcol
+from . import freesurfertools_utils as fsutils
 
 # Importing local modules
 from . import misctools as cltmisc
@@ -5520,6 +5522,590 @@ class FreeSurferSubject:
 
         return annot_file
 
+    ####################################################################################################
+    def generate_qc_webpage(
+        self,
+        n_slices: int | list | tuple = 7,
+        overlay_alpha: float = 0.5,
+        lut_file: str | Path = None,
+        dpi: int = 150,
+        surf_views: str | list = "8_views",
+        stats_table: bool = True,
+    ) -> str:
+        """
+        Generate a visual quality control report of the subject as a web page.
+
+        Creates the folder ``qcqa`` inside the FreeSurfer folder of the subject
+        with mosaic images of the main volumes, the metadata of the report and
+        a web page that shows them::
+
+            <subjs_dir>/<subj_id>/qcqa/
+                index.html
+                images/     T1.png, T1_brainmask.png, T1_wm.png, T1_surfaces.png,
+                            T1_aparc+aseg.png, T1_aparc.a2009s+aseg.png,
+                            T1_aparc.DKTatlas+aseg.png, thickness_pial.png,
+                            curv_white.png, aparc_inflated.png,
+                            aparc.a2009s_inflated.png
+                metadata/   qc_metadata.json, one table of regions per parcellation
+                            and <subj_id>_stats_table.csv
+
+        The mosaics show the ``T1.mgz`` alone and overlaid with the binarized
+        ``brainmask.mgz``, the binarized ``wm.mgz``, the lines where the white
+        and pial surfaces intersect the slices and the three ``aparc*+aseg``
+        parcellations, colored with the FreeSurfer color table. All the mosaics
+        show the same slices. Four more figures, rendered with
+        ``BrainPlotter.plot_hemispheres``, show the cortical thickness over the
+        pial surfaces, the curvature over the white surfaces and the ``aparc``
+        and ``aparc.a2009s`` annotations over the inflated surfaces. The files
+        that do not exist are reported as missing in the web page, so the report
+        can also be generated for subjects that are not completely processed.
+
+        The web page also has a table of global measures (volumes of
+        ``aseg.stats``, surface area of the ``aparc.stats``, mean cortical
+        thickness computed from the thickness maps, and the holes and defects
+        of the surfaces before the topology correction, read from
+        ``recon-all.log``) and a rating widget:
+        each figure and the subject can be rated as pass, doubtful or fail, with
+        comments, and the rating is downloaded as a JSON file.
+
+        Parameters
+        ----------
+        n_slices : int, list or tuple, optional
+            Number of slices in each orientation. An integer is used for the
+            three orientations; a sequence of three integers gives the number
+            of slices along X (sagittal), Y (coronal) and Z (axial). An
+            orientation with 0 slices is left out. Default is 7.
+
+        overlay_alpha : float, optional
+            Opacity of the overlays, between 0 (transparent) and 1 (opaque).
+            The masks are drawn with half this opacity and a solid outline.
+            Default is 0.5.
+
+        lut_file : str or Path, optional
+            Color table of the parcellations. If None, uses
+            ``$FREESURFER_HOME/FreeSurferColorLUT.txt``. Default is None.
+
+        dpi : int, optional
+            Resolution of the figures, which are 14 inches wide. Default is 150.
+
+        surf_views : str or list, optional
+            Views of the hemispheres in the thickness and curvature figures:
+            a layout or a list of views of ``BrainPlotter.plot_hemispheres``.
+            Default is "8_views".
+
+        stats_table : bool, optional
+            If True, the morphometry table of the subject (see
+            :func:`create_subject_stats_table`) is saved in the ``metadata``
+            folder and shown in the web page: the thickness and surface areas
+            of the lobes, and a table with all the regional measures that can
+            be filtered and sorted. An existing table is reused unless the
+            ``aseg.stats`` of the subject is newer. Default is True.
+
+        Returns
+        -------
+        html_file : str
+            Path to the generated ``index.html``.
+
+        Raises
+        ------
+        ValueError
+            If ``n_slices`` or ``overlay_alpha`` are not valid, or if the color
+            table is needed and neither ``lut_file`` nor ``FREESURFER_HOME`` are set.
+
+        FileNotFoundError
+            If the subject has no ``T1.mgz`` or the color table does not exist.
+
+        Notes
+        -----
+        The processing status is checked again (``get_proc_status``) so the
+        report shows the current status of the subject.
+
+        The slices are equally spaced inside the brain mask (inside the head if
+        there is no brain mask) and are displayed in neurological convention
+        (the left hemisphere on the left of the image).
+
+        The curvature is displayed between its 2nd and 98th percentiles, with a
+        scale symmetric around zero, and the thickness over its whole range.
+        The parcellations over the inflated surfaces use the "4_views" layout.
+
+        With ``stats_table`` the global measures that the morphometry table
+        has (intracranial, brain, gray and white matter volumes, surface areas
+        and mean thickness) are taken from it, so the web page and the table
+        agree. If the table cannot be computed (it needs a processed subject),
+        the error is reported in the web page.
+
+        The figures of the surfaces need a working PyVista off-screen
+        renderer. If the rendering fails, the error is reported in the web page
+        and the rest of the report is still generated.
+
+        Examples
+        --------
+        >>> subject = FreeSurferSubject('sub-001')
+        >>> html_file = subject.generate_qc_webpage()
+        >>>
+        >>> # 5 sagittal, 8 coronal and 10 axial slices
+        >>> html_file = subject.generate_qc_webpage(n_slices=(5, 8, 10))
+        """
+
+        # Imported here because parcellationtools imports this module
+        from . import parcellationtools as cltparc
+
+        n_per_axis = fsutils.qc_parse_n_slices(n_slices)
+
+        # Names and units of the maps, as defined in config/config.json
+        thick_name, thick_units = fsutils.qc_metric_label("thickness")
+        curv_name, curv_units = fsutils.qc_metric_label("curv")
+
+        if not 0 <= overlay_alpha <= 1:
+            raise ValueError("overlay_alpha must be between 0 and 1")
+
+        subj_dir = os.path.join(self.subjs_dir, self.subj_id)
+
+        # Current processing status (it also looks for the files again)
+        self.get_proc_status()
+
+        t1_file = self.fs_files["mri"]["T1"]
+        if not t1_file:
+            raise FileNotFoundError(
+                f"The subject {self.subj_id} has no T1.mgz in "
+                f"{os.path.join(subj_dir, 'mri')}"
+            )
+
+        qc_dir = os.path.join(subj_dir, "qcqa")
+        img_dir = os.path.join(qc_dir, "images")
+        meta_dir = os.path.join(qc_dir, "metadata")
+        os.makedirs(img_dir, exist_ok=True)
+        os.makedirs(meta_dir, exist_ok=True)
+
+        # Background image, reoriented to RAS and scaled to 0-255
+        t1_img = nib.load(t1_file)
+        t1, affine = fsutils.qc_to_ras(np.asarray(t1_img.dataobj, dtype=np.float32), t1_img.affine)
+        zooms = np.sqrt((affine[:3, :3] ** 2).sum(axis=0))
+        voxel_volume = float(np.prod(zooms))
+
+        positive = t1[t1 > 0]
+        vmax = float(np.percentile(positive, 99.5)) if positive.size else 1.0
+        gray = (np.clip(t1 / vmax, 0, 1) * 255).astype(np.uint8)
+        head = gray > 12
+
+        def load_ras(vol_file):
+            """Volume in the same orientation as the T1, or None if the grids differ."""
+            img = nib.load(vol_file)
+            data, _ = fsutils.qc_to_ras(np.asarray(img.dataobj), img.affine)
+            return data if data.shape == t1.shape else None
+
+        layers = [
+            {
+                "id": "T1",
+                "title": "T1-weighted image",
+                "kind": "anatomical",
+                "file": t1_file,
+                "description": "Intensity normalized T1 (T1.mgz). Check for motion, "
+                "ringing or ghosting artifacts, and that the white matter is homogeneous.",
+            },
+            {
+                "id": "brainmask",
+                "title": "Brain mask",
+                "kind": "mask",
+                "color": (255, 59, 48),
+                "file": self.fs_files["mri"]["brainmask"],
+                "description": "Outline of the binarized brainmask.mgz. Check that no "
+                "skull or dura is left inside the mask and that no cortex or "
+                "cerebellum was removed.",
+            },
+            {
+                "id": "wm",
+                "title": "White matter mask",
+                "kind": "mask",
+                "color": (46, 155, 255),
+                "file": self.fs_files["mri"]["parc"]["wm"],
+                "description": "Outline of the binarized wm.mgz, the volume the white "
+                "surfaces are built from. Check that it follows the white matter and "
+                "does not leak into the gray matter or the dura.",
+            },
+            {
+                "id": "surfaces",
+                "title": "White and pial surfaces",
+                "kind": "contours",
+                "image": "T1_surfaces.png",
+                "files": {
+                    f"{hemi}.{surf}": self.fs_files["surf"][hemi]["mesh"][surf]
+                    for surf in ("white", "pial")
+                    for hemi in ("lh", "rh")
+                },
+                "description": "Intersection of the white (yellow) and pial (red) "
+                "surfaces with the slices. Check that the white surface follows the "
+                "boundary between white and gray matter and that the pial surface "
+                "follows the outer boundary of the cortex without including dura or skull.",
+            },
+            {
+                "id": "aparc+aseg",
+                "title": "Desikan-Killiany parcellation",
+                "kind": "parcellation",
+                "file": self.fs_files["mri"]["parc"]["desikan+aseg"],
+                "description": "aparc+aseg.mgz. Check that the cortical ribbon follows "
+                "the gray matter and that the subcortical structures are well delineated.",
+            },
+            {
+                "id": "aparc.a2009s+aseg",
+                "title": "Destrieux parcellation",
+                "kind": "parcellation",
+                "file": self.fs_files["mri"]["parc"]["destrieux+aseg"],
+                "description": "aparc.a2009s+aseg.mgz. Gyri and sulci of the Destrieux "
+                "atlas together with the subcortical segmentation.",
+            },
+            {
+                "id": "aparc.DKTatlas+aseg",
+                "title": "Desikan-Killiany-Tourville parcellation",
+                "kind": "parcellation",
+                "file": self.fs_files["mri"]["parc"]["dkt+aseg"],
+                "description": "aparc.DKTatlas+aseg.mgz. Cortical regions of the DKT "
+                "atlas together with the subcortical segmentation.",
+            },
+            {
+                "id": "thickness",
+                "title": thick_name,
+                "kind": "surface_map",
+                "image": "thickness_pial.png",
+                "surface": "pial",
+                "map": "thickness",
+                "map_file": "{hemi}.thickness",
+                "group": "map",
+                "plot": {
+                    "range_min": 0.01,
+                    "colormap": "viridis",
+                    "colorbar_title": f"{thick_name} ({thick_units})",
+                },
+                "description": f"{thick_name} ({thick_units}) over the pial surfaces. The "
+                "vertices without thickness, such as the medial wall, are gray. Check "
+                "for implausible patches of very thin or very thick cortex.",
+            },
+            {
+                "id": "curvature",
+                "title": curv_name,
+                "kind": "surface_map",
+                "image": "curv_white.png",
+                "surface": "white",
+                "map": "curv",
+                "map_file": "{hemi}.curv",
+                "group": "map",
+                "plot": {
+                    "colormap": "RdBu_r",
+                    "colorbar_title": f"{curv_name} ({curv_units})",
+                },
+                "description": f"{curv_name} ({curv_units}) over the white surfaces: sulci "
+                "are positive and gyri negative. The colors cover the 2nd to 98th "
+                "percentiles of the map, symmetric around zero. Check for holes, "
+                "handles, spikes or flat patches in the folding pattern.",
+            },
+            {
+                "id": "aparc",
+                "title": "Desikan-Killiany parcellation on the inflated surface",
+                "kind": "surface_annot",
+                "image": "aparc_inflated.png",
+                "surface": "inflated",
+                "map": "desikan",
+                "map_file": "{hemi}.aparc.annot",
+                "group": "parc",
+                "plot": {},
+                "description": "aparc annotation over the inflated surfaces. Check "
+                "that the regions are complete, in their expected place and similar "
+                "in both hemispheres.",
+            },
+            {
+                "id": "aparc.a2009s",
+                "title": "Destrieux parcellation on the inflated surface",
+                "kind": "surface_annot",
+                "image": "aparc.a2009s_inflated.png",
+                "surface": "inflated",
+                "map": "destrieux",
+                "map_file": "{hemi}.aparc.a2009s.annot",
+                "group": "parc",
+                "plot": {},
+                "description": "aparc.a2009s annotation over the inflated surfaces. "
+                "Check that the gyri and sulci are complete, in their expected place "
+                "and similar in both hemispheres.",
+            },
+        ]
+        for layer in layers:
+            if layer["kind"] in ("surface_map", "surface_annot"):
+                surf_files = self.fs_files["surf"]
+                layer["files"] = {}
+                for hemi in ("lh", "rh"):
+                    layer["files"][f"{hemi}.{layer['surface']}"] = surf_files[hemi][
+                        "mesh"
+                    ][layer["surface"]]
+                for hemi in ("lh", "rh"):
+                    layer["files"][layer["map_file"].format(hemi=hemi)] = surf_files[
+                        hemi
+                    ][layer["group"]][layer["map"]]
+            elif "files" not in layer:
+                layer["files"] = {layer["id"] + ".mgz": layer["file"]}
+                layer["image"] = (
+                    "T1.png" if layer["id"] == "T1" else f"T1_{layer['id']}.png"
+                )
+
+        # The slices are selected inside the brain when the brain mask exists
+        brain = None
+        if layers[1]["file"]:
+            brain = load_ras(layers[1]["file"])
+        reference = brain > 0 if brain is not None and (brain > 0).any() else head
+
+        crop = fsutils.qc_bbox(head, pad=4)
+        slices = {}
+        for axis, (name, n_axis) in enumerate(zip("xyz", n_per_axis, strict=True)):
+            lo, hi = fsutils.qc_bbox(reference)[axis]
+            index = np.unique(
+                np.round(np.linspace(lo, hi, n_axis + 2)[1:-1]).astype(int)
+            )
+            center = (np.array(t1.shape) - 1) / 2.0
+            coords = []
+            for i in index:
+                voxel = center.copy()
+                voxel[axis] = i
+                coords.append(round(float((affine @ np.append(voxel, 1))[axis]), 1))
+            slices[name] = {"voxel": [int(i) for i in index], "mm": coords}
+
+        # Transform from the coordinates of the surfaces to the voxels of the RAS volume
+        ornt = nib.orientations.io_orientation(t1_img.affine)
+        surf2vox = np.linalg.inv(
+            nib.orientations.inv_ornt_aff(ornt, t1_img.shape[:3])
+        ) @ np.linalg.inv(t1_img.header.get_vox2ras_tkr())
+
+        def save_mosaic(out_file, labels=None, rgb_lut=None, color=None, meshes=()):
+            panels = []
+            for axis, name in enumerate("xyz"):
+                row = []
+                for i, mm in zip(slices[name]["voxel"], slices[name]["mm"], strict=True):
+                    rgb = fsutils.qc_get_slice(gray, axis, i, crop)
+                    if labels is None:
+                        rgb = np.repeat(rgb[..., None], 3, axis=2)
+                    else:
+                        rgb = fsutils.qc_blend(
+                            rgb,
+                            fsutils.qc_get_slice(labels, axis, i, crop),
+                            overlay_alpha,
+                            rgb_lut=rgb_lut,
+                            color=color,
+                        )
+                    lines = [
+                        (fsutils.qc_slice_mesh(vertices, faces, axis, i, crop), line_color)
+                        for vertices, faces, line_color in meshes
+                    ]
+                    row.append((rgb, f"{name} = {mm:g}", lines))
+                panels.append(row)
+            fsutils.qc_save_mosaic(panels, zooms, out_file, dpi=dpi)
+
+        reportlets = []
+        legends = {}
+        used_lut = None
+        for layer in layers:
+            image = layer["image"]
+            report = {
+                "id": layer["id"],
+                "title": layer["title"],
+                "kind": layer["kind"],
+                "description": layer["description"],
+                "source_files": [f for f in layer["files"].values() if f],
+                "image": None,
+                "status": "ok",
+            }
+            reportlets.append(report)
+
+            not_found = [name for name, f in layer["files"].items() if not f]
+            if not_found:
+                report["status"] = "missing"
+                report["note"] = "Not found in the subject folder: " + ", ".join(not_found)
+                continue
+
+            out_file = os.path.join(img_dir, image)
+
+            if layer["kind"] == "anatomical":
+                save_mosaic(out_file)
+
+            elif layer["kind"] == "mask":
+                data = brain if layer["id"] == "brainmask" else load_ras(layer["file"])
+                if data is None:
+                    report["status"] = "error"
+                    report["note"] = "The volume is not in the same grid as the T1.mgz."
+                    continue
+                mask = data > 0
+                report["volume_cm3"] = round(float(mask.sum()) * voxel_volume / 1000, 2)
+                save_mosaic(out_file, labels=mask, color=layer["color"])
+
+            elif layer["kind"] == "contours":
+                meshes = []
+                for name, surf_file in layer["files"].items():
+                    vertices, faces = nib.freesurfer.read_geometry(surf_file)
+                    vertices = vertices @ surf2vox[:3, :3].T + surf2vox[:3, 3]
+                    line_color = "#ffd60a" if name.endswith("white") else "#ff453a"
+                    meshes.append((vertices, faces, line_color))
+                save_mosaic(out_file, meshes=meshes)
+
+            elif layer["kind"] in ("surface_map", "surface_annot"):
+                views, window_size = "4_views", (14 * dpi, int(7.5 * dpi))
+                if layer["kind"] == "surface_map":
+                    views, window_size = surf_views, (14 * dpi, 6 * dpi)
+                    means, all_values = {}, []
+                    for hemi in ("lh", "rh"):
+                        values = nib.freesurfer.read_morph_data(
+                            layer["files"][layer["map_file"].format(hemi=hemi)]
+                        )
+                        all_values.append(values)
+                        if layer["map"] == "thickness":
+                            values = values[values != 0]
+                        means[hemi] = (
+                            round(float(values.mean()), 3) if values.size else None
+                        )
+                    report["mean"] = means
+
+                    if layer["map"] == "curv":
+                        # Robust and symmetric limits: a few extreme vertices would
+                        # otherwise take the whole color scale
+                        limit = float(
+                            np.abs(
+                                np.percentile(np.concatenate(all_values), [2, 98])
+                            ).max()
+                        )
+                        if limit > 0:
+                            layer["plot"].update(vmin=-limit, vmax=limit)
+                            report["color_limits"] = [round(-limit, 4), round(limit, 4)]
+                try:
+                    fsutils.qc_plot_surface_map(layer, out_file, views, window_size)
+                except Exception as e:
+                    report["status"] = "error"
+                    report["note"] = f"The surfaces could not be rendered: {e}"
+                    continue
+
+            else:
+                if used_lut is None:
+                    used_lut = fsutils.qc_find_lut(lut_file)
+                parc = cltparc.Parcellation(layer["file"], color_table=used_lut)
+                data, _ = fsutils.qc_to_ras(parc.data, parc.affine)
+                if data.shape != t1.shape:
+                    report["status"] = "error"
+                    report["note"] = "The volume is not in the same grid as the T1.mgz."
+                    continue
+
+                # Color of each label (white for the labels that are not in the table)
+                counts = np.bincount(data.ravel())
+                rgb_lut = np.full((counts.size, 3), 255, dtype=np.float32)
+                colors = cltcol.harmonize_colors(parc.color, output_format="hex")
+                for code, hex_color in zip(parc.index, colors, strict=True):
+                    rgb_lut[code] = [int(hex_color[i : i + 2], 16) for i in (1, 3, 5)]
+
+                table = pd.DataFrame(
+                    {
+                        "index": parc.index,
+                        "name": parc.name,
+                        "color": list(colors),
+                        "nvoxels": [int(counts[c]) for c in parc.index],
+                        "volume_mm3": [
+                            round(float(counts[c]) * voxel_volume, 2) for c in parc.index
+                        ],
+                    }
+                )
+                table_file = os.path.join(meta_dir, f"{layer['id']}_regions.tsv")
+                table.to_csv(table_file, sep="\t", index=False)
+
+                present = np.nonzero(counts)[0]
+                unlisted = sorted(set(present[present != 0].tolist()) - set(parc.index))
+                report["n_regions"] = len(parc.index)
+                report["regions_table"] = f"metadata/{os.path.basename(table_file)}"
+                report["labels_not_in_color_table"] = unlisted
+                legends[layer["id"]] = table
+
+                save_mosaic(out_file, labels=data, rgb_lut=rgb_lut)
+
+            report["image"] = f"images/{image}"
+
+        # Global measures of the stats files and topology of the surfaces
+        stats = self.fs_files["stats"]
+        aseg_measures = fsutils.qc_read_stats_measures(stats["global"]["aseg"])
+        aparc_measures = {
+            hemi: fsutils.qc_read_stats_measures(stats[hemi]["desikan"])
+            for hemi in ("lh", "rh")
+        }
+        mean_thickness = fsutils.qc_subject_mean_thickness(self)
+
+        # Morphometry table of the subject. Its measures replace the ones above
+        stats_info = {"status": "disabled", "file": None}
+        lobes, regions = [], None
+        if stats_table:
+            table_file = os.path.join(meta_dir, f"{self.subj_id}_stats_table.csv")
+            try:
+                table = fsutils.qc_stats_table(self, table_file)
+                table_aseg, table_aparc, table_thickness = fsutils.qc_measures_from_table(
+                    table
+                )
+                lobes = fsutils.qc_lobes_table(table)
+                regions = fsutils.qc_regions_data(table)
+            except Exception as e:
+                stats_info = {
+                    "status": "error",
+                    "file": None,
+                    "note": f"The morphometry table could not be computed: {e}",
+                }
+            else:
+                aseg_measures.update(table_aseg)
+                for hemi in ("lh", "rh"):
+                    aparc_measures[hemi].update(table_aparc[hemi])
+                mean_thickness.update(table_thickness)
+                stats_info = {
+                    "status": "ok",
+                    "file": f"metadata/{os.path.basename(table_file)}",
+                    "n_rows": int(len(table)),
+                }
+
+        measures = fsutils.qc_global_measures(
+            aseg=aseg_measures,
+            aparc=aparc_measures,
+            topology=fsutils.qc_read_topology(
+                os.path.join(subj_dir, "scripts", "recon-all.log"),
+                os.path.join(subj_dir, "surf"),
+            ),
+            mean_thickness=mean_thickness,
+        )
+
+        metadata = {
+            "subject_id": self.subj_id,
+            "subjects_dir": os.path.abspath(self.subjs_dir),
+            "processing_status": self.pstatus,
+            "generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "freesurfer_version": fsutils.qc_read_text(
+                os.path.join(subj_dir, "scripts", "build-stamp.txt")
+            ),
+            "recon_all_last_log_line": fsutils.qc_read_text(
+                os.path.join(subj_dir, "scripts", "recon-all.log"), last_line=True
+            ),
+            "files_found": dict(self.fs_files_count),
+            "measures": measures,
+            "stats_table": stats_info,
+            "lobes": lobes,
+            "t1": {
+                "file": t1_file,
+                "dimensions": [int(s) for s in t1_img.shape[:3]],
+                "voxel_size_mm": [
+                    round(float(z), 3) for z in t1_img.header.get_zooms()[:3]
+                ],
+                "display_range": [0.0, round(vmax, 2)],
+            },
+            "n_slices": dict(zip("xyz", n_per_axis, strict=True)),
+            "slices": slices,
+            "overlay_alpha": overlay_alpha,
+            "color_table": str(used_lut) if used_lut else None,
+            "reportlets": reportlets,
+        }
+
+        with open(os.path.join(meta_dir, "qc_metadata.json"), "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        html_file = os.path.join(qc_dir, "index.html")
+        with open(html_file, "w", encoding="utf-8") as f:
+            f.write(fsutils.qc_build_html(metadata, legends, regions))
+
+        return html_file
+
 
 def _swap_volume_extension(path: str, new_ext: str) -> str:
     """Replace the extension of a volume (.nii.gz, .nii, .mgz or .mgh) by another one."""
@@ -5919,6 +6505,327 @@ def create_cohort_stats_table(
         console.print("\n[bold red]Failed Subjects:[/bold red]")
         for subj_id, error in failed_subjects:
             console.print(f"  [red]• {subj_id}: {error}[/red]")
+
+
+#####################################################################################################
+def generate_cohort_qc_webpage(
+    subjs_dir: str | Path = None,
+    subj_ids: str | list[str] = None,
+    out_dir: str | Path = None,
+    generate_reports: bool = False,
+    overwrite: bool = False,
+    max_workers: int = 1,
+    outlier_threshold: float = 4.0,
+    min_subjects: int = 20,
+    **report_kwargs,
+) -> str:
+    """
+    Generate the index web page of the quality control reports of a cohort.
+
+    Creates a web page with one row per subject of the FreeSurfer subjects
+    directory: processing status, holes and defects of the surfaces before
+    the topology correction, estimated intracranial volume,
+    mean cortical thickness, the rating of the subject and a link to its
+    individual report (see :meth:`FreeSurferSubject.generate_qc_webpage`).
+    The table can be sorted by any column and filtered by subject or status::
+
+        <out_dir>/
+            index.html
+            subjects.js
+            metadata/   cohort_qc.tsv, cohort_qc.json, cohort_outliers.tsv,
+                        cohort_ratings.tsv
+
+    The index also flags the regional measures of each subject that are far
+    from the ones of the cohort (see Notes).
+
+    Parameters
+    ----------
+    subjs_dir : str or Path, optional
+        FreeSurfer subjects directory. If None, uses the SUBJECTS_DIR
+        environment variable. Default is None.
+
+    subj_ids : str or list of str, optional
+        Subjects to include: a list of identifiers or a text file with one
+        identifier per line. If None, all the folders of ``subjs_dir`` that
+        contain a ``mri``, ``surf`` or ``scripts`` folder are included, except
+        the ``fsaverage`` ones. Default is None.
+
+    out_dir : str or Path, optional
+        Folder of the index. If None, uses ``<subjs_dir>/qcqa``. Default is None.
+
+    generate_reports : bool, optional
+        If True, generates the individual report of the subjects that do not
+        have one. Default is False.
+
+    overwrite : bool, optional
+        If True (with ``generate_reports``), generates again the individual
+        reports that already exist. Default is False.
+
+    max_workers : int, optional
+        Number of individual reports generated at the same time, each one in
+        its own process. Default is 1.
+
+    outlier_threshold : float, optional
+        Distance to the median of the cohort, in robust standard deviations,
+        from which a regional measure is flagged as an outlier. Default is 4.0.
+
+    min_subjects : int, optional
+        Minimum number of subjects with a morphometry table needed to look
+        for outliers. Default is 20.
+
+    **report_kwargs
+        Options for :meth:`FreeSurferSubject.generate_qc_webpage` (``n_slices``,
+        ``overlay_alpha``, ``lut_file``, ``dpi``, ``surf_views``, ``stats_table``).
+
+    Returns
+    -------
+    html_file : str
+        Path to the generated ``index.html``.
+
+    Raises
+    ------
+    ValueError
+        If the subjects directory is not given and SUBJECTS_DIR is not set.
+
+    FileNotFoundError
+        If the subjects directory or the file of identifiers does not exist.
+
+    Notes
+    -----
+    The measures are read from the files of each subject (``recon-all.log``,
+    ``aseg.stats`` and the ``?h.thickness`` maps), so they are shown even for
+    the subjects without an individual report. The mean cortical thickness is
+    computed from the vertex-wise maps, over the vertices of the cortex label.
+
+    The rating of a subject is read from the file downloaded with the rating
+    widget of its report, when it is saved as
+    ``<subj_id>/qcqa/metadata/<subj_id>_qc_rating.json``. The ratings of all
+    the subjects are exported to ``metadata/cohort_ratings.tsv``, with one row
+    for the subject and one for each rated or commented figure.
+
+    ``subjects.js`` lists the reports of the cohort. The individual reports
+    read it to show the links to the previous and next subject and to the
+    index, which works when the index is in its default folder
+    (``<subjs_dir>/qcqa``).
+
+    A subject whose report cannot be generated (for example, without
+    ``T1.mgz``) stays in the table without a link.
+
+    The outliers are looked for in the morphometry tables that the individual
+    reports save (``<subj_id>/qcqa/metadata/<subj_id>_stats_table.csv``), so
+    only the subjects with a report generated with ``stats_table=True`` are
+    compared. The measures compared are the mean thickness and the white
+    surface area of the lobes and of the regions of the Desikan-Killiany
+    atlas, and the volumes of the aseg (about 180 measures per subject). The
+    distance of each value to the median of the cohort is expressed in robust
+    standard deviations (1.4826 times the median absolute deviation). With
+    this many measures some flags are expected by chance, more in small
+    cohorts because their statistics are less stable: with the default
+    threshold, about one flag every two subjects in a cohort of 20 normal
+    subjects and one every 25 subjects in a cohort of 100. The volumes and
+    areas also depend on the size of the head. The flags tell where to look,
+    they are not a verdict.
+
+    Examples
+    --------
+    >>> # Index of the reports that already exist
+    >>> html_file = generate_cohort_qc_webpage('/data/freesurfer')
+    >>>
+    >>> # Generate the missing reports first, with 5 slices per orientation
+    >>> html_file = generate_cohort_qc_webpage(
+    ...     '/data/freesurfer', generate_reports=True, n_slices=5
+    ... )
+    """
+
+    if subjs_dir is None:
+        subjs_dir = os.environ.get("SUBJECTS_DIR")
+        if not subjs_dir:
+            raise ValueError(
+                "The subjects directory must be passed as subjs_dir or set in "
+                "the SUBJECTS_DIR environment variable."
+            )
+    subjs_dir = os.path.abspath(str(subjs_dir))
+    if not os.path.isdir(subjs_dir):
+        raise FileNotFoundError(f"The subjects directory does not exist: {subjs_dir}")
+
+    # Subjects of the cohort
+    if subj_ids is None:
+        subj_ids = sorted(
+            name
+            for name in os.listdir(subjs_dir)
+            if not name.startswith("fsaverage")
+            and any(
+                os.path.isdir(os.path.join(subjs_dir, name, folder))
+                for folder in ("mri", "surf", "scripts")
+            )
+        )
+    elif isinstance(subj_ids, (str, Path)):
+        if not os.path.isfile(subj_ids):
+            raise FileNotFoundError(f"The file of subjects does not exist: {subj_ids}")
+        with open(subj_ids) as f:
+            subj_ids = [line.strip() for line in f if line.strip()]
+    else:
+        subj_ids = [str(s) for s in subj_ids]
+
+    out_dir = os.path.join(subjs_dir, "qcqa") if out_dir is None else str(out_dir)
+    meta_dir = os.path.join(out_dir, "metadata")
+    os.makedirs(meta_dir, exist_ok=True)
+
+    # Individual reports to generate
+    notes = {}
+    if generate_reports:
+        pending = [
+            subj_id
+            for subj_id in subj_ids
+            if overwrite
+            or not os.path.isfile(os.path.join(subjs_dir, subj_id, "qcqa", "index.html"))
+        ]
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeRemainingColumn(),
+            transient=True,
+            disable=not pending,
+        ) as progress:
+            task = progress.add_task("Quality control reports", total=len(pending))
+            if max_workers > 1 and len(pending) > 1:
+                # Separate processes: the 3D rendering is not safe in threads. They
+                # are started clean (spawn) so they do not inherit a renderer
+                with ProcessPoolExecutor(
+                    max_workers=min(max_workers, len(pending)),
+                    mp_context=multiprocessing.get_context("spawn"),
+                ) as executor:
+                    futures = {
+                        executor.submit(
+                            _generate_subject_qc_webpage, subj_id, subjs_dir, report_kwargs
+                        ): subj_id
+                        for subj_id in pending
+                    }
+                    for future in as_completed(futures):
+                        notes[futures[future]] = future.result()
+                        progress.advance(task)
+            else:
+                for subj_id in pending:
+                    progress.update(
+                        task, description=f"Quality control report of {subj_id}"
+                    )
+                    notes[subj_id] = _generate_subject_qc_webpage(
+                        subj_id, subjs_dir, report_kwargs
+                    )
+                    progress.advance(task)
+
+    rows = []
+    ratings = []
+    for subj_id in subj_ids:
+        subj_dir = os.path.join(subjs_dir, subj_id)
+        subject = FreeSurferSubject(subj_id, subjs_dir)
+        subject.get_proc_status()
+
+        report = os.path.join(subj_dir, "qcqa", "index.html")
+        row = fsutils.qc_cohort_row(subject, report if os.path.isfile(report) else None)
+        if row["report"]:
+            row["report"] = os.path.relpath(row["report"], out_dir).replace(os.sep, "/")
+        row["note"] = notes.get(subj_id)
+        rows.append(row)
+        ratings += fsutils.qc_rating_rows(subj_id, fsutils.qc_read_rating(subj_dir))
+
+    # Ratings of all the subjects in a single table
+    ratings_file = os.path.join(meta_dir, "cohort_ratings.tsv")
+    if ratings:
+        pd.DataFrame(ratings).to_csv(ratings_file, sep="\t", index=False)
+    elif os.path.isfile(ratings_file):
+        os.remove(ratings_file)
+
+    # List of the reports, for the links to the previous and next subject of the
+    # individual reports
+    with open(os.path.join(out_dir, "subjects.js"), "w", encoding="utf-8") as f:
+        f.write(
+            "window.QC_COHORT = "
+            + json.dumps(
+                {
+                    "subjects": [
+                        {"id": r["subject_id"], "report": r["report"]}
+                        for r in rows
+                        if r["report"]
+                    ]
+                }
+            )
+            + ";\n"
+        )
+
+    # Regional measures far from the ones of the cohort
+    tables = {}
+    for row in rows:
+        table_file = os.path.join(
+            subjs_dir,
+            row["subject_id"],
+            "qcqa",
+            "metadata",
+            f"{row['subject_id']}_stats_table.csv",
+        )
+        if os.path.isfile(table_file):
+            tables[row["subject_id"]] = fsutils.qc_clean_stats_table(
+                pd.read_csv(table_file, sep=None, engine="python")
+            )
+    outliers = fsutils.qc_cohort_outliers(
+        tables, threshold=outlier_threshold, min_subjects=min_subjects
+    )
+    for row in rows:
+        row["outliers"] = None
+        if outliers is not None and row["subject_id"] in tables:
+            row["outliers"] = int((outliers["subject_id"] == row["subject_id"]).sum())
+    outliers_file = os.path.join(meta_dir, "cohort_outliers.tsv")
+    if outliers is not None:
+        outliers.to_csv(outliers_file, sep="\t", index=False)
+    elif os.path.isfile(outliers_file):
+        os.remove(outliers_file)
+    outlier_info = {
+        "threshold": outlier_threshold,
+        "min_subjects": min_subjects,
+        "n_tables": len(tables),
+    }
+
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    table = pd.DataFrame(rows)
+    if rows:
+        # Keep the counts as integers in the subjects without values
+        counts = ["holes", "defects", "outliers"]
+        table[counts] = table[counts].astype("Int64")
+    table.to_csv(os.path.join(meta_dir, "cohort_qc.tsv"), sep="\t", index=False)
+    with open(os.path.join(meta_dir, "cohort_qc.json"), "w") as f:
+        json.dump(
+            {"subjects_dir": subjs_dir, "generated": generated, "subjects": rows},
+            f,
+            indent=2,
+        )
+
+    html_file = os.path.join(out_dir, "index.html")
+    with open(html_file, "w", encoding="utf-8") as f:
+        f.write(
+            fsutils.qc_build_cohort_html(
+                rows, subjs_dir, generated, outliers, outlier_info, bool(ratings)
+            )
+        )
+
+    return html_file
+
+
+def _generate_subject_qc_webpage(
+    subj_id: str, subjs_dir: str, report_kwargs: dict
+) -> str | None:
+    """
+    Generate the quality control report of a subject of a cohort.
+
+    Returns None, or the reason why the report could not be generated. It is a
+    function of the module so that it can run in another process.
+    """
+    try:
+        FreeSurferSubject(subj_id, subjs_dir).generate_qc_webpage(**report_kwargs)
+    except FileNotFoundError as e:
+        return str(e)
+    return None
 
 
 #####################################################################################################

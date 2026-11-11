@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 import clabtoolkit.freesurfertools as cltfree
+import clabtoolkit.freesurfertools_utils as fsutils
 import clabtoolkit.surfacetools as cltsurf
 
 AnnotParcellation = cltfree.AnnotParcellation
@@ -3706,3 +3707,1058 @@ class TestInstalledFreesurfer:
             "lh.aparc.annot"
         )
         assert subject.fs_files_count["sparc"] >= 2
+
+
+# ---------------------------------------------------------------------------
+# FreeSurferSubject.generate_qc_webpage
+# ---------------------------------------------------------------------------
+QC_LUT = """#No. Label Name:                R   G   B   A
+0   Unknown                         0   0   0   0
+2   Left-Cerebral-White-Matter      245 245 245 0
+41  Right-Cerebral-White-Matter     0   225 0   0
+1001 ctx-lh-bankssts                25  100 40  0
+"""
+
+
+QC_OCTA_VERTICES = np.array(
+    [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]],
+    dtype=np.float32,
+)
+QC_OCTA_FACES = np.array(
+    [[0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4], [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]],
+    dtype=np.int32,
+)  # fmt: skip
+
+
+REAL_QC_STATS_TABLE = fsutils.qc_stats_table
+
+
+def make_stats_table(scale=1.0, changes=None):
+    """Small table with the layout of create_subject_stats_table."""
+    rows = [
+        (
+            "statsfile",
+            "volume",
+            "mm3",
+            "",
+            "brain",
+            "brain-brain-intracraneal",
+            1500000.0,
+        ),
+        (
+            "statsfile",
+            "volume",
+            "mm3",
+            "",
+            "brain",
+            "brain-brain-wholebrain",
+            1200000.0,
+        ),
+        ("statsfile", "volume", "mm3", "", "brain", "gm-brain-graymatter", 670000.0),
+        ("statsfile", "volume", "mm3", "", "brain", "wm-brain-whitematter", 500000.0),
+        ("statsfile", "volume", "mm3", "", "lh", "hipp-lh-hippocampus", 4400.0),
+        (
+            "parcellation",
+            "volume",
+            "mm3",
+            "desikan+aseg",
+            "lh",
+            "ctx-lh-insula",
+            7000.0,
+        ),
+    ]
+    for hemi, thick, white, pial in (
+        ("lh", 2.6, 84000.0, 100000.0),
+        ("rh", 2.5, 85000.0, 101000.0),
+    ):
+        for lobe, part in (("hemisphere", 1.0), ("frontal", 0.4), ("insula", 0.05)):
+            region = f"ctx-{hemi}-{lobe}"
+            rows += [
+                (
+                    "vertices",
+                    "thickness",
+                    "mm",
+                    "lobes_desikan",
+                    hemi,
+                    region,
+                    thick + part / 10,
+                ),
+                ("white", "area", "mm2", "lobes_desikan", hemi, region, white * part),
+                ("pial", "area", "mm2", "lobes_desikan", hemi, region, pial * part),
+            ]
+        for name, value in (("precentral", 2.8), ("cuneus", 1.9)):
+            region = f"ctx-{hemi}-{name}"
+            rows.append(("vertices", "thickness", "mm", "desikan", hemi, region, value))
+            rows.append(("white", "area", "mm2", "desikan", hemi, region, value * 1000))
+    table = pd.DataFrame(
+        rows,
+        columns=["Source", "Metric", "Units", "Atlas", "Hemisphere", "Region", "Value"],
+    )
+    table["Value"] *= scale
+    for region, factor in (changes or {}).items():
+        table.loc[table["Region"] == region, "Value"] *= factor
+    table["Std"] = np.where(table["Source"] == "vertices", 0.5, np.nan)
+    return table
+
+
+def build_qc_subject(
+    subjects, files=("T1", "brainmask", "wm", "aparc+aseg"), surfaces=True
+):
+    """Subject with small conformed-like (LIA) volumes and a color table."""
+    mri = subjects / "sub-qc" / "mri"
+    mri.mkdir(parents=True)
+    affine = np.array(
+        [[-1, 0, 0, 16], [0, 0, 1, -16], [0, -1, 0, 16], [0, 0, 0, 1]], dtype=float
+    )
+    grid = np.indices((32, 32, 32)) - 15.5
+    brain = (grid**2).sum(axis=0) < 12**2
+    volumes = {
+        "T1": np.where(brain, 110, 20).astype(np.uint8),
+        "brainmask": np.where(brain, 110, 0).astype(np.uint8),
+        "wm": np.where((grid**2).sum(axis=0) < 6**2, 110, 0).astype(np.uint8),
+    }
+    # Left hemisphere (first voxels of the first axis are on the right in LIA)
+    parc = np.where(brain, np.where(grid[0] > 0, 2, 41), 0).astype(np.int32)
+    parc[20:24, 14:18, 14:18] = 1001
+    parc[8, 16, 16] = 999  # label that is not in the color table
+    volumes["aparc+aseg"] = parc
+    for name in files:
+        nib.save(nib.MGHImage(volumes[name], affine), str(mri / f"{name}.mgz"))
+    if surfaces:
+        # Octahedra centered in the volume: the surface coordinates are 0 there
+        surf = subjects / "sub-qc" / "surf"
+        surf.mkdir()
+        for hemi in ("lh", "rh"):
+            for name, radius in (("white", 6.0), ("pial", 10.0)):
+                nib.freesurfer.write_geometry(
+                    str(surf / f"{hemi}.{name}"),
+                    QC_OCTA_VERTICES * radius,
+                    QC_OCTA_FACES,
+                )
+            nib.freesurfer.write_morph_data(
+                str(surf / f"{hemi}.thickness"),
+                np.array([0, 2, 2, 3, 3, 2.5], dtype=np.float32),
+            )
+            nib.freesurfer.write_morph_data(
+                str(surf / f"{hemi}.curv"), np.linspace(-0.3, 0.3, 6, dtype=np.float32)
+            )
+    lut = subjects / "lut.txt"
+    lut.write_text(QC_LUT)
+    return FreeSurferSubject("sub-qc", subjects), lut
+
+
+@pytest.fixture(autouse=True)
+def _fake_surface_rendering(monkeypatch):
+    """The 3D rendering needs a display: replace it by a function that writes a file."""
+    calls = []
+
+    def fake(layer, out_file, views, window_size):
+        calls.append((layer["id"], views, window_size))
+        Path(out_file).write_bytes(b"png")
+
+    monkeypatch.setattr(fsutils, "qc_plot_surface_map", fake)
+
+    # The morphometry table needs a processed subject: not available by default
+    def no_table(subject, table_file):
+        raise ValueError("the subject is not processed")
+
+    monkeypatch.setattr(fsutils, "qc_stats_table", no_table)
+    return calls
+
+
+class TestGenerateQcWebpage:
+    def test_folder_structure(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        html = subject.generate_qc_webpage(n_slices=3, lut_file=lut, dpi=40)
+        qc = subjects / "sub-qc" / "qcqa"
+        assert html == str(qc / "index.html")
+        assert sorted(p.name for p in (qc / "images").iterdir()) == [
+            "T1.png",
+            "T1_aparc+aseg.png",
+            "T1_brainmask.png",
+            "T1_surfaces.png",
+            "T1_wm.png",
+            "curv_white.png",
+            "thickness_pial.png",
+        ]
+        assert (qc / "metadata" / "qc_metadata.json").is_file()
+        assert (qc / "metadata" / "aparc+aseg_regions.tsv").is_file()
+
+    def test_page_shows_the_status_and_the_images(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        page = Path(subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40))
+        text = page.read_text()
+        assert subject.pstatus == "unprocessed"
+        assert '<span class="badge unprocessed">unprocessed</span>' in text
+        assert 'src="images/T1_aparc%2Baseg.png"' in text
+        assert "ctx-lh-bankssts" in text
+
+    def test_missing_volumes_are_reported(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        meta = json.loads(
+            (subjects / "sub-qc" / "qcqa" / "metadata" / "qc_metadata.json").read_text()
+        )
+        status = {r["id"]: r["status"] for r in meta["reportlets"]}
+        assert status == {
+            "T1": "ok",
+            "brainmask": "ok",
+            "wm": "ok",
+            "surfaces": "ok",
+            "aparc+aseg": "ok",
+            "aparc.a2009s+aseg": "missing",
+            "aparc.DKTatlas+aseg": "missing",
+            "thickness": "ok",
+            "curvature": "ok",
+            "aparc": "missing",
+            "aparc.a2009s": "missing",
+        }
+
+    def test_number_of_slices_per_orientation(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        subject.generate_qc_webpage(n_slices=(2, 3, 4), lut_file=lut, dpi=40)
+        meta = json.loads(
+            (subjects / "sub-qc" / "qcqa" / "metadata" / "qc_metadata.json").read_text()
+        )
+        assert meta["n_slices"] == {"x": 2, "y": 3, "z": 4}
+        assert [len(meta["slices"][a]["voxel"]) for a in "xyz"] == [2, 3, 4]
+
+    def test_region_table_and_labels_without_color(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        meta_dir = subjects / "sub-qc" / "qcqa" / "metadata"
+        table = pd.read_csv(meta_dir / "aparc+aseg_regions.tsv", sep="\t")
+        assert table["index"].tolist() == [2, 41, 1001]
+        assert table.loc[table["index"] == 1001, "nvoxels"].item() == 64
+        meta = json.loads((meta_dir / "qc_metadata.json").read_text())
+        parc = [r for r in meta["reportlets"] if r["id"] == "aparc+aseg"][0]
+        assert parc["labels_not_in_color_table"] == [999]
+
+    def test_color_table_is_not_needed_without_parcellations(
+        self, subjects, monkeypatch
+    ):
+        monkeypatch.delenv("FREESURFER_HOME", raising=False)
+        subject, _ = build_qc_subject(subjects, files=("T1", "brainmask"))
+        assert Path(subject.generate_qc_webpage(n_slices=2, dpi=40)).is_file()
+
+    def test_color_table_is_required_for_the_parcellations(self, subjects, monkeypatch):
+        monkeypatch.delenv("FREESURFER_HOME", raising=False)
+        subject, _ = build_qc_subject(subjects)
+        with pytest.raises(ValueError, match="FREESURFER_HOME"):
+            subject.generate_qc_webpage(n_slices=2, dpi=40)
+
+    def test_subject_without_t1(self, subjects):
+        subject, lut = build_qc_subject(subjects, files=("brainmask",))
+        with pytest.raises(FileNotFoundError, match="T1.mgz"):
+            subject.generate_qc_webpage(lut_file=lut)
+
+    @pytest.mark.parametrize("n_slices", [(3, 3), "7", 2.5, (1, -1, 1), 0])
+    def test_invalid_number_of_slices(self, subjects, n_slices):
+        subject, lut = build_qc_subject(subjects)
+        with pytest.raises(ValueError):
+            subject.generate_qc_webpage(n_slices=n_slices, lut_file=lut)
+
+    def test_invalid_opacity(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        with pytest.raises(ValueError, match="overlay_alpha"):
+            subject.generate_qc_webpage(overlay_alpha=1.5, lut_file=lut)
+
+    def test_surface_maps_use_the_requested_views(
+        self, subjects, _fake_surface_rendering
+    ):
+        subject, lut = build_qc_subject(subjects)
+        subject.generate_qc_webpage(
+            n_slices=2, lut_file=lut, dpi=40, surf_views=["lateral", "medial"]
+        )
+        assert _fake_surface_rendering == [
+            ("thickness", ["lateral", "medial"], (560, 240)),
+            ("curvature", ["lateral", "medial"], (560, 240)),
+        ]
+
+    def test_mean_thickness_ignores_the_vertices_without_thickness(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        meta = json.loads(
+            (subjects / "sub-qc" / "qcqa" / "metadata" / "qc_metadata.json").read_text()
+        )
+        thickness = [r for r in meta["reportlets"] if r["id"] == "thickness"][0]
+        assert thickness["mean"] == {"lh": 2.5, "rh": 2.5}
+
+    def test_subject_without_surfaces(self, subjects):
+        subject, lut = build_qc_subject(subjects, surfaces=False)
+        subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        qc = subjects / "sub-qc" / "qcqa"
+        meta = json.loads((qc / "metadata" / "qc_metadata.json").read_text())
+        reports = {r["id"]: r for r in meta["reportlets"]}
+        for name in ("surfaces", "thickness", "curvature"):
+            assert reports[name]["status"] == "missing"
+        assert "lh.white" in reports["surfaces"]["note"]
+        assert not (qc / "images" / "T1_surfaces.png").exists()
+
+    def test_rendering_errors_are_reported(self, subjects, monkeypatch):
+        def broken(*args):
+            raise RuntimeError("no display")
+
+        monkeypatch.setattr(fsutils, "qc_plot_surface_map", broken)
+        subject, lut = build_qc_subject(subjects)
+        page = Path(subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40))
+        assert "The surfaces could not be rendered: no display" in page.read_text()
+
+
+class TestQcSliceMesh:
+    CROP = [(0, 31), (0, 31), (0, 31)]
+
+    def test_octahedron_cut_through_its_center(self):
+        vertices = QC_OCTA_VERTICES * 10 + 16
+        segments = fsutils.qc_slice_mesh(vertices, QC_OCTA_FACES, 2, 16.5, self.CROP)
+        # A plane just above the equator cuts the four upper faces
+        assert segments.shape == (4, 2, 2)
+        # The section is a square of half diagonal 9.5 around the center
+        points = segments.reshape(-1, 2)
+        assert np.allclose(np.abs(points[:, 0] - 16) + np.abs(points[:, 1] - 15), 9.5)
+
+    def test_pixels_follow_the_displayed_slice(self):
+        # One triangle that crosses x = 10 between (y, z) = (4, 6) and (8, 6)
+        vertices = np.array([[9, 4, 6], [11, 4, 6], [10, 8, 6]], dtype=float)
+        faces = np.array([[0, 1, 2]])
+        crop = [(0, 31), (2, 20), (1, 25)]
+        segments = fsutils.qc_slice_mesh(vertices, faces, 0, 10, crop)
+        # horizontal = y - 2, vertical = 25 - z
+        points = np.array(sorted(segments[0].tolist()))
+        assert np.allclose(points, [[2, 19], [6, 19]], atol=1e-4)
+
+    def test_plane_outside_the_mesh(self):
+        vertices = QC_OCTA_VERTICES * 10 + 16
+        segments = fsutils.qc_slice_mesh(vertices, QC_OCTA_FACES, 0, 30, self.CROP)
+        assert segments.shape == (0, 2, 2)
+
+
+QC_RECON_LOG = """#@# Fix Topology lh Mon Jun 12 03:36:20 EDT 2023
+before topology correction, eno=-30 (nv=130332, nf=260724, ne=391086, g=16)
+21 defects found, arbitrating ambiguous regions...
+after topology correction, eno=2 (nv=129354, nf=258704, ne=388056, g=0)
+#@# Fix Topology rh Mon Jun 12 03:37:41 EDT 2023
+before topology correction, eno=-26 (nv=130352, nf=260756, ne=391134, g=14)
+18 defects found, arbitrating ambiguous regions...
+#@# Make White Surf lh
+"""
+
+QC_ASEG_STATS = """# Title Segmentation Statistics
+# Measure BrainSeg, BrainSegVol, Brain Segmentation Volume, 1218716.000000, mm^3
+# Measure lhCortex, lhCortexVol, Left hemisphere cortical gray matter volume, 243789.7, mm^3
+# Measure rhCortex, rhCortexVol, Right hemisphere cortical gray matter volume, 241529.2, mm^3
+# Measure Cortex, CortexVol, Total cortical gray matter volume, 485318.9, mm^3
+# Measure EstimatedTotalIntraCranialVol, eTIV, Estimated Total Intracranial Volume, 1518149.824030, mm^3
+# ColHeaders  Index SegId NVoxels Volume_mm3 StructName
+  1   4      7147     7534.4  Left-Lateral-Ventricle
+"""
+
+
+class TestQcMeasures:
+    def test_stats_measures(self, tmp_path):
+        stats = tmp_path / "aseg.stats"
+        stats.write_text(QC_ASEG_STATS)
+        measures = fsutils.qc_read_stats_measures(str(stats))
+        assert measures["eTIV"] == pytest.approx(1518149.82403)
+        assert measures["lhCortexVol"] == pytest.approx(243789.7)
+        assert set(measures) == {
+            "BrainSegVol",
+            "lhCortexVol",
+            "rhCortexVol",
+            "CortexVol",
+            "eTIV",
+        }
+
+    def test_missing_stats_file(self, tmp_path):
+        assert fsutils.qc_read_stats_measures(str(tmp_path / "none.stats")) == {}
+        assert fsutils.qc_read_stats_measures("") == {}
+
+    def test_topology_from_the_log(self, tmp_path):
+        log = tmp_path / "recon-all.log"
+        log.write_text(QC_RECON_LOG)
+        assert fsutils.qc_read_topology(str(log)) == {
+            "lh": {"euler": -30, "holes": 16, "defects": 21},
+            "rh": {"euler": -26, "holes": 14, "defects": 18},
+        }
+
+    def test_topology_of_the_last_run(self, tmp_path):
+        log = tmp_path / "recon-all.log"
+        log.write_text(QC_RECON_LOG + QC_RECON_LOG.replace("eno=-30", "eno=-4"))
+        assert fsutils.qc_read_topology(str(log))["lh"]["euler"] == -4
+
+    def test_topology_of_a_log_without_section_titles(self, tmp_path):
+        log = tmp_path / "recon-all.log"
+        log.write_text(
+            "\n".join(line for line in QC_RECON_LOG.splitlines() if "#@#" not in line)
+        )
+        topology = fsutils.qc_read_topology(str(log))
+        assert (topology["lh"]["euler"], topology["rh"]["euler"]) == (-30, -26)
+        assert (topology["lh"]["defects"], topology["rh"]["defects"]) == (21, 18)
+
+    def test_euler_number_from_the_surface_without_a_log(self, tmp_path):
+        # An octahedron is a sphere: Euler number 2 and no holes
+        nib.freesurfer.write_geometry(
+            str(tmp_path / "lh.orig.nofix"), QC_OCTA_VERTICES, QC_OCTA_FACES
+        )
+        topology = fsutils.qc_read_topology(str(tmp_path / "none.log"), str(tmp_path))
+        assert topology["lh"] == {"euler": 2, "holes": 0, "defects": None}
+        assert topology["rh"] == {"euler": None, "holes": None, "defects": None}
+
+    def test_rows_of_the_table(self):
+        rows = fsutils.qc_global_measures(
+            aseg={"eTIV": 1500000.0, "lhCortexVol": 240000.0, "rhCortexVol": 250000.0},
+            aparc={"lh": {"WhiteSurfArea": 84000.0}, "rh": {"WhiteSurfArea": 85000.0}},
+            topology={
+                "lh": {"euler": -30, "holes": 16, "defects": 21},
+                "rh": {"euler": -26, "holes": 14, "defects": 18},
+            },
+            mean_thickness={"lh": 2.5, "rh": 2.6},
+        )
+        table = {r["name"]: (r["lh"], r["rh"], r["total"]) for r in rows}
+        assert table == {
+            "Estimated total intracranial volume": (None, None, 1500.0),
+            "Cortical gray matter volume": (240.0, 250.0, None),
+            "White surface area": (840.0, 850.0, 1690.0),
+            "Mean cortical thickness": (2.5, 2.6, None),
+            "Surface holes before topology correction": (16, 14, 30),
+            "Surface defects before topology correction": (21, 18, 39),
+        }
+
+    def test_no_rows_without_data(self):
+        empty = {"euler": None, "holes": None, "defects": None}
+        assert (
+            fsutils.qc_global_measures({}, {}, {"lh": dict(empty), "rh": dict(empty)})
+            == []
+        )
+
+
+class TestQcWebpageMeasuresAndRating:
+    def test_measures_of_the_subject(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        subj = subjects / "sub-qc"
+        (subj / "stats").mkdir()
+        (subj / "stats" / "aseg.stats").write_text(QC_ASEG_STATS)
+        (subj / "scripts").mkdir()
+        (subj / "scripts" / "recon-all.log").write_text(QC_RECON_LOG)
+        page = Path(subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40))
+        meta = json.loads((subj / "qcqa" / "metadata" / "qc_metadata.json").read_text())
+        table = {r["name"]: (r["lh"], r["rh"], r["total"]) for r in meta["measures"]}
+        assert table["Estimated total intracranial volume"] == (None, None, 1518.15)
+        assert table["Surface defects before topology correction"] == (21, 18, 39)
+        assert "Euler number before topology correction" not in table
+        # The mean thickness comes from the maps, without the vertices at zero
+        assert table["Mean cortical thickness"] == (2.5, 2.5, None)
+        text = page.read_text()
+        assert (
+            "<th>Surface defects before topology correction</th><td>21</td><td>18</td><td>39</td>"
+            in text
+        )
+
+    def test_rating_widget(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        text = Path(
+            subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        ).read_text()
+        # One rating per figure that exists, plus the rating of the subject
+        assert text.count('<div class="rating" data-id="') == 8
+        assert '<div class="rating" data-id="curvature">' in text
+        assert '<div class="rating" data-id="aparc">' not in text
+        assert 'id="rating-download"' in text
+
+    def test_curvature_limits_are_symmetric_percentiles(
+        self, subjects, _fake_surface_rendering, monkeypatch
+    ):
+        plots = {}
+
+        def fake(layer, out_file, views, window_size):
+            plots[layer["id"]] = dict(layer["plot"])
+            Path(out_file).write_bytes(b"png")
+
+        monkeypatch.setattr(fsutils, "qc_plot_surface_map", fake)
+        subject, lut = build_qc_subject(subjects)
+        surf = subjects / "sub-qc" / "surf"
+        values = np.linspace(-0.2, 0.1, 6).astype(np.float32)
+        for hemi in ("lh", "rh"):
+            nib.freesurfer.write_morph_data(str(surf / f"{hemi}.curv"), values)
+        subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        assert plots["curvature"]["vmin"] == -plots["curvature"]["vmax"]
+        # Largest of the 2nd and 98th percentiles of both hemispheres
+        expected = np.abs(np.percentile(np.tile(values, 2), [2, 98])).max()
+        assert plots["curvature"]["vmax"] == pytest.approx(expected)
+        assert "vmin" not in plots["thickness"]
+
+
+class TestGenerateCohortQcWebpage:
+    @staticmethod
+    def make_cohort(subjects):
+        """Two processed subjects with a log and stats, one empty, and fsaverage."""
+        for subj_id in ("sub-01", "sub-02"):
+            make_touched_subject(subjects, subj_id, 3)
+            subj = subjects / subj_id
+            (subj / "scripts").mkdir()
+            log = (
+                QC_RECON_LOG
+                if subj_id == "sub-01"
+                else QC_RECON_LOG.replace("-30", "-8")
+            )
+            (subj / "scripts" / "recon-all.log").write_text(log)
+            (subj / "stats" / "aseg.stats").write_text(QC_ASEG_STATS)
+        make_touched_subject(subjects, "sub-03", 1)
+        make_touched_subject(subjects, "fsaverage", 3)
+        (subjects / "notes").mkdir()
+
+    def read_rows(self, subjects):
+        meta = subjects / "qcqa" / "metadata"
+        return {
+            r["subject_id"]: r
+            for r in json.loads((meta / "cohort_qc.json").read_text())["subjects"]
+        }
+
+    def test_one_row_per_subject(self, subjects):
+        self.make_cohort(subjects)
+        html = cltfree.generate_cohort_qc_webpage(subjects)
+        assert html == str(subjects / "qcqa" / "index.html")
+        rows = self.read_rows(subjects)
+        # fsaverage and the folders that are not subjects are left out
+        assert list(rows) == ["sub-01", "sub-02", "sub-03"]
+        assert rows["sub-01"]["status"] == "processed"
+        assert rows["sub-03"]["status"] == "autorecon1"
+        assert "euler_lh" not in rows["sub-01"]
+        assert (rows["sub-01"]["holes"], rows["sub-02"]["holes"]) == (30, 19)
+        assert rows["sub-01"]["defects"] == 39
+        assert rows["sub-01"]["etiv_cm3"] == 1518.1
+        assert rows["sub-03"]["holes"] is None
+        # The thickness maps of these subjects are not valid files
+        assert rows["sub-01"]["thickness_lh_mm"] is None
+        assert all(r["report"] is None for r in rows.values())
+
+    def test_table_keeps_integers(self, subjects):
+        self.make_cohort(subjects)
+        cltfree.generate_cohort_qc_webpage(subjects)
+        lines = (
+            (subjects / "qcqa" / "metadata" / "cohort_qc.tsv").read_text().splitlines()
+        )
+        assert lines[0].split("\t")[:4] == ["subject_id", "status", "holes", "defects"]
+        assert lines[1].split("\t")[:4] == ["sub-01", "processed", "30", "39"]
+
+    def test_thickness_comes_from_the_maps(self, tmp_path):
+        folder = tmp_path / "cohort"
+        folder.mkdir()
+        build_qc_subject(folder)
+        cltfree.generate_cohort_qc_webpage(folder)
+        row = self.read_rows(folder)["sub-qc"]
+        # Mean of the vertices with thickness: the subject has no stats files
+        assert (row["thickness_lh_mm"], row["thickness_rh_mm"]) == (2.5, 2.5)
+
+    def test_links_to_the_existing_reports_and_ratings(self, subjects):
+        self.make_cohort(subjects)
+        meta = subjects / "sub-02" / "qcqa" / "metadata"
+        meta.mkdir(parents=True)
+        (meta.parent / "index.html").write_text("<html></html>")
+        (meta / "sub-02_qc_rating.json").write_text(
+            json.dumps({"rating": "doubtful", "rater": "YA"})
+        )
+        page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
+        rows = self.read_rows(subjects)
+        assert rows["sub-02"]["report"] == "../sub-02/qcqa/index.html"
+        assert (rows["sub-02"]["rating"], rows["sub-02"]["rater"]) == ("doubtful", "YA")
+        assert '<a href="../sub-02/qcqa/index.html">sub-02</a>' in page
+        assert '<span class="badge doubtful">doubtful</span>' in page
+
+    def test_selected_subjects(self, subjects, tmp_path):
+        self.make_cohort(subjects)
+        cltfree.generate_cohort_qc_webpage(subjects, subj_ids=["sub-02"])
+        assert list(self.read_rows(subjects)) == ["sub-02"]
+        ids_file = tmp_path / "ids.txt"
+        ids_file.write_text("sub-03\n\nsub-01\n")
+        cltfree.generate_cohort_qc_webpage(subjects, subj_ids=str(ids_file))
+        assert list(self.read_rows(subjects)) == ["sub-03", "sub-01"]
+
+    def test_output_folder(self, subjects, tmp_path):
+        self.make_cohort(subjects)
+        out_dir = tmp_path / "index"
+        html = cltfree.generate_cohort_qc_webpage(subjects, out_dir=out_dir)
+        assert html == str(out_dir / "index.html")
+        assert (out_dir / "metadata" / "cohort_qc.tsv").is_file()
+
+    def test_generates_the_missing_reports(self, tmp_path):
+        folder = tmp_path / "cohort"
+        folder.mkdir()
+        subject, lut = build_qc_subject(folder)
+        make_touched_subject(folder, "sub-empty", 0)
+        (folder / "sub-empty" / "mri").mkdir()
+        cltfree.generate_cohort_qc_webpage(
+            folder, generate_reports=True, n_slices=2, lut_file=lut, dpi=40
+        )
+        rows = self.read_rows(folder)
+        assert rows["sub-qc"]["report"] == "../sub-qc/qcqa/index.html"
+        assert (folder / "sub-qc" / "qcqa" / "images" / "T1.png").is_file()
+        # The subject without T1 stays in the table, with the reason
+        assert rows["sub-empty"]["report"] is None
+        assert "T1.mgz" in rows["sub-empty"]["note"]
+
+    def test_existing_reports_are_kept_unless_overwrite(self, tmp_path, monkeypatch):
+        folder = tmp_path / "cohort"
+        folder.mkdir()
+        _, lut = build_qc_subject(folder)
+        calls = []
+        original = FreeSurferSubject.generate_qc_webpage
+
+        def counted(self, **kwargs):
+            calls.append(self.subj_id)
+            return original(self, **kwargs)
+
+        monkeypatch.setattr(FreeSurferSubject, "generate_qc_webpage", counted)
+        options = {"generate_reports": True, "n_slices": 2, "lut_file": lut, "dpi": 40}
+        cltfree.generate_cohort_qc_webpage(folder, **options)
+        cltfree.generate_cohort_qc_webpage(folder, **options)
+        assert calls == ["sub-qc"]
+        cltfree.generate_cohort_qc_webpage(folder, overwrite=True, **options)
+        assert calls == ["sub-qc", "sub-qc"]
+
+    def test_empty_cohort(self, subjects):
+        page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
+        assert "0 of 0" in page
+
+    def test_missing_subjects_directory(self, tmp_path, monkeypatch):
+        with pytest.raises(FileNotFoundError):
+            cltfree.generate_cohort_qc_webpage(tmp_path / "none")
+        monkeypatch.delenv("SUBJECTS_DIR", raising=False)
+        with pytest.raises(ValueError, match="SUBJECTS_DIR"):
+            cltfree.generate_cohort_qc_webpage()
+
+
+class TestQcMeanThickness:
+    @staticmethod
+    def write_map(folder, values):
+        path = folder / "lh.thickness"
+        nib.freesurfer.write_morph_data(str(path), np.array(values, dtype=np.float32))
+        return str(path)
+
+    def test_vertices_without_thickness_are_left_out(self, tmp_path):
+        path = self.write_map(tmp_path, [0, 2, 2, 3, 3, 0])
+        assert fsutils.qc_mean_thickness(path) == pytest.approx(2.5)
+
+    def test_cortex_label_selects_the_vertices(self, tmp_path):
+        path = self.write_map(tmp_path, [0, 2, 2, 3, 3, 4])
+        label = tmp_path / "lh.cortex.label"
+        write_cortex_label(label, [1, 2, 5])
+        assert fsutils.qc_mean_thickness(path, str(label)) == pytest.approx(8 / 3)
+
+    def test_label_of_another_surface_is_ignored(self, tmp_path):
+        path = self.write_map(tmp_path, [0, 2, 4])
+        label = tmp_path / "lh.cortex.label"
+        write_cortex_label(label, [1, 50])
+        assert fsutils.qc_mean_thickness(path, str(label)) == pytest.approx(3.0)
+
+    def test_missing_or_unreadable_map(self, tmp_path):
+        assert fsutils.qc_mean_thickness(str(tmp_path / "lh.thickness")) is None
+        assert fsutils.qc_mean_thickness(str(touch(tmp_path / "rh.thickness"))) is None
+
+    def test_old_names_of_the_measures(self):
+        rows = fsutils.qc_global_measures(
+            aseg={"ICV": 1155000.0, "lhCorticalWhiteMatterVol": 270000.0},
+            aparc={"lh": {"SurfArea": 90000.0}, "rh": {"SurfArea": 91000.0}},
+            topology={},
+        )
+        table = {r["name"]: (r["lh"], r["rh"], r["total"]) for r in rows}
+        assert table == {
+            "Estimated total intracranial volume": (None, None, 1155.0),
+            "Cerebral white matter volume": (270.0, None, None),
+            "White surface area": (900.0, 910.0, 1810.0),
+        }
+
+    def test_names_and_units_come_from_the_configuration(self):
+        assert fsutils.qc_metric_label("thickness") == ("Cortical thickness", "mm")
+        assert fsutils.qc_metric_label("curv") == ("Mean curvature", "mm-1")
+        rows = fsutils.qc_global_measures(
+            {}, {}, {}, mean_thickness={"lh": 2.5, "rh": 2.6}
+        )
+        assert [(r["name"], r["units"]) for r in rows] == [
+            ("Mean cortical thickness", "mm")
+        ]
+
+
+class TestQcStatsTable:
+    def test_measures_of_the_table(self):
+        aseg, aparc, thickness = fsutils.qc_measures_from_table(make_stats_table())
+        assert aseg == {
+            "eTIV": 1500000.0,
+            "BrainSegVol": 1200000.0,
+            "TotalGrayVol": 670000.0,
+            "CerebralWhiteMatterVol": 500000.0,
+        }
+        assert aparc["lh"] == {"WhiteSurfArea": 84000.0, "PialSurfArea": 100000.0}
+        assert thickness == pytest.approx({"lh": 2.7, "rh": 2.6})
+
+    def test_measures_of_an_empty_table(self):
+        aseg, aparc, thickness = fsutils.qc_measures_from_table(
+            make_stats_table().iloc[:0]
+        )
+        assert (aseg, aparc, thickness) == ({}, {"lh": {}, "rh": {}}, {})
+
+    def test_lobes(self):
+        lobes = fsutils.qc_lobes_table(make_stats_table())
+        assert [lobe["region"] for lobe in lobes] == ["Hemisphere", "Frontal", "Insula"]
+        assert lobes[1] == {
+            "region": "Frontal",
+            "thickness_lh": 2.64,
+            "white_area_lh": 336.0,
+            "pial_area_lh": 400.0,
+            "thickness_rh": 2.54,
+            "white_area_rh": 340.0,
+            "pial_area_rh": 404.0,
+        }
+
+    def test_regions_for_the_web_page(self):
+        groups = fsutils.qc_regions_data(make_stats_table())
+        labels = [g["label"] for g in groups]
+        assert "Cortical thickness (vertices)" in labels
+        assert "Volume (statsfile)" in labels
+        thickness = groups[labels.index("Cortical thickness (vertices)")]
+        assert thickness["units"] == "mm"
+        assert set(thickness["atlases"]) == {"lobes_desikan", "desikan"}
+        # Region, hemisphere, value and std (the table has no other statistics)
+        assert thickness["atlases"]["desikan"][0] == [
+            "ctx-lh-precentral",
+            "lh",
+            2.8,
+            0.5,
+        ]
+        volume = groups[labels.index("Volume (statsfile)")]
+        assert volume["atlases"]["global"][0] == [
+            "brain-brain-intracraneal",
+            "brain",
+            1500000.0,
+            None,
+        ]
+
+    def test_missing_names_are_empty_strings(self):
+        table = make_stats_table()
+        table["Atlas"] = table["Atlas"].replace("", np.nan)
+        assert (fsutils.qc_clean_stats_table(table)["Atlas"] == "").sum() == 5
+
+    def test_existing_table_is_reused_unless_the_subject_is_newer(
+        self, subjects, monkeypatch
+    ):
+        subj = make_touched_subject(subjects, "bert", 3)
+        touch(subj / "stats" / "aseg.stats")
+        subject = FreeSurferSubject("bert", subjects)
+        calls = []
+
+        def fake(subj_id, subjs_dir, out_tab_file=None, overwrite=False):
+            calls.append(overwrite)
+            make_stats_table().to_csv(out_tab_file, index=False)
+            return make_stats_table()
+
+        monkeypatch.setattr(cltfree, "create_subject_stats_table", fake)
+        table_file = str(subjects / "table.csv")
+        table = REAL_QC_STATS_TABLE(subject, table_file)
+        assert (table["Atlas"] == "").sum() == 5
+        REAL_QC_STATS_TABLE(subject, table_file)
+        # The subject is processed again: its aseg.stats is newer than the table
+        os.utime(subj / "stats" / "aseg.stats", (4102444800, 4102444800))
+        REAL_QC_STATS_TABLE(subject, table_file)
+        assert calls == [True, False, True]
+
+
+class TestQcWebpageMorphometry:
+    @staticmethod
+    def with_table(monkeypatch):
+        def fake(subject, table_file):
+            make_stats_table().to_csv(table_file, index=False)
+            return make_stats_table()
+
+        monkeypatch.setattr(fsutils, "qc_stats_table", fake)
+
+    def test_table_is_saved_and_shown(self, subjects, monkeypatch):
+        self.with_table(monkeypatch)
+        subject, lut = build_qc_subject(subjects)
+        page = Path(subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40))
+        meta_dir = subjects / "sub-qc" / "qcqa" / "metadata"
+        assert (meta_dir / "sub-qc_stats_table.csv").is_file()
+        meta = json.loads((meta_dir / "qc_metadata.json").read_text())
+        assert meta["stats_table"] == {
+            "status": "ok",
+            "file": "metadata/sub-qc_stats_table.csv",
+            "n_rows": len(make_stats_table()),
+        }
+        assert meta["lobes"][0]["region"] == "Hemisphere"
+        text = page.read_text()
+        assert '<h2 id="morphometry">Morphometry</h2>' in text
+        assert 'href="metadata/sub-qc_stats_table.csv"' in text
+        assert '<script type="application/json" id="stats-data">' in text
+        assert "<th>Frontal</th><td>2.64</td><td>2.54</td>" in text
+
+    def test_global_measures_come_from_the_table(self, subjects, monkeypatch):
+        self.with_table(monkeypatch)
+        subject, lut = build_qc_subject(subjects)
+        stats = subjects / "sub-qc" / "stats"
+        stats.mkdir()
+        (stats / "aseg.stats").write_text(QC_ASEG_STATS)
+        subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        meta = json.loads(
+            (subjects / "sub-qc" / "qcqa" / "metadata" / "qc_metadata.json").read_text()
+        )
+        table = {r["name"]: (r["lh"], r["rh"], r["total"]) for r in meta["measures"]}
+        # The table has these measures: they replace the ones of aseg.stats and the maps
+        assert table["Estimated total intracranial volume"] == (None, None, 1500.0)
+        assert table["Mean cortical thickness"] == (2.7, 2.6, None)
+        assert table["Pial surface area"] == (1000.0, 1010.0, 2010.0)
+        # The table does not have this one: it still comes from aseg.stats
+        assert table["Cortical gray matter volume"] == (243.79, 241.53, 485.32)
+
+    def test_table_that_cannot_be_computed(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        page = Path(subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40))
+        meta = json.loads(
+            (subjects / "sub-qc" / "qcqa" / "metadata" / "qc_metadata.json").read_text()
+        )
+        assert meta["stats_table"]["status"] == "error"
+        assert "the subject is not processed" in meta["stats_table"]["note"]
+        assert "The morphometry table could not be computed" in page.read_text()
+
+    def test_without_the_table(self, subjects, monkeypatch):
+        self.with_table(monkeypatch)
+        subject, lut = build_qc_subject(subjects)
+        page = Path(
+            subject.generate_qc_webpage(
+                n_slices=2, lut_file=lut, dpi=40, stats_table=False
+            )
+        )
+        assert 'id="morphometry"' not in page.read_text()
+        meta_dir = subjects / "sub-qc" / "qcqa" / "metadata"
+        assert not (meta_dir / "sub-qc_stats_table.csv").exists()
+
+
+class TestQcCohortOutliers:
+    @staticmethod
+    def tables(n=24, changes=None):
+        rng = np.random.default_rng(0)
+        tables = {}
+        for i in range(n):
+            table = make_stats_table()
+            table["Value"] *= 1 + rng.normal(0, 0.02, len(table))
+            tables[f"sub-{i:02d}"] = table
+        for subj_id, regions in (changes or {}).items():
+            for region, factor in regions.items():
+                table = tables[subj_id]
+                table.loc[table["Region"] == region, "Value"] *= factor
+        return tables
+
+    def test_values_far_from_the_cohort_are_flagged(self):
+        tables = self.tables(changes={"sub-05": {"ctx-lh-precentral": 0.5}})
+        outliers = fsutils.qc_cohort_outliers(tables, threshold=6.0, min_subjects=20)
+        assert set(outliers["subject_id"]) == {"sub-05"}
+        # Thickness and area of the region were both changed
+        assert sorted(outliers["metric"]) == ["area", "thickness"]
+        assert (outliers["region"] == "ctx-lh-precentral").all()
+        assert (outliers["z"] < -6).all()
+        assert (outliers["n_subjects"] == 24).all()
+
+    def test_farthest_first(self):
+        tables = self.tables(
+            changes={
+                "sub-01": {"hipp-lh-hippocampus": 1.3},
+                "sub-02": {"hipp-lh-hippocampus": 2.0},
+            }
+        )
+        outliers = fsutils.qc_cohort_outliers(tables, threshold=6.0)
+        assert outliers["subject_id"].tolist()[:2] == ["sub-02", "sub-01"]
+
+    def test_volumes_of_the_parcellations_are_not_compared(self):
+        tables = self.tables(changes={"sub-03": {"ctx-lh-insula": 3.0}})
+        outliers = fsutils.qc_cohort_outliers(tables, threshold=6.0)
+        # Only the lobar thickness and area of the insula are measures of the cohort
+        assert set(outliers["source"]) <= {"vertices", "white"}
+
+    def test_small_cohorts_are_not_compared(self):
+        assert fsutils.qc_cohort_outliers(self.tables(n=19)) is None
+        assert fsutils.qc_cohort_outliers(self.tables(n=5), min_subjects=5) is not None
+
+    def test_cohort_index_counts_the_outliers(self, tmp_path):
+        folder = tmp_path / "cohort"
+        tables = self.tables(n=20, changes={"sub-05": {"ctx-lh-precentral": 0.5}})
+        for subj_id, table in tables.items():
+            meta = folder / subj_id / "qcqa" / "metadata"
+            meta.mkdir(parents=True)
+            (folder / subj_id / "mri").mkdir()
+            table.to_csv(meta / f"{subj_id}_stats_table.csv", index=False)
+        (folder / "sub-99" / "mri").mkdir(parents=True)
+        page = Path(
+            cltfree.generate_cohort_qc_webpage(folder, outlier_threshold=6.0)
+        ).read_text()
+        meta = folder / "qcqa" / "metadata"
+        rows = {
+            r["subject_id"]: r
+            for r in json.loads((meta / "cohort_qc.json").read_text())["subjects"]
+        }
+        assert rows["sub-05"]["outliers"] == 2
+        assert rows["sub-04"]["outliers"] == 0
+        # A subject without a table is not compared
+        assert rows["sub-99"]["outliers"] is None
+        outliers = pd.read_csv(meta / "cohort_outliers.tsv", sep="\t")
+        assert set(outliers["subject_id"]) == {"sub-05"}
+        assert "ctx-lh-precentral" in page
+
+    def test_cohort_index_without_enough_tables(self, subjects):
+        make_touched_subject(subjects, "sub-01", 3)
+        page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
+        assert "at least 20 subjects have a morphometry table" in page
+        assert not (subjects / "qcqa" / "metadata" / "cohort_outliers.tsv").exists()
+
+
+QC_RATING = {
+    "subject_id": "sub-02",
+    "rater": "YA",
+    "date": "2026-11-11T00:00:00Z",
+    "rating": "doubtful",
+    "comment": "check the temporal pole",
+    "reportlets": {
+        "T1": {"rating": "pass", "comment": ""},
+        "wm": {"rating": "", "comment": "leak"},
+        "surfaces": {"rating": "", "comment": ""},
+    },
+}
+
+
+class TestQcRatings:
+    def test_rows_of_a_rating(self):
+        rows = fsutils.qc_rating_rows("sub-02", QC_RATING)
+        # The subject first, then the figures with a rating or a comment
+        assert [(r["item"], r["rating"], r["comment"]) for r in rows] == [
+            ("subject", "doubtful", "check the temporal pole"),
+            ("T1", "pass", ""),
+            ("wm", "", "leak"),
+        ]
+        assert all(r["rater"] == "YA" and r["subject_id"] == "sub-02" for r in rows)
+
+    def test_subject_without_rating(self):
+        assert fsutils.qc_rating_rows("sub-02", None) == []
+
+    def test_read_rating(self, tmp_path):
+        assert fsutils.qc_read_rating(str(tmp_path)) is None
+        meta = tmp_path / "qcqa" / "metadata"
+        meta.mkdir(parents=True)
+        (meta / "sub-02_qc_rating.json").write_text(json.dumps(QC_RATING))
+        assert fsutils.qc_read_rating(str(tmp_path))["rating"] == "doubtful"
+        (meta / "sub-02_qc_rating.json").write_text("not json")
+        assert fsutils.qc_read_rating(str(tmp_path)) is None
+
+    def test_cohort_table_of_ratings(self, subjects):
+        TestGenerateCohortQcWebpage.make_cohort(subjects)
+        meta = subjects / "sub-02" / "qcqa" / "metadata"
+        meta.mkdir(parents=True)
+        (meta / "sub-02_qc_rating.json").write_text(json.dumps(QC_RATING))
+        page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
+        table = pd.read_csv(
+            subjects / "qcqa" / "metadata" / "cohort_ratings.tsv",
+            sep="\t",
+            keep_default_na=False,
+        )
+        assert table["subject_id"].tolist() == ["sub-02"] * 3
+        assert table["item"].tolist() == ["subject", "T1", "wm"]
+        assert table["rating"].tolist() == ["doubtful", "pass", ""]
+        assert 'href="metadata/cohort_ratings.tsv"' in page
+
+    def test_cohort_without_ratings(self, subjects):
+        TestGenerateCohortQcWebpage.make_cohort(subjects)
+        page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
+        assert not (subjects / "qcqa" / "metadata" / "cohort_ratings.tsv").exists()
+        assert "no ratings found" in page
+
+
+class TestQcNavigationAndPrinting:
+    def test_individual_page(self, subjects):
+        subject, lut = build_qc_subject(subjects)
+        text = Path(
+            subject.generate_qc_webpage(n_slices=2, lut_file=lut, dpi=40)
+        ).read_text()
+        # Links filled from the list of the cohort, hidden until it is read
+        assert '<script src="../../qcqa/subjects.js"></script>' in text
+        assert '<a id="nav-prev" hidden' in text
+        assert '<a id="nav-next" hidden' in text
+        assert 'id="print-button"' in text
+        assert "@media print" in text
+        assert "window.open(img.currentSrc || img.src, '_blank')" in text
+        assert "<kbd>j</kbd>" in text
+
+    def test_cohort_lists_the_subjects_with_a_report(self, subjects):
+        TestGenerateCohortQcWebpage.make_cohort(subjects)
+        for subj_id in ("sub-01", "sub-03"):
+            touch(subjects / subj_id / "qcqa" / "index.html")
+        page = Path(cltfree.generate_cohort_qc_webpage(subjects)).read_text()
+        script = (subjects / "qcqa" / "subjects.js").read_text()
+        assert script.startswith("window.QC_COHORT = ")
+        listed = json.loads(script[len("window.QC_COHORT = ") :].rstrip().rstrip(";"))
+        assert listed == {
+            "subjects": [
+                {"id": "sub-01", "report": "../sub-01/qcqa/index.html"},
+                {"id": "sub-03", "report": "../sub-03/qcqa/index.html"},
+            ]
+        }
+        assert 'id="print-button"' in page
+        assert "size: landscape" in page
+
+
+class TestCohortParallelGeneration:
+    def test_worker_reports_the_missing_t1(self, subjects):
+        make_touched_subject(subjects, "sub-empty", 0)
+        (subjects / "sub-empty" / "mri").mkdir()
+        note = cltfree._generate_subject_qc_webpage("sub-empty", str(subjects), {})
+        assert "T1.mgz" in note
+
+    def test_worker_generates_the_report(self, subjects):
+        _, lut = build_qc_subject(subjects)
+        options = {"n_slices": 2, "lut_file": lut, "dpi": 40}
+        assert (
+            cltfree._generate_subject_qc_webpage("sub-qc", str(subjects), options)
+            is None
+        )
+        assert (subjects / "sub-qc" / "qcqa" / "index.html").is_file()
+
+    def test_several_workers_use_a_pool_of_processes(self, tmp_path, monkeypatch):
+        folder = tmp_path / "cohort"
+        for subj_id in ("sub-01", "sub-02", "sub-03"):
+            make_touched_subject(folder, subj_id, 1)
+        pools = []
+
+        class FakeFuture:
+            def __init__(self, value):
+                self.value = value
+
+            def result(self):
+                return self.value
+
+        class FakePool:
+            def __init__(self, max_workers=None, mp_context=None):
+                pools.append((max_workers, mp_context.get_start_method()))
+                self.jobs = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def submit(self, function, subj_id, subjs_dir, kwargs):
+                self.jobs.append((function.__name__, subj_id, kwargs))
+                touch(Path(subjs_dir) / subj_id / "qcqa" / "index.html")
+                return FakeFuture("no T1" if subj_id == "sub-02" else None)
+
+        monkeypatch.setattr(cltfree, "ProcessPoolExecutor", FakePool)
+        monkeypatch.setattr(cltfree, "as_completed", lambda futures: list(futures))
+        cltfree.generate_cohort_qc_webpage(
+            folder, generate_reports=True, max_workers=8, n_slices=3
+        )
+        # No more processes than reports, started clean
+        assert pools == [(3, "spawn")]
+        rows = {
+            r["subject_id"]: r
+            for r in json.loads(
+                (folder / "qcqa" / "metadata" / "cohort_qc.json").read_text()
+            )["subjects"]
+        }
+        assert rows["sub-02"]["note"] == "no T1"
+        assert rows["sub-01"]["note"] is None
+        assert all(r["report"] for r in rows.values())
