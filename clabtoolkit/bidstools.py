@@ -8,6 +8,7 @@ BIDS structures.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -1508,7 +1509,18 @@ def _name_entities(name: str) -> dict:
     return entities
 
 
-def _find_bids_matches(root_dir: str, target: dict) -> list[str]:
+def _is_empty_tree(folder: str) -> bool:
+    """Whether a folder has no files at all, only (maybe) empty folders."""
+
+    for path, dirs, files in os.walk(folder):
+        if files or any(os.path.islink(os.path.join(path, d)) for d in dirs):
+            return False
+    return True
+
+
+def _find_bids_matches(
+    root_dir: str, target: dict, top_names: list[str] = None
+) -> list[str]:
     """
     Find the files and folders of a BIDs tree that belong to an identifier.
 
@@ -1521,39 +1533,69 @@ def _find_bids_matches(root_dir: str, target: dict) -> list[str]:
     target : dict
         Entities of the identifier, such as ``{"sub": "01", "ses": "02"}``.
 
+    top_names : list of str, optional
+        Names of the entries of ``root_dir``, to list the folder only once when
+        several identifiers are searched. If None, the folder is listed.
+        Default is None.
+
     Returns
     -------
     list of str
         Paths that have all the entities of the identifier, taking them from their
         own name and from the ``sub-*`` and ``ses-*`` folders that contain them. A
         folder that matches is listed alone, without its contents. Folders of other
-        subjects or sessions and symbolic links to folders are not entered.
+        subjects or sessions and symbolic links to folders are not entered. The
+        folders without files found on the way (such as the ``anat`` folder that a
+        pipeline created and left empty) are listed too.
     """
 
     matches = []
 
-    def search(folder, context, top):
+    def visit(name, path, is_dir, context):
+        entities = {**context, **_name_entities(name)}
+        if all(entities.get(key) == value for key, value in target.items()):
+            matches.append(path)
+            return
+        if not is_dir():
+            return
+        # Folder of another subject, session, acquisition...
+        if any(key in target and target[key] != v for key, v in entities.items()):
+            return
+        # Folder without files of the subject or session: nothing to keep
+        if _is_empty_tree(path):
+            matches.append(path)
+            return
+        # Only the subject and session folders give their entities to their files
+        is_level = name.startswith(("sub-", "ses-"))
+        search(path, entities if is_level else context)
+
+    def search(folder, context):
         try:
             entries = sorted(os.scandir(folder), key=lambda entry: entry.name)
         except OSError:
             return
         for entry in entries:
-            if top and not entry.name.startswith("sub-"):
-                continue
-            entities = {**context, **_name_entities(entry.name)}
-            if all(entities.get(key) == value for key, value in target.items()):
-                matches.append(entry.path)
-                continue
-            if not entry.is_dir(follow_symlinks=False):
-                continue
-            # Folder of another subject, session, acquisition...
-            if any(key in target and target[key] != v for key, v in entities.items()):
-                continue
-            # Only the subject and session folders give their entities to their files
-            is_level = entry.name.startswith(("sub-", "ses-"))
-            search(entry.path, entities if is_level else context, False)
+            is_dir = functools.partial(entry.is_dir, follow_symlinks=False)
+            visit(entry.name, entry.path, is_dir, context)
 
-    search(root_dir, {}, True)
+    def is_real_dir(path):
+        return os.path.isdir(path) and not os.path.islink(path)
+
+    if top_names is None:
+        try:
+            top_names = sorted(os.listdir(root_dir))
+        except OSError:
+            top_names = []
+
+    for name in top_names:
+        # The entries of other subjects are skipped without looking at them
+        if not name.startswith("sub-"):
+            continue
+        if _name_entities(name).get("sub") != target.get("sub"):
+            continue
+        path = os.path.join(root_dir, name)
+        visit(name, path, functools.partial(is_real_dir, path), {})
+
     return matches
 
 
@@ -1564,6 +1606,7 @@ def remove_bids_folder(
     deriv_folders: str | list = None,
     only_derivatives: bool = True,
     simulate: bool = False,
+    n_jobs: int = 1,
 ) -> list[str]:
     """
     Remove subjects, sessions or acquisitions from a BIDs dataset and its derivatives.
@@ -1581,7 +1624,9 @@ def remove_bids_folder(
     In the derivatives both layouts are handled: ``<pipeline>/sub-01/ses-02/...`` and
     the folders named with the identifier directly inside the pipeline, as FreeSurfer
     does (``freesurfer/sub-01_ses-02_acq-3T_run-01``). The folders left empty are
-    removed too. **The deletion cannot be undone**: run it first with
+    removed too, as well as the folders of the subject or session that were already
+    empty (such as an ``anat`` folder that a pipeline created without writing its
+    results). **The deletion cannot be undone**: run it first with
     ``simulate=True`` to see what would be removed.
 
     Parameters
@@ -1612,6 +1657,11 @@ def remove_bids_folder(
     simulate : bool, optional
         If True, nothing is removed: the function only returns what would be removed.
         Default is False.
+
+    n_jobs : int, optional
+        Number of identifiers searched, and of files and folders removed, at the
+        same time (in threads). It helps when the dataset is on slow or networked
+        storage. Default is 1.
 
     Returns
     -------
@@ -1699,8 +1749,8 @@ def remove_bids_folder(
     if not only_derivatives:
         roots.append(bids_dir)
 
-    # Files and folders of each identifier
-    to_remove = {}  # path -> folder where it was searched
+    # Valid identifiers
+    targets = []  # (identifier, entities)
     for full_id in full_ids:
         try:
             parsed = str2entity(full_id)
@@ -1709,38 +1759,116 @@ def remove_bids_folder(
         if "sub" not in parsed or "suffix" in parsed or "extension" in parsed:
             console.print(f"[yellow]Not a valid ID, skipped: {full_id}")
             continue
+        targets.append((full_id, parsed))
 
-        found = False
-        for root in roots:
-            for path in _find_bids_matches(root, parsed):
-                to_remove.setdefault(path, root)
-                found = True
-        if not found:
-            console.print(f"[yellow]Nothing found for {full_id}")
+    # The folders are listed once, not for every identifier
+    top_names = {}
+    for root in roots:
+        try:
+            names = sorted(n for n in os.listdir(root) if n.startswith("sub-"))
+        except OSError:
+            names = []
+        top_names[root] = names
 
-    removed = []
-    for path, root in to_remove.items():
-        if simulate:
-            removed.append(path)
-            continue
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=None),
+        "[progress.percentage]{task.percentage:>3.1f}%",
+        "•",
+        MofNCompleteColumn(),
+        "•",
+        TimeRemainingColumn(),
+        console=console,
+    )
+
+    def run(function, items, description):
+        """Apply the function to the items, in threads if asked, in their order."""
+        results = [None] * len(items)
+        task_id = progress.add_task(description=description, total=len(items))
+        if n_jobs and n_jobs > 1 and len(items) > 1:
+            with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+                futures = {
+                    executor.submit(function, item): index
+                    for index, item in enumerate(items)
+                }
+                for future in as_completed(futures):
+                    results[futures[future]] = future.result()
+                    progress.advance(task_id)
+        else:
+            for index, item in enumerate(items):
+                results[index] = function(item)
+                progress.advance(task_id)
+        return results
+
+    def find(target):
+        """Files and folders of an identifier, with the folder they were found in."""
+        return [
+            (path, root)
+            for root in roots
+            for path in _find_bids_matches(root, target[1], top_names[root])
+        ]
+
+    def remove(item):
+        """Remove a file or folder. Returns the error message, or None."""
+        path, root = item
         try:
             if os.path.isdir(path) and not os.path.islink(path):
                 shutil.rmtree(path)
             else:
                 os.remove(path)
         except OSError as error:
-            console.print(f"[yellow]Could not remove {path}: {error}")
-            continue
-        removed.append(path)
+            return str(error)
 
-        # Remove the folders left empty, up to the folder that was searched
+        # Remove the folders left empty, up to the folder that was searched.
+        # Another thread can be removing the same folders
         parent = os.path.dirname(path)
-        while parent != root and os.path.isdir(parent) and not os.listdir(parent):
+        while parent != root:
             try:
+                if os.listdir(parent):
+                    break
                 os.rmdir(parent)
             except OSError:
                 break
             parent = os.path.dirname(parent)
+        return None
+
+    with progress:
+        found = run(find, targets, "Searching the IDs")
+
+        to_remove = {}  # path -> folder where it was searched
+        for (full_id, _), paths in zip(targets, found, strict=True):
+            if not paths:
+                progress.console.print(f"[yellow]Nothing found for {full_id}")
+            for path, root in paths:
+                to_remove.setdefault(path, root)
+
+        # A path inside a folder that is removed too goes with it
+        def is_inside_another(path, root):
+            parent = os.path.dirname(path)
+            while parent != root and len(parent) > len(root):
+                if parent in to_remove:
+                    return True
+                parent = os.path.dirname(parent)
+            return False
+
+        items = [
+            (path, root)
+            for path, root in to_remove.items()
+            if not is_inside_another(path, root)
+        ]
+
+        if simulate:
+            errors = [None] * len(items)
+        else:
+            errors = run(remove, items, "Removing")
+
+    removed = []
+    for (path, _), error in zip(items, errors, strict=True):
+        if error is None:
+            removed.append(path)
+        else:
+            console.print(f"[yellow]Could not remove {path}: {error}")
 
     action = "Would remove" if simulate else "Removed"
     console.print(f"{action} {len(removed)} files and folders.")

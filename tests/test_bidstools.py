@@ -643,6 +643,51 @@ class TestRemoveBidsFolder:
         assert (outside / "sub-01_ses-01_keep.txt").is_file()
         assert not os.path.lexists(deriv / "freesurfer" / "sub-01_ses-01_link")
 
+    def test_folders_that_were_already_empty(self, removable_bids):
+        deriv = removable_bids / "derivatives"
+        # Pipeline that created the folders of the session without results
+        (deriv / "strip" / "sub-01" / "ses-01" / "anat").mkdir(parents=True)
+        (deriv / "strip" / "sub-02" / "ses-01" / "anat").mkdir(parents=True)
+        (deriv / "prep" / "sub-01" / "ses-01" / "figures" / "empty").mkdir(parents=True)
+        (deriv / "prep" / "sub-01" / "ses-02" / "func").mkdir()
+        self.remove(removable_bids, "sub-01_ses-01_acq-3T_run-01")
+        assert not (deriv / "strip" / "sub-01").exists()
+        assert not (deriv / "prep" / "sub-01" / "ses-01" / "figures").exists()
+        # Other subjects and sessions are not touched, and neither is the pipeline
+        assert (deriv / "strip" / "sub-02" / "ses-01" / "anat").is_dir()
+        assert (deriv / "prep" / "sub-01" / "ses-02" / "func").is_dir()
+        assert (deriv / "prep" / "sub-01" / "ses-01" / "anat").is_dir()
+
+    def test_parallel_removal_gives_the_same_result(self, tmp_path):
+        files = [
+            f"{folder}sub-{sub:02d}/ses-{ses:02d}/anat/sub-{sub:02d}_ses-{ses:02d}_T1w.nii.gz"
+            for folder in ("", "derivatives/prep/")
+            for sub in range(1, 13)
+            for ses in (1, 2)
+        ]
+        ids = [f"sub-{sub:02d}_ses-01" for sub in range(1, 11)] + ["sub-11"]
+        results = []
+        for name, n_jobs in (("serial", 1), ("parallel", 8)):
+            root = make_tree(tmp_path / name, files)
+            removed = self.remove(root, ids, only_derivatives=False, n_jobs=n_jobs)
+            results.append(
+                (tree_files(root), [os.path.relpath(path, root) for path in removed])
+            )
+            assert not (root / "sub-01" / "ses-01").exists()
+            assert not (root / "sub-11").exists()
+        assert results[0] == results[1]
+        assert len(results[0][0]) == 2 * (10 + 2)
+        assert len(results[0][1]) == 2 * 11
+
+    def test_paths_inside_a_removed_folder_are_not_repeated(self, removable_bids):
+        removed = self.remove(
+            removable_bids,
+            ["sub-02_ses-01_acq-3T_run-01", "sub-02"],
+            deriv_folders="prep",
+            n_jobs=4,
+        )
+        assert removed == [str(removable_bids / "derivatives" / "prep" / "sub-02")]
+
     def test_errors(self, removable_bids, tmp_path):
         with pytest.raises(FileNotFoundError):
             cltbids.remove_bids_folder(tmp_path / "none", "sub-01")
