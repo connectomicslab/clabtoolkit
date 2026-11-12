@@ -14,6 +14,8 @@ Key Features
 - Figures displayed in a window or a Jupyter notebook, or saved as images,
   vector graphics or interactive HTML files
 - Carpet plots for time series data
+- Interactive orthogonal viewer (axial, coronal, sagittal and 3D) for images and
+  parcellations
 
 API reference
 -------------
@@ -170,3 +172,23 @@ Carpet plots::
 
     # Visualize regionwise time series as a carpet plot
     create_carpet_plot(data=timeseries_array, structure_names=region_names)
+
+Orthogonal viewer of images and parcellations::
+
+    from clabtoolkit.visualizationtools import plot_volume
+
+    # Only a parcellation, with the colors of its color table (2x2 layout with the 3D view)
+    plot_volume(parcellation="aparc+aseg.nii.gz", color_table="lut.tsv", notebook=False)
+
+    # A parcellation over an image, with the three views in a row (without the 3D view)
+    plot_volume(image="T1w.nii.gz", parcellation="aparc+aseg.nii.gz", view3d=False, notebook=False)
+
+    # Save the figure without opening a window
+    viewer = plot_volume(image="T1w.nii.gz", show=False, off_screen=True)
+    viewer.set_cursor((10.0, -20.0, 15.0))  # world coordinates (mm)
+    viewer.screenshot("ortho.png")
+    viewer.close()
+
+In a separate window (``notebook=False``) a click or a drag in a view moves the cursor, the mouse
+wheel changes the slice, the key ``l`` hides the parcellation and ``h`` the crosshair. The same
+viewer is available from a parcellation object with ``Parcellation.plot``.

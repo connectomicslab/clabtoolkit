@@ -919,3 +919,66 @@ class TestRegionTimeSeriesFC:
     def test_get_info_of_many_unnamed_regions(self, capsys):
         RegionTimeSeries(np.random.default_rng(2).normal(size=(15, 8))).get_info()
         assert "REGION TIME SERIES" in capsys.readouterr().out
+
+
+####################################################################################################
+# Plot in the orthogonal viewer
+####################################################################################################
+class TestPlot:
+    @pytest.fixture(autouse=True)
+    def _off_screen(self):
+        pv = pytest.importorskip("pyvista")
+        previous, pv.OFF_SCREEN = pv.OFF_SCREEN, True
+        yield
+        pv.OFF_SCREEN = previous
+
+    def test_only_the_parcellation(self, named, tmp_path):
+        out = tmp_path / "figures" / "parc.png"
+        viewer = named.plot(save_path=out)
+        assert out.is_file()
+        assert viewer._img is None and viewer.parc_opacity == 1.0
+        assert viewer.plotter.shape == (2, 2)
+        assert viewer._label_names[3] == "ctx-rh-a"
+        # Colors of the color table: transparent row and the four regions
+        assert viewer._rgba_table[:, :3].tolist() == [
+            [0, 0, 0],
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [255, 255, 0],
+        ]
+        # The figure shows the regions, not an empty window
+        assert len(np.unique(nib.Nifti1Image(viewer._parc, np.eye(4)).get_fdata())) == 5
+
+    def test_without_the_3d_view_and_over_an_image(self, named, tmp_path):
+        image = np.random.default_rng(0).random(named.data.shape).astype(np.float32)
+        out = tmp_path / "row.png"
+        viewer = named.plot(
+            image=nib.Nifti1Image(image, named.affine),
+            view3d=False,
+            opacity=0.4,
+            radiological=True,
+            save_path=out,
+            clim=(0.0, 1.0),
+        )
+        assert out.is_file()
+        assert viewer.plotter.shape == (1, 3)
+        assert viewer._img is not None and viewer.parc_opacity == 0.4
+        assert viewer.radiological and viewer.clim == (0.0, 1.0)
+
+    def test_parcellation_without_color_table(self, sim, tmp_path):
+        viewer = sim.plot(save_path=tmp_path / "sim.png")
+        assert (tmp_path / "sim.png").is_file()
+        assert viewer._rgba_table.shape == (6, 4)
+
+    def test_the_window_is_shown(self, named, monkeypatch):
+        import clabtoolkit.visualizationtools as cltvis
+
+        shown = []
+        monkeypatch.setattr(
+            cltvis.OrthoViewer, "show", lambda self, **kw: shown.append(self) or self
+        )
+        viewer = named.plot(title="My parcellation", view3d=False)
+        assert shown == [viewer]
+        assert viewer.plotter.shape == (1, 3)
+        viewer.close()

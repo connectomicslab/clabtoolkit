@@ -1,5 +1,8 @@
 """The visualizationtools module provides publication-quality brain surface visualization
 with flexible layout configurations and advanced rendering capabilities.
+
+It also has an interactive orthogonal viewer (axial, coronal, sagittal and 3D) for
+volumetric images and parcellations: the ``OrthoViewer`` class and ``plot_volume``.
 """
 
 from __future__ import annotations
@@ -8,18 +11,21 @@ from __future__ import annotations
 import copy
 import os
 import warnings
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import nibabel as nib
 
 # Third-party imports
 import numpy as np
 import pyvista as pv
 from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.transforms import blended_transform_factory
+from nibabel.processing import resample_from_to
 
 # Use TYPE_CHECKING to avoid circular imports
 # Importing local modules
@@ -1902,6 +1908,736 @@ class BrainPlotter:
         """
 
         visutils.preview_theme(self, theme_name)
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############          Section 2: Orthogonal viewer of images and parcellations          ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+class OrthoViewer:
+    """
+    Interactive orthogonal viewer (axial, coronal, sagittal and 3D) based on PyVista.
+
+    The window is split in four panels: three 2D slice views and a 3D view showing the
+    three orthogonal planes. With ``view3d=False`` it only has the three 2D views, in
+    a row. Volumes are reoriented to the closest RAS+ orientation and
+    shown in world (mm) coordinates, so an image and a parcellation that live on different
+    grids are overlaid correctly (the parcellation is resampled with nearest neighbor).
+
+    Interaction (interactive windows only):
+
+    - Left click / drag in any 2D view: move the cursor (updates the other two views).
+    - Mouse wheel in a 2D view: step through the slices of that view.
+    - Right drag / wheel in the 3D view: standard PyVista camera interaction.
+    - Key ``l``: toggle the parcellation overlay. Key ``h``: toggle the crosshair.
+
+    Parameters
+    ----------
+    image : str, Path, nibabel image or np.ndarray, optional
+        Intensity volume (3D; only the first volume of a 4D image is used). It is
+        shown in gray levels. If it is a Parcellation object, or if it is the only
+        volume and a ``color_table`` is given, it is taken as the parcellation.
+    parcellation : str, Path, nibabel image, np.ndarray or Parcellation, optional
+        Label volume, shown with the colors of its color table. At least one of
+        ``image`` and ``parcellation`` is required.
+    color_table : str, Path, dict or ColorTableLoader, optional
+        Color table of the parcellation (TSV/LUT file or dictionary with ``index``, and
+        optionally ``name``, ``color`` and ``opacity``). If None, the sidecar ``.tsv``/``.lut``
+        file of the parcellation is used when present, otherwise distinguishable colors
+        are generated automatically.
+    image_affine, parcellation_affine : np.ndarray, optional
+        Affines, only used when the corresponding input is a numpy array. Default: identity.
+    cmap : str, default "gray"
+        Matplotlib colormap used for the intensity image.
+    clim : tuple of float, optional
+        Intensity window ``(min, max)``. Default: 0.5 and 99.5 percentiles.
+    parc_opacity : float, default 0.6 (1.0 when there is no image)
+        Global opacity of the parcellation overlay (multiplied by the per-region opacity of
+        the color table).
+    background_label : int, default 0
+        Label that is never drawn.
+    radiological : bool, default False
+        Radiological convention (patient's right on the left of the screen).
+    show_crosshair : bool, default True
+        Draw the crosshair in the 2D views.
+    view3d : bool, default True
+        Layout of the window. With True, a 2x2 grid with the three 2D views and the 3D
+        view. With False, the three 2D views in a row (1x3), without the 3D view; the
+        information of the cursor is then shown in the axial view.
+    window_size : tuple of int, optional
+        Size of the window in pixels. Default: (1200, 900) with the 3D view and
+        (1500, 520) without it.
+    title : str, optional
+    off_screen : bool, default False
+        Render without opening a window (useful to save screenshots).
+    notebook : bool, optional
+        Where to display the viewer. ``False`` always opens a separate (native) window,
+        even when running inside Jupyter; ``True`` embeds it in the notebook (needs the
+        PyVista trame backend, and mouse picking is not available there). Default None:
+        PyVista decides (inline in Jupyter, a window elsewhere).
+
+    Examples
+    --------
+    >>> from clabtoolkit.visualizationtools import OrthoViewer
+    >>> viewer = OrthoViewer("T1w.nii.gz", "aparc+aseg.nii.gz", off_screen=True)
+    >>> viewer.set_cursor((10.0, -20.0, 15.0))
+    >>> viewer.screenshot("ortho.png")
+    >>> viewer.close()
+    """
+
+    def __init__(
+        self,
+        image: str | Path | nib.spatialimages.SpatialImage | np.ndarray | None = None,
+        parcellation: (
+            str
+            | Path
+            | nib.spatialimages.SpatialImage
+            | np.ndarray
+            | cltparc.Parcellation
+            | None
+        ) = None,
+        color_table: str | Path | dict | cltcol.ColorTableLoader | None = None,
+        *,
+        image_affine: np.ndarray | None = None,
+        parcellation_affine: np.ndarray | None = None,
+        cmap: str = "gray",
+        clim: tuple[float, float] | None = None,
+        parc_opacity: float | None = None,
+        background_label: int = 0,
+        radiological: bool = False,
+        show_crosshair: bool = True,
+        view3d: bool = True,
+        window_size: tuple[int, int] | None = None,
+        title: str | None = None,
+        off_screen: bool = False,
+        notebook: bool | None = False,
+    ):
+        if image is None and parcellation is None:
+            raise ValueError("Provide at least one of 'image' or 'parcellation'.")
+
+        # A parcellation given as the image: a Parcellation object, or a volume that
+        # comes with a color table
+        if isinstance(image, cltparc.Parcellation):
+            if parcellation is not None:
+                raise TypeError(
+                    "'image' is a Parcellation object: give the intensity image as "
+                    "'image' and the parcellation as 'parcellation'."
+                )
+            parcellation, image = image, None
+        elif image is not None and parcellation is None and color_table is not None:
+            parcellation, image = image, None
+        if not 0.0 <= (parc_opacity if parc_opacity is not None else 0.5) <= 1.0:
+            raise ValueError("parc_opacity must be between 0 and 1.")
+
+        self.radiological = radiological
+        self.cmap = cmap
+        self.background_label = int(background_label)
+        self.parc_opacity = (
+            parc_opacity
+            if parc_opacity is not None
+            else (0.6 if image is not None else 1.0)
+        )
+        self._show_crosshair = show_crosshair
+        self._show_labels = True
+
+        self._prepare_volumes(
+            image, parcellation, color_table, image_affine, parcellation_affine
+        )
+        self._prepare_geometry()
+        self._prepare_color_lookup()
+
+        self.view3d = bool(view3d)
+        if window_size is None:
+            window_size = (1200, 900) if self.view3d else (1500, 520)
+
+        # Intensity window
+        self.clim = None
+        if self._img is not None:
+            self.clim = (
+                tuple(clim)
+                if clim is not None
+                else visutils.ortho_default_clim(self._img)
+            )
+
+        self._ijk = (
+            np.array(self._shape) // 2
+        )  # cursor, voxel indices of the displayed grid
+        self._drag_axis: int | None = None
+        self._tags: dict[str, int] = {}
+
+        self._build_scene(window_size, title, off_screen, notebook)
+        self._refresh()
+
+    ################################################################################################
+    # Data preparation
+    ################################################################################################
+    def _prepare_volumes(
+        self, image, parcellation, color_table, image_affine, parc_affine
+    ) -> None:
+        """Load both inputs, put them on a common grid and reorient them to RAS+."""
+        img_nii = (
+            visutils.ortho_load_image(image, image_affine)
+            if image is not None
+            else None
+        )
+
+        # --- parcellation (through the Parcellation class, which resolves color tables)
+        self._table = None
+        parc_nii = None
+        if parcellation is not None:
+            if isinstance(parcellation, cltparc.Parcellation):
+                parc = parcellation
+            elif isinstance(parcellation, (str, Path)):
+                parc = cltparc.Parcellation(str(parcellation), color_table=color_table)
+            elif isinstance(parcellation, nib.spatialimages.SpatialImage):
+                parc = cltparc.Parcellation(
+                    np.rint(np.asanyarray(parcellation.dataobj)).astype(np.int32),
+                    color_table=color_table,
+                    affine=parcellation.affine,
+                )
+            elif isinstance(parcellation, np.ndarray):
+                parc = cltparc.Parcellation(
+                    np.rint(parcellation).astype(np.int32),
+                    color_table=color_table,
+                    affine=parc_affine,
+                )
+            else:
+                raise TypeError(
+                    "parcellation must be a path, a nibabel image, a numpy array or a "
+                    f"Parcellation, got {type(parcellation)}"
+                )
+            if parc.data.ndim != 3:
+                raise ValueError("The parcellation must be a 3D volume.")
+
+            table = {
+                "index": list(parc.index),
+                "name": list(parc.name),
+                "color": list(parc.color),
+                "opacity": list(parc.opacity),
+            }
+            # An explicit table overrides the one carried by a Parcellation object.
+            if color_table is not None and isinstance(
+                parcellation, cltparc.Parcellation
+            ):
+                ctab = (
+                    color_table
+                    if isinstance(color_table, cltcol.ColorTableLoader)
+                    else cltcol.ColorTableLoader(color_table)
+                )
+                table = {
+                    "index": list(ctab.index),
+                    "name": list(ctab.name),
+                    "color": list(ctab.color),
+                    "opacity": list(ctab.opacity),
+                }
+            self._table = table
+            parc_nii = nib.Nifti1Image(parc.data.astype(np.int32), parc.affine)
+
+        # --- common grid: the image defines it when present
+        if img_nii is not None and parc_nii is not None:
+            same = parc_nii.shape == img_nii.shape and np.allclose(
+                parc_nii.affine, img_nii.affine, atol=1e-4
+            )
+            if not same:
+                parc_nii = resample_from_to(
+                    parc_nii, (img_nii.shape, img_nii.affine), order=0
+                )
+                parc_nii = nib.Nifti1Image(
+                    np.rint(np.asanyarray(parc_nii.dataobj)).astype(np.int32),
+                    img_nii.affine,
+                )
+
+        ref = img_nii if img_nii is not None else parc_nii
+        self._ref_affine = (
+            ref.affine.copy()
+        )  # original grid, used to report voxel indices
+
+        self._img = self._parc = None
+        if img_nii is not None:
+            self._img, self._affine = visutils.ortho_canonical(img_nii)
+        if parc_nii is not None:
+            self._parc, self._affine = visutils.ortho_canonical(parc_nii)
+        self._shape = (self._img if self._img is not None else self._parc).shape
+
+    ################################################################################################
+    def _prepare_geometry(self) -> None:
+        """Spacing and position of the voxel centers in world space."""
+        lin = self._affine[:3, :3]
+        off_diag = np.abs(lin - np.diag(np.diag(lin))).max()
+        if off_diag > 1e-3 * max(np.abs(np.diag(lin)).max(), 1e-12):
+            warnings.warn(
+                "The volume has an oblique orientation: it is displayed along its voxel axes.",
+                stacklevel=3,
+            )
+        self._spacing = np.sqrt((lin**2).sum(axis=0))
+        self._origin = self._affine[:3, 3].astype(float)  # center of voxel (0, 0, 0)
+        lo = self._origin - self._spacing / 2
+        hi = self._origin + self._spacing * (np.array(self._shape) - 0.5)
+        self._bounds = (lo[0], hi[0], lo[1], hi[1], lo[2], hi[2])
+        self._eps = 0.05 * self._spacing.min()  # lifts overlays above the image planes
+
+    ################################################################################################
+    def _prepare_color_lookup(self) -> None:
+        """Map every voxel of the parcellation to a row of an RGBA table (row 0 = transparent)."""
+        self._row_vol = None
+        if self._parc is None:
+            return
+        self._row_vol, self._rgba_table, self._label_names = (
+            visutils.ortho_color_lookup(self._parc, self._table, self.background_label)
+        )
+
+    ################################################################################################
+    # Scene
+    ################################################################################################
+    def _camera_side(self, axis: int) -> int:
+        """Sign of the camera position along ``axis`` for the 2D views."""
+        return visutils.ortho_camera_side(axis, self.radiological)
+
+    def _make_plane(self, axis: int, name: str) -> pv.ImageData:
+        """Create an empty one-voxel-thick plane (cell data) normal to ``axis``."""
+        b, c = visutils.ORTHO_PLANE_AXES[axis]
+        dims = [1, 1, 1]
+        dims[b], dims[c] = self._shape[b] + 1, self._shape[c] + 1
+        spacing = [1.0, 1.0, 1.0]
+        spacing[b], spacing[c] = self._spacing[b], self._spacing[c]
+        origin = [0.0, 0.0, 0.0]
+        origin[b] = self._origin[b] - self._spacing[b] / 2
+        origin[c] = self._origin[c] - self._spacing[c] / 2
+        origin[axis] = self._origin[axis]
+        plane = pv.ImageData(
+            dimensions=tuple(dims), spacing=tuple(spacing), origin=tuple(origin)
+        )
+        n_cells = self._shape[b] * self._shape[c]
+        if name == "intensity":
+            plane.cell_data[name] = np.zeros(n_cells, dtype=np.float32)
+        else:
+            plane.cell_data[name] = np.zeros((n_cells, 4), dtype=np.uint8)
+        return plane
+
+    def _edge_labels(self, axis: int) -> tuple[str, str, str, str]:
+        """(left, right, top, bottom) orientation letters of a 2D view."""
+        return visutils.ortho_edge_labels(axis, self.radiological)
+
+    def _build_scene(self, window_size, title, off_screen, notebook=None) -> None:
+        shape, positions = visutils.ortho_view_layout(self.view3d)
+        pl = pv.Plotter(
+            shape=shape,
+            window_size=list(window_size),
+            off_screen=off_screen,
+            notebook=notebook,
+            title=title or "clabtoolkit OrthoViewer",
+        )
+        self.plotter = pl
+        self._planes_img: dict[int, pv.ImageData] = {}
+        self._planes_lab: dict[int, pv.ImageData] = {}
+        self._lab_actors: list = []
+        self._cross: dict[int, pv.PolyData] = {}
+        self._cross_actors: list = []
+        self._view_texts: dict[int, Any] = {}
+        self._renderers: dict[int, Any] = {}
+
+        for axis in (0, 1, 2):
+            if self._img is not None:
+                self._planes_img[axis] = self._make_plane(axis, "intensity")
+            if self._parc is not None:
+                self._planes_lab[axis] = self._make_plane(axis, "rgba")
+            cross = pv.PolyData(np.zeros((4, 3)))
+            cross.lines = np.array([2, 0, 1, 2, 2, 3])
+            self._cross[axis] = cross
+
+        def add_planes(axis: int) -> None:
+            if axis in self._planes_img:
+                pl.add_mesh(
+                    self._planes_img[axis],
+                    scalars="intensity",
+                    preference="cell",
+                    cmap=self.cmap,
+                    clim=self.clim,
+                    show_scalar_bar=False,
+                    lighting=False,
+                )
+            if axis in self._planes_lab:
+                actor = pl.add_mesh(
+                    self._planes_lab[axis],
+                    scalars="rgba",
+                    rgb=True,
+                    preference="cell",
+                    show_scalar_bar=False,
+                    lighting=False,
+                )
+                self._lab_actors.append(actor)
+
+        # 2D views
+        for axis, (row, col) in positions.items():
+            pl.subplot(row, col)
+            ren = pl.renderer
+            self._renderers[axis] = ren
+            pl.set_background("black")
+            add_planes(axis)
+            actor = pl.add_mesh(
+                self._cross[axis],
+                color="yellow",
+                line_width=1.5,
+                lighting=False,
+                show_scalar_bar=False,
+            )
+            self._cross_actors.append(actor)
+
+            side = self._camera_side(axis)
+            center = np.array(
+                [(self._bounds[2 * i] + self._bounds[2 * i + 1]) / 2 for i in range(3)]
+            )
+            normal = np.zeros(3)
+            normal[axis] = side
+            up = np.array([0.0, 0.0, 1.0]) if axis != 2 else np.array([0.0, 1.0, 0.0])
+            ren.enable_parallel_projection()
+            ren.camera.focal_point = center
+            ren.camera.position = center + normal * 1000.0
+            ren.camera.up = up
+            ren.reset_camera()
+
+            left, right, top, bottom = self._edge_labels(axis)
+            visutils.ortho_make_text(
+                ren, left, 0.02, 0.5, "left", "center", 16, (1, 1, 0.4)
+            )
+            visutils.ortho_make_text(
+                ren, right, 0.98, 0.5, "right", "center", 16, (1, 1, 0.4)
+            )
+            visutils.ortho_make_text(
+                ren, top, 0.5, 0.97, "center", "top", 16, (1, 1, 0.4)
+            )
+            visutils.ortho_make_text(
+                ren, bottom, 0.5, 0.03, "center", "bottom", 16, (1, 1, 0.4)
+            )
+            self._view_texts[axis] = visutils.ortho_make_text(
+                ren, "", 0.02, 0.98, "left", "top", 11
+            )
+
+        # 3D view, or the information of the cursor in the axial view
+        if not self.view3d:
+            self._info_text = visutils.ortho_make_text(
+                self._renderers[2], "", 0.02, 0.02, "left", "bottom", 11
+            )
+            pl.add_key_event("l", self.toggle_labels)
+            pl.add_key_event("h", self.toggle_crosshair)
+            return
+
+        pl.subplot(1, 1)
+        pl.set_background("black")
+        for axis in (0, 1, 2):
+            add_planes(axis)
+        pl.add_mesh(
+            pv.Box(bounds=self._bounds),
+            style="wireframe",
+            color="gray",
+            opacity=0.5,
+            lighting=False,
+        )
+        pl.view_isometric()
+        self._renderers[3] = pl.renderer
+        self._info_text = visutils.ortho_make_text(
+            pl.renderer, "", 0.02, 0.02, "left", "bottom", 11
+        )
+        visutils.ortho_make_text(
+            pl.renderer, "3D", 0.98, 0.98, "right", "top", 11, (0.7, 0.7, 0.7)
+        )
+
+        pl.add_key_event("l", self.toggle_labels)
+        pl.add_key_event("h", self.toggle_crosshair)
+
+    ################################################################################################
+    # State / refresh
+    ################################################################################################
+    def _world(self) -> np.ndarray:
+        return self._origin + self._ijk * self._spacing
+
+    def _render(self) -> None:
+        """Render the window, unless it was closed."""
+        if not getattr(self.plotter, "_closed", False):
+            self.plotter.render()
+
+    def _refresh(self) -> None:
+        """Push the cursor position to every plane, crosshair and text."""
+        world = self._world()
+        lo = np.array(self._bounds[0::2])
+        hi = np.array(self._bounds[1::2])
+
+        for axis in (0, 1, 2):
+            i = int(self._ijk[axis])
+            b, c = visutils.ORTHO_PLANE_AXES[axis]
+            side = self._camera_side(axis)
+
+            if axis in self._planes_img:
+                plane = self._planes_img[axis]
+                plane.origin = (
+                    *visutils.ortho_set_axis(plane.origin, axis, world[axis]),
+                )
+                plane.cell_data["intensity"] = np.take(self._img, i, axis=axis).ravel(
+                    order="F"
+                )
+                plane.Modified()
+
+            if axis in self._planes_lab:
+                plane = self._planes_lab[axis]
+                plane.origin = (
+                    *visutils.ortho_set_axis(
+                        plane.origin, axis, world[axis] + side * self._eps
+                    ),
+                )
+                rows = np.take(self._row_vol, i, axis=axis).ravel(order="F")
+                rgba = self._rgba_table[rows].copy()
+                rgba[:, 3] = (rgba[:, 3] * self.parc_opacity).astype(np.uint8)
+                plane.cell_data["rgba"] = rgba
+                plane.Modified()
+
+            # crosshair: two segments through the cursor, lifted above the overlays
+            z = world[axis] + side * 3 * self._eps
+            pts = np.zeros((4, 3))
+            pts[0, b], pts[0, c] = lo[b], world[c]
+            pts[1, b], pts[1, c] = hi[b], world[c]
+            pts[2, b], pts[2, c] = world[b], lo[c]
+            pts[3, b], pts[3, c] = world[b], hi[c]
+            pts[:, axis] = z
+            self._cross[axis].points = pts
+
+            self._view_texts[axis].SetInput(
+                f"{visutils.ORTHO_VIEW_NAMES[axis]}  {i + 1}/{self._shape[axis]}"
+            )
+
+        self._info_text.SetInput(self._describe_cursor())
+        self._render()
+
+    def _describe_cursor(self) -> str:
+        world = self._world()
+        ijk = tuple(int(i) for i in self._ijk)
+        orig = np.rint(np.linalg.inv(self._ref_affine) @ np.append(world, 1.0))[
+            :3
+        ].astype(int)
+        lines = [
+            f"xyz (mm): {world[0]:.1f}, {world[1]:.1f}, {world[2]:.1f}    "
+            f"ijk: {orig[0]}, {orig[1]}, {orig[2]}"
+        ]
+        if self._img is not None:
+            lines.append(f"intensity: {self._img[ijk]:.4g}")
+        if self._parc is not None:
+            code = int(self._parc[ijk])
+            if code == self.background_label:
+                lines.append(f"label: {code} (background)")
+            else:
+                lines.append(f"label: {code}  {self._label_names.get(code, '')}")
+        return "\n".join(lines)
+
+    ################################################################################################
+    # Public API
+    ################################################################################################
+    @property
+    def cursor(self) -> tuple[float, float, float]:
+        """Cursor position in world coordinates (mm)."""
+        return tuple(float(v) for v in self._world())
+
+    def set_cursor(self, world: tuple[float, float, float] | np.ndarray) -> None:
+        """
+        Move the cursor to a world position (mm); it snaps to the closest voxel and is
+        clipped to the volume.
+        """
+        world = np.asarray(world, dtype=float)
+        if world.shape != (3,):
+            raise ValueError("world must contain three coordinates (x, y, z).")
+        ijk = np.rint((world - self._origin) / self._spacing).astype(int)
+        self._ijk = np.clip(ijk, 0, np.array(self._shape) - 1)
+        self._refresh()
+
+    def toggle_labels(self) -> None:
+        """Show/hide the parcellation overlay."""
+        self._show_labels = not self._show_labels
+        for actor in self._lab_actors:
+            actor.SetVisibility(self._show_labels)
+        self._render()
+
+    def toggle_crosshair(self) -> None:
+        """Show/hide the crosshair of the 2D views."""
+        self._show_crosshair = not self._show_crosshair
+        for actor in self._cross_actors:
+            actor.SetVisibility(self._show_crosshair)
+        self._render()
+
+    def screenshot(self, filename: str | Path, scale: int = 1) -> np.ndarray:
+        """Save the current window to an image file and return it as an array."""
+        return self.plotter.screenshot(str(filename), scale=scale)
+
+    def show(
+        self, interactive: bool = True, screenshot: str | Path | None = None
+    ) -> OrthoViewer:
+        """
+        Open the window (blocking while it is open when ``interactive``).
+
+        A separate (native) window is closed for good when the user closes it (with
+        its close button or the key ``q``), so it does not stay on the screen. The
+        position of the cursor can still be read afterwards. Off-screen and notebook
+        viewers stay open, to take screenshots, until :meth:`close` is called.
+        """
+        self._install_interaction()
+        for actor in self._cross_actors:
+            actor.SetVisibility(self._show_crosshair)
+
+        plotter = self.plotter
+        native = (
+            interactive
+            and not plotter.off_screen
+            and not getattr(plotter, "notebook", False)
+        )
+        plotter.show(
+            screenshot=str(screenshot) if screenshot else None,
+            interactive=interactive,
+            auto_close=native,
+        )
+        if native:
+            self.close()
+        return self
+
+    def close(self) -> None:
+        """Close the window and release its resources."""
+        if getattr(self.plotter, "_closed", False):
+            return
+        self._tags = {}
+        self.plotter.close()
+
+    ################################################################################################
+    # Mouse interaction
+    ################################################################################################
+    def _install_interaction(self) -> None:
+        """Observe the interactor with priority over the camera style in the 2D views."""
+        iren = getattr(self.plotter, "iren", None)
+        vtk_iren = getattr(iren, "interactor", None)
+        if vtk_iren is None or self._tags:
+            return
+        handlers = {
+            "LeftButtonPressEvent": self._on_press,
+            "MouseMoveEvent": self._on_move,
+            "LeftButtonReleaseEvent": self._on_release,
+            "MouseWheelForwardEvent": partial(self._on_wheel, 1),
+            "MouseWheelBackwardEvent": partial(self._on_wheel, -1),
+        }
+        for event, handler in handlers.items():
+            self._tags[event] = vtk_iren.AddObserver(
+                event, partial(self._dispatch, event, handler), 10.0
+            )
+
+    def _view_of(self, renderer) -> int | None:
+        for axis, ren in self._renderers.items():
+            if axis in visutils.ORTHO_VIEW_NAMES and ren is renderer:
+                return axis
+        return None
+
+    def _dispatch(self, event: str, handler, obj, _event) -> None:
+        if handler(obj):
+            cmd = obj.GetCommand(self._tags[event])
+            if cmd is not None:
+                cmd.SetAbortFlag(1)  # the camera style must not rotate the 2D views
+
+    def _on_press(self, obj) -> bool:
+        x, y = obj.GetEventPosition()
+        axis = self._view_of(obj.FindPokedRenderer(x, y))
+        if axis is None:
+            return False
+        self._drag_axis = axis
+        self.pick(axis, x, y)
+        return True
+
+    def _on_move(self, obj) -> bool:
+        if self._drag_axis is None:
+            return False
+        x, y = obj.GetEventPosition()
+        self.pick(self._drag_axis, x, y)
+        return True
+
+    def _on_release(self, obj) -> bool:
+        was_dragging = self._drag_axis is not None
+        self._drag_axis = None
+        return was_dragging
+
+    def _on_wheel(self, step: int, obj) -> bool:
+        x, y = obj.GetEventPosition()
+        axis = self._view_of(obj.FindPokedRenderer(x, y))
+        if axis is None:
+            return False
+        self._ijk[axis] = int(np.clip(self._ijk[axis] + step, 0, self._shape[axis] - 1))
+        self._refresh()
+        return True
+
+    def pick(self, axis: int, x: float, y: float) -> None:
+        """
+        Move the cursor to the display position ``(x, y)`` (pixels) of the 2D view ``axis``.
+        The coordinate along ``axis`` is unchanged.
+        """
+        ren = self._renderers[axis]
+        ren.SetDisplayPoint(x, y, 0.0)
+        ren.DisplayToWorld()
+        w = np.array(ren.GetWorldPoint(), dtype=float)
+        world = (
+            w[:3] / w[3]
+        )  # in-plane coordinates do not depend on depth (parallel projection)
+        for a in visutils.ORTHO_PLANE_AXES[axis]:
+            self._ijk[a] = int(
+                np.clip(
+                    np.rint((world[a] - self._origin[a]) / self._spacing[a]),
+                    0,
+                    self._shape[a] - 1,
+                )
+            )
+        self._refresh()
+
+
+####################################################################################################
+def plot_volume(
+    image=None,
+    parcellation=None,
+    color_table=None,
+    *,
+    show: bool = True,
+    screenshot: str | Path | None = None,
+    **kwargs,
+) -> OrthoViewer:
+    """
+    Visualize an image, a parcellation, or both, in an orthogonal + 3D viewer.
+
+    Parameters
+    ----------
+    image, parcellation, color_table
+        See :class:`OrthoViewer`.
+    show : bool, default True
+        Open the window right away. With ``False`` the viewer is returned without showing it.
+    screenshot : str or Path, optional
+        Save a screenshot when the window is shown (use with ``off_screen=True`` to render
+        without opening a window).
+    **kwargs
+        Any other :class:`OrthoViewer` option (``cmap``, ``clim``, ``parc_opacity``,
+        ``radiological``, ``off_screen``...).
+
+    Returns
+    -------
+    OrthoViewer
+
+    Examples
+    --------
+    >>> from clabtoolkit.visualizationtools import plot_volume
+    >>> plot_volume(image="T1w.nii.gz")  # image only
+    >>> plot_volume(parcellation="aparc+aseg.nii.gz")  # parcellation only
+    >>> plot_volume("T1w.nii.gz", "aparc+aseg.nii.gz", color_table="lut.tsv")  # both
+    """
+    viewer = OrthoViewer(image, parcellation, color_table, **kwargs)
+    if show:
+        viewer.show(
+            screenshot=screenshot, interactive=not kwargs.get("off_screen", False)
+        )
+    elif screenshot is not None:
+        viewer.screenshot(screenshot)
+    return viewer
 
 
 ####################################################################################################

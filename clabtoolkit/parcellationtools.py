@@ -5462,6 +5462,122 @@ class Parcellation:
         return volume_table
 
     ######################################################################################################
+    def plot(
+        self,
+        image: str | Path | nib.spatialimages.SpatialImage | np.ndarray = None,
+        view3d: bool = True,
+        opacity: float = None,
+        radiological: bool = False,
+        show_crosshair: bool = True,
+        notebook: bool = False,
+        window_size: tuple = None,
+        title: str = None,
+        save_path: str | Path = None,
+        **kwargs,
+    ):
+        """
+        Plot the parcellation in an orthogonal viewer (axial, coronal and sagittal views).
+
+        The regions are drawn with the colors of the parcellation. The viewer is the
+        ``OrthoViewer`` of the ``visualizationtools`` module: a click or a drag in a
+        view moves the cursor, the mouse wheel changes the slice, and the name of the
+        region under the cursor is shown. The parcellation can be plotted alone or
+        over an image.
+
+        Parameters
+        ----------
+        image : str, Path, nibabel image or np.ndarray, optional
+            Image to show under the parcellation (for example the T1w image). The
+            parcellation is resampled onto its grid if they differ. If None, only
+            the parcellation is plotted. Default is None.
+
+        view3d : bool, optional
+            If True, the window has a 2x2 layout with the three views and a 3D view
+            of the three planes. If False, only the three views, in a row (1x3).
+            Default is True.
+
+        opacity : float, optional
+            Opacity of the parcellation, between 0 and 1. If None, 1 when the
+            parcellation is plotted alone and 0.6 over an image. Default is None.
+
+        radiological : bool, optional
+            Radiological convention (patient's right on the left of the screen).
+            Default is False.
+
+        show_crosshair : bool, optional
+            Whether the crosshair is drawn. Default is True.
+
+        notebook : bool, optional
+            If False, the viewer opens in a separate window, where the mouse can be
+            used. If True, it is embedded in the Jupyter notebook. Default is False.
+
+        window_size : tuple, optional
+            Size of the window in pixels. If None, (1200, 900) with the 3D view and
+            (1500, 520) without it. Default is None.
+
+        title : str, optional
+            Title of the window. If None, the name of the parcellation file.
+            Default is None.
+
+        save_path : str or Path, optional
+            If given, no window is opened: the figure is rendered off-screen and
+            saved to this image file. Default is None.
+
+        **kwargs
+            Other options of ``OrthoViewer``, such as ``cmap`` and ``clim`` for the
+            image or ``background_label``.
+
+        Returns
+        -------
+        OrthoViewer
+            The viewer. Its ``cursor`` attribute is the last position of the cursor
+            in world coordinates (mm).
+
+        Examples
+        --------
+        >>> parc = Parcellation("aparc+aseg.nii.gz")
+        >>> parc.plot()  # only the parcellation
+        >>> parc.plot(view3d=False)  # three views in a row, without the 3D view
+        >>> parc.plot(image="T1w.nii.gz", opacity=0.5)  # over an image
+        >>> parc.plot(save_path="parcellation.png")  # save it without a window
+        """
+
+        # Imported here because visualizationtools imports this module
+        from . import visualizationtools as cltvis
+
+        if title is None:
+            parc_file = getattr(self, "parc_file", None)
+            if isinstance(parc_file, (str, Path)) and os.path.isfile(parc_file):
+                title = os.path.basename(parc_file)
+            else:
+                title = "Parcellation"
+
+        save = save_path is not None
+        viewer = cltvis.OrthoViewer(
+            image=image,
+            parcellation=self,
+            view3d=view3d,
+            parc_opacity=opacity,
+            radiological=radiological,
+            show_crosshair=show_crosshair,
+            notebook=False if save else notebook,
+            window_size=window_size,
+            title=title,
+            off_screen=save,
+            **kwargs,
+        )
+
+        if save:
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            viewer.screenshot(save_path)
+            viewer.close()
+        else:
+            viewer.show()
+
+        return viewer
+
+    ######################################################################################################
     def print_properties(self):
         """
         Print all attributes and methods of the parcellation object.

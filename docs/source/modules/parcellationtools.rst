@@ -12,6 +12,7 @@ Key Features
 - Region adjacency, centroids and regionwise time series
 - Multi-format support (NIfTI, TSV, LUT)
 - Parcellation harmonization, rearranging and value replacement
+- Interactive orthogonal viewer of the parcellation, alone or over an image
 
 API reference
 -------------
@@ -62,6 +63,9 @@ Analysis:
 - ``prepare_for_connectomics()``: Merge cortical white matter into the cortical regions to prepare the parcellation for connectomics
 - ``merge_ctx_wm()``: Merge cortical gray matter and its adjacent white matter
 - ``create_5tt()``: Create a 5-tissue-type image
+
+Visualization:
+- ``plot()``: Show the parcellation in an orthogonal viewer (axial, coronal and sagittal views, with or without the 3D view), alone or over an image, or save the figure
 
 Colour Tables and I/O:
 - ``load_colortable()``: Load and attach a colour lookup table

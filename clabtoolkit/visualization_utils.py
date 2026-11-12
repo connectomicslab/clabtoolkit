@@ -6,11 +6,15 @@ import json
 import numbers
 import os
 import threading
+import warnings
 from pathlib import Path
 from typing import Any
 
+import nibabel as nib
 import numpy as np
 import pyvista as pv
+import vtk
+from matplotlib.colors import to_rgb
 from nibabel.streamlines import ArraySequence
 
 from . import colorstools as cltcolor
@@ -3171,3 +3175,351 @@ def prepare_map_plotting_params(
         }
 
     return map_plot_config
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############               Helpers of the orthogonal viewer (OrthoViewer)               ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+# Axis helpers: for a view along axis ``a``, the in-plane axes are ``ORTHO_PLANE_AXES[a]``.
+ORTHO_PLANE_AXES = {0: (1, 2), 1: (0, 2), 2: (0, 1)}
+ORTHO_VIEW_NAMES = {2: "Axial", 1: "Coronal", 0: "Sagittal"}
+# (row, col) of every view in the 2x2 layout; the 3D view sits at (1, 1).
+ORTHO_VIEW_POSITIONS = {2: (0, 0), 1: (0, 1), 0: (1, 0)}
+# (row, col) of every view in the 1x3 layout, without the 3D view.
+ORTHO_VIEW_POSITIONS_ROW = {2: (0, 0), 1: (0, 1), 0: (0, 2)}
+
+
+def ortho_view_layout(view3d: bool = True) -> tuple[tuple[int, int], dict]:
+    """
+    Layout of the panels of the orthogonal viewer.
+
+    Parameters
+    ----------
+    view3d : bool, optional
+        Whether the viewer has the 3D view. Default is True.
+
+    Returns
+    -------
+    shape : tuple of int
+        Rows and columns of the window: (2, 2) with the 3D view, which sits at
+        (1, 1), and (1, 3) without it.
+
+    positions : dict
+        (row, col) of the 2D view normal to each axis: 2 (axial), 1 (coronal) and
+        0 (sagittal).
+
+    Examples
+    --------
+    >>> ortho_view_layout(False)
+    ((1, 3), {2: (0, 0), 1: (0, 1), 0: (0, 2)})
+    """
+    if view3d:
+        return (2, 2), dict(ORTHO_VIEW_POSITIONS)
+    return (1, 3), dict(ORTHO_VIEW_POSITIONS_ROW)
+
+
+def ortho_to_rgb01(color: Any) -> tuple[float, float, float]:
+    """
+    Convert a color-table entry to RGB in the range 0-1.
+
+    Parameters
+    ----------
+    color : str or sequence of float
+        Color as a hexadecimal string, a color name, or RGB values in 0-1 or 0-255.
+
+    Returns
+    -------
+    tuple of float
+        Red, green and blue values between 0 and 1.
+
+    Raises
+    ------
+    ValueError
+        If the color does not have three components.
+
+    Examples
+    --------
+    >>> ortho_to_rgb01("#ff0000")
+    (1.0, 0.0, 0.0)
+    >>> ortho_to_rgb01([255, 0, 0])
+    (1.0, 0.0, 0.0)
+    """
+    if isinstance(color, str):
+        return to_rgb(color)
+    arr = np.asarray(color, dtype=float).ravel()[:3]
+    if arr.size != 3:
+        raise ValueError(f"Cannot interpret color: {color!r}")
+    if arr.max() > 1.0:
+        arr = arr / 255.0
+    return tuple(float(v) for v in arr)
+
+
+####################################################################################################
+def ortho_load_image(
+    image: str | Path | nib.spatialimages.SpatialImage | np.ndarray,
+    affine: np.ndarray | None,
+) -> nib.Nifti1Image:
+    """Return a 3D ``Nifti1Image`` (float32) from a path, nibabel image or array."""
+    if isinstance(image, (str, Path)):
+        path = Path(image)
+        if not path.is_file():
+            raise FileNotFoundError(f"The image file does not exist: {path}")
+        image = nib.load(str(path))
+
+    if isinstance(image, nib.spatialimages.SpatialImage):
+        data = np.asanyarray(image.dataobj)
+        aff = image.affine
+    elif isinstance(image, np.ndarray):
+        data = image
+        aff = np.eye(4) if affine is None else np.asarray(affine, dtype=float)
+    else:
+        raise TypeError(
+            f"image must be a path, a nibabel image or a numpy array, got {type(image)}"
+        )
+
+    if data.ndim == 4:
+        warnings.warn(
+            "4D image given: only the first volume is displayed.", stacklevel=3
+        )
+        data = data[..., 0]
+    if data.ndim != 3:
+        raise ValueError(
+            f"A 3D volume is required, got an array with {data.ndim} dimensions."
+        )
+
+    data = np.nan_to_num(data.astype(np.float32, copy=False))
+    return nib.Nifti1Image(data, aff)
+
+
+####################################################################################################
+def ortho_canonical(img: nib.Nifti1Image) -> tuple[np.ndarray, np.ndarray]:
+    """Reorient to the closest RAS+ orientation and return ``(data, affine)``."""
+    can = nib.as_closest_canonical(img)
+    return np.asanyarray(can.dataobj), can.affine
+
+
+####################################################################################################
+def ortho_default_clim(img: np.ndarray) -> tuple[float, float]:
+    """
+    Default intensity window of an image.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Intensity volume.
+
+    Returns
+    -------
+    tuple of float
+        The 0.5 and 99.5 percentiles of the image (computed on every second voxel), or
+        its minimum and maximum when the percentiles are equal. The upper limit is
+        always greater than the lower one.
+    """
+    sample = img[::2, ::2, ::2]
+    lo, hi = np.percentile(sample, [0.5, 99.5])
+    if hi <= lo:
+        lo, hi = float(sample.min()), float(sample.max())
+    if hi <= lo:
+        hi = lo + 1.0
+    return float(lo), float(hi)
+
+
+####################################################################################################
+def ortho_camera_side(axis: int, radiological: bool = False) -> int:
+    """
+    Sign of the camera position along ``axis`` for the 2D views.
+
+    Parameters
+    ----------
+    axis : int
+        Axis normal to the view: 0 (sagittal), 1 (coronal) or 2 (axial).
+
+    radiological : bool, optional
+        Radiological convention (patient's right on the left of the screen).
+        Default is False.
+
+    Returns
+    -------
+    int
+        1 if the camera is on the positive side of the axis, -1 otherwise.
+    """
+    if axis == 2:
+        return -1 if radiological else 1
+    if axis == 1:
+        return 1 if radiological else -1
+    return -1
+
+
+####################################################################################################
+def ortho_edge_labels(
+    axis: int, radiological: bool = False
+) -> tuple[str, str, str, str]:
+    """
+    Orientation letters of a 2D view.
+
+    Parameters
+    ----------
+    axis : int
+        Axis normal to the view: 0 (sagittal), 1 (coronal) or 2 (axial).
+
+    radiological : bool, optional
+        Radiological convention (patient's right on the left of the screen).
+        Default is False.
+
+    Returns
+    -------
+    tuple of str
+        Letters at the left, right, top and bottom of the view.
+
+    Examples
+    --------
+    >>> ortho_edge_labels(2)
+    ('L', 'R', 'A', 'P')
+    """
+    lr = ("R", "L") if radiological else ("L", "R")
+    if axis == 2:
+        return (*lr, "A", "P")
+    if axis == 1:
+        return (*lr, "S", "I")
+    return ("A", "P", "S", "I")
+
+
+####################################################################################################
+def ortho_set_axis(origin, axis: int, value: float) -> list[float]:
+    """Copy of the coordinates ``origin`` with ``value`` along ``axis``."""
+    out = list(origin)
+    out[axis] = float(value)
+    return out
+
+
+####################################################################################################
+def ortho_make_text(
+    renderer,
+    text: str,
+    x: float,
+    y: float,
+    halign: str,
+    valign: str,
+    size: int = 12,
+    color=(1, 1, 1),
+) -> vtk.vtkTextActor:
+    """
+    Add a text to a renderer, at a position relative to its viewport.
+
+    Parameters
+    ----------
+    renderer : pyvista.Renderer
+        Renderer that receives the text.
+
+    text : str
+        Text to show.
+
+    x, y : float
+        Position in normalized viewport coordinates (0-1).
+
+    halign : str
+        Horizontal justification: "left", "center" or "right".
+
+    valign : str
+        Vertical justification: "bottom", "center" or "top".
+
+    size : int, optional
+        Font size. Default is 12.
+
+    color : tuple of float, optional
+        RGB color in 0-1. Default is white.
+
+    Returns
+    -------
+    vtk.vtkTextActor
+        The actor of the text, whose content can be changed with ``SetInput``.
+    """
+    actor = vtk.vtkTextActor()
+    actor.SetInput(text)
+    coord = actor.GetPositionCoordinate()
+    coord.SetCoordinateSystemToNormalizedViewport()
+    coord.SetValue(x, y)
+    prop = actor.GetTextProperty()
+    prop.SetFontSize(size)
+    prop.SetColor(*color)
+    prop.SetShadow(True)
+    {
+        "left": prop.SetJustificationToLeft,
+        "center": prop.SetJustificationToCentered,
+        "right": prop.SetJustificationToRight,
+    }[halign]()
+    {
+        "bottom": prop.SetVerticalJustificationToBottom,
+        "center": prop.SetVerticalJustificationToCentered,
+        "top": prop.SetVerticalJustificationToTop,
+    }[valign]()
+    renderer.add_actor(actor, reset_camera=False, render=False)
+    return actor
+
+
+####################################################################################################
+def ortho_color_lookup(
+    parc: np.ndarray, table: dict, background_label: int = 0
+) -> tuple[np.ndarray, np.ndarray, dict[int, str]]:
+    """
+    Map every voxel of a parcellation to a row of an RGBA table.
+
+    Parameters
+    ----------
+    parc : np.ndarray
+        Label volume.
+
+    table : dict
+        Color table with the keys ``index``, ``name``, ``color`` and ``opacity``.
+
+    background_label : int, optional
+        Label that is never drawn. Default is 0.
+
+    Returns
+    -------
+    row_vol : np.ndarray
+        Volume with the row of the RGBA table of every voxel (0 for the background).
+
+    rgba_table : np.ndarray
+        RGBA colors (0-255) as an array of shape (n_rows, 4). Row 0 is transparent.
+
+    names : dict
+        Name of every label. The labels of the volume that are not in the color table
+        get a distinguishable color and the name ``Region_<label>``.
+    """
+    uniq, inv = np.unique(parc, return_inverse=True)
+    t_index = np.asarray(table["index"], dtype=np.int64)
+    names = {int(i): str(n) for i, n in zip(table["index"], table["name"], strict=True)}
+
+    rgba_rows = [(0.0, 0.0, 0.0, 0.0)]
+    label_row: dict[int, int] = {}
+    for code, col, op in zip(t_index, table["color"], table["opacity"], strict=True):
+        rgba_rows.append((*ortho_to_rgb01(col), float(op)))
+        label_row[int(code)] = len(rgba_rows) - 1
+
+    # Labels present in the volume but absent from the table still get a color.
+    missing = [
+        int(u) for u in uniq if int(u) != background_label and int(u) not in label_row
+    ]
+    if missing:
+        extra = cltcolor.create_distinguishable_colors(
+            len(missing), output_format="hex"
+        )
+        for code, col in zip(missing, extra, strict=True):
+            rgba_rows.append((*ortho_to_rgb01(col), 1.0))
+            label_row[code] = len(rgba_rows) - 1
+            names[code] = f"Region_{code}"
+
+    row_of_uniq = np.array(
+        [0 if int(u) == background_label else label_row.get(int(u), 0) for u in uniq],
+        dtype=np.int32,
+    )
+    row_vol = row_of_uniq[inv.reshape(parc.shape)]
+    rgba_table = (np.asarray(rgba_rows) * 255).round().astype(np.uint8)
+    return row_vol, rgba_table, names
