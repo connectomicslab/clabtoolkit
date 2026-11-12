@@ -1411,27 +1411,9 @@ def copy_bids_folder(
                                 _copy_file(src, os.path.join(pipe_out_dir, entry))
                             continue
 
-                        # The whole folder is copied when no filtering is needed.
-                        # This covers the derivatives that contain only folders
-                        # with the name of the subject (i.e. freesurfer)
-                        if not entity_patterns and (
-                            ses_id is None or _get_session([entry]) == ses_id
-                        ):
-                            try:
-                                shutil.copytree(
-                                    src,
-                                    os.path.join(pipe_out_dir, entry),
-                                    dirs_exist_ok=True,
-                                )
-                            except Exception as e:
-                                print(
-                                    f"WARNING: The folder {src} could not be "
-                                    f"completely copied: {e}"
-                                )
-                            continue
-
-                        # Otherwise only the matching files are copied
-                        for root, _, files in os.walk(src):
+                        # Only the files are copied, so the empty folders are
+                        # never created in the output directory
+                        for root, _, files in os.walk(src, followlinks=True):
                             rel_dir = os.path.relpath(root, src)
                             folders = [] if rel_dir == "." else rel_dir.split(os.sep)
 
