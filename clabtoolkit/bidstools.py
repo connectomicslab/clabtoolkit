@@ -2,8 +2,8 @@
 datasets.
 
 It lets you work with BIDS naming conventions, edit entities in single filenames or
-across a whole dataset, copy and inspect datasets, and generate database tables from
-BIDS structures.
+across a whole dataset, copy and inspect datasets, remove subjects, sessions or
+acquisitions from them, and generate database tables from BIDS structures.
 """
 
 from __future__ import annotations
