@@ -54,7 +54,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="ipykernel
 ####################################################################################################
 ####################################################################################################
 def get_fullids2process(
-    ids: str | list[str] | None = None,
+    ids: str | list[str] | Path | None = None,
     in_dir: str = None,
     or_filter: str | list[str] = "T1w",
     and_filter: str | list[str] = None,
@@ -68,12 +68,13 @@ def get_fullids2process(
 
     Parameters
     ----------
-    ids : str, list of str, or None, optional
+    ids : str, list of str, Path, or None, optional
         Subject Full IDs specification. Can be:
 
         - None: discover all subjects in `in_dir` (default)
         - list: list of subject Full ID strings
         - str: comma-separated IDs, single Full ID, or path to text file
+        - Path: path to text file containing IDs
 
     in_dir : str, optional
         Directory path to scan for subjects when `ids` is None.
@@ -103,9 +104,12 @@ def get_fullids2process(
     Raises
     ------
     ValueError
-        If `ids` is not None/list/str, or if `in_dir` is invalid when `ids` is None.
+        If `ids` is not None/list/str/Path, if `in_dir` is invalid when `ids` is
+        None, or if `source` is not valid.
     FileNotFoundError
-        If specified file path in `ids` does not exist.
+        If `ids` is a path to a text file that does not exist. A Path object is
+        always taken as a file. A string is taken as a file when it contains a
+        path separator or ends with .txt, .csv, .tsv or .lst.
     IOError
         If file cannot be read due to permissions or other IO issues.
 
@@ -189,10 +193,26 @@ def get_fullids2process(
         return all_ids
 
     # Handle string case
+    if isinstance(ids, Path):
+        # A Path object is always a text file with the IDs
+        if not ids.is_file():
+            raise FileNotFoundError(f"The file {ids} does not exist.")
+        ids = str(ids)
+
     if isinstance(ids, str):
         ids = ids.strip()
         if not ids:
             return []
+
+        # A string that looks like a file path must point to an existing file.
+        # Otherwise the path would be silently taken as a subject ID.
+        looks_like_file = (
+            os.sep in ids
+            or (os.altsep is not None and os.altsep in ids)
+            or ids.lower().endswith((".txt", ".csv", ".tsv", ".lst"))
+        )
+        if looks_like_file and "," not in ids and not os.path.isfile(ids):
+            raise FileNotFoundError(f"The file {ids} does not exist.")
 
         # File path
         if os.path.isfile(ids):
@@ -206,7 +226,7 @@ def get_fullids2process(
         all_ids.sort()
         return all_ids
 
-    raise ValueError(f"ids must be None, list, or string, got {type(ids)}")
+    raise ValueError(f"ids must be None, list, string or Path, got {type(ids)}")
 
 
 ####################################################################################################
@@ -284,7 +304,7 @@ def create_processing_status_table(
         )
 
     # Process subject IDs (empty lines in a text file are ignored)
-    subj_list = get_fullids2process(full_ids)
+    subj_list = _load_full_ids(full_ids)
 
     # Number of Ids
     n_subj = len(subj_list)
@@ -958,6 +978,23 @@ def _load_status_table(proc_status_df: str | pd.DataFrame) -> pd.DataFrame:
 
 
 ####################################################################################################
+def _load_full_ids(full_ids: list[str] | str | Path) -> list[str]:
+    """
+    Return the list of Full IDs using get_fullids2process and fail if it is empty.
+    The processing status methods need at least one ID to work with.
+    """
+    if not isinstance(full_ids, (list, str, Path)):
+        raise TypeError("full_ids must be a list or a path to a text file")
+
+    subj_list = get_fullids2process(full_ids)
+
+    if len(subj_list) == 0:
+        raise ValueError("The list of subject IDs is empty.")
+
+    return subj_list
+
+
+####################################################################################################
 def _resolve_pipe_dirs(
     deriv_dir: str, pipe_dirs: list[str] | str | None
 ) -> tuple[str, list[str], list[str]]:
@@ -1247,7 +1284,7 @@ def get_processing_status_details_json(
     """
 
     proc_status_df = _load_status_table(proc_status_df)
-    subj_list = get_fullids2process(full_ids)
+    subj_list = _load_full_ids(full_ids)
     deriv_dir, all_pipe_dirs, pipe_dirs = _resolve_pipe_dirs(deriv_dir, pipe_dirs)
 
     missmatch_summary = _compute_processing_mismatches(
@@ -1384,7 +1421,7 @@ def get_processing_status_details_sqlite3(
     """
 
     proc_status_df = _load_status_table(proc_status_df)
-    subj_list = get_fullids2process(full_ids)
+    subj_list = _load_full_ids(full_ids)
     deriv_dir, all_pipe_dirs, pipe_dirs = _resolve_pipe_dirs(deriv_dir, pipe_dirs)
 
     missmatch_summary = _compute_processing_mismatches(
