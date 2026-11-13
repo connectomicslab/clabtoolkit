@@ -54,6 +54,7 @@ Affine Utilities
 ~~~~~~~~~~~~~~~~
 - ``get_voxel_size()`` / ``get_voxel_volume()``: Voxel geometry from an affine
 - ``get_center()`` / ``get_rotation_matrix()``: Affine decomposition
+- ``get_orientation()``: Orientation code of the voxel axes (e.g. RAS)
 - ``vox2mm()`` / ``mm2vox()``: Convert between voxel and world coordinates
 - ``get_vox_neighbors()``: Neighbouring voxel coordinates
 
@@ -61,6 +62,7 @@ Image Manipulation
 ~~~~~~~~~~~~~~~~~~
 - ``crop_image_from_mask()``: Crop an image using a mask
 - ``cropped_to_native()``: Map a cropped image back to native space
+- ``reorient_image()``: Reorient an image to a given orientation without resampling
 - ``apply_multi_transf()``: Apply multiple transformations to an image
 - ``merge_to_4d()``: Merge several images into a 4D volume
 - ``delete_volumes_from_4D_images()`` / ``delete_volumes_from_4D_array()``: Drop volumes from 4D data

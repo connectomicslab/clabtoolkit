@@ -767,6 +767,153 @@ class TestCroppedToNative:
 @pytest.mark.skipif(
     shutil.which("antsApplyTransforms") is None, reason="ANTs is not installed"
 )
+class TestReorientImage:
+    @staticmethod
+    def _world_values(img):
+        """Map every voxel's world coordinate to its value."""
+        data = np.asanyarray(img.dataobj)
+        idx = np.argwhere(np.ones(img.shape[:3], dtype=bool))
+        xyz = np.round(nib.affines.apply_affine(img.affine, idx), 3)
+        vals = data[idx[:, 0], idx[:, 1], idx[:, 2]]
+        order = np.lexsort(xyz.T)
+        return xyz[order], vals[order]
+
+    @pytest.fixture
+    def lps_img(self):
+        # Anisotropic LPS image with an unambiguous intensity pattern
+        affine = np.diag([-1.0, -2.0, 3.0, 1.0])
+        affine[:3, 3] = [50.0, 60.0, -40.0]
+        data = np.arange(4 * 5 * 6, dtype=np.int16).reshape(4, 5, 6)
+        return nib.Nifti1Image(data, affine)
+
+    def test_get_orientation(self, lps_img):
+        assert cltimg.get_orientation(lps_img.affine) == "LPS"
+        assert cltimg.get_orientation(AFFINE_MNI) == "LAS"
+
+    @pytest.mark.parametrize("code", ["RAS", "LAS", "LPI", "PIR", "SAL"])
+    def test_world_coordinates_are_preserved(self, lps_img, code):
+        out = cltimg.reorient_image(lps_img, orientation=code)
+        assert cltimg.get_orientation(out.affine) == code
+        xyz_in, vals_in = self._world_values(lps_img)
+        xyz_out, vals_out = self._world_values(out)
+        np.testing.assert_allclose(xyz_in, xyz_out)
+        np.testing.assert_array_equal(vals_in, vals_out)
+
+    def test_shape_and_zooms_follow_the_permutation(self, lps_img):
+        out = cltimg.reorient_image(lps_img, orientation="SAL")
+        assert out.shape == (6, 5, 4)
+        np.testing.assert_allclose(out.header.get_zooms(), (3.0, 2.0, 1.0))
+        assert out.get_data_dtype() == np.int16
+
+    def test_lowercase_code(self, lps_img):
+        out = cltimg.reorient_image(lps_img, orientation="las")
+        assert cltimg.get_orientation(out.affine) == "LAS"
+
+    def test_saves_to_file_and_creates_folder(self, lps_img, tmp_path):
+        in_file = tmp_path / "in.nii.gz"
+        nib.save(lps_img, in_file)
+        out_file = tmp_path / "new_folder" / "out.nii.gz"
+        result = cltimg.reorient_image(str(in_file), str(out_file))
+        assert result == str(out_file)
+        out = nib.load(out_file)
+        assert cltimg.get_orientation(out.affine) == "RAS"
+        np.testing.assert_array_equal(
+            self._world_values(lps_img)[1], self._world_values(out)[1]
+        )
+
+    def test_scaling_is_preserved_bit_exact(self, tmp_path):
+        affine = np.diag([-1.0, -1.0, 1.0, 1.0])
+        raw = np.arange(4 * 5 * 6, dtype=np.int16).reshape(4, 5, 6)
+        img = nib.Nifti1Image(raw, affine)
+        img.header.set_slope_inter(0.37, 11.5)
+        in_file = tmp_path / "scaled.nii.gz"
+        nib.save(img, in_file)
+        loaded = nib.load(in_file)
+
+        # Saved to disk
+        out = nib.load(cltimg.reorient_image(in_file, tmp_path / "out.nii.gz"))
+        assert (out.dataobj.slope, out.dataobj.inter) == (
+            loaded.dataobj.slope,
+            loaded.dataobj.inter,
+        )
+        assert out.get_data_dtype() == np.int16
+        np.testing.assert_array_equal(
+            out.dataobj.get_unscaled(), loaded.dataobj.get_unscaled()[::-1, ::-1, :]
+        )
+        np.testing.assert_array_equal(
+            out.get_fdata(), loaded.get_fdata()[::-1, ::-1, :]
+        )
+
+        # Returned in memory: the scaling must be applied as well
+        mem = cltimg.reorient_image(loaded)
+        np.testing.assert_array_equal(
+            mem.get_fdata(), loaded.get_fdata()[::-1, ::-1, :]
+        )
+
+    def test_qform_and_sform_are_reoriented_independently(self, lps_img):
+        qform = lps_img.affine.copy()
+        sform = AFFINE_MNI.copy()
+        lps_img.set_qform(qform, 1)
+        lps_img.set_sform(sform, 4)
+        out = cltimg.reorient_image(lps_img, orientation="RAS")
+        assert int(out.header["qform_code"]) == 1
+        assert int(out.header["sform_code"]) == 4
+        # Voxel (0, 0, 0) of the LAS input is voxel (3, 0, 0) of the RAS output
+        for old, new in ((qform, out.get_qform()), (sform, out.get_sform())):
+            np.testing.assert_allclose(
+                nib.affines.apply_affine(new, [3, 0, 0]),
+                nib.affines.apply_affine(old, [0, 0, 0]),
+                atol=1e-4,
+            )
+
+    def test_4d_image(self):
+        data = np.random.default_rng(0).random((4, 5, 6, 3)).astype(np.float32)
+        img = nib.Nifti1Image(data, AFFINE_MNI)
+        img.header.set_zooms((1.0, 1.0, 1.0, 2.5))
+        out = cltimg.reorient_image(img, orientation="RAS")
+        assert out.shape == (4, 5, 6, 3)
+        assert out.header.get_zooms()[3] == pytest.approx(2.5)
+        np.testing.assert_array_equal(np.asanyarray(out.dataobj), data[::-1])
+
+    def test_oblique_image_keeps_its_obliquity(self):
+        affine = _affine_oblique() @ np.diag([-1.0, 1.0, 1.0, 1.0])
+        data = np.arange(4 * 5 * 6, dtype=np.float32).reshape(4, 5, 6)
+        img = nib.Nifti1Image(data, affine)
+        out = cltimg.reorient_image(img)
+        assert cltimg.get_orientation(out.affine) == "RAS"
+        xyz_in, vals_in = self._world_values(img)
+        xyz_out, vals_out = self._world_values(out)
+        np.testing.assert_allclose(xyz_in, xyz_out, atol=1e-3)
+        np.testing.assert_array_equal(vals_in, vals_out)
+
+    def test_mgh_image(self):
+        data = np.arange(4 * 5 * 6, dtype=np.float32).reshape(4, 5, 6)
+        img = nib.MGHImage(data, AFFINE_MNI)
+        out = cltimg.reorient_image(img)
+        assert isinstance(out, nib.MGHImage)
+        assert cltimg.get_orientation(out.affine) == "RAS"
+        np.testing.assert_array_equal(np.asanyarray(out.dataobj), data[::-1])
+
+    def test_input_is_not_modified(self, lps_img):
+        affine, data = lps_img.affine.copy(), np.asanyarray(lps_img.dataobj).copy()
+        cltimg.reorient_image(lps_img, orientation="RAI")
+        np.testing.assert_array_equal(lps_img.affine, affine)
+        np.testing.assert_array_equal(np.asanyarray(lps_img.dataobj), data)
+
+    @pytest.mark.parametrize("code", ["RA", "RASS", "RLS", "XYZ", 3])
+    def test_invalid_orientation(self, lps_img, code):
+        with pytest.raises(ValueError):
+            cltimg.reorient_image(lps_img, orientation=code)
+
+    def test_invalid_inputs(self, tmp_path):
+        with pytest.raises(ValueError):
+            cltimg.reorient_image(str(tmp_path / "missing.nii.gz"))
+        with pytest.raises(ValueError):
+            cltimg.reorient_image(np.zeros((3, 3, 3)))
+        with pytest.raises(ValueError):
+            cltimg.reorient_image(nib.Nifti1Image(np.zeros((3, 3)), np.eye(4)))
+
+
 class TestApplyMultiTransf:
     def test_unsupported_interpolation(self, brain_images, tmp_path):
         with pytest.raises(ValueError):

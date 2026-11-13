@@ -623,6 +623,33 @@ def get_voxel_size(affine: np.ndarray):
 
 
 ####################################################################################################
+def get_orientation(affine: np.ndarray) -> str:
+    """
+    Get the orientation code of the voxel axes from an affine matrix.
+
+    Parameters
+    ----------
+    affine : np.ndarray
+        4x4 affine transformation matrix.
+
+    Returns
+    -------
+    str
+        Three-letter orientation code (e.g. 'RAS', 'LAS', 'LPI'). Each letter is
+        the anatomical direction towards which the corresponding voxel axis
+        increases.
+
+    Examples
+    --------
+    >>> img = nib.load('image.nii.gz')
+    >>> get_orientation(img.affine)
+    'LAS'
+    """
+
+    return "".join(nib.aff2axcodes(affine))
+
+
+####################################################################################################
 def get_voxel_volume(affine: np.ndarray) -> float:
     """
     Compute voxel volume from an affine matrix.
@@ -1162,6 +1189,171 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str) -> str:
 
     # Save the new image
     nib.save(new_img2, out_image)
+
+    return out_image
+
+
+####################################################################################################
+def reorient_image(
+    in_image: str | Path | nib.spatialimages.SpatialImage,
+    out_image: str | Path = None,
+    orientation: str = "RAS",
+    overwrite: bool = False,
+) -> str | nib.spatialimages.SpatialImage:
+    """
+    Reorient an image to a given voxel orientation without resampling.
+
+    The voxel array is only permuted and flipped (no interpolation), and the
+    affine is updated accordingly, so the world coordinates of every voxel are
+    preserved and the result overlays exactly on the input. For NIfTI images the
+    stored values, the data type and the intensity scaling (scl_slope and
+    scl_inter) are carried over unchanged, and the qform and the sform are
+    reoriented independently.
+
+    Parameters
+    ----------
+    in_image : str, Path or nibabel image
+        Path to the input image, or an already loaded nibabel image.
+
+    out_image : str or Path, optional
+        Path for the reoriented image. If None, nothing is saved and the
+        reoriented image object is returned. Default is None.
+
+    orientation : str, optional
+        Three-letter target orientation code, with one letter from each of the
+        pairs L/R, A/P and S/I (e.g. 'RAS', 'LAS', 'LPI'). Each letter is the
+        direction towards which the corresponding voxel axis increases.
+        Default is 'RAS' (nibabel, FreeSurfer and MNI convention). Use 'LAS' for
+        the FSL standard orientation (as fslreorient2std on MNI-like images).
+
+    Returns
+    -------
+    str or nibabel image
+        Path to the saved image if ``out_image`` is given, otherwise the
+        reoriented nibabel image.
+
+    Raises
+    ------
+    ValueError
+        If the input file does not exist, the image has fewer than three
+        dimensions, or the orientation code is not valid.
+
+    Notes
+    -----
+    For oblique acquisitions the voxel axes are matched to the closest
+    anatomical directions; the image stays oblique because it is not resampled.
+
+    Examples
+    --------
+    >>> # Reorient to RAS and save
+    >>> output = reorient_image('image.nii.gz', 'image_ras.nii.gz')
+    >>>
+    >>> # FSL-style orientation, working with image objects
+    >>> las_img = reorient_image(nib.load('image.nii.gz'), orientation='LAS')
+    >>> get_orientation(las_img.affine)
+    'LAS'
+    """
+
+    # Checking the orientation code
+    if not isinstance(orientation, str):
+        raise ValueError("The 'orientation' parameter must be a string, e.g. 'RAS'.")
+
+    target = tuple(orientation.upper())
+    axis_pairs = ({"L", "R"}, {"A", "P"}, {"S", "I"})
+    if len(target) != 3 or any(
+        sum(code in pair for code in target) != 1 for pair in axis_pairs
+    ):
+        raise ValueError(
+            f"Invalid orientation code '{orientation}'. It must have three letters, "
+            "one from each of the pairs L/R, A/P and S/I (e.g. 'RAS', 'LPI')."
+        )
+
+    # Loading the image
+    if isinstance(in_image, (str, Path)):
+        if not os.path.exists(in_image):
+            raise ValueError(f"The image file does not exist: {in_image}")
+        img = nib.load(str(in_image))
+    elif isinstance(in_image, nib.spatialimages.SpatialImage):
+        img = in_image
+    else:
+        raise ValueError(
+            "The 'in_image' parameter must be a path or a nibabel image object."
+        )
+
+    if len(img.shape) < 3:
+        raise ValueError(
+            f"The image must have at least 3 dimensions, got {len(img.shape)}D."
+        )
+
+    # Transformation between the current and the target orientations
+    src_ornt = nib.orientations.io_orientation(img.affine)
+    dst_ornt = nib.orientations.axcodes2ornt(target)
+    xfm = nib.orientations.ornt_transform(src_ornt, dst_ornt)
+
+    if not isinstance(img, nib.Nifti1Image):
+        # Other formats (e.g. MGH): no stored scaling or qform/sform to preserve
+        out = img.as_reoriented(xfm)
+    else:
+        hdr_in = img.header
+
+        # Work on the stored values so they are not re-quantized: the original
+        # scl_slope / scl_inter are carried over unchanged (bit-exact).
+        if nib.is_proxy(img.dataobj) and hasattr(img.dataobj, "get_unscaled"):
+            raw = np.asanyarray(img.dataobj.get_unscaled())
+            # The scaling lives in the proxy: nibabel clears it from the
+            # header of a loaded image
+            slope, inter = img.dataobj.slope, img.dataobj.inter
+        else:
+            raw = np.asanyarray(img.dataobj)
+            slope, inter = None, None
+        scaled = slope is not None and (slope != 1 or (inter or 0) != 0)
+
+        # as_reoriented updates data, affine and dim_info consistently
+        raw_img = img.__class__(raw, img.affine, hdr_in.copy())
+        out = raw_img.as_reoriented(xfm)
+        out.set_data_dtype(img.get_data_dtype())
+
+        # Reorient the qform and the sform independently, keeping their codes.
+        # A transform that is not set takes the reoriented affine with code 1,
+        # so that the orientation is not lost.
+        reorient_aff = nib.orientations.inv_ornt_aff(xfm, img.shape[:3])
+        for getter, setter, code_key in (
+            (img.get_qform, out.set_qform, "qform_code"),
+            (img.get_sform, out.set_sform, "sform_code"),
+        ):
+            code = int(hdr_in[code_key])
+            if code > 0:
+                setter(getter() @ reorient_aff, code)
+            else:
+                setter(out.affine, 1)
+
+        # Carry the exact original voxel sizes through the axis permutation
+        zooms = np.array(hdr_in.get_zooms(), dtype=float)
+        zooms[:3] = zooms[:3][np.argsort(xfm[:, 0])]
+        out.header.set_zooms(zooms)
+
+        if scaled:
+            # The array holds the stored values: the scaling in the header is
+            # applied when the image is read back.
+            out.header.set_slope_inter(slope, inter)
+            if out_image is None:
+                # Round trip through memory so the returned object applies it
+                out = out.__class__.from_bytes(out.to_bytes())
+
+    if out_image is None:
+        return out
+
+    # Create the output directory if it does not exist
+    out_image = str(out_image)
+    out_pth = os.path.dirname(out_image)
+    if out_pth and not os.path.exists(out_pth):
+        Path(out_pth).mkdir(parents=True, exist_ok=True)
+    elif os.path.exists(out_image) and not overwrite:
+        raise FileExistsError(
+            f"Output image {out_image} already exists and overwrite is set to False."
+        )
+
+    nib.save(out, out_image)
 
     return out_image
 
