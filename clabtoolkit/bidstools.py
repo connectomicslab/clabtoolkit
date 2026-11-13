@@ -30,7 +30,7 @@ from rich.progress import (
 
 # Importing the clabtoolkit modules
 from . import misctools as cltmisc
-from .bidstools_utils import create_a_simulated_bids_dataset  # noqa: F401
+from .pipelinetools import get_fullids2process
 
 
 ####################################################################################################
@@ -1438,35 +1438,6 @@ def copy_bids_folder(
             progress.update(task, completed=i + 1)
 
 
-####################################################################################################
-def _read_full_ids(full_ids: list | str | Path) -> list[str]:
-    """
-    Read the identifiers given to remove_bids_folder.
-
-    Parameters
-    ----------
-    full_ids : list, str or Path
-        One identifier, a list of identifiers, or a text file with one per line.
-
-    Returns
-    -------
-    list of str
-        Identifiers without repetitions, in their order. The empty lines and the
-        lines starting with ``#`` of a text file are ignored.
-    """
-
-    if isinstance(full_ids, (str, Path)):
-        if os.path.isfile(full_ids):
-            with open(full_ids, encoding="utf-8") as f:
-                lines = [line.strip() for line in f]
-            full_ids = [line for line in lines if line and not line.startswith("#")]
-        else:
-            full_ids = [str(full_ids)]
-
-    ids = [str(full_id).strip() for full_id in full_ids]
-    return list(dict.fromkeys(i for i in ids if i))
-
-
 def _name_entities(name: str) -> dict:
     """Entities (key-value pairs) of the name of a file or folder, as a dictionary."""
 
@@ -1698,7 +1669,7 @@ def remove_bids_folder(
     if full_ids is None:
         console.print("[yellow]No IDs specified. Nothing to remove.")
         return []
-    full_ids = _read_full_ids(full_ids)
+    full_ids = get_fullids2process(full_ids)
 
     # Folders to search: the pipelines of the derivatives and the raw data
     roots = []

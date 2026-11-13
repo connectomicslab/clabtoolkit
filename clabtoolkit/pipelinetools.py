@@ -284,7 +284,7 @@ def create_processing_status_table(
         )
 
     # Process subject IDs (empty lines in a text file are ignored)
-    subj_list = _load_full_ids(full_ids)
+    subj_list = get_fullids2process(full_ids)
 
     # Number of Ids
     n_subj = len(subj_list)
@@ -958,28 +958,6 @@ def _load_status_table(proc_status_df: str | pd.DataFrame) -> pd.DataFrame:
 
 
 ####################################################################################################
-def _load_full_ids(full_ids: list[str] | str) -> list[str]:
-    """
-    Return the list of Full IDs from a list or from a text file (one ID per line).
-    Empty lines and surrounding whitespace are removed.
-    """
-    if isinstance(full_ids, str):
-        if not os.path.isfile(full_ids):
-            raise FileNotFoundError(f"The file {full_ids} does not exist.")
-        with open(full_ids, encoding="utf-8") as f:
-            subj_list = [line.strip() for line in f if line.strip()]
-    elif isinstance(full_ids, list):
-        subj_list = [str(x).strip() for x in full_ids if str(x).strip()]
-    else:
-        raise TypeError("full_ids must be a list or a string path to a file")
-
-    if len(subj_list) == 0:
-        raise ValueError("The list of subject IDs is empty.")
-
-    return subj_list
-
-
-####################################################################################################
 def _resolve_pipe_dirs(
     deriv_dir: str, pipe_dirs: list[str] | str | None
 ) -> tuple[str, list[str], list[str]]:
@@ -1269,7 +1247,7 @@ def get_processing_status_details_json(
     """
 
     proc_status_df = _load_status_table(proc_status_df)
-    subj_list = _load_full_ids(full_ids)
+    subj_list = get_fullids2process(full_ids)
     deriv_dir, all_pipe_dirs, pipe_dirs = _resolve_pipe_dirs(deriv_dir, pipe_dirs)
 
     missmatch_summary = _compute_processing_mismatches(
@@ -1406,7 +1384,7 @@ def get_processing_status_details_sqlite3(
     """
 
     proc_status_df = _load_status_table(proc_status_df)
-    subj_list = _load_full_ids(full_ids)
+    subj_list = get_fullids2process(full_ids)
     deriv_dir, all_pipe_dirs, pipe_dirs = _resolve_pipe_dirs(deriv_dir, pipe_dirs)
 
     missmatch_summary = _compute_processing_mismatches(

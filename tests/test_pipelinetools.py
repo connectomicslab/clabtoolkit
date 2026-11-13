@@ -186,38 +186,6 @@ class TestGetFullIds2Process:
 ####################################################################################################
 # Section 2: small private helpers
 ####################################################################################################
-class TestLoadFullIds:
-    def test_list(self):
-        assert cltpipe._load_full_ids([" a ", "", "b"]) == ["a", "b"]
-
-    def test_list_keeps_order(self):
-        assert cltpipe._load_full_ids(["b", "a"]) == ["b", "a"]
-
-    def test_file(self, tmp_path):
-        f = tmp_path / "ids.txt"
-        f.write_text("sub-01\n\nsub-02 \n")
-        assert cltpipe._load_full_ids(str(f)) == ["sub-01", "sub-02"]
-
-    def test_missing_file(self, tmp_path):
-        with pytest.raises(FileNotFoundError):
-            cltpipe._load_full_ids(str(tmp_path / "nope.txt"))
-
-    def test_wrong_type(self):
-        with pytest.raises(TypeError):
-            cltpipe._load_full_ids(5)
-
-    @pytest.mark.parametrize("empty", [[], ["", "  "]])
-    def test_empty_list(self, empty):
-        with pytest.raises(ValueError, match="empty"):
-            cltpipe._load_full_ids(empty)
-
-    def test_empty_file(self, tmp_path):
-        f = tmp_path / "ids.txt"
-        f.write_text("\n\n")
-        with pytest.raises(ValueError, match="empty"):
-            cltpipe._load_full_ids(str(f))
-
-
 class TestLoadStatusTable:
     def test_dataframe_is_copied(self):
         df = pd.DataFrame({"a": [1]})
