@@ -30,7 +30,7 @@ from rich.progress import (
 
 # Importing the clabtoolkit modules
 from . import misctools as cltmisc
-from .pipelinetools import get_fullids2process
+from .bidstools_utils import create_a_simulated_bids_dataset  # noqa: F401
 
 
 ####################################################################################################
@@ -1669,6 +1669,9 @@ def remove_bids_folder(
     if full_ids is None:
         console.print("[yellow]No IDs specified. Nothing to remove.")
         return []
+    # Imported here to avoid a circular import (pipelinetools imports bidstools)
+    from .pipelinetools import get_fullids2process
+
     full_ids = get_fullids2process(full_ids)
 
     # Folders to search: the pipelines of the derivatives and the raw data

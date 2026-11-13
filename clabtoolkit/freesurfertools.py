@@ -43,7 +43,6 @@ from . import freesurfertools_utils as fsutils
 # Importing local modules
 from . import misctools as cltmisc
 from . import misctools_utils as cltmisc_utils
-from . import pipelinetools as cltpipe
 
 
 ####################################################################################################
@@ -6403,6 +6402,9 @@ def create_cohort_stats_table(
             and os.path.isdir(os.path.join(fs_subject_dir, subj_dir))
         )
     else:
+        # Imported here to avoid a circular import (pipelinetools imports freesurfertools)
+        from . import pipelinetools as cltpipe
+
         # Use cltpipe.get_fullids2process to handle both list and file input
         subject_ids = cltpipe.get_fullids2process(ids_file)
 
