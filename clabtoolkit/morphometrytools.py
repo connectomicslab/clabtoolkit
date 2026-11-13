@@ -4,9 +4,16 @@ measurements across brain regions.
 """
 
 import copy
+import importlib.util
 import json
 import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
 import warnings
+import webbrowser
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
@@ -1899,6 +1906,209 @@ def convert_from_mm(
     if np.isscalar(values):
         return float(values) / factor, unit
     return np.asarray(values, dtype=np.float64) / factor, unit
+
+
+####################################################################################################
+####################################################################################################
+############                                                                            ############
+############                                                                            ############
+############                   Section 6: Interactive dashboard                         ############
+############                                                                            ############
+############                                                                            ############
+####################################################################################################
+####################################################################################################
+def launch_dashboard(
+    table: str | Path | pd.DataFrame = None,
+    port: int = 8501,
+    open_browser: bool = True,
+    block: bool = False,
+) -> subprocess.Popen:
+    """
+    Launch the interactive dashboard to explore a morphometry table.
+
+    The dashboard is a Streamlit application (``morphometrytools_dashboard.py``)
+    that runs as a local web server, in its own process. It shows an overview of
+    the table, filters for any of its columns and interactive plots (box, violin,
+    histogram, density, bar, heatmap, correlation and scatter plots).
+
+    Parameters
+    ----------
+    table : str, Path or pandas.DataFrame, optional
+        Table to open: the path of a table that ``misctools.smart_read_table``
+        can read (csv, tsv, txt) or a DataFrame, which is saved to a temporary
+        csv file. If None, the table is selected in the dashboard. Default is None.
+
+    port : int, optional
+        Port of the web server. If it is in use, the next free port is used.
+        Default is 8501.
+
+    open_browser : bool, optional
+        If True, opens the dashboard in the default web browser. Default is True.
+
+    block : bool, optional
+        If True, waits until the dashboard is stopped with Ctrl+C. If False,
+        returns once the dashboard is running. Default is False.
+
+    Returns
+    -------
+    process : subprocess.Popen
+        Process of the dashboard. Its address is stored in ``process.url`` and
+        ``process.terminate()`` stops it.
+
+    Raises
+    ------
+    ImportError
+        If streamlit or plotly are not installed
+        (``pip install "clabtoolkit[dashboard]"``).
+
+    FileNotFoundError
+        If the table does not exist.
+
+    TypeError
+        If ``table`` is not a path or a DataFrame.
+
+    RuntimeError
+        If there is no free port or the dashboard does not start.
+
+    Examples
+    --------
+    >>> # Open a table saved in a file
+    >>> process = launch_dashboard('/data/morphometry_table.csv')
+    >>> process.terminate()  # Stop the dashboard
+    >>>
+    >>> # Open a DataFrame in another port, without opening the web browser
+    >>> process = launch_dashboard(df, port=8600, open_browser=False)
+    >>> print(process.url)
+    """
+
+    missing = [
+        pkg for pkg in ("streamlit", "plotly") if importlib.util.find_spec(pkg) is None
+    ]
+    if missing:
+        raise ImportError(
+            f"The dashboard needs {' and '.join(missing)}, which are not installed. "
+            'Install them with: pip install "clabtoolkit[dashboard]"'
+        )
+
+    # Table to open
+    if table is None:
+        table_file = None
+    elif isinstance(table, pd.DataFrame):
+        tmp = tempfile.NamedTemporaryFile(
+            prefix="clab_dashboard_", suffix=".csv", delete=False
+        )
+        tmp.close()
+        table.to_csv(tmp.name, index=False)
+        table_file = tmp.name
+    elif isinstance(table, (str, Path)):
+        table_file = os.path.abspath(str(table))
+        if not os.path.isfile(table_file):
+            raise FileNotFoundError(f"The table does not exist: {table_file}")
+    else:
+        raise TypeError(
+            f"table must be a string, a Path or a DataFrame, got {type(table)}"
+        )
+
+    # First free port from the requested one
+    def _port_in_use(number: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            return sock.connect_ex(("localhost", number)) == 0
+
+    requested = int(port)
+    port = next(
+        (p for p in range(requested, requested + 50) if not _port_in_use(p)), None
+    )
+    if port is None:
+        raise RuntimeError(
+            f"There is no free port between {requested} and {requested + 49}."
+        )
+    if port != requested:
+        print(f"The port {requested} is in use. Using the port {port}.")
+
+    script = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "morphometrytools_dashboard.py"
+    )
+    # The browser is opened from here, once the server is ready (headless mode
+    # also avoids the questions that streamlit asks the first time it runs)
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        script,
+        "--server.port",
+        str(port),
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
+    ]
+    if table_file is not None:
+        cmd += ["--", "--table", table_file]
+
+    log_file = tempfile.NamedTemporaryFile(
+        prefix="clab_dashboard_", suffix=".log", delete=False
+    )
+    process = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+    log_file.close()
+    process.url = f"http://localhost:{port}"
+
+    # Wait until the server answers
+    started = time.time()
+    while not _port_in_use(port):
+        if process.poll() is not None or time.time() - started > 60:
+            process.terminate()
+            log = Path(log_file.name).read_text(errors="replace").strip()
+            raise RuntimeError(f"The dashboard could not be started.\n{log}")
+        time.sleep(0.2)
+
+    print(f"Morphometry dashboard running at {process.url}")
+    if open_browser:
+        webbrowser.open(process.url)
+
+    if block:
+        print("Press Ctrl+C to stop it.")
+        try:
+            process.wait()
+        except KeyboardInterrupt:
+            process.terminate()
+            process.wait()
+            print("Dashboard stopped.")
+
+    return process
+
+
+####################################################################################################
+def _dashboard_cli() -> None:
+    """Entry point of the ``clabtoolkit-morpho-dashboard`` command."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="clabtoolkit-morpho-dashboard",
+        description="Interactive dashboard to explore a morphometry table.",
+    )
+    parser.add_argument(
+        "table",
+        nargs="?",
+        default=None,
+        help="Table to open (csv, tsv or txt). It can also be selected in the dashboard.",
+    )
+    parser.add_argument(
+        "--port", type=int, default=8501, help="Port of the web server (default: 8501)."
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not open the dashboard in the web browser.",
+    )
+    args = parser.parse_args()
+
+    try:
+        launch_dashboard(
+            args.table, port=args.port, open_browser=not args.no_browser, block=True
+        )
+    except (ImportError, FileNotFoundError, RuntimeError) as e:
+        sys.exit(str(e))
 
 
 ####################################################################################################

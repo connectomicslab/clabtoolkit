@@ -3354,3 +3354,169 @@ class TestNetworkMetricsToTable:
         monkeypatch.setitem(sys.modules, "bct", None)
         with pytest.raises(ImportError, match="bctpy is required"):
             cltmorph.network_metrics_to_table(path_graph())
+
+
+####################################################################################################
+# Dashboard launcher
+####################################################################################################
+def free_port():
+    """A port that is free right now."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("localhost", 0))
+        return sock.getsockname()[1]
+
+
+def dashboard_is_running(process):
+    import urllib.request
+
+    with urllib.request.urlopen(f"{process.url}/_stcore/health", timeout=10) as reply:
+        return reply.read() == b"ok"
+
+
+@pytest.fixture
+def morpho_table(tmp_path):
+    table = tmp_path / "table.csv"
+    pd.DataFrame(
+        {
+            "Hemisphere": ["lh", "rh"],
+            "Supraregion": ["ctx", "ctx"],
+            "Region": ["ctx-lh-insula", "ctx-rh-insula"],
+            "Value": [1.0, 2.0],
+        }
+    ).to_csv(table, index=False)
+    return table
+
+
+@pytest.fixture
+def launched():
+    """Stops the dashboards launched by a test."""
+    processes = []
+    yield processes
+    for process in processes:
+        process.terminate()
+        process.wait()
+
+
+class TestLaunchDashboardErrors:
+    def test_missing_dependencies(self, monkeypatch, morpho_table):
+        monkeypatch.setattr(cltmorph.importlib.util, "find_spec", lambda name: None)
+        with pytest.raises(ImportError, match=r"clabtoolkit\[dashboard\]"):
+            cltmorph.launch_dashboard(morpho_table)
+
+    def test_missing_table(self, tmp_path):
+        pytest.importorskip("streamlit")
+        pytest.importorskip("plotly")
+        with pytest.raises(FileNotFoundError, match="does not exist"):
+            cltmorph.launch_dashboard(tmp_path / "missing.csv")
+
+    def test_invalid_table_type(self):
+        pytest.importorskip("streamlit")
+        pytest.importorskip("plotly")
+        with pytest.raises(TypeError, match="DataFrame"):
+            cltmorph.launch_dashboard(123)
+
+
+class TestLaunchDashboard:
+    @pytest.fixture(autouse=True)
+    def _needs_dashboard_packages(self):
+        pytest.importorskip("streamlit")
+        pytest.importorskip("plotly")
+
+    def test_launch_with_file(self, morpho_table, launched, capsys):
+        port = free_port()
+        process = cltmorph.launch_dashboard(morpho_table, port=port, open_browser=False)
+        launched.append(process)
+
+        assert process.url == f"http://localhost:{port}"
+        assert process.args[-2:] == ["--table", str(morpho_table)]
+        assert dashboard_is_running(process)
+        assert process.url in capsys.readouterr().out
+
+        process.terminate()
+        process.wait()
+        assert process.poll() is not None
+
+    def test_launch_with_dataframe(self, morpho_table, launched):
+        df = pd.read_csv(morpho_table)
+        process = cltmorph.launch_dashboard(df, port=free_port(), open_browser=False)
+        launched.append(process)
+
+        # The DataFrame is saved to a temporary csv file
+        saved = process.args[-1]
+        assert process.args[-2] == "--table"
+        pd.testing.assert_frame_equal(pd.read_csv(saved), df)
+        assert dashboard_is_running(process)
+
+    def test_launch_without_table(self, launched):
+        process = cltmorph.launch_dashboard(port=free_port(), open_browser=False)
+        launched.append(process)
+        assert "--table" not in process.args
+        assert dashboard_is_running(process)
+
+    def test_port_in_use(self, morpho_table, launched, capsys):
+        import socket
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy:
+            busy.bind(("localhost", 0))
+            busy.listen()
+            port = busy.getsockname()[1]
+            process = cltmorph.launch_dashboard(
+                morpho_table, port=port, open_browser=False
+            )
+            launched.append(process)
+
+        used = int(process.url.rsplit(":", 1)[1])
+        assert port < used < port + 50
+        assert f"The port {port} is in use" in capsys.readouterr().out
+
+    def test_open_browser(self, morpho_table, launched, monkeypatch):
+        opened = []
+        monkeypatch.setattr(cltmorph.webbrowser, "open", opened.append)
+        process = cltmorph.launch_dashboard(morpho_table, port=free_port())
+        launched.append(process)
+        assert opened == [process.url]
+
+
+class TestDashboardCommand:
+    def test_arguments(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            cltmorph, "launch_dashboard", lambda *a, **k: calls.append((a, k))
+        )
+
+        monkeypatch.setattr(sys, "argv", ["clabtoolkit-morpho-dashboard"])
+        cltmorph._dashboard_cli()
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["clabtoolkit-morpho-dashboard", "t.csv", "--port", "8600", "--no-browser"],
+        )
+        cltmorph._dashboard_cli()
+
+        assert calls == [
+            ((None,), {"port": 8501, "open_browser": True, "block": True}),
+            (("t.csv",), {"port": 8600, "open_browser": False, "block": True}),
+        ]
+
+    def test_error_message(self, monkeypatch, tmp_path):
+        pytest.importorskip("streamlit")
+        pytest.importorskip("plotly")
+        missing = str(tmp_path / "missing.csv")
+        monkeypatch.setattr(sys, "argv", ["clabtoolkit-morpho-dashboard", missing])
+        with pytest.raises(SystemExit, match="does not exist"):
+            cltmorph._dashboard_cli()
+
+    def test_command_is_declared(self):
+        import tomllib
+        from pathlib import Path
+
+        pyproject = Path(__file__).parent.parent / "pyproject.toml"
+        config = tomllib.loads(pyproject.read_text())["project"]
+        assert (
+            config["scripts"]["clabtoolkit-morpho-dashboard"]
+            == "clabtoolkit.morphometrytools:_dashboard_cli"
+        )
+        packages = " ".join(config["optional-dependencies"]["dashboard"])
+        assert "streamlit" in packages and "plotly" in packages

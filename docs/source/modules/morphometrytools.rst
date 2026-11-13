@@ -11,6 +11,7 @@ Key Features
 - FreeSurfer statistics file parsing and processing
 - Statistical summary generation and unit management
 - BIDS entity propagation into the output tables
+- Interactive dashboard to explore the morphometry tables
 
 API reference
 -------------
@@ -43,6 +44,10 @@ FreeSurfer Analysis
 - ``parse_freesurfer_stats_fromaseg()``: Parse FreeSurfer statistics from aseg
 - ``parse_freesurfer_cortex_stats()``: Parse FreeSurfer cortex statistics
 - ``get_stats_dictionary()``: Get the statistics dictionary from FreeSurfer data
+
+Interactive Dashboard
+~~~~~~~~~~~~~~~~~~~~~
+- ``launch_dashboard()``: Launch the dashboard to filter and plot a morphometry table. It needs the optional dependencies (``pip install "clabtoolkit[dashboard]"``) and it is also available from the terminal as ``clabtoolkit-morpho-dashboard /path/to/table.csv``
 
 Utility Functions
 ~~~~~~~~~~~~~~~~~

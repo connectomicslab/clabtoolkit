@@ -57,6 +57,9 @@ Repository = "https://github.com/connectomicslab/clabtoolkit"
 Documentation = "https://clabtoolkit.readthedocs.io"
 "Bug Tracker" = "https://github.com/connectomicslab/clabtoolkit/issues"
 
+[project.scripts]
+clabtoolkit-morpho-dashboard = "clabtoolkit.morphometrytools:_dashboard_cli"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.4.1",
@@ -71,6 +74,10 @@ dev = [
 ]
 examples = [
     "itables>=2.8.0",
+]
+dashboard = [
+    "streamlit>=1.52.0",
+    "plotly>=6.0.0",
 ]
 docs = [
     "sphinx>=8.2.3",
