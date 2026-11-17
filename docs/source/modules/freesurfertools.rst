@@ -45,6 +45,7 @@ Parcellation Processing:
 - ``correct_vertexwise_parcellation()``: Fix unlabeled vertices in a parcellation
 - ``fill_parcellation()``: Fill a parcellation using a label and surface file
 - ``group_into_lobes()``: Group regions into anatomical lobes
+- ``group_by_names()``: Group regions by name substrings into a coarser parcellation, with a color for each group
 - ``complete_table()``: Add a colour table entry for every vertex code missing from the table
 - ``map_values()``: Map regional values onto the annotation
 
@@ -128,6 +129,17 @@ Working with annotation files::
 
     # Group the regions into lobes
     annot.group_into_lobes(grouping="desikan", out_annot="/path/to/lh.lobes.annot")
+
+    # Group Desikan-Killiany regions by name. The annotation is modified in place.
+    # The code of a region is its packed RGB color, so every group needs its own color
+    annot.group_by_names(
+        {
+            "inferiorfrontal": {"names": ["parsorbitalis", "parstriangularis", "parsopercularis"], "color": "#641900"},
+            "middletemporal": {"names": ["middletemporal", "bankssts"], "color": "#A06432"},
+            "middlefrontal": {"names": ["rostralmiddlefrontal", "caudalmiddlefrontal"]},  # color generated
+        },
+        keep_ungrouped=True,  # False leaves the other vertices unlabeled
+    )
 
 Working with a subject::
 

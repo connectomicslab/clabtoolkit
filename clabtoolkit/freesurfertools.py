@@ -60,8 +60,8 @@ class AnnotParcellation:
     # Implemented methods:
     # - Correct the parcellation by refilling the vertices from the cortex label file that do not have a label in the annotation file
     # - Convert FreeSurfer annot files to gcs files
+    # - Group regions to create a coarser parcellation (group_into_lobes, group_by_names)
     # Methods to be implemented:
-    # Grouping regions to create a coarser parcellation
     # Removing regions from the parcellation
     # Correct parcellations by removing small clusters of vertices labeled inside another region
     """
@@ -3029,6 +3029,200 @@ class AnnotParcellation:
             lobar.save_annotation(out_file=out_annot, overwrite=True)
 
         return lobar
+
+    ####################################################################################################
+    def group_by_names(
+        self,
+        group_dict: dict,
+        keep_ungrouped: bool = True,
+        bool_case: bool = False,
+    ) -> "AnnotParcellation":
+        """
+        Group regions by name substrings to create a coarser parcellation.
+
+        Every region whose name contains one of the substrings of a group is merged
+        into that group. The vertices are relabeled from the original codes, so the
+        groups cannot contaminate each other. It works as
+        ``Parcellation.group_by_names``, and the annotation is modified in place.
+
+        Parameters
+        ----------
+        group_dict : dict
+            ``{group_name: {'names': str | list[str], 'color': (R, G, B) | hex str}}``
+
+            - 'names' is required: substring(s) matched against the region names.
+            - 'color' is optional. If it is not given, a color distinct from the
+              others is generated.
+
+            In an annotation the code of a region is its packed RGB color
+            (R + G * 256 + B * 65536), so the 'index' and 'opacity' keys of
+            ``Parcellation.group_by_names`` are not used.
+
+        keep_ungrouped : bool, optional
+            If True (default), the regions not matched by any group are kept with
+            their original name, color and code, after the groups in the color
+            table. If False, their vertices become unlabeled (code -1, written as
+            unlabeled by ``save_annotation``).
+
+        bool_case : bool, optional
+            Case-sensitive substring matching. Default is False.
+
+        Returns
+        -------
+        AnnotParcellation
+            The grouped annotation (the same object).
+
+        Raises
+        ------
+        ValueError
+            If the annotation is not loaded, if group_dict is empty, if a group has
+            no 'names' key, if a region matches more than one group, if no group
+            matches any region, or if two groups (or a group and an ungrouped
+            region) have the same color.
+
+        Notes
+        -----
+        The names are matched as substrings, so "cuneus" also matches "precuneus".
+        A region matched by two groups raises an error, so the substrings must be
+        specific enough. A group that matches no region is skipped with a warning.
+
+        Examples
+        --------
+        >>> annot = AnnotParcellation('/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot')
+        >>> group_dict = {
+        ...     'cingulate': {'names': 'cingulate', 'color': '#dc143c'},
+        ...     'occipital': {'names': ['lateraloccipital', 'lingual', 'pericalcarine']},
+        ... }
+        >>> annot.group_by_names(group_dict)
+        >>> annot.regnames[:2]
+        ['cingulate', 'occipital']
+        """
+
+        if not self.is_loaded() or self.regtable is None or self.regnames is None:
+            raise ValueError("The annotation is not loaded.")
+
+        if not isinstance(group_dict, dict) or len(group_dict) == 0:
+            raise ValueError("group_dict must be a non-empty dictionary.")
+
+        reg_codes = self.regtable[:, 4].astype(int)
+
+        # ── 1. Find the regions of each group ────────────────────────────────────
+        groups = []  # (group name, region rows, color as hex or None)
+        claimed = {}  # region row -> group name that claimed it
+        for group_name, params in group_dict.items():
+            if not isinstance(params, dict) or "names" not in params:
+                raise ValueError(f"Group '{group_name}' has no 'names' key.")
+
+            filters = cltmisc.to_list(params["names"])
+            rows = cltmisc.get_indexes_by_substring(
+                input_list=self.regnames,
+                or_filter=filters,
+                invert=False,
+                bool_case=bool_case,
+            )
+
+            if len(rows) == 0:
+                warnings.warn(
+                    f"Group '{group_name}' ({filters}) matched no region and is skipped.",
+                    stacklevel=2,
+                )
+                continue
+
+            # A region matched by two groups is ambiguous
+            for row in rows:
+                if row in claimed:
+                    raise ValueError(
+                        f"Region '{self.regnames[row]}' matches both "
+                        f"'{claimed[row]}' and '{group_name}'. Use more specific substrings."
+                    )
+                claimed[row] = group_name
+
+            color = params.get("color")
+            if color is not None:
+                color = cltcol.harmonize_colors([color], output_format="hex")[0]
+            groups.append((str(group_name), list(rows), color))
+
+        if len(groups) == 0:
+            raise ValueError("None of the groups matched any region in the annotation.")
+
+        if keep_ungrouped:
+            ungrouped_rows = [i for i in range(len(self.regnames)) if i not in claimed]
+        else:
+            ungrouped_rows = []
+
+        # ── 2. Resolve the colors and their packed codes ─────────────────────────
+        def _rgb_and_code(hex_color):
+            rgb = cltcol.harmonize_colors([hex_color], output_format="rgb")[0]
+            rgb = np.asarray(rgb, dtype=int)
+            return rgb, int(rgb[0] + rgb[1] * 256 + rgb[2] * 65536)
+
+        # Codes taken by the ungrouped regions that are kept
+        used_codes = {int(reg_codes[i]): self.regnames[i] for i in ungrouped_rows}
+
+        group_rgbs = [None] * len(groups)
+        group_codes = [None] * len(groups)
+        for k, (group_name, _, color) in enumerate(groups):
+            if color is None:
+                continue
+            rgb, code = _rgb_and_code(color)
+            if code in used_codes:
+                raise ValueError(
+                    f"The color of group '{group_name}' ({color}) is already used by "
+                    f"'{used_codes[code]}'. FreeSurfer identifies regions by their packed "
+                    "RGB value, so every region must have a distinct color."
+                )
+            used_codes[code] = group_name
+            group_rgbs[k], group_codes[k] = rgb, code
+
+        # Generate the missing colors, avoiding the ones already taken
+        missing = [k for k in range(len(groups)) if group_codes[k] is None]
+        if missing:
+            taken = [
+                cltcol.harmonize_colors(
+                    [[c % 256, (c // 256) % 256, (c // 65536) % 256]],
+                    output_format="hex",
+                )[0]
+                for c in used_codes
+            ]
+            candidates = cltcol.create_distinguishable_colors(
+                len(missing) + len(taken),
+                output_format="hex",
+                exclude_colors=taken or None,
+            )
+            for k in missing:
+                for color in candidates:
+                    rgb, code = _rgb_and_code(color)
+                    if code not in used_codes:
+                        break
+                else:
+                    raise ValueError("Could not generate a distinct color for a group.")
+                used_codes[code] = groups[k][0]
+                group_rgbs[k], group_codes[k] = rgb, code
+
+        # ── 3. Relabel the vertices from the original codes ──────────────────────
+        orig_codes = self.codes
+        if keep_ungrouped:
+            new_codes = np.array(orig_codes, dtype=np.int32, copy=True)
+        else:
+            new_codes = np.full(np.shape(orig_codes), -1, dtype=np.int32)
+
+        table_rows = []
+        new_names = []
+        for k, (group_name, rows, _) in enumerate(groups):
+            new_codes[np.isin(orig_codes, reg_codes[rows])] = group_codes[k]
+            table_rows.append([*group_rgbs[k], 0, group_codes[k]])
+            new_names.append(group_name)
+
+        for i in ungrouped_rows:
+            table_rows.append(self.regtable[i, :].astype(int).tolist())
+            new_names.append(self.regnames[i])
+
+        # ── 4. Update the annotation ─────────────────────────────────────────────
+        self.codes = new_codes
+        self.regtable = np.array(table_rows, dtype=np.int32)
+        self.regnames = new_names
+
+        return self
 
 
 ####################################################################################################

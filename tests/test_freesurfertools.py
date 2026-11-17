@@ -1578,6 +1578,120 @@ class TestGroupIntoLobes:
         assert lobar.codes.size == 163842
 
 
+class TestGroupByNames:
+    # "cuneus" is left out because, as a substring, it also matches "precuneus"
+    OCCIPITAL = ["lingual", "pericalcarine", "lateraloccipital"]
+
+    @staticmethod
+    def code_of(annot, name):
+        return annot.regtable[annot.regnames.index(name), 4]
+
+    def test_groups_come_first_and_ungrouped_regions_are_kept(self):
+        annot = hand_annot([RED, GREEN, BLUE, RED], names=("ctx-a", "ctx-b", "sub-c"))
+        result = annot.group_by_names({"cortex": {"names": "ctx-", "color": "#ffff00"}})
+        assert result is annot
+        assert annot.regnames == ["cortex", "sub-c"]
+        yellow = 255 + 255 * 256
+        assert annot.regtable.tolist() == [
+            [255, 255, 0, 0, yellow],
+            [0, 0, 255, 0, BLUE],
+        ]
+        assert annot.codes.tolist() == [yellow, yellow, BLUE, yellow]
+
+    def test_ungrouped_vertices_become_unlabeled(self):
+        annot = hand_annot([RED, GREEN, BLUE], names=("ctx-a", "ctx-b", "sub-c"))
+        annot.group_by_names(
+            {"cortex": {"names": ["ctx-"], "color": (0, 0, 128)}}, keep_ungrouped=False
+        )
+        assert annot.regnames == ["cortex"]
+        assert annot.codes.tolist() == [128 * 65536, 128 * 65536, -1]
+
+    def test_case_sensitivity(self):
+        annot = hand_annot([RED, GREEN, BLUE], names=("Frontal", "frontal2", "x"))
+        annot.group_by_names({"f": {"names": "frontal", "color": "#00ffff"}})
+        assert annot.regnames == ["f", "x"]
+
+        annot = hand_annot([RED, GREEN, BLUE], names=("Frontal", "frontal2", "x"))
+        annot.group_by_names(
+            {"f": {"names": "frontal", "color": "#00ffff"}}, bool_case=True
+        )
+        assert annot.regnames == ["f", "Frontal", "x"]
+
+    def test_vertices_follow_their_regions(self, desikan_annot):
+        orig = desikan_annot.codes.copy()
+        in_occipital = np.isin(
+            orig, [self.code_of(desikan_annot, n) for n in self.OCCIPITAL]
+        )
+        insula_code = self.code_of(desikan_annot, "insula")
+        desikan_annot.group_by_names({"occipital": {"names": self.OCCIPITAL}})
+        occ = self.code_of(desikan_annot, "occipital")
+        np.testing.assert_array_equal(desikan_annot.codes == occ, in_occipital)
+        # Ungrouped regions keep their code
+        assert self.code_of(desikan_annot, "insula") == insula_code
+        np.testing.assert_array_equal(
+            desikan_annot.codes == insula_code, orig == insula_code
+        )
+        assert len(desikan_annot.regnames) == 34 - 3 + 1
+
+    def test_generated_colors_are_distinct_and_packed(self, desikan_annot):
+        desikan_annot.group_by_names(
+            {
+                "occipital": {"names": self.OCCIPITAL},
+                "cingulate": {"names": "cingulate"},
+            }
+        )
+        codes = desikan_annot.regtable[:, 4].tolist()
+        assert len(set(codes)) == len(codes)
+        ok, errors = cltfree.verify_packed_rgb_values(desikan_annot.regtable)
+        assert ok, errors
+
+    def test_saved_and_loaded(self, tmp_path, desikan_annot):
+        desikan_annot.group_by_names(
+            {"occipital": {"names": self.OCCIPITAL}}, keep_ungrouped=False
+        )
+        out = tmp_path / "lh.grouped.annot"
+        desikan_annot.save_annotation(str(out))
+        loaded = AnnotParcellation(out)
+        assert loaded.regnames == ["occipital"]
+        occ = self.code_of(loaded, "occipital")
+        np.testing.assert_array_equal(loaded.codes == occ, desikan_annot.codes == occ)
+
+    def test_group_without_matches_is_skipped(self):
+        annot = hand_annot([RED, GREEN, BLUE])
+        with pytest.warns(UserWarning, match="matched no region"):
+            annot.group_by_names(
+                {"ab": {"names": ["regA", "regB"]}, "none": {"names": "nothing"}}
+            )
+        assert annot.regnames[0] == "ab" and "none" not in annot.regnames
+
+    def test_errors(self):
+        with pytest.raises(ValueError, match="not loaded"):
+            AnnotParcellation().group_by_names({"a": {"names": "x"}})
+
+        annot = hand_annot([RED, GREEN, BLUE])
+        with pytest.raises(ValueError, match="non-empty"):
+            annot.group_by_names({})
+        with pytest.raises(ValueError, match="no 'names' key"):
+            annot.group_by_names({"a": {"color": "#000000"}})
+        with pytest.raises(ValueError, match="matches both"):
+            annot.group_by_names({"a": {"names": "regA"}, "b": {"names": "reg"}})
+        with pytest.raises(ValueError, match="None of the groups"):
+            annot.group_by_names({"a": {"names": "nothing"}})
+        # Same color as an ungrouped region, and the same color in two groups
+        with pytest.raises(ValueError, match="already used by 'regC'"):
+            annot.group_by_names({"a": {"names": "regA", "color": "#0000ff"}})
+        with pytest.raises(ValueError, match="already used by 'a'"):
+            annot.group_by_names(
+                {
+                    "a": {"names": "regA", "color": "#123456"},
+                    "b": {"names": "regB", "color": "#123456"},
+                }
+            )
+        # A failed call leaves the annotation unchanged
+        assert annot.regnames == ["regA", "regB", "regC"]
+        assert annot.codes.tolist() == [RED, GREEN, BLUE]
+
+
 @needs_fsaverage
 class TestFsaverage:
     def test_desikan_annotation(self):
