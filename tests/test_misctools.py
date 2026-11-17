@@ -586,6 +586,96 @@ class TestDirectories:
             cltmisc.create_temporary_filename(tmp_dir=str(tmp_path / "missing"))
 
 
+class TestCopyFilesBySuffix:
+    SUFFIX = "_desc-n4_T1w.nii.gz"
+
+    @pytest.fixture
+    def src(self, tmp_path):
+        root = tmp_path / "src"
+        for sub in ["sub-01", "sub-010", "sub-02"]:
+            anat = root / sub / "anat"
+            anat.mkdir(parents=True)
+            (anat / f"{sub}{self.SUFFIX}").write_text(sub)
+            (anat / f"{sub}_T2w.nii.gz").write_text(sub)
+        return root
+
+    @staticmethod
+    def rel(paths, base):
+        return sorted(os.path.relpath(p, base) for p in paths)
+
+    def test_copies_by_suffix_keeping_structure(self, src, tmp_path):
+        dst = tmp_path / "dst"
+        out = cltmisc.copy_files_by_suffix(src, dst, self.SUFFIX, verbose=False)
+        assert self.rel(out, dst) == [
+            f"{s}/anat/{s}{self.SUFFIX}" for s in ["sub-01", "sub-010", "sub-02"]
+        ]
+        assert all(os.path.isfile(p) for p in out)
+        assert not list(dst.rglob("*_T2w.nii.gz"))
+
+    def test_ids_are_whole_tokens(self, src, tmp_path):
+        dst = tmp_path / "dst"
+        out = cltmisc.copy_files_by_suffix(
+            str(src),
+            str(dst),
+            [self.SUFFIX, "_T2w.nii.gz"],
+            ids="sub-01",
+            verbose=False,
+        )
+        assert self.rel(out, dst) == [
+            "sub-01/anat/sub-01_T2w.nii.gz",
+            f"sub-01/anat/sub-01{self.SUFFIX}",
+        ]
+
+    def test_ids_from_text_file_and_list(self, src, tmp_path):
+        ids_file = tmp_path / "ids.txt"
+        ids_file.write_text("sub-02\n\nsub-010\nsub-02\n")
+        out = cltmisc.copy_files_by_suffix(
+            src, tmp_path / "a", self.SUFFIX, ids=str(ids_file), verbose=False
+        )
+        assert len(out) == 2
+        out = cltmisc.copy_files_by_suffix(
+            src, tmp_path / "b", self.SUFFIX, ids=("sub-02",), verbose=False
+        )
+        assert self.rel(out, tmp_path / "b") == [f"sub-02/anat/sub-02{self.SUFFIX}"]
+
+    def test_simulate_and_overwrite(self, src, tmp_path):
+        dst = tmp_path / "dst"
+        would = cltmisc.copy_files_by_suffix(
+            src, dst, self.SUFFIX, simulate=True, verbose=False
+        )
+        assert len(would) == 3 and not dst.exists()
+
+        cltmisc.copy_files_by_suffix(src, dst, self.SUFFIX, verbose=False)
+        assert cltmisc.copy_files_by_suffix(src, dst, self.SUFFIX, verbose=False) == []
+        again = cltmisc.copy_files_by_suffix(
+            src, dst, self.SUFFIX, overwrite=True, verbose=False
+        )
+        assert len(again) == 3
+
+    def test_nested_dest_is_not_searched(self, src):
+        dst = src / "export"
+        cltmisc.copy_files_by_suffix(src, dst, self.SUFFIX, verbose=False)
+        out = cltmisc.copy_files_by_suffix(
+            src, dst, self.SUFFIX, overwrite=True, verbose=False
+        )
+        assert len(out) == 3
+        assert not (dst / "export").exists()
+
+    def test_errors(self, src, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            cltmisc.copy_files_by_suffix(tmp_path / "missing", tmp_path, "x")
+        with pytest.raises(ValueError):
+            cltmisc.copy_files_by_suffix(src, src, self.SUFFIX)
+        with pytest.raises(ValueError):
+            cltmisc.copy_files_by_suffix(src, tmp_path / "d", ["", ""])
+        with pytest.raises(ValueError):
+            cltmisc.copy_files_by_suffix(src, tmp_path / "d", self.SUFFIX, ids=" , ")
+        with pytest.raises(FileNotFoundError):
+            cltmisc.copy_files_by_suffix(
+                src, tmp_path / "d", self.SUFFIX, ids=str(tmp_path / "ids.txt")
+            )
+
+
 ####################################################################################################
 # Section 4: strings
 ####################################################################################################

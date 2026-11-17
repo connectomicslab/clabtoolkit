@@ -8,7 +8,7 @@ Key Features
 - Build index lists from integers, ranges (``"3:5"``), tuples and logical conditions
 - Filter lists and rename strings by substrings or regular expressions
 - Clean and standardize region names
-- File system helpers: list files, find leaf folders, rename and remove folders, create temporary filenames
+- File system helpers: list files, find leaf folders, rename and remove folders, copy files by suffix and ID, create temporary filenames
 - Read and write JSON, merge and compare dictionaries, read delimited tables with separator detection
 - Build the command that runs a command line inside a container
 - Inspect modules, objects and HDF5 files from the terminal or a notebook
@@ -38,6 +38,7 @@ Lists and strings
 Files, folders and tables
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 - ``get_all_files``, ``get_leaf_directories``, ``rename_folders``, ``remove_empty_folders``, ``create_temporary_filename``
+- ``copy_files_by_suffix``: copy the files ending with some suffixes, keeping the folder structure and optionally only for some IDs
 - ``load_json``, ``save_dictionary_to_json``, ``update_dict``, ``compare_dicts``
 - ``smart_read_table``, ``drop_empty_columns``, ``expand_and_concatenate``
 - ``generate_container_command``
@@ -78,6 +79,24 @@ Files and tables::
     files = cltmisc.get_all_files("/path/to/dataset", or_filter=".nii.gz")
     tmp = cltmisc.create_temporary_filename(prefix="simulated_", extension=".nii.gz")
     df = cltmisc.smart_read_table("/path/to/table.tsv")
+
+Copying files by suffix::
+
+    # See what would be copied, keeping the folder structure of the source
+    cltmisc.copy_files_by_suffix(
+        "/data/bids/derivatives/preproc",
+        "/data/export",
+        ["_desc-n4corrden_T1w.nii.gz", "_desc-brain_mask.nii.gz"],
+        ids="sub-01, sub-02",  # or a list, or a text file with one ID per line
+        simulate=True,
+    )
+
+    # IDs are matched as whole tokens: "sub-01" does not select "sub-010".
+    # Existing files are skipped unless overwrite=True
+    copied = cltmisc.copy_files_by_suffix(
+        "/data/bids/derivatives/preproc", "/data/export", "_desc-n4corrden_T1w.nii.gz",
+        ids="/data/ids.txt",
+    )
 
 Enhanced argument parsing::
 

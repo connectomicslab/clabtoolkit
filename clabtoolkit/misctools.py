@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sys
 import tempfile
 import types
@@ -31,6 +32,17 @@ from colorama import Back, Fore, Style, init
 from IPython import get_ipython
 from IPython.display import HTML, display
 from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_numeric_dtype
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from . import colorstools as cltcolors
 from .misctools_utils import ExplorerDict
@@ -65,6 +77,7 @@ __all__ = [
     "rename_folders",
     "remove_empty_folders",
     "create_temporary_filename",
+    "copy_files_by_suffix",
     "remove_consecutive_duplicates",
     "create_names_from_indices",
     "correct_names",
@@ -1423,7 +1436,7 @@ def find_closest_date(dates_list: list, target_date: str, date_fmt: str = "%Y%m%
 ############                                                                            ############
 ############                                                                            ############
 ############   Section 3: Methods dedicated to find directories, remove empty folders   ############
-############     find all the files inside a certain directory, etc                     ############
+############     find all the files inside a certain directory, copy files, etc         ############
 ############                                                                            ############
 ############                                                                            ############
 ####################################################################################################
@@ -1970,6 +1983,236 @@ def create_temporary_filename(
         tmp_filename = _build_filename(unique_id)
 
     return tmp_filename
+
+
+####################################################################################################
+def _build_id_pattern(id_list: list[str]) -> re.Pattern:
+    """
+    Build a regex that matches any of the IDs as a whole token.
+
+    "sub-01" matches ".../sub-01/anat/sub-01_T1w.nii.gz" but not "sub-010" or
+    "sub-011". The longest IDs are tried first, so that "sub-01_ses-01" wins over
+    "sub-01" when both are given.
+
+    Parameters
+    ----------
+    id_list : list of str
+        IDs to match.
+
+    Returns
+    -------
+    re.Pattern
+        Compiled pattern. The text of each match is one of the IDs.
+    """
+    alternatives = "|".join(
+        re.escape(i) for i in sorted(id_list, key=len, reverse=True)
+    )
+    return re.compile(rf"(?<![A-Za-z0-9])(?:{alternatives})(?![A-Za-z0-9])")
+
+
+####################################################################################################
+def copy_files_by_suffix(
+    source_dir: str | Path,
+    dest_dir: str | Path,
+    suffixes: str | list[str],
+    ids: str | list[str] | Path | None = None,
+    overwrite: bool = False,
+    simulate: bool = False,
+    verbose: bool = True,
+) -> list[str]:
+    """
+    Copy the files ending with the given suffixes from source_dir to dest_dir,
+    keeping the relative folder structure.
+
+    Optionally, only the files whose relative path contains one of the given IDs
+    (as a whole token) are copied.
+
+    Parameters
+    ----------
+    source_dir : str or Path
+        Root directory to search for files.
+
+    dest_dir : str or Path
+        Root directory where the files will be copied. If it lies inside
+        ``source_dir``, it is excluded from the search.
+
+    suffixes : str or list of str
+        File suffix(es) to match (e.g. "_desc-n4corrden_T1w.nii.gz"). They are
+        matched against the end of the file name.
+
+    ids : str, list of str, Path or None, optional
+        IDs used to filter the files: a single ID, a comma-separated string, a
+        list, or a text file with one ID per line (parsed with
+        ``pipelinetools.get_fullids2process``). IDs are matched as whole tokens
+        ("sub-01" does not match "sub-010"). If None (default), all the files with
+        the suffixes are copied.
+
+    overwrite : bool, optional
+        If True, the files that already exist in ``dest_dir`` are replaced. If False
+        (default), they are skipped.
+
+    simulate : bool, optional
+        If True, nothing is copied: the function only reports and returns what
+        would be copied. Default is False.
+
+    verbose : bool, optional
+        If True (default), show a progress bar and a final summary.
+
+    Returns
+    -------
+    list of str
+        Paths in ``dest_dir`` of the files that were copied (or that would be
+        copied with ``simulate=True``). Skipped and failed files are not included.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``source_dir`` does not exist, or if ``ids`` is a path to a file that
+        does not exist.
+
+    ValueError
+        If ``source_dir`` and ``dest_dir`` are the same, if no non-empty suffix is
+        given, or if ``ids`` is given but contains no valid IDs.
+
+    Examples
+    --------
+    >>> # See what would be copied for two subjects
+    >>> copy_files_by_suffix(
+    ...     "/data/bids/derivatives/preproc",
+    ...     "/data/export",
+    ...     "_desc-n4corrden_T1w.nii.gz",
+    ...     ids="sub-01,sub-02",
+    ...     simulate=True,
+    ... )
+    ['/data/export/sub-01/anat/sub-01_desc-n4corrden_T1w.nii.gz',
+     '/data/export/sub-02/anat/sub-02_desc-n4corrden_T1w.nii.gz']
+
+    >>> # Copy the T1w and T2w images of the subjects listed in a text file
+    >>> copy_files_by_suffix(
+    ...     "/data/bids",
+    ...     "/data/export",
+    ...     ["_T1w.nii.gz", "_T2w.nii.gz"],
+    ...     ids="/data/ids.txt",
+    ... )
+    """
+
+    source_dir = os.path.abspath(str(source_dir))
+    dest_dir = os.path.abspath(str(dest_dir))
+
+    if not os.path.isdir(source_dir):
+        raise FileNotFoundError(f"Source directory not found: {source_dir}")
+    if source_dir == dest_dir:
+        raise ValueError("source_dir and dest_dir must be different.")
+
+    suffixes = tuple(s for s in to_list(suffixes) if s)
+    if not suffixes:
+        raise ValueError("At least one non-empty suffix must be provided.")
+
+    # Parse the IDs. None means no filtering (get_fullids2process would instead
+    # discover the subjects of a directory, so it is not called in that case).
+    id_list = None
+    id_pattern = None
+    if ids is not None:
+        # Imported here to avoid a circular import (pipelinetools imports misctools)
+        from .pipelinetools import get_fullids2process
+
+        if not isinstance(ids, (str, Path, list)):
+            ids = [str(i) for i in to_list(ids)]
+        id_list = remove_duplicates(
+            [i for i in get_fullids2process(ids) if i.lower() != "nan"]
+        )
+        if not id_list:
+            raise ValueError("'ids' was provided but contains no valid IDs.")
+        id_pattern = _build_id_pattern(id_list)
+
+    # Single walk over the tree; dest_dir is skipped if it is nested in source_dir.
+    # os.walk is used instead of get_all_files because the latter resolves symlinks
+    # (which breaks the relative paths of datalad/git-annex datasets) and cannot
+    # prune dest_dir from the search.
+    all_src_files = []
+    for root, dirs, files in os.walk(source_dir):
+        dirs[:] = sorted(d for d in dirs if os.path.join(root, d) != dest_dir)
+        for fname in sorted(files):
+            if not fname.endswith(suffixes):
+                continue
+            src_file = os.path.join(root, fname)
+            if id_pattern is not None and not id_pattern.search(
+                os.path.relpath(src_file, source_dir)
+            ):
+                continue
+            all_src_files.append(src_file)
+
+    console = Console(quiet=not verbose)
+
+    if not all_src_files:
+        console.print("[yellow]No files matched the given suffixes/IDs.")
+        return []
+
+    copied_files = []
+    skipped_files = []
+    failed_files = []  # (source file, error message)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        TextColumn("[dim]{task.fields[filename]}"),
+        console=console,
+        disable=not verbose,
+    ) as progress:
+        task = progress.add_task(
+            "Simulating copy" if simulate else "Copying files",
+            total=len(all_src_files),
+            filename="",
+        )
+
+        for src_file in all_src_files:
+            progress.update(task, filename=os.path.basename(src_file))
+
+            dst_file = os.path.join(dest_dir, os.path.relpath(src_file, source_dir))
+
+            if os.path.exists(dst_file) and not overwrite:
+                skipped_files.append(dst_file)
+            elif simulate:
+                copied_files.append(dst_file)
+            else:
+                try:
+                    os.makedirs(os.path.dirname(dst_file), exist_ok=True)
+                    shutil.copy2(src_file, dst_file)  # keeps timestamps
+                    copied_files.append(dst_file)
+                except OSError as e:
+                    failed_files.append((src_file, str(e)))
+
+            progress.advance(task)
+
+    prefix = "[SIMULATION MODE] Would copy" if simulate else "Copied"
+    console.print(
+        f"{prefix} {len(copied_files)} files, "
+        f"skipped {len(skipped_files)} existing files"
+        + (f", [red]{len(failed_files)} failed[/red]." if failed_files else ".")
+    )
+    for src, err in failed_files:
+        console.print(f"  [red]✗[/red] {src}: {err}")
+
+    if id_pattern is not None:
+        found = {
+            m.group(0)
+            for f in all_src_files
+            for m in id_pattern.finditer(os.path.relpath(f, source_dir))
+        }
+        missing = [i for i in id_list if i not in found]
+        if missing:
+            console.print(
+                f"[yellow]{len(missing)} ID(s) had no matching files: "
+                + ", ".join(missing[:10])
+                + (" ..." if len(missing) > 10 else "")
+            )
+
+    return copied_files
 
 
 ####################################################################################################
