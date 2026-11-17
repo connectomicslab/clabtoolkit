@@ -1692,6 +1692,71 @@ class TestGroupByNames:
         assert annot.codes.tolist() == [RED, GREEN, BLUE]
 
 
+class TestReplaceColor:
+    def test_color_code_and_vertices_are_replaced(self):
+        annot = hand_annot([RED, GREEN, BLUE, GREEN])
+        result = annot.replace_color("regB", "#ffff00")
+        yellow = 255 + 255 * 256
+        assert result is annot
+        assert annot.regtable[1].tolist() == [255, 255, 0, 0, yellow]
+        assert annot.codes.tolist() == [RED, yellow, BLUE, yellow]
+        # The other regions do not change
+        assert annot.regtable[[0, 2]].tolist() == [
+            [255, 0, 0, 0, RED],
+            [0, 0, 255, 0, BLUE],
+        ]
+        assert annot.regnames == ["regA", "regB", "regC"]
+        ok, errors = cltfree.verify_packed_rgb_values(annot.regtable)
+        assert ok, errors
+
+    def test_rgb_colors(self):
+        annot = hand_annot([RED, GREEN, BLUE])
+        annot.replace_color("regA", (10, 20, 30))
+        code = 10 + 20 * 256 + 30 * 65536
+        assert annot.regtable[0].tolist() == [10, 20, 30, 0, code]
+        annot.replace_color("regA", [0.0, 0.0, 0.5])
+        assert annot.regtable[0, :3].tolist() == [0, 0, 128]
+
+    def test_same_color_changes_nothing(self):
+        annot = hand_annot([RED, GREEN, BLUE])
+        annot.replace_color("regA", "#ff0000")
+        assert annot.codes.tolist() == [RED, GREEN, BLUE]
+
+    def test_shared_arrays_are_not_changed(self):
+        codes = np.array([RED, GREEN, BLUE], dtype=np.int32)
+        annot = hand_annot(codes)
+        regtable = annot.regtable
+        annot.replace_color("regA", "#123456")
+        assert codes.tolist() == [RED, GREEN, BLUE]
+        assert regtable[0, 4] == RED
+
+    def test_saved_and_loaded(self, tmp_path, desikan_annot):
+        desikan_annot.replace_color("precentral", "#ff0000")
+        out = tmp_path / "lh.recolored.annot"
+        desikan_annot.save_annotation(str(out))
+        loaded = AnnotParcellation(out)
+        info = loaded.get_info_from_name("precentral")["precentral"]
+        assert info["id"] == RED and info["color"].tolist() == [255, 0, 0]
+        np.testing.assert_array_equal(loaded.codes, desikan_annot.codes)
+
+    def test_errors(self):
+        with pytest.raises(ValueError, match="not loaded"):
+            AnnotParcellation().replace_color("regA", "#ff0000")
+
+        annot = hand_annot([RED, GREEN, BLUE, 0])
+        with pytest.raises(ValueError, match="not found"):
+            annot.replace_color("nothing", "#ff0000")
+        with pytest.raises(TypeError):
+            annot.replace_color(1, "#ff0000")
+        with pytest.raises(ValueError, match="already used by 'regC'"):
+            annot.replace_color("regA", "#0000ff")
+        # Black gives code 0, which the unlabeled vertex already has
+        with pytest.raises(ValueError, match="outside the color table"):
+            annot.replace_color("regA", "#000000")
+        assert annot.codes.tolist() == [RED, GREEN, BLUE, 0]
+        assert annot.regtable[0, 4] == RED
+
+
 @needs_fsaverage
 class TestFsaverage:
     def test_desikan_annotation(self):

@@ -3224,6 +3224,110 @@ class AnnotParcellation:
 
         return self
 
+    ####################################################################################################
+    def replace_color(
+        self,
+        region_name: str,
+        color: str | list | tuple | np.ndarray,
+    ) -> "AnnotParcellation":
+        """
+        Replace the color of a region.
+
+        In an annotation the code of a region is its packed RGB color
+        (R + G * 256 + B * 65536). The new color is written in the color table of the
+        region, its code (fifth column of ``regtable``) is computed from it, and the
+        vertices of the region are relabeled with the new code. The annotation is
+        modified in place.
+
+        Parameters
+        ----------
+        region_name : str
+            Name of the region, as it appears in ``regnames`` (exact match).
+
+        color : str, list, tuple or np.ndarray
+            New color, as a hex string (e.g. "#ff0000") or RGB values (0-255, or
+            0-1 floats).
+
+        Returns
+        -------
+        AnnotParcellation
+            The annotation with the new color (the same object).
+
+        Raises
+        ------
+        ValueError
+            If the annotation is not loaded, if the region is not in the annotation,
+            if another region already has the new color (two regions cannot share a
+            code), or if some vertices outside the color table already have the code
+            of the new color.
+
+        TypeError
+            If region_name is not a string.
+
+        Examples
+        --------
+        >>> annot = AnnotParcellation('/opt/freesurfer/subjects/fsaverage/label/lh.aparc.annot')
+        >>> annot.replace_color('precentral', '#ff0000')
+        >>> annot.get_info_from_name('precentral')['precentral']['id']  # 255 + 0 * 256 + 0 * 65536
+        255
+        """
+
+        if not self.is_loaded() or self.regtable is None or self.regnames is None:
+            raise ValueError("The annotation is not loaded.")
+
+        if not isinstance(region_name, str):
+            raise TypeError(
+                f"region_name must be a str, got {type(region_name).__name__!r}."
+            )
+
+        if region_name not in self.regnames:
+            raise ValueError(f"Region '{region_name}' not found in the annotation.")
+
+        # Position of the region, and its current code
+        idx = self.regnames.index(region_name)
+        old_code = int(self.regtable[idx, 4])
+
+        # New color and its packed RGB code
+        rgb = np.asarray(
+            cltcol.harmonize_colors([color], output_format="rgb")[0], dtype=int
+        )
+        new_code = int(rgb[0] + rgb[1] * 256 + rgb[2] * 65536)
+
+        if new_code == old_code:
+            return self
+
+        # Two regions with the same code cannot be told apart
+        others = np.delete(self.regtable[:, 4].astype(int), idx)
+        if new_code in others:
+            other = self.regnames[int(np.where(self.regtable[:, 4] == new_code)[0][0])]
+            raise ValueError(
+                f"The color {cltcol.harmonize_colors([rgb])[0]} is already used by "
+                f"'{other}'. FreeSurfer identifies regions by their packed RGB value, "
+                "so every region must have a distinct color."
+            )
+
+        # Vertices with a code that is not in the table (e.g. 0 on the medial wall)
+        # would join the region if they had the new code
+        codes = np.array(self.codes, copy=True)
+        if np.any(codes == new_code):
+            raise ValueError(
+                f"The color {cltcol.harmonize_colors([rgb])[0]} gives the code "
+                f"{new_code}, which some vertices outside the color table already "
+                "have. Choose another color."
+            )
+
+        # Relabel the vertices of the region. The arrays are copied, so arrays
+        # shared with other objects are not changed
+        codes[codes == old_code] = new_code
+        regtable = np.array(self.regtable, copy=True)
+        regtable[idx, :3] = rgb
+        regtable[idx, 4] = new_code
+
+        self.codes = codes
+        self.regtable = regtable
+
+        return self
+
 
 ####################################################################################################
 ####################################################################################################

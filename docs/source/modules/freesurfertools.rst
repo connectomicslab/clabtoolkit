@@ -46,6 +46,7 @@ Parcellation Processing:
 - ``fill_parcellation()``: Fill a parcellation using a label and surface file
 - ``group_into_lobes()``: Group regions into anatomical lobes
 - ``group_by_names()``: Group regions by name substrings into a coarser parcellation, with a color for each group
+- ``replace_color()``: Replace the color of a region, updating its code in the color table and in the vertices
 - ``complete_table()``: Add a colour table entry for every vertex code missing from the table
 - ``map_values()``: Map regional values onto the annotation
 
@@ -140,6 +141,11 @@ Working with annotation files::
         },
         keep_ungrouped=True,  # False leaves the other vertices unlabeled
     )
+
+    # Replace the color of a region. Its code (R + G * 256 + B * 65536) is updated
+    # in the color table and in its vertices
+    annot.replace_color("precentral", "#ffff00")
+    annot.replace_color("postcentral", (0, 255, 255))
 
 Working with a subject::
 
