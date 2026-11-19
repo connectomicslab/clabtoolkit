@@ -36,6 +36,36 @@ from .pointstools import PointsCloud
 
 
 ####################################################################################################
+def _load_label_data_int32(img) -> np.ndarray:
+    """
+    Read a label image as an int32 array without a full-size float64 copy.
+
+    ``img.get_fdata().astype(np.int32)`` first builds a float64 copy of the whole
+    volume (8 bytes/voxel) only to throw it away. When the file carries no
+    intensity scaling the stored values are read directly instead; converting
+    integers, float32 or float64 straight to int32 gives exactly the same result
+    as going through float64 first (same truncation). Scaled images keep the
+    original float64 path so their values are unchanged.
+
+    Parameters
+    ----------
+    img : nibabel.spatialimages.SpatialImage
+        Loaded (lazy) image.
+
+    Returns
+    -------
+    np.ndarray
+        Label data as int32.
+    """
+    slope = getattr(img.dataobj, "slope", 1.0)
+    inter = getattr(img.dataobj, "inter", 0.0)
+    if slope == 1 and inter == 0:
+        return np.asanyarray(img.dataobj).astype(np.int32)
+
+    return img.get_fdata().astype(np.int32)
+
+
+####################################################################################################
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
@@ -186,7 +216,7 @@ class Parcellation:
             # Load the parcellation data
             temp_iparc = nib.load(parc_file)
             self.affine = temp_iparc.affine
-            self.data = temp_iparc.get_fdata().astype(np.int32)
+            self.data = _load_label_data_int32(temp_iparc)
             self.dtype = temp_iparc.get_data_dtype()
 
             # Determine color table to load
