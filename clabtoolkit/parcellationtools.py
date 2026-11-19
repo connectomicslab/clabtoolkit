@@ -4026,18 +4026,22 @@ class Parcellation:
             if not isinstance(parc, Parcellation):
                 raise TypeError("All elements must be Parcellation objects")
 
-            # Deep copy and harmonize
-            tmp_parc = copy.deepcopy(parc)
+            # Shallow copy and harmonize. harmonize() only reassigns the
+            # metadata attributes, and the voxel array is only read below, so
+            # the caller's object is left untouched without deep-copying the
+            # whole volume.
+            tmp_parc = copy.copy(parc)
             tmp_parc.harmonize()
 
-            # Get non-zero indices
-            ind = np.where(tmp_parc.data != 0)
+            # Boolean mask of the non-zero voxels (1 byte/voxel, instead of the
+            # three int64 coordinate arrays np.where would return)
+            nz_mask = parc.data != 0
 
             # Adjust labels if appending
+            label_offset = self.maxlab if append else 0
             if append:
-                tmp_parc.data[ind] = tmp_parc.data[ind] + self.maxlab
                 if hasattr(tmp_parc, "index"):
-                    tmp_parc.index = [int(x + self.maxlab) for x in tmp_parc.index]
+                    tmp_parc.index = [int(x + label_offset) for x in tmp_parc.index]
 
             # Check if both parcellations have lookup tables
             has_lut = all(
@@ -4073,7 +4077,11 @@ class Parcellation:
                     self.opacity = tmp_parc.opacity
 
             # Update parcellation data
-            self.data[ind] = tmp_parc.data[ind]
+            new_vals = parc.data[nz_mask]
+            if append:
+                new_vals = new_vals + label_offset
+            self.data[nz_mask] = new_vals
+            del nz_mask, new_vals
 
         # Final harmonization
         self.harmonize()
