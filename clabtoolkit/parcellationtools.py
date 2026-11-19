@@ -3878,22 +3878,42 @@ class Parcellation:
 
         # Get unique structure codes in data (excluding background/0)
         st_codes = _nonzero_labels(self.data)
+        st_codes_set = set(st_codes.tolist())
 
         # Leave the index if it is present in stcodes
-        new_parc = np.zeros_like(self.data)
         new_index = []
         new_name = []
         new_color = []
         new_opacity = []
+        old_codes = []
         for i, index in enumerate(self.index):
-            if index in st_codes:
+            if index in st_codes_set:
                 new_index.append(i + 1 + offset)
                 new_name.append(self.name[i])
                 new_color.append(self.color[i])
                 if hasattr(self, "opacity"):
                     new_opacity.append(self.opacity[i])
+                old_codes.append(index)
 
-                new_parc[self.data == index] = i + 1 + offset
+        # Relabel every voxel in a single pass instead of one full-volume
+        # comparison per label. Only the non-zero voxels are touched; voxels whose
+        # code is not in the index become 0, as before. old_codes is sorted
+        # (adjust_values sorts the index); with side="right" - 1 a repeated code
+        # maps to its last occurrence, matching the previous last-write-wins loop.
+        new_parc = np.zeros_like(self.data)
+        if old_codes:
+            old_codes = np.asarray(old_codes)
+            order = np.argsort(old_codes, kind="stable")
+            keys = old_codes[order]
+            new_vals = np.asarray(new_index)[order]
+
+            nz_mask = self.data != 0
+            vals = self.data[nz_mask]
+            pos = np.searchsorted(keys, vals, side="right") - 1
+            pos_ok = np.clip(pos, 0, None)
+            found = (pos >= 0) & (keys[pos_ok] == vals)
+            new_parc[nz_mask] = np.where(found, new_vals[pos_ok], 0)
+            del nz_mask, vals, pos, pos_ok, found
 
         # Update data with rearranged labels
         self.data = new_parc
