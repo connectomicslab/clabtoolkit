@@ -2190,37 +2190,51 @@ def spams2maxprob(
     if not os.path.exists(spam_image):
         raise FileNotFoundError(f"SPAM image file not found: {spam_image}")
 
-    # Load the SPAM image using nibabel
-    spam_img = nib.load(spam_image)
+    # Load the SPAM image lazily. The 4D array is never materialised: the volumes
+    # are streamed one at a time while a running (max probability, label) pair is
+    # kept, so peak memory is a few 3D volumes instead of the whole 4D array in
+    # float64. keep_file_open=True matters for .nii.gz files: reading the volumes
+    # in ascending order then only seeks forward in the gzip stream, so the file
+    # is decompressed once rather than once per volume.
+    spam_img = nib.load(spam_image, keep_file_open=True)
     affine = spam_img.affine
-    spam_vol = spam_img.get_fdata()
 
-    # Apply probability threshold and clamp values between 0 and 1
-    spam_vol[spam_vol < prob_thresh] = 0
-    spam_vol[spam_vol > 1] = 1
+    if len(spam_img.shape) != 4:
+        raise ValueError(
+            f"The SPAM image must be 4D, got shape {spam_img.shape}: {spam_image}"
+        )
+    n_vols = spam_img.shape[3]
 
     if vol_indexes is not None:
         vol_indexes = cltmisc.build_indices(vol_indexes)
-        vol_indexes = np.array(vol_indexes)
+        vols2use = sorted({int(v) for v in vol_indexes})
+        if vols2use and (vols2use[0] < 0 or vols2use[-1] >= n_vols):
+            raise IndexError(
+                f"vol_indexes must be in [0, {n_vols - 1}] for {spam_image}, "
+                f"got {vols2use}"
+            )
+    else:
+        vols2use = range(n_vols)
 
-        # I want to find the complementary indexes to vol_indexes
-        all_indexes = np.arange(0, spam_vol.shape[3])
-        set1 = set(all_indexes)
-        set2 = set(vol_indexes)
+    max_prob = np.zeros(spam_img.shape[:3], dtype=np.float32)
+    maxprob_thl = np.zeros(spam_img.shape[:3], dtype=np.int32)
 
-        # Find the symmetric difference
-        diff_elements = set1.symmetric_difference(set2)
+    for vol in vols2use:
+        # np.array (not asarray): the proxy may hand back a read-only buffer
+        prob = np.array(spam_img.dataobj[..., vol], dtype=np.float32)
 
-        # Convert the result back to a NumPy array if needed
-        diff_array = np.array(list(diff_elements), dtype=int)
+        # Apply probability threshold and clamp values between 0 and 1
+        prob[prob < prob_thresh] = 0
+        np.minimum(prob, 1, out=prob)
 
-        diff_array = np.array(list(diff_elements), dtype=int)
-        spam_vol[:, :, :, diff_array] = 0
-        # array_data = np.delete(spam_vol, diff_array, 3)
+        # Strict '>' keeps the first maximum on ties, matching np.argmax. Voxels
+        # where every selected volume is 0 are never updated and stay background.
+        winners = prob > max_prob
+        max_prob[winners] = prob[winners]
+        maxprob_thl[winners] = vol + 1
+        del prob, winners
 
-    ind = np.where(np.sum(spam_vol, axis=3) == 0)
-    maxprob_thl = spam_vol.argmax(axis=3) + 1
-    maxprob_thl[ind] = 0
+    del max_prob
 
     if maxp_name is not None:
         # Save the image
