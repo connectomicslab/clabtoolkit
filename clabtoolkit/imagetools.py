@@ -946,7 +946,8 @@ def crop_image_from_mask(
             raise ValueError(f"The mask file does not exist: {mask}")
         else:
             mask = nib.load(mask)
-            mask_data = mask.get_fdata()
+            # Stored dtype (e.g. int16 labels) instead of a float64 copy
+            mask_data = np.asanyarray(mask.dataobj)
     elif isinstance(mask, np.ndarray):
         mask_data = mask
     else:
@@ -964,23 +965,17 @@ def crop_image_from_mask(
     if not os.path.exists(out_pth):
         Path(out_pth).mkdir(parents=True, exist_ok=True)
 
-    # Loading both images
+    # Loading the image lazily: only the cropped block is ever read into memory
     img1 = nib.load(in_image)  # Original MRI image
 
-    # Get data and affine matrices
-    img1_affine = img1.affine
-
-    # Get the destination shape
-    img1_data = img1.get_fdata()
-
     # The mask's spatial dimensions must match the image's - otherwise the
-    # multiplication below either raises an opaque broadcasting error or,
-    # worse, silently produces a wrong-sized/garbage result if the shapes
-    # happen to be broadcastable.
-    if mask_data.shape[:3] != img1_data.shape[:3]:
+    # masking below either raises an opaque broadcasting error or, worse,
+    # silently produces a wrong-sized/garbage result if the shapes happen to be
+    # broadcastable.
+    if mask_data.shape[:3] != img1.shape[:3]:
         raise ValueError(
             f"Mask spatial shape {mask_data.shape[:3]} does not match "
-            f"image spatial shape {img1_data.shape[:3]}."
+            f"image spatial shape {img1.shape[:3]}."
         )
 
     # Finding the minimum and maximum indexes for the mask
@@ -998,29 +993,30 @@ def crop_image_from_mask(
     # Minimum and maximum indexes for Z axis
     k_start = np.min(tmp_var[:, 2])
     k_end = np.max(tmp_var[:, 2])
+    del tmp_var
 
-    # If img1_data is a 4D array we need to multiply it by the mask in the last dimension only. If not, we multiply it by the mask
-    # Applying the mask
-    if len(img1_data.shape) == 4:
-        masked_data = img1_data * tmask[..., np.newaxis]
+    # Crop first, then mask: the full-size image is never loaded or multiplied.
+    # The end indexes are inclusive, so +1 keeps the last slice of the mask.
+    # SpatialImage.slicer also updates the affine so the crop keeps its
+    # position in mm.
+    crop_slices = (
+        slice(i_start, i_end + 1),
+        slice(j_start, j_end + 1),
+        slice(k_start, k_end + 1),
+    )
+    cropped_ref = img1.slicer[crop_slices]
+    cropped_data = cropped_ref.get_fdata()
+    cropped_mask = tmask[crop_slices]
+
+    # If the image is 4D the mask is applied to every volume. Not in place:
+    # get_fdata may return a read-only buffer for float64 images.
+    if cropped_data.ndim == 4:
+        cropped_data = cropped_data * cropped_mask[..., np.newaxis]
     else:
-        masked_data = img1_data * tmask
-
-    # Creating a new Nifti image with the same affine and header as img1
-    array_img = nib.Nifti1Image(masked_data, img1_affine)
-
-    # Cropping the masked data
-    # The end indexes are inclusive, so +1 keeps the last slice of the mask
-    if len(img1_data.shape) == 4:
-        cropped_img = array_img.slicer[
-            i_start : i_end + 1, j_start : j_end + 1, k_start : k_end + 1, :
-        ]
-    else:
-        cropped_img = array_img.slicer[
-            i_start : i_end + 1, j_start : j_end + 1, k_start : k_end + 1
-        ]
+        cropped_data = cropped_data * cropped_mask
 
     # Saving the cropped image
+    cropped_img = nib.Nifti1Image(cropped_data, cropped_ref.affine)
     nib.save(cropped_img, out_image)
 
     return out_image
@@ -1073,80 +1069,30 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str) -> str:
     if not os.path.exists(out_pth):
         Path(out_pth).mkdir(parents=True, exist_ok=True)
 
-    # Loading both images
+    # Loading both images lazily. Only the native image's shape and affine are
+    # needed, so its voxels are never read. keep_file_open=True lets a 4D .nii.gz
+    # be streamed volume by volume with a single decompression pass.
     img1 = nib.load(native_image)  # Original MRI image
-    img2 = nib.load(in_image)  # Cropped image
+    img2 = nib.load(in_image, keep_file_open=True)  # Cropped image
 
-    # Get data and affine matrices
+    # Get the affine matrices and the destination shape
     img1_affine = img1.affine
     img2_affine = img2.affine
+    native_shape = tuple(img1.shape[:3])
+    img2_shape = img2.shape
 
-    # Get the destination shape
-    img1_data = img1.get_fdata()
-    img1_shape = img1_data.shape
-
-    # Get data from IM2
-    img2_data = img2.get_fdata()
-    img2_shape = img2_data.shape
+    if len(img2_shape) not in (3, 4):
+        raise ValueError(
+            f"'{in_image}' must be a 3D or 4D image, got {len(img2_shape)}D."
+        )
 
     # Multiply the inverse of the affine matrix of img1 by the affine matrix of img2
     affine_mult = np.linalg.inv(img1_affine) @ img2_affine
 
-    # If the img2 is a 4D add the forth dimension to the shape of the img1
-    if len(img2_shape) == 4:
-        img1_shape = (img1_shape[0], img1_shape[1], img1_shape[2], img2_shape[3])
-
-        # Create an empty array with the same dimensions as IM1
-        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
-
-        for vol in range(img2_data.shape[-1]):
-            # Find the coordinates in voxels of the voxels different from 0 on the img2
-            indices = np.argwhere(img2_data[..., vol] != 0)
-
-            # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
-            new_coords = np.round(
-                affine_mult
-                @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
-            ).astype(int)
-
-            # Guard against transformed coordinates that fall outside img1's
-            # bounds - without this, mismatched affines/FOVs either raise a
-            # raw IndexError or, with negative indices, silently wrap around
-            # and corrupt the output.
-            in_bounds = (
-                (new_coords[0] >= 0)
-                & (new_coords[0] < img1_shape[0])
-                & (new_coords[1] >= 0)
-                & (new_coords[1] < img1_shape[1])
-                & (new_coords[2] >= 0)
-                & (new_coords[2] < img1_shape[2])
-            )
-            n_dropped = int(np.size(in_bounds) - np.sum(in_bounds))
-            if n_dropped > 0:
-                warnings.warn(
-                    f"{n_dropped} voxel(s) in volume {vol} mapped outside the "
-                    f"native image bounds and were dropped. Check that "
-                    f"'{in_image}' and '{native_image}' share a consistent "
-                    f"field of view.",
-                    stacklevel=2,
-                )
-
-            # Fill the new image with the values of the voxels different from 0 on img2
-            new_data[
-                new_coords[0, in_bounds],
-                new_coords[1, in_bounds],
-                new_coords[2, in_bounds],
-                vol,
-            ] = img2_data[
-                indices[in_bounds, 0], indices[in_bounds, 1], indices[in_bounds, 2], vol
-            ]
-
-    elif len(img2_shape) == 3:
-        # Create an empty array with the same dimensions as IM1
-        new_data = np.zeros(img1_shape, dtype=img2_data.dtype)
-
+    def _paste_nonzero(src: np.ndarray, dst: np.ndarray, vol_msg: str) -> None:
+        """Copy the non-zero voxels of the 3D ``src`` into the 3D ``dst``."""
         # Find the coordinates in voxels of the voxels different from 0 on the img2
-        indices = np.argwhere(img2_data != 0)
+        indices = np.argwhere(src != 0)
 
         # Apply the affine transformation to the coordinates of the voxels different from 0 on img2
         new_coords = np.round(
@@ -1154,35 +1100,59 @@ def cropped_to_native(in_image: str, native_image: str, out_image: str) -> str:
             @ np.concatenate((indices.T, np.ones((1, indices.shape[0]))), axis=0)
         ).astype(int)
 
-        # Guard against transformed coordinates that fall outside img1's bounds
+        # Guard against transformed coordinates that fall outside img1's
+        # bounds - without this, mismatched affines/FOVs either raise a
+        # raw IndexError or, with negative indices, silently wrap around
+        # and corrupt the output.
         in_bounds = (
             (new_coords[0] >= 0)
-            & (new_coords[0] < img1_shape[0])
+            & (new_coords[0] < native_shape[0])
             & (new_coords[1] >= 0)
-            & (new_coords[1] < img1_shape[1])
+            & (new_coords[1] < native_shape[1])
             & (new_coords[2] >= 0)
-            & (new_coords[2] < img1_shape[2])
+            & (new_coords[2] < native_shape[2])
         )
         n_dropped = int(np.size(in_bounds) - np.sum(in_bounds))
         if n_dropped > 0:
             warnings.warn(
-                f"{n_dropped} voxel(s) mapped outside the native image bounds "
-                f"and were dropped. Check that '{in_image}' and "
+                f"{n_dropped} voxel(s){vol_msg} mapped outside the native image "
+                f"bounds and were dropped. Check that '{in_image}' and "
                 f"'{native_image}' share a consistent field of view.",
-                stacklevel=2,
+                stacklevel=3,
             )
 
         # Fill the new image with the values of the voxels different from 0 on img2
-        new_data[
+        dst[
             new_coords[0, in_bounds], new_coords[1, in_bounds], new_coords[2, in_bounds]
-        ] = img2_data[
-            indices[in_bounds, 0], indices[in_bounds, 1], indices[in_bounds, 2]
-        ]
+        ] = src[indices[in_bounds, 0], indices[in_bounds, 1], indices[in_bounds, 2]]
+
+    # The data are read in their stored type (e.g. int16 labels, float32
+    # probabilities) rather than as float64, which halves or quarters the size of
+    # the native-space output array.
+    if len(img2_shape) == 4:
+        n_vols = img2_shape[3]
+        new_data = None
+        for vol in range(n_vols):
+            vol_data = np.asanyarray(img2.dataobj[..., vol])
+            if new_data is None:
+                # Create an empty array with the same dimensions as IM1
+                new_data = np.zeros(native_shape + (n_vols,), dtype=vol_data.dtype)
+
+            # new_data[..., vol] is a view, so pasting into it fills new_data
+            _paste_nonzero(vol_data, new_data[..., vol], f" in volume {vol}")
+            del vol_data
 
     else:
-        raise ValueError(
-            f"'{in_image}' must be a 3D or 4D image, got {len(img2_shape)}D."
-        )
+        img2_data = np.asanyarray(img2.dataobj)
+
+        # Create an empty array with the same dimensions as IM1
+        new_data = np.zeros(native_shape, dtype=img2_data.dtype)
+        _paste_nonzero(img2_data, new_data, "")
+        del img2_data
+
+    # Release the input file handle (kept open for streaming) before writing,
+    # since callers may write the output over the input file.
+    del img2
 
     # Create a new Nifti image with the same affine and header as IM1
     new_img2 = nib.Nifti1Image(new_data, affine=img1_affine, header=img1.header)
