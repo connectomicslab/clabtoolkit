@@ -66,6 +66,28 @@ def _load_label_data_int32(img) -> np.ndarray:
 
 
 ####################################################################################################
+def _nonzero_labels(data: np.ndarray) -> np.ndarray:
+    """
+    Sorted unique non-zero values of a label array.
+
+    Equivalent to ``u = np.unique(data); u[u != 0]`` but sorts only the non-zero
+    voxels instead of the whole volume, which is much faster and lighter for
+    sparse parcellations on high-resolution grids.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Label array.
+
+    Returns
+    -------
+    np.ndarray
+        Sorted unique non-zero labels, with the dtype of ``data``.
+    """
+    return np.unique(data[data != 0])
+
+
+####################################################################################################
 ####################################################################################################
 ############                                                                            ############
 ############                                                                            ############
@@ -411,8 +433,7 @@ class Parcellation:
         default opacity (1.0), and empty headerlines.
         """
         # Get unique non-zero values
-        unique_vals = np.unique(self.data)
-        unique_vals = unique_vals[unique_vals != 0]
+        unique_vals = _nonzero_labels(self.data)
 
         self.index = [int(x) for x in unique_vals]
         self.name = cltmisc.create_names_from_indices(self.index)
@@ -439,8 +460,7 @@ class Parcellation:
         """
         # Ensure index exists
         if not hasattr(self, "index") or self.index is None:
-            unique_vals = np.unique(self.data)
-            unique_vals = unique_vals[unique_vals != 0]
+            unique_vals = _nonzero_labels(self.data)
             self.index = [int(x) for x in unique_vals]
 
         # Force index to int
@@ -1643,8 +1663,7 @@ class Parcellation:
             hf.create_dataset(f"{base_cad}/header/min_label", data=self.min_label)
         else:
             # If min_label and max_label are not set, calculate them from the data
-            regions = np.unique(self.data)
-            regions = regions[regions != 0]
+            regions = _nonzero_labels(self.data)
             hf.create_dataset(f"{base_cad}/header/min_label", data=np.min(regions))
 
             # Save the maximum label
@@ -1652,8 +1671,7 @@ class Parcellation:
             hf.create_dataset(f"{base_cad}/header/max_label", data=self.max_label)
         else:
             # If min_label and max_label are not set, calculate them from the data
-            regions = np.unique(self.data)
-            regions = regions[regions != 0]
+            regions = _nonzero_labels(self.data)
             hf.create_dataset(f"{base_cad}/header/max_label", data=np.max(regions))
 
         # Save the index of the regions
@@ -1872,8 +1890,7 @@ class Parcellation:
         self.data[~mask] = 0
 
         # Get the actual codes present in the filtered data (excluding 0)
-        remaining_codes = np.unique(self.data)
-        remaining_codes = remaining_codes[remaining_codes != 0]
+        remaining_codes = _nonzero_labels(self.data)
 
         # Filter metadata arrays to match remaining codes
         if hasattr(self, "index"):
@@ -2134,8 +2151,7 @@ class Parcellation:
         self.data[np.isin(self.data, codes2remove)] = 0
 
         # Get remaining codes (excluding 0)
-        remaining_codes = np.unique(self.data)
-        remaining_codes = remaining_codes[remaining_codes != 0]
+        remaining_codes = _nonzero_labels(self.data)
 
         # Use keep_by_code to clean up metadata
         # (parc_range is called by keep_by_code, so no need to call it again)
@@ -2451,8 +2467,7 @@ class Parcellation:
 
         else:
             # Use all non-zero codes
-            codes_to_use = np.unique(self.data)
-            codes_to_use = codes_to_use[codes_to_use != 0]
+            codes_to_use = _nonzero_labels(self.data)
 
         # Create boolean mask of voxels to zero out
         if invert:
@@ -3443,8 +3458,7 @@ class Parcellation:
                 f"index, name, color and opacity must have the same length. Got {lengths}"
             )
 
-        st_codes = np.unique(self.data)
-        unique_codes = st_codes[st_codes != 0]
+        unique_codes = _nonzero_labels(self.data)
 
         index_arr = np.asarray(self.index)
         keep = np.where(np.isin(index_arr, unique_codes))[0]
@@ -3863,8 +3877,7 @@ class Parcellation:
         self.adjust_values()
 
         # Get unique structure codes in data (excluding background/0)
-        st_codes = np.unique(self.data)
-        st_codes = st_codes[st_codes != 0]
+        st_codes = _nonzero_labels(self.data)
 
         # Leave the index if it is present in stcodes
         new_parc = np.zeros_like(self.data)
@@ -3908,8 +3921,7 @@ class Parcellation:
         """
 
         # Get unique codes present in data (excluding background/0)
-        st_codes = np.unique(self.data)
-        unique_codes = st_codes[st_codes != 0]
+        unique_codes = _nonzero_labels(self.data)
 
         # Find which indices are actually present in the data
         if hasattr(self, "index"):
@@ -5098,8 +5110,7 @@ class Parcellation:
         """
 
         # Get unique non-zero elements
-        unique_codes = np.unique(self.data)
-        nonzero_codes = unique_codes[unique_codes != 0]
+        nonzero_codes = _nonzero_labels(self.data)
 
         if nonzero_codes.size > 0:
             self.minlab = np.min(nonzero_codes)
