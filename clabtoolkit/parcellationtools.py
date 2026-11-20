@@ -5116,6 +5116,243 @@ class Parcellation:
         return self
 
     ######################################################################################################
+    def relabel_by_colortable(
+        self,
+        ref_colortable: "str | Path | dict | Parcellation | cltcol.ColorTableLoader",
+        bool_case: bool = True,
+        keep_unmatched: bool = True,
+        verbose: bool = False,
+    ) -> "Parcellation":
+        """
+        Relabel the regions of the parcellation with the codes of a reference color table.
+
+        The regions are matched by name: for every name of the reference color
+        table, the region of the parcellation with the same name is looked up
+        and, if its label differs from the label of the reference, its voxels
+        are relabeled with the reference label. The index, name, color and
+        opacity of every matched region are replaced by the ones of the
+        reference. All voxels are relabeled from the ORIGINAL labels, so
+        swapped labels (region A has the label of B and B the label of A) never
+        cascade.
+
+        Parameters
+        ----------
+        ref_colortable : str, Path, dict, Parcellation or ColorTableLoader
+            Reference color table. Any format read by ``ColorTableLoader``
+            (FreeSurfer LUT, TSV, or a dictionary with the keys 'index' and
+            'name', and optionally 'color' and 'opacity'), another
+            ``Parcellation`` (its color table is used) or a ``ColorTableLoader``.
+            Entries with the code 0 (background) are ignored.
+
+        bool_case : bool, optional
+            Case-sensitive name matching. Leading and trailing spaces are always
+            ignored. Default is True.
+
+        keep_unmatched : bool, optional
+            If True, the regions whose name is not in the reference keep their
+            label, name, color and opacity. If one of their labels is taken by
+            a matched region, they are moved to a new label above the largest
+            label in use, with a warning. If False, they are removed (set to 0).
+            Default is True.
+
+        verbose : bool, optional
+            Print the regions whose label changed and the unmatched regions.
+            Default is False.
+
+        Returns
+        -------
+        Parcellation
+            self, to allow method chaining.
+
+        Raises
+        ------
+        TypeError
+            If ref_colortable has an unsupported type.
+        ValueError
+            If the reference color table contains the same name twice.
+
+        Warns
+        -----
+        UserWarning
+            If no region matches the reference, if several regions are merged
+            into the same reference label, or if unmatched regions are moved to
+            a new label.
+
+        Examples
+        --------
+        >>> # Give the regions the codes and colors of the FreeSurfer LUT
+        >>> parc.relabel_by_colortable("FreeSurferColorLUT.txt")
+        >>>
+        >>> # Reference in TSV format, case-insensitive names, drop the rest
+        >>> parc.relabel_by_colortable("atlas.tsv", bool_case=False, keep_unmatched=False)
+        >>>
+        >>> # Use the color table of another parcellation
+        >>> parc.relabel_by_colortable(other_parc)
+        """
+        # ------------------------------------------------------------------
+        # Load the reference color table
+        # ------------------------------------------------------------------
+        if isinstance(ref_colortable, (Parcellation, cltcol.ColorTableLoader)):
+            ref = ref_colortable
+        elif isinstance(ref_colortable, (str, Path, dict)):
+            ref = cltcol.ColorTableLoader(ref_colortable)
+        else:
+            raise TypeError(
+                "ref_colortable must be a path, a dict, a Parcellation or a "
+                f"ColorTableLoader, got {type(ref_colortable)}"
+            )
+
+        ref_index = [int(x) for x in ref.index]
+        ref_name = list(ref.name)
+        ref_color = cltcol.harmonize_colors(list(ref.color), output_format="hex")
+        ref_opacity = [float(x) for x in ref.opacity]
+
+        def _key(name) -> str:
+            name = str(name).strip()
+            return name if bool_case else name.lower()
+
+        # Reference name -> position in the reference table
+        ref_pos: dict[str, int] = {}
+        dup_names = set()
+        for pos, (code, name) in enumerate(zip(ref_index, ref_name, strict=True)):
+            if code == 0:
+                continue
+            key = _key(name)
+            if key in ref_pos:
+                dup_names.add(str(name).strip())
+            else:
+                ref_pos[key] = pos
+        if dup_names:
+            raise ValueError(
+                "The reference color table contains repeated names, so the "
+                f"matching is ambiguous: {sorted(dup_names)}"
+            )
+
+        # ------------------------------------------------------------------
+        # Match the regions of the parcellation by name
+        # ------------------------------------------------------------------
+        self.adjust_values()  # keep only the regions present, sorted by code
+        old_index = [int(c) for c in self.index]
+        n_entries = len(old_index)
+        names = list(self.name)
+        colors = list(self.color)
+        opacities = [float(x) for x in self.opacity]
+
+        present = [int(c) for c in _nonzero_labels(self.data)]
+
+        code_map: dict[int, int] = {}  # old code -> new code
+        final: dict[int, tuple] = {}  # new code -> (name, color, opacity)
+        merged: dict[int, list[str]] = {}  # new code -> names merged into it
+        changed = []  # (name, old code, new code) for the verbose report
+        matched_pos = set()
+
+        for pos in range(n_entries):
+            rpos = ref_pos.get(_key(names[pos]))
+            if rpos is None:
+                continue
+            old, new = old_index[pos], ref_index[rpos]
+            matched_pos.add(pos)
+            code_map[old] = new
+            merged.setdefault(new, []).append(names[pos])
+            if new not in final:
+                final[new] = (ref_name[rpos], ref_color[rpos], ref_opacity[rpos])
+            if old != new:
+                changed.append((names[pos], old, new))
+
+        if not matched_pos:
+            warnings.warn(
+                "No region of the parcellation matches a name of the reference "
+                "color table; the parcellation is unchanged.",
+                stacklevel=2,
+            )
+            return self
+
+        for new, src in merged.items():
+            if len(src) > 1:
+                warnings.warn(
+                    f"Regions {src} have the same reference name and were merged "
+                    f"into the label {new}.",
+                    stacklevel=2,
+                )
+
+        # ------------------------------------------------------------------
+        # Regions without a match in the reference
+        # ------------------------------------------------------------------
+        unmatched_pos = [p for p in range(n_entries) if p not in matched_pos]
+        table_codes = set(old_index)
+        # Codes present in the volume without a color table entry are unmatched too
+        unmatched_codes = [old_index[p] for p in unmatched_pos] + [
+            c for c in present if c not in table_codes
+        ]
+        moved = []  # (name, old code, new code)
+
+        if keep_unmatched:
+            taken = set(final)
+            next_free = max(taken | set(present)) + 1
+            pos_of = {old_index[p]: p for p in unmatched_pos}
+            for c in unmatched_codes:
+                if c in taken:
+                    new = next_free
+                    next_free += 1
+                    moved.append((names[pos_of[c]] if c in pos_of else None, c, new))
+                else:
+                    new = c
+                code_map[c] = new
+                taken.add(new)
+                if c in pos_of:
+                    p = pos_of[c]
+                    final[new] = (names[p], colors[p], opacities[p])
+            if moved:
+                warnings.warn(
+                    "Unmatched regions whose label is used by the reference were "
+                    "moved to new labels: "
+                    + ", ".join(f"{n or c}: {c} -> {new}" for n, c, new in moved),
+                    stacklevel=2,
+                )
+        else:
+            for c in unmatched_codes:
+                code_map[c] = 0
+
+        # ------------------------------------------------------------------
+        # Relabel the volume in one pass from the original labels
+        # ------------------------------------------------------------------
+        keys = np.array(sorted(code_map), dtype=np.int64)
+        vals = np.array([code_map[k] for k in keys], dtype=self.data.dtype)
+        nz_mask = self.data != 0
+        new_data = np.zeros_like(self.data)
+        new_data[nz_mask] = vals[np.searchsorted(keys, self.data[nz_mask])]
+        del nz_mask
+        self.data = new_data
+
+        self.index = list(final.keys())
+        self.name = [v[0] for v in final.values()]
+        self.color = cltcol.harmonize_colors(
+            [v[1] for v in final.values()], output_format="hex"
+        )
+        self.opacity = [v[2] for v in final.values()]
+        self.adjust_values()  # sorts by code and updates the label range
+
+        if verbose:
+            print(
+                f"Matched regions: {len(matched_pos)} of {n_entries}; "
+                f"relabeled: {len(changed)}"
+            )
+            for name, old, new in changed:
+                print(f"  {name}: {old} -> {new}")
+            unmatched_names = [names[p] for p in unmatched_pos]
+            if unmatched_names:
+                action = "kept" if keep_unmatched else "removed"
+                n_show = 10
+                more = len(unmatched_names) - n_show
+                print(
+                    f"Unmatched regions ({action}): {len(unmatched_names)}: "
+                    f"{unmatched_names[:n_show]}"
+                    + (f" ... and {more} more" if more > 0 else "")
+                )
+
+        return self
+
+    ######################################################################################################
     def parc_range(self) -> None:
         """
         Update minimum and maximum label values in parcellation.

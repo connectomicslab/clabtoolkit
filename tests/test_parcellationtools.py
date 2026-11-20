@@ -452,6 +452,63 @@ class TestRelabeling:
         with pytest.raises(ValueError):
             named.replace_names({"": "b"})
 
+    def test_relabel_by_colortable(self, named, tmp_path):
+        n1, n2 = (named.data == 1).sum(), (named.data == 2).sum()
+        ref = {
+            "index": [0, 2, 1, 30],  # Swap of 1 and 2, and a new code for ctx-rh-a
+            "name": ["Unknown", "ctx-lh-a", "ctx-lh-b", "ctx-rh-a"],
+            "color": ["#000000", "#111111", "#222222", "#333333"],
+            "opacity": [1.0, 0.2, 0.3, 0.4],
+        }
+        named.relabel_by_colortable(ref)
+        assert named.index == [1, 2, 4, 30]
+        assert named.name == ["ctx-lh-b", "ctx-lh-a", "wm-lh-a", "ctx-rh-a"]
+        assert named.color == ["#222222", "#111111", "#ffff00", "#333333"]
+        assert named.opacity == [0.3, 0.2, 1.0, 0.4]
+        # The swap does not cascade
+        assert (named.data == 2).sum() == n1 and (named.data == 1).sum() == n2
+        assert named.data[0, 0, 0] == 2 and named.data[9, 9, 9] == 30
+
+    @pytest.mark.parametrize("fmt", ["lut", "tsv"])
+    def test_relabel_by_colortable_from_file(self, named, tmp_path, fmt):
+        loader = clabtoolkit.colorstools.ColorTableLoader
+        writer = loader.write_luttable if fmt == "lut" else loader.write_tsvtable
+        ref = {
+            "index": [2, 1],
+            "name": ["ctx-lh-a", "ctx-lh-b"],
+            "color": ["#111111", "#222222"],
+            "opacity": [1.0, 1.0],
+        }
+        out_file = tmp_path / f"ref.{fmt}"
+        writer(ref, out_file=str(out_file))
+        named.relabel_by_colortable(out_file)
+        assert named.index == [1, 2, 3, 4]
+        assert named.name[:2] == ["ctx-lh-b", "ctx-lh-a"]
+        assert named.color[:2] == ["#222222", "#111111"]
+        assert named.data[0, 0, 0] == 2
+
+    def test_relabel_by_colortable_unmatched(self, named):
+        # ctx-lh-a takes the code 4 of the unmatched wm-lh-a, which is moved
+        with pytest.warns(UserWarning, match="moved"):
+            named.relabel_by_colortable(
+                {"index": [4], "name": ["CTX-LH-A"]}, bool_case=False
+            )
+        assert named.index == [2, 3, 4, 5]
+        assert named.name == ["ctx-lh-b", "ctx-rh-a", "CTX-LH-A", "wm-lh-a"]
+        assert (named.data == 5).sum() == 2
+
+    def test_relabel_by_colortable_drop_and_errors(self, named):
+        named.relabel_by_colortable(
+            {"index": [7], "name": ["ctx-rh-a"]}, keep_unmatched=False
+        )
+        assert named.index == [7] and set(np.unique(named.data)) == {0, 7}
+        with pytest.warns(UserWarning, match="No region"):
+            named.relabel_by_colortable({"index": [1], "name": ["nothing"]})
+        with pytest.raises(ValueError, match="repeated"):
+            named.relabel_by_colortable({"index": [1, 2], "name": ["a", "a"]})
+        with pytest.raises(TypeError):
+            named.relabel_by_colortable(5)
+
     def test_group_by_codes(self, named):
         _, ctab = named.group_by_codes(
             {10: {"index": [1, 2], "name": "left", "color": "#123456"}},
