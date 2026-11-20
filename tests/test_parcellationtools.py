@@ -509,6 +509,61 @@ class TestRelabeling:
         with pytest.raises(TypeError):
             named.relabel_by_colortable(5)
 
+    @staticmethod
+    def _wm_parc(wm_codes, extra=None):
+        """ctx-lh-a 1, ctx-lh-b 2, ctx-rh-a 3 and their wm regions with the given codes."""
+        data = np.zeros((8, 8, 8), dtype=np.int32)
+        names = ["ctx-lh-a", "ctx-lh-b", "ctx-rh-a", "wm-lh-a", "wm-lh-b", "wm-rh-a"]
+        codes = [1, 2, 3, *wm_codes]
+        names += list(extra or {})
+        codes += list((extra or {}).values())
+        for k, code in enumerate(codes):
+            data[k, : k + 1, 0] = code  # Region k has k + 1 voxels
+        colors = [f"#0000{k:02x}" for k in range(len(codes))]
+        return Parcellation(
+            data, color_table={"index": codes, "name": names, "color": colors}
+        )
+
+    def test_correct_wm_labels(self):
+        # wm-lh-a should be 3001, which is the wrong code of wm-lh-b (chained shift)
+        parc = self._wm_parc([3001 + 14, 3001, 3003])
+        n_a, n_b = (parc.data == 3015).sum(), (parc.data == 3001).sum()
+        color_a = parc.color[parc.name.index("wm-lh-a")]
+        parc.correct_wm_labels("lh")
+        code = dict(zip(parc.name, parc.index, strict=True))
+        assert code["wm-lh-a"] == 3001 and code["wm-lh-b"] == 3002
+        assert code["wm-rh-a"] == 3003 and code["ctx-lh-a"] == 1
+        assert (parc.data == 3001).sum() == n_a and (parc.data == 3002).sum() == n_b
+        assert parc.color[parc.name.index("wm-lh-a")] == color_a
+        assert 3015 not in parc.data
+
+    def test_correct_wm_labels_hemis_and_noop(self, capsys):
+        parc = self._wm_parc([3001, 3002, 3010])
+        before = parc.data.copy()
+        parc.correct_wm_labels("lh", verbose=True)  # Already correct
+        assert (
+            np.array_equal(parc.data, before)
+            and "nothing changed" in capsys.readouterr().out
+        )
+        parc.correct_wm_labels(["lh", "rh"])
+        assert dict(zip(parc.name, parc.index, strict=True))["wm-rh-a"] == 3003
+
+    def test_correct_wm_labels_errors(self):
+        # The corrected code 3001 is taken by a region that keeps its code
+        parc = self._wm_parc([3005, 3002, 3003], extra={"other": 3001})
+        before = parc.data.copy()
+        with pytest.raises(ValueError, match="used by regions"):
+            parc.correct_wm_labels("lh")
+        assert np.array_equal(parc.data, before)
+        with pytest.raises(ValueError):
+            parc.correct_wm_labels("both")
+        # A wm region without cortex keeps its code, with a warning
+        parc = self._wm_parc([3005, 3002, 3003], extra={"wm-lh-z": 3100})
+        with pytest.warns(UserWarning, match="no cortical region"):
+            parc.correct_wm_labels("lh")
+        code = dict(zip(parc.name, parc.index, strict=True))
+        assert code["wm-lh-z"] == 3100 and code["wm-lh-a"] == 3001
+
     def test_group_by_codes(self, named):
         _, ctab = named.group_by_codes(
             {10: {"index": [1, 2], "name": "left", "color": "#123456"}},

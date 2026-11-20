@@ -78,6 +78,7 @@ Maintenance:
 - ``replace_labels()`` / ``replace_names()``: Replace region codes or names, including group replacements
 - ``relabel_regions()`` / ``rename_regions()``: Relabel or rename regions with a dictionary
 - ``relabel_by_colortable()``: Give the regions the codes, colours and opacities of a reference colour table, matched by name
+- ``correct_wm_labels()``: Give the cortical white matter regions the code of their cortical region plus 3000, per hemisphere
 - ``sort_index()``: Sort the region index
 - ``rearrange()``: Rearrange the region codes
 - ``harmonize()``: Harmonize the parcellation against a reference

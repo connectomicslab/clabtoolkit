@@ -5353,6 +5353,151 @@ class Parcellation:
         return self
 
     ######################################################################################################
+    def correct_wm_labels(
+        self,
+        hemi: str | list[str] = "lh",
+        offset: int = 3000,
+        ctx_prefix: str = "ctx",
+        wm_prefix: str = "wm",
+        verbose: bool = False,
+    ) -> "Parcellation":
+        """
+        Give the cortical white matter regions the code of their cortical region plus an offset.
+
+        In Chimera parcellations the white matter below a cortical region has
+        the code of that region plus 3000: ``wm-lh-X`` has the code of
+        ``ctx-lh-X`` + 3000. This method restores that rule when the white
+        matter codes are wrong: for every ``<wm_prefix>-<hemi>-X`` region whose
+        ``<ctx_prefix>-<hemi>-X`` region exists, the voxels are relabeled with
+        the code of the cortical region plus ``offset``. Names, colors and
+        opacities are kept, and the regions already following the rule are not
+        changed. All voxels are relabeled in one pass from the original codes,
+        so codes that are shifted onto each other do not cascade.
+
+        Parameters
+        ----------
+        hemi : str or list of str, optional
+            Hemisphere(s) to correct: "lh", "rh", or a list such as
+            ["lh", "rh"]. Default is "lh".
+
+        offset : int, optional
+            Difference between the code of a white matter region and the code
+            of its cortical region. Default is 3000.
+
+        ctx_prefix : str, optional
+            Prefix of the cortical region names. Default is "ctx".
+
+        wm_prefix : str, optional
+            Prefix of the white matter region names. Default is "wm".
+
+        verbose : bool, optional
+            Print the regions whose code changed. Default is False.
+
+        Returns
+        -------
+        Parcellation
+            self, to allow method chaining.
+
+        Raises
+        ------
+        ValueError
+            If hemi is not "lh" or "rh", a white matter or cortical name is
+            repeated, or a corrected code is already used by a region that
+            keeps its code. Nothing is changed in that case.
+
+        Warns
+        -----
+        UserWarning
+            If white matter regions have no cortical region with the same name;
+            they keep their code.
+
+        Examples
+        --------
+        >>> # Correct the left hemisphere (wm-lh-X = ctx-lh-X + 3000)
+        >>> parc.correct_wm_labels("lh")
+        >>>
+        >>> # Both hemispheres, printing the changes
+        >>> parc.correct_wm_labels(["lh", "rh"], verbose=True)
+        """
+        from collections import Counter
+
+        hemis = [hemi] if isinstance(hemi, str) else list(hemi)
+        if not hemis or any(h not in ("lh", "rh") for h in hemis):
+            raise ValueError(f"hemi must be 'lh', 'rh' or a list of them, got {hemi!r}")
+
+        self.adjust_values()
+        names = list(self.name)
+        codes = [int(c) for c in self.index]
+        code_of = dict(zip(names, codes, strict=True))
+
+        ref = {"index": [], "name": [], "color": [], "opacity": []}
+        changes = []  # (name, old code, new code)
+        no_ctx = []
+
+        for h in dict.fromkeys(hemis):
+            wm_tag, ctx_tag = f"{wm_prefix}-{h}-", f"{ctx_prefix}-{h}-"
+            repeated = sorted(
+                n
+                for n, k in Counter(names).items()
+                if k > 1 and n.startswith((wm_tag, ctx_tag))
+            )
+            if repeated:
+                raise ValueError(
+                    f"Repeated region names, the matching is ambiguous: {repeated[:10]}"
+                )
+
+            for pos, name in enumerate(names):
+                if not name.startswith(wm_tag):
+                    continue
+                ctx_name = ctx_tag + name[len(wm_tag) :]
+                if ctx_name not in code_of:
+                    no_ctx.append(name)
+                    continue
+                new = code_of[ctx_name] + offset
+                if codes[pos] != new:
+                    changes.append((name, codes[pos], new))
+                    ref["index"].append(new)
+                    ref["name"].append(name)
+                    ref["color"].append(self.color[pos])
+                    ref["opacity"].append(self.opacity[pos])
+
+        if no_ctx:
+            warnings.warn(
+                f"{len(no_ctx)} white matter region(s) have no cortical region with "
+                f"the same name and keep their code: {no_ctx[:10]}",
+                stacklevel=2,
+            )
+
+        if not changes:
+            if verbose:
+                print(
+                    "The white matter codes already follow the rule; nothing changed."
+                )
+            return self
+
+        # A corrected code must not be taken by a region that keeps its code
+        moved = {old for _, old, _ in changes}
+        kept = {c for c in codes if c not in moved}
+        clash = sorted({new for _, _, new in changes} & kept)
+        if clash:
+            owners = [names[codes.index(c)] for c in clash[:10]]
+            raise ValueError(
+                f"The corrected codes {clash[:10]} are used by regions that keep "
+                f"their code ({owners}); nothing was changed."
+            )
+
+        # The regions are matched by name, so relabel_by_colortable does the
+        # relabeling in one pass and keeps the names, colors and opacities.
+        self.relabel_by_colortable(ref, bool_case=True, keep_unmatched=True)
+
+        if verbose:
+            print(f"Corrected white matter regions: {len(changes)}")
+            for name, old, new in changes:
+                print(f"  {name}: {old} -> {new}")
+
+        return self
+
+    ######################################################################################################
     def parc_range(self) -> None:
         """
         Update minimum and maximum label values in parcellation.
