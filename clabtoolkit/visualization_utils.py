@@ -190,6 +190,36 @@ def colorbar_needed(maps_names, plotsobj) -> bool:
 
 
 #################################################################################################
+def export_html(plotter: pv.Plotter, save_path: str) -> None:
+    """
+    Save the scene of a plotter as an interactive HTML file.
+
+    PyVista 0.49 deprecated ``Plotter.export_html`` in favor of
+    ``plotter.trame.export_html``, provided by the ``trame-pyvista`` package (installed
+    with ``pyvista[jupyter]``). The trame exporter is used when it is available, and
+    ``Plotter.export_html`` otherwise (older PyVista versions), so no deprecation
+    warning is shown. The HTML is written to ``save_path`` as given, including an
+    ``.htm`` extension (the trame exporter would change it to ``.html``).
+
+    Parameters
+    ----------
+    plotter : pv.Plotter
+        PyVista plotter instance with the scene to export.
+
+    save_path : str
+        Path of the HTML file.
+    """
+    component = getattr(plotter, "trame", None)
+    if component is not None and hasattr(component, "export_html"):
+        buffer = component.export_html(None)
+    else:
+        buffer = plotter.export_html(None)  # PyVista < 0.49
+
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(buffer.getvalue())
+
+
+#################################################################################################
 def finalize_plot(
     plotter: pv.Plotter,
     save_mode: bool,
@@ -219,8 +249,7 @@ def finalize_plot(
         if save_path.lower().endswith((".html", ".htm")):
             # Save as HTML
             try:
-
-                plotter.export_html(save_path)
+                export_html(plotter, save_path)
                 print(f"Figure saved to: {save_path}")
 
             except Exception as e:

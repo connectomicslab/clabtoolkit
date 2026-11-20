@@ -3,11 +3,14 @@
 None of them needs a display: the PyVista plotter is replaced by a recorder.
 """
 
+import io
 import json
+import warnings
 
 import nibabel as nib
 import numpy as np
 import pytest
+import pyvista as pv
 
 import clabtoolkit.pointstools as cltpts
 import clabtoolkit.surfacetools as cltsurf
@@ -78,13 +81,59 @@ class Recorder:
 class TestFinalizePlot:
     @pytest.mark.parametrize(
         "extension,method",
-        [("html", "export_html"), ("svg", "save_graphic"), ("png", "screenshot")],
+        [("svg", "save_graphic"), ("png", "screenshot")],
     )
     def test_saving(self, extension, method, capsys):
         plotter = Recorder()
         vu.finalize_plot(plotter, True, f"/tmp/out.{extension}")
         assert method in plotter.calls and "close" in plotter.calls
         assert "Figure saved to" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("extension", ["html", "htm"])
+    def test_html_uses_the_trame_exporter(self, tmp_path, extension, capsys):
+        class Trame:
+            def export_html(self, filename):
+                assert filename is None
+                return io.StringIO("<html>trame</html>")
+
+        class WithTrame(Recorder):
+            trame = Trame()
+
+        plotter = WithTrame()
+        out = tmp_path / f"out.{extension}"
+        vu.finalize_plot(plotter, True, str(out))
+        # The deprecated Plotter.export_html is not called, and the path is kept
+        assert "export_html" not in plotter.calls and "close" in plotter.calls
+        assert out.read_text() == "<html>trame</html>"
+        assert "Figure saved to" in capsys.readouterr().out
+
+    def test_html_with_older_pyvista(self, tmp_path, capsys):
+        class Old(Recorder):
+            trame = None  # PyVista < 0.49 has no trame component
+
+            def export_html(self, filename):
+                self.calls.append("export_html")
+                return io.StringIO("<html>old</html>")
+
+        plotter = Old()
+        out = tmp_path / "out.html"
+        vu.finalize_plot(plotter, True, str(out))
+        assert "export_html" in plotter.calls
+        assert out.read_text() == "<html>old</html>"
+        assert "Figure saved to" in capsys.readouterr().out
+
+    def test_html_export_without_deprecation_warning(self, tmp_path):
+        plotter = pv.Plotter(off_screen=True)
+        if getattr(plotter, "trame", None) is None:
+            plotter.close()
+            pytest.skip("PyVista without the trame-pyvista exporter")
+        plotter.add_mesh(pv.Sphere())
+        out = tmp_path / "scene.htm"
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", pv.PyVistaDeprecationWarning)
+            vu.export_html(plotter, str(out))
+        plotter.close()
+        assert out.is_file() and "<html" in out.read_text().lower()
 
     @pytest.mark.parametrize(
         "extension,method,message",
