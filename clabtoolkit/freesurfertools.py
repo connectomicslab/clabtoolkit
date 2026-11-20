@@ -5983,7 +5983,9 @@ class FreeSurferSubject:
 
         # Background image, reoriented to RAS and scaled to 0-255
         t1_img = nib.load(t1_file)
-        t1, affine = fsutils.qc_to_ras(np.asarray(t1_img.dataobj, dtype=np.float32), t1_img.affine)
+        t1, affine = fsutils.qc_to_ras(
+            np.asarray(t1_img.dataobj, dtype=np.float32), t1_img.affine
+        )
         zooms = np.sqrt((affine[:3, :3] ** 2).sum(axis=0))
         voxel_volume = float(np.prod(zooms))
 
@@ -6180,7 +6182,9 @@ class FreeSurferSubject:
             panels = []
             for axis, name in enumerate("xyz"):
                 row = []
-                for i, mm in zip(slices[name]["voxel"], slices[name]["mm"], strict=True):
+                for i, mm in zip(
+                    slices[name]["voxel"], slices[name]["mm"], strict=True
+                ):
                     rgb = fsutils.qc_get_slice(gray, axis, i, crop)
                     if labels is None:
                         rgb = np.repeat(rgb[..., None], 3, axis=2)
@@ -6193,7 +6197,10 @@ class FreeSurferSubject:
                             color=color,
                         )
                     lines = [
-                        (fsutils.qc_slice_mesh(vertices, faces, axis, i, crop), line_color)
+                        (
+                            fsutils.qc_slice_mesh(vertices, faces, axis, i, crop),
+                            line_color,
+                        )
                         for vertices, faces, line_color in meshes
                     ]
                     row.append((rgb, f"{name} = {mm:g}", lines))
@@ -6219,7 +6226,9 @@ class FreeSurferSubject:
             not_found = [name for name, f in layer["files"].items() if not f]
             if not_found:
                 report["status"] = "missing"
-                report["note"] = "Not found in the subject folder: " + ", ".join(not_found)
+                report["note"] = "Not found in the subject folder: " + ", ".join(
+                    not_found
+                )
                 continue
 
             out_file = os.path.join(img_dir, image)
@@ -6305,7 +6314,8 @@ class FreeSurferSubject:
                         "color": list(colors),
                         "nvoxels": [int(counts[c]) for c in parc.index],
                         "volume_mm3": [
-                            round(float(counts[c]) * voxel_volume, 2) for c in parc.index
+                            round(float(counts[c]) * voxel_volume, 2)
+                            for c in parc.index
                         ],
                     }
                 )
@@ -6339,8 +6349,8 @@ class FreeSurferSubject:
             table_file = os.path.join(meta_dir, f"{self.subj_id}_stats_table.csv")
             try:
                 table = fsutils.qc_stats_table(self, table_file)
-                table_aseg, table_aparc, table_thickness = fsutils.qc_measures_from_table(
-                    table
+                table_aseg, table_aparc, table_thickness = (
+                    fsutils.qc_measures_from_table(table)
                 )
                 lobes = fsutils.qc_lobes_table(table)
                 regions = fsutils.qc_regions_data(table)
@@ -7066,7 +7076,9 @@ def generate_cohort_qc_webpage(
             subj_id
             for subj_id in subj_ids
             if overwrite
-            or not os.path.isfile(os.path.join(subjs_dir, subj_id, "qcqa", "index.html"))
+            or not os.path.isfile(
+                os.path.join(subjs_dir, subj_id, "qcqa", "index.html")
+            )
         ]
         with Progress(
             SpinnerColumn(),
@@ -7087,7 +7099,10 @@ def generate_cohort_qc_webpage(
                 ) as executor:
                     futures = {
                         executor.submit(
-                            _generate_subject_qc_webpage, subj_id, subjs_dir, report_kwargs
+                            _generate_subject_qc_webpage,
+                            subj_id,
+                            subjs_dir,
+                            report_kwargs,
                         ): subj_id
                         for subj_id in pending
                     }
@@ -7125,7 +7140,11 @@ def generate_cohort_qc_webpage(
         rows.append(
             fsutils.qc_cohort_other_row(
                 name,
-                "Not a FreeSurfer output folder" if exists else "The folder does not exist",
+                (
+                    "Not a FreeSurfer output folder"
+                    if exists
+                    else "The folder does not exist"
+                ),
             )
         )
 
