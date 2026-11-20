@@ -2236,7 +2236,8 @@ def spams2maxprob(
     n_vols = spam_img.shape[3]
 
     if vol_indexes is not None:
-        vol_indexes = cltmisc.build_indices(vol_indexes)
+        # nonzeros=False: 0 is the first volume here, not a background label
+        vol_indexes = cltmisc.build_indices(vol_indexes, nonzeros=False)
         vols2use = sorted({int(v) for v in vol_indexes})
         if vols2use and (vols2use[0] < 0 or vols2use[-1] >= n_vols):
             raise IndexError(

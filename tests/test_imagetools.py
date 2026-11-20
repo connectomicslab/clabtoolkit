@@ -1010,6 +1010,32 @@ class TestSpams:
             np.unique(cltimg.spams2maxprob(str(spam_file), vol_indexes=[0, 1]))
         ) <= {0, 1, 2}
 
+    def test_spams2maxprob_subset_keeps_first_volume(self, tmp_path):
+        # Volume 0 wins in the first block, volume 1 in the second and volume 2
+        # in the third. Selecting volumes 0 and 2 must keep label 1: the first
+        # volume used to be dropped, and its voxels went to another volume
+        spam = np.zeros((6, 2, 2, 3), dtype=np.float32)
+        spam[0:2, ..., 0] = 0.8
+        spam[0:2, ..., 2] = 0.1
+        spam[2:4, ..., 1] = 0.9
+        spam[2:4, ..., 0] = 0.2
+        spam[4:6, ..., 2] = 0.7
+        spam_file = tmp_path / "spam.nii.gz"
+        nib.save(nib.Nifti1Image(spam, np.eye(4)), spam_file)
+
+        maxprob = cltimg.spams2maxprob(str(spam_file), vol_indexes=[0, 2])
+        assert (maxprob[0:2] == 1).all()
+        assert (maxprob[2:4] == 1).all()
+        assert (maxprob[4:6] == 3).all()
+
+        np.testing.assert_array_equal(
+            cltimg.spams2maxprob(str(spam_file), vol_indexes=np.array([2, 0])),
+            maxprob,
+        )
+        np.testing.assert_array_equal(
+            cltimg.spams2maxprob(str(spam_file), vol_indexes="0, 2"), maxprob
+        )
+
     def test_spams2maxprob_writes_lut_ignoring_table_indices(
         self, parc_files, lut_file, tmp_path
     ):
