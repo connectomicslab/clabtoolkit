@@ -2091,13 +2091,18 @@ def spams2maxprob(
     prob_thresh: float = 0.05,
     vol_indexes: np.ndarray | list | str = None,
     maxp_name: str = None,
+    lut_table: str | Path | dict = None,
+    out_ctab: str | Path = None,
+    ctab_format: str = "lut",
 ):
     """
     Convert SPAM probability maps to maximum probability parcellation.
 
     Transforms 4D spatial probability maps into discrete 3D parcellation by
     selecting the most probable label at each voxel, with optional thresholding
-    and volume selection.
+    and volume selection. Optionally, a color table describing the SPAM volumes
+    can be supplied to write a matching color table for the maximum probability
+    image.
 
     Parameters
     ----------
@@ -2116,11 +2121,44 @@ def spams2maxprob(
         Output file path for maximum probability image. If None, returns
         array without saving. Default is None.
 
+    lut_table : str, Path or dict, optional
+        Color table describing the SPAM volumes, in any format accepted by
+        ``ColorTableLoader`` (FreeSurfer LUT, TSV, or a dictionary with at
+        least an 'index' key). It must contain exactly one entry per SPAM
+        volume, in volume order: the n-th entry gives the name, color and
+        opacity of the n-th volume. The indices stored in the table are
+        ignored; the volume position is used instead. Default is None.
+
+    out_ctab : str or Path, optional
+        Output path for the color table of the maximum probability image.
+        Only used if ``lut_table`` is given. If None and ``maxp_name`` is
+        given, the table is written next to the image, with the same base
+        name and a '.tsv' (for 'tsv' and 'nilearn') or '.lut' extension. If
+        both ``out_ctab`` and ``maxp_name`` are None, no table is written.
+        Default is None.
+
+    ctab_format : str, optional
+        Format of the output color table: 'lut', 'tsv', 'fsl' or 'nilearn'.
+        Default is 'lut'.
+
     Returns
     -------
     str or np.ndarray
         Output file path if maxp_name provided, otherwise numpy array
         with maximum probability labels.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the SPAM image does not exist.
+
+    ValueError
+        If the SPAM image is not 4D, if the number of entries in ``lut_table``
+        differs from the number of SPAM volumes, or if ``ctab_format`` is not
+        supported.
+
+    IndexError
+        If ``vol_indexes`` contains indices outside the SPAM volume range.
 
     Notes
     -----
@@ -2133,6 +2171,11 @@ def spams2maxprob(
 
     Useful for converting probabilistic atlases to discrete parcellations
     for analysis requiring discrete labels.
+
+    The label of volume ``i`` (0-based) in the maximum probability image is
+    ``i + 1``, so the output color table assigns index ``i + 1`` to the
+    ``i``-th entry of ``lut_table``. When ``vol_indexes`` is given, only the
+    selected volumes are written to the output color table.
 
     Examples
     --------
@@ -2151,6 +2194,14 @@ def spams2maxprob(
     ...     prob_thresh=0.2
     ... )
     >>> print(f"Max label: {maxprob_array.max()}")
+    >>>
+    >>> # Name and color the volumes, writing 'AAL_discrete.tsv' alongside
+    >>> maxprob_file = spams2maxprob(
+    ...     'AAL_SPAM.nii.gz',
+    ...     maxp_name='AAL_discrete.nii.gz',
+    ...     lut_table='AAL_SPAM.lut',
+    ...     ctab_format='tsv'
+    ... )
     """
 
     # Check if the spam_image exists
@@ -2186,6 +2237,33 @@ def spams2maxprob(
     else:
         vols2use = range(n_vols)
 
+    # Load and validate the color table before the (expensive) volume loop
+    ctab = None
+    if lut_table is not None:
+        supported_formats = ("lut", "tsv", "fsl", "nilearn")
+        ctab_format = str(ctab_format).lower()
+        if ctab_format not in supported_formats:
+            raise ValueError(
+                f"Unsupported ctab_format: {ctab_format}. "
+                f"Supported formats are {supported_formats}."
+            )
+
+        ctab = cltcol.ColorTableLoader(lut_table)
+        if len(ctab.name) != n_vols:
+            raise ValueError(
+                f"The color table has {len(ctab.name)} entries but the SPAM image "
+                f"has {n_vols} volumes: {spam_image}"
+            )
+
+        if out_ctab is None and maxp_name is not None:
+            maxp_path = str(maxp_name)
+            for ext in (".nii.gz", ".nii"):
+                if maxp_path.endswith(ext):
+                    maxp_path = maxp_path[: -len(ext)]
+                    break
+            ctab_ext = ".tsv" if ctab_format in ("tsv", "nilearn") else ".lut"
+            out_ctab = maxp_path + ctab_ext
+
     max_prob = np.zeros(spam_img.shape[:3], dtype=np.float32)
     maxprob_thl = np.zeros(spam_img.shape[:3], dtype=np.int32)
 
@@ -2205,6 +2283,22 @@ def spams2maxprob(
         del prob, winners
 
     del max_prob
+
+    if ctab is not None and out_ctab is not None:
+        # The table indices are ignored: volume i gets the label i + 1, which is
+        # the value it takes in the maximum probability image
+        vols2use = list(vols2use)
+        colors = cltcol.harmonize_colors(ctab.color, output_format="hex")
+        maxp_ctab = cltcol.ColorTableLoader(
+            {
+                "index": [vol + 1 for vol in vols2use],
+                "name": [ctab.name[vol] for vol in vols2use],
+                "color": [colors[vol] for vol in vols2use],
+                "opacity": [ctab.opacity[vol] for vol in vols2use],
+                "headerlines": [],
+            }
+        )
+        maxp_ctab.export(out_ctab, out_format=ctab_format, overwrite=True)
 
     if maxp_name is not None:
         # Save the image

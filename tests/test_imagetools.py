@@ -11,6 +11,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
+import clabtoolkit.colorstools as cltcol
 import clabtoolkit.imagetools as cltimg
 import clabtoolkit.imagetools_utils as imgutils
 
@@ -1008,6 +1009,64 @@ class TestSpams:
         assert set(
             np.unique(cltimg.spams2maxprob(str(spam_file), vol_indexes=[0, 1]))
         ) <= {0, 1, 2}
+
+    def test_spams2maxprob_writes_lut_ignoring_table_indices(
+        self, parc_files, lut_file, tmp_path
+    ):
+        spam_file = tmp_path / "spam.nii.gz"
+        cltimg.create_spams(parc_files, str(spam_file), lut_table=lut_file)
+        # Same names and colors, but with indices unrelated to the volumes
+        ctab = tmp_path / "spam_ctab.lut"
+        colors = [(230, 25, 75), (60, 180, 75), (255, 225, 25), (0, 130, 200)]
+        ctab.write_text(
+            "".join(
+                f"{100 + 7 * i}  vol-{i}  {r} {g} {b} 0\n"
+                for i, (r, g, b) in enumerate(colors)
+            )
+        )
+        out = tmp_path / "maxprob.nii.gz"
+        cltimg.spams2maxprob(str(spam_file), maxp_name=str(out), lut_table=ctab)
+
+        written = cltcol.ColorTableLoader.load_colortable(tmp_path / "maxprob.lut")
+        assert written["index"] == [1, 2, 3, 4]
+        assert written["name"] == ["vol-0", "vol-1", "vol-2", "vol-3"]
+        assert [c.lower() for c in cltcol.harmonize_colors(written["color"])] == [
+            "#e6194b",
+            "#3cb44b",
+            "#ffe119",
+            "#0082c8",
+        ]
+        assert set(np.unique(nib.load(out).get_fdata())) <= set([0] + written["index"])
+
+    def test_spams2maxprob_tsv_output_with_dict_and_subset(
+        self, parc_files, lut_file, tmp_path
+    ):
+        spam_file = tmp_path / "spam.nii.gz"
+        cltimg.create_spams(parc_files, str(spam_file), lut_table=lut_file)
+        lut = {"index": [0, 0, 0, 0], "name": ["a", "b", "c", "d"]}
+        out_ctab = tmp_path / "custom.tsv"
+        cltimg.spams2maxprob(
+            str(spam_file),
+            vol_indexes=[1, 3],
+            lut_table=lut,
+            out_ctab=out_ctab,
+            ctab_format="tsv",
+        )
+        written = cltcol.ColorTableLoader.load_colortable(out_ctab)
+        assert written["index"] == [2, 4]
+        assert written["name"] == ["b", "d"]
+
+    def test_spams2maxprob_rejects_mismatched_colortable(
+        self, parc_files, lut_file, tmp_path
+    ):
+        spam_file = tmp_path / "spam.nii.gz"
+        cltimg.create_spams(parc_files, str(spam_file), lut_table=lut_file)
+        with pytest.raises(ValueError, match="4 volumes"):
+            cltimg.spams2maxprob(
+                str(spam_file), lut_table={"index": [1, 2, 3], "name": list("abc")}
+            )
+        with pytest.raises(ValueError, match="Unsupported ctab_format"):
+            cltimg.spams2maxprob(str(spam_file), lut_table=lut_file, ctab_format="xls")
 
 
 class TestSpamsFromVolume:
