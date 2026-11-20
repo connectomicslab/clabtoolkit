@@ -5073,6 +5073,172 @@ class FreeSurferSubject:
         return ind_annot
 
     ####################################################################################################
+    def surf2vol_from_files(
+        self,
+        hemi_parcs: list[str] | list[Path],
+        out_vol: str | Path,
+        gm_grow: int | str = "0",
+        color_table: list | str = None,
+        bool_native: bool = False,
+        bool_mixwm: bool = False,
+        cont_tech: str = "local",
+        cont_image: str | Path = None,
+        overwrite: bool = False,
+        verbose: bool = False,
+    ):
+        """
+        Create volumetric parcellation from surface annotation files.
+
+        Converts a surface parcellation given as files (one per hemisphere) to
+        volumetric format, with the same options as ``surf2vol`` for label
+        growing, white matter mixing and coordinate space selection. Unlike
+        ``surf2vol``, the annotations do not need to be in the label folder of
+        the subject: the files are read with ``AnnotParcellation``, saved there
+        temporarily as ``lh.temp_atlas.annot`` and ``rh.temp_atlas.annot``, and
+        converted with ``surf2vol``.
+
+        Parameters
+        ----------
+        hemi_parcs : list[str] or list[Path]
+            Paths to the annotation files of the left and right hemispheres, in
+            this order. Any format read by ``AnnotParcellation`` can be used
+            (.annot, GIFTI or .gcs). The annotations must be defined on the
+            surfaces of this subject.
+
+        out_vol : str or Path
+            Path for output volumetric parcellation file.
+
+        gm_grow : int or str, optional
+            Amount in millimeters to grow gray matter labels into surrounding
+            tissue. Can help fill gaps between surface and volume. Default is "0".
+
+        color_table : list or str, optional
+            Format(s) for saving color lookup table: 'tsv', 'lut', or list
+            of both ['tsv', 'lut']. Default is None (no color table saved).
+
+        bool_native : bool, optional
+            If True, output parcellation in native subject space. If False,
+            uses FreeSurfer's standard space. Default is False.
+
+        bool_mixwm : bool, optional
+            Mix cortical white matter growing with gray matter labels.
+            Extends cortical labels into white matter regions. Default is False.
+
+        cont_tech : str, optional
+            Container technology: 'local', 'docker', 'singularity'. Default is 'local'.
+
+        cont_image : str or Path, optional
+            Container image specification when using containerization. Default is None.
+
+        overwrite : bool, optional
+            overwrite processing even if output file exists. Default is False.
+
+        verbose : bool, optional
+            Print verbose messages about processing progress. Default is False.
+
+        Returns
+        -------
+        out_vol : str
+            Path to the created volumetric parcellation file.
+
+        Raises
+        ------
+        ValueError
+            If hemi_parcs is not a list with two files (left and right
+            hemispheres).
+
+        FileNotFoundError
+            If one of the annotation files does not exist.
+
+        RuntimeError
+            If mri_aparc2aseg does not create the volume.
+
+        Notes
+        -----
+        The color tables are saved next to the volume, with the extension of the
+        volume (.nii.gz, .nii, .mgz or .mgh) replaced by .tsv or .lut.
+
+        The temporary annotations are removed once the volume exists. If the
+        conversion fails they are kept in the label folder of the subject, and
+        they are replaced the next time the method is run.
+
+        Examples
+        --------
+        >>> # Basic conversion of an annotation stored outside the subject folder
+        >>> vol_file = subject.surf2vol_from_files(
+        ...     hemi_parcs=['/atlases/lh.custom.annot', '/atlases/rh.custom.annot'],
+        ...     out_vol='/output/custom_volume.mgz'
+        ... )
+        >>>
+        >>> # With gray matter growing and color tables
+        >>> vol_file = subject.surf2vol_from_files(
+        ...     hemi_parcs=['/atlases/lh.custom.annot', '/atlases/rh.custom.annot'],
+        ...     out_vol='/output/custom_volume.mgz',
+        ...     gm_grow="2",
+        ...     color_table=['tsv', 'lut'],
+        ...     bool_mixwm=True
+        ... )
+        >>>
+        >>> # Native space output
+        >>> vol_file = subject.surf2vol_from_files(
+        ...     hemi_parcs=['/atlases/lh.custom.annot', '/atlases/rh.custom.annot'],
+        ...     out_vol='/output/custom_native.nii.gz',
+        ...     bool_native=True,
+        ...     overwrite=True
+        ... )
+        """
+        # Verifying that both hemispheres are given (a single string would
+        # otherwise be split into characters)
+        if isinstance(hemi_parcs, (str, Path)) or len(hemi_parcs) != 2:
+            raise ValueError(
+                "hemi_parcs must be a list with the annotation files of the left "
+                "and right hemispheres, in this order."
+            )
+
+        lh_path = str(hemi_parcs[0])
+        rh_path = str(hemi_parcs[1])
+        missing = [f for f in (lh_path, rh_path) if not os.path.isfile(f)]
+        if missing:
+            raise FileNotFoundError(
+                "The hemisphere annotation file(s) do not exist: " + ", ".join(missing)
+            )
+
+        lh_temp_path = os.path.join(
+            self.subjs_dir, self.subj_id, "label", "lh.temp_atlas.annot"
+        )
+        rh_temp_path = os.path.join(
+            self.subjs_dir, self.subj_id, "label", "rh.temp_atlas.annot"
+        )
+
+        lh_annot = AnnotParcellation(lh_path)
+        rh_annot = AnnotParcellation(rh_path)
+
+        # Saving the annotation files to the label folder
+        lh_annot.save_annotation(lh_temp_path)
+        rh_annot.save_annotation(rh_temp_path)
+
+        ## Calling the volumetric conversion function with the temporary atlas
+        out_vol = self.surf2vol(
+            atlas="temp_atlas",
+            out_vol=out_vol,
+            gm_grow=gm_grow,
+            color_table=color_table,
+            bool_native=bool_native,
+            bool_mixwm=bool_mixwm,
+            cont_tech=cont_tech,
+            cont_image=cont_image,
+            overwrite=overwrite,
+            verbose=verbose,
+        )
+        # Removing the temporary annotation files if the output volume was successfully created
+        if os.path.exists(lh_temp_path) and os.path.isfile(out_vol):
+            os.remove(lh_temp_path)
+        if os.path.exists(rh_temp_path) and os.path.isfile(out_vol):
+            os.remove(rh_temp_path)
+
+        return out_vol
+
+    ####################################################################################################
     def surf2vol(
         self,
         atlas: str | Path,

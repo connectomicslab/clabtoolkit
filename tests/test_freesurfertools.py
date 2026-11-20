@@ -3043,6 +3043,97 @@ class TestSurfaceToVolume:
         with pytest.raises(RuntimeError, match="mri_aparc2aseg did not create"):
             subject.surf2vol("aparc", tmp_path / "aparc.nii.gz")
 
+    # ------------------------------------------------------- surf2vol_from_files
+    LOBES = ["frontal", "parietal", "temporal", "occipital", "insula"]
+
+    @pytest.fixture
+    def custom_files(self, tmp_path, sphere):
+        """Annotations of both hemispheres outside the subject folder."""
+        annot = AnnotParcellation.simulate_annotation(
+            sphere, n_regions=5, region_names=self.LOBES, seed=7, annot_id="custom"
+        )
+        files = [tmp_path / "atlases" / f"{h}.custom.annot" for h in ("lh", "rh")]
+        for f in files:
+            annot.save_annotation(str(f))
+        return files
+
+    @staticmethod
+    def temp_annots(subject):
+        label = Path(subject.subjs_dir) / subject.subj_id / "label"
+        return [label / f"{h}.temp_atlas.annot" for h in ("lh", "rh")]
+
+    def test_from_files_converts_the_given_annotations(
+        self, tmp_path, subject, fake_run, custom_files
+    ):
+        temps = self.temp_annots(subject)
+        create = self.creates_volume()
+        during = {}
+
+        def create_and_inspect(cmd):
+            # While mri_aparc2aseg runs, the given annotations are in the label folder
+            for f, temp in zip(custom_files, temps, strict=True):
+                during[temp.name] = temp.is_file() and np.array_equal(
+                    nib.freesurfer.read_annot(str(temp))[0],
+                    nib.freesurfer.read_annot(str(f))[0],
+                )
+            return create(cmd)
+
+        fake_run.creates = create_and_inspect
+        out = tmp_path / "vol" / "custom.nii.gz"
+        assert subject.surf2vol_from_files(custom_files, out) == str(out)
+        assert fake_run.commands == [
+            [
+                "mri_aparc2aseg", "--s", subject.subj_id, "--annot", "temp_atlas",
+                "--hypo-as-wm", "--new-ribbon", "--o", str(out),
+            ]
+        ]  # fmt: skip
+        assert during == {t.name: True for t in temps}
+        # The temporary annotations are removed and the given files are kept
+        assert not any(t.exists() for t in temps)
+        assert all(f.is_file() for f in custom_files)
+
+    def test_from_files_options_are_passed_to_surf2vol(
+        self, tmp_path, subject, fake_run, custom_files, fs_home
+    ):
+        fake_run.creates = self.creates_volume()
+        out = tmp_path / "custom.nii.gz"
+        subject.surf2vol_from_files(
+            [str(f) for f in custom_files], out, gm_grow=2, color_table="tsv"
+        )
+        cmd = fake_run.commands[0]
+        assert cmd[cmd.index("--wmparc-dmax") + 1] == "2"
+        # The color table has the regions of the given annotations, not of aparc
+        names = pd.read_csv(tmp_path / "custom.tsv", sep="\t")["name"].tolist()
+        assert "ctx-lh-frontal" in names and "wm-rh-insula" in names
+        assert "ctx-lh-bankssts" not in names
+
+    @pytest.mark.parametrize(
+        "hemi_parcs",
+        ["lh.custom.annot", ["lh.custom.annot"], ["a.annot", "b.annot", "c.annot"]],
+    )
+    def test_from_files_needs_both_hemispheres(
+        self, tmp_path, subject, fake_run, hemi_parcs
+    ):
+        with pytest.raises(ValueError, match="left and right hemispheres"):
+            subject.surf2vol_from_files(hemi_parcs, tmp_path / "custom.nii.gz")
+        assert fake_run.commands == []
+
+    def test_from_files_missing_file(self, tmp_path, subject, fake_run, custom_files):
+        missing = tmp_path / "atlases" / "rh.missing.annot"
+        with pytest.raises(FileNotFoundError, match="rh.missing.annot"):
+            subject.surf2vol_from_files(
+                [custom_files[0], missing], tmp_path / "custom.nii.gz"
+            )
+        assert fake_run.commands == []
+        assert not any(t.exists() for t in self.temp_annots(subject))
+
+    def test_from_files_failed_conversion_keeps_the_temporary_files(
+        self, tmp_path, subject, fake_run, custom_files
+    ):
+        with pytest.raises(RuntimeError, match="mri_aparc2aseg did not create"):
+            subject.surf2vol_from_files(custom_files, tmp_path / "custom.nii.gz")
+        assert all(t.is_file() for t in self.temp_annots(subject))
+
 
 class TestConformToNative:
     @pytest.fixture

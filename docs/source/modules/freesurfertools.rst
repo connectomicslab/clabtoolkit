@@ -72,6 +72,7 @@ Key Methods:
 - ``surface_hemi_morpho()``: Compute surface morphometry for one hemisphere
 - ``annot2ind()`` / ``gcs2ind()``: Map atlas annotations to individual space
 - ``surf2vol()``: Convert a surface atlas to a volumetric parcellation
+- ``surf2vol_from_files()``: Convert the annotation files of both hemispheres to a volumetric parcellation
 - ``conform2native()``: Convert conformed space back to native space
 
 Main Functions
