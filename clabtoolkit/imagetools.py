@@ -23,7 +23,6 @@ from scipy.ndimage import (
     gaussian_filter,
     label,
 )
-from scipy.spatial import distance
 from skimage import measure
 
 from . import bidstools as cltbids
@@ -3619,14 +3618,15 @@ def region_growing(
     iparc: np.ndarray,
     mask: np.ndarray | np.bool_,
     neighborhood: str = "26",
-    min_neighbors: int = 6,
+    min_neighbors: int = 1,
 ) -> np.ndarray:
     """
     Fill gaps in parcellation using region growing algorithm.
 
-    Labels unlabeled voxels within the mask by assigning the most frequent
-    label among their labeled neighbors, iteratively until convergence or
-    no more voxels can be labeled.
+    Labels the unlabeled voxels of the mask with the labels of the
+    parcellation, growing the labels from the labeled voxels outwards, one
+    layer of voxels at a time, until every voxel of the mask that can be
+    reached from a labeled voxel is labeled.
 
     Parameters
     ----------
@@ -3634,40 +3634,59 @@ def region_growing(
         3D parcellation array with labeled (>0) and unlabeled (0) voxels.
 
     mask : np.ndarray or bool array
-        3D binary mask defining the region where growing should occur.
+        3D mask defining the region to label. Any non-zero value is part of
+        the mask, so boolean, integer and float arrays (such as the output of
+        ``nibabel``'s ``get_fdata``) can be given. Must have the shape of
+        ``iparc``.
 
     neighborhood : str, optional
-        Neighborhood connectivity: '6', '18', or '26' for 3D. Default is '26'.
+        Neighborhood connectivity: '6', '12', '18' or '26'. It defines the
+        neighbors that are counted and that vote for the label.
+        Default is '26'.
 
     min_neighbors : int, optional
-        Minimum number of labeled neighbors required for a voxel to be
-        assigned a label. Voxels that never reach this threshold (e.g.
-        thin spurs poking into a neighboring region, or corners with
-        sparse support) are left unlabeled (0) instead of being grown.
-        Raise this value to make growing more conservative and prevent
-        thin "fingers" from leaking into adjacent structures. Default is 6.
+        Minimum number of labeled neighbors an unlabeled voxel needs to be
+        labeled in an iteration. With the default of 1, every voxel of the
+        mask that is connected to a labeled voxel is labeled. Higher values
+        make the growing more conservative (thin spurs poking into a
+        neighboring region need more support), but voxels that never reach
+        the threshold are left unlabeled (0). Must be between 1 and the size
+        of the neighborhood. Default is 1.
 
     Returns
     -------
     np.ndarray
-        Updated parcellation array with gaps filled, masked to input mask.
-        Voxels inside the mask that never reached `min_neighbors` labeled
-        neighbors remain 0.
+        Parcellation with the same shape and type as ``iparc``, with the gaps
+        of the mask filled and every voxel outside the mask set to 0.
+
+    Raises
+    ------
+    ValueError
+        If ``iparc`` is not 3D, if ``mask`` does not have its shape, if
+        ``neighborhood`` is not supported or if ``min_neighbors`` is out of
+        range.
+
+    Warns
+    -----
+    UserWarning
+        If some voxels of the mask could not be labeled: they are not
+        connected to any labeled voxel or never reach ``min_neighbors``.
 
     Notes
     -----
     The algorithm works iteratively:
 
-    1. Identifies unlabeled voxels with at least `min_neighbors` labeled
-       neighbors.
-    2. For each candidate voxel, finds most frequent label among neighbors.
-    3. In case of ties, selects label from spatially closest neighbor.
-    4. Repeats until no more voxels can be labeled or convergence.
+    1. Finds the front: the unlabeled voxels of the mask with at least
+       `min_neighbors` labeled neighbors.
+    2. Gives each voxel of the front the most frequent label among its
+       labeled neighbors. Ties go to the label of the closest neighbor
+       (face, then edge, then corner) and then to the smallest label.
+    3. Labels the whole front at once, so the labels grow one layer per
+       iteration at the same speed in every direction, and repeats until
+       the front is empty.
 
-    Because the candidate-selection criterion and the assignment criterion
-    both use `min_neighbors`, the algorithm is guaranteed to terminate:
-    once no remaining candidate meets the threshold, the loop stops and
-    those voxels stay at 0.
+    Labeled voxels outside the mask also act as seeds for the voxels of the
+    mask next to them. The input parcellation is not modified.
 
     Particularly useful for:
 
@@ -3677,124 +3696,133 @@ def region_growing(
 
     Examples
     --------
-    >>> # Fill gaps in parcellation, conservative (avoids thin leaks)
-    >>> filled_parc = region_growing(parcellation_array, brain_mask, min_neighbors=9)
+    >>> # Label every voxel of a brain mask from a partial parcellation
+    >>> filled_parc = region_growing(parcellation_array, brain_mask)
     >>> print(f"Filled {np.sum(filled_parc > 0) - np.sum(parcellation_array > 0)} voxels")
     >>>
-    >>> # Use 6-connectivity for more conservative growing
+    >>> # Mask read with nibabel (float values) and conservative growing
+    >>> mask = nib.load('mask.nii.gz').get_fdata()
     >>> conservative_fill = region_growing(
     ...     incomplete_labels,
-    ...     region_mask,
+    ...     mask,
     ...     neighborhood='6',
-    ...     min_neighbors=4,
+    ...     min_neighbors=2,
     ... )
     """
 
+    iparc = np.asarray(iparc)
+    if iparc.ndim != 3:
+        raise ValueError(f"iparc must be a 3D array, got shape {iparc.shape}")
+
+    # Any non-zero value is part of the mask (get_fdata returns floats)
+    mask = np.asarray(mask) != 0
+    if mask.shape != iparc.shape:
+        raise ValueError(
+            f"The mask shape {mask.shape} does not match the parcellation shape "
+            f"{iparc.shape}"
+        )
+
+    # Offsets of the neighbors and their distances to the center voxel
+    offsets = get_vox_neighbors(
+        coord=np.zeros(3, dtype=int), neighborhood=neighborhood, dims="3"
+    )
+    n_neigh = len(offsets)
+    if not 1 <= min_neighbors <= n_neigh:
+        raise ValueError(
+            f"min_neighbors must be between 1 and {n_neigh} for a "
+            f"{neighborhood}-neighborhood, got {min_neighbors}"
+        )
+    off_dist = np.linalg.norm(offsets, axis=1)
+
+    kernel = np.zeros((3, 3, 3), dtype=np.uint8)
+    kernel[tuple((offsets + 1).T)] = 1
+    # The kernel is used with correlate semantics; flip it for convolve so
+    # asymmetric neighborhoods ('12') count the right voxels
+    kernel = kernel[::-1, ::-1, ::-1]
+
     # Work on a copy so the caller's parcellation is not modified
-    iparc = iparc.copy()
+    out = iparc.copy()
 
-    # Create a binary array where labeled voxels are marked as 1
-    binary_labels = (iparc > 0).astype(int)
+    if not mask.any():
+        return np.zeros_like(out)
 
-    # Convolve with the kernel to count labeled neighbors for each voxel
-    kernel = np.array(
-        [
-            [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
-            [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
-            [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
-        ]
-    )
-    labeled_neighbor_count = convolve(binary_labels, kernel, mode="constant", cval=0)
+    # Restrict the work to the bounding box of the mask plus one voxel, the
+    # only labels that can reach it
+    nz = np.argwhere(mask)
+    lo = np.maximum(nz.min(axis=0) - 1, 0)
+    hi = np.minimum(nz.max(axis=0) + 2, mask.shape)
+    del nz
+    box = tuple(slice(a, b) for a, b in zip(lo, hi, strict=True))
+    sub = out[box]  # view: labels written here go to out
+    sub_mask = mask[box]
+    sub_shape = np.array(sub.shape)
 
-    # Candidate voxels must have at least `min_neighbors` labeled neighbors.
-    # Using the same threshold here and at assignment time guarantees the
-    # while-loop below actually converges instead of stalling on voxels
-    # that can never be assigned.
-    mask_with_labeled_neighbors = (labeled_neighbor_count >= min_neighbors) & (
-        iparc == 0
-    )
-    ind = np.argwhere(
-        (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
-    )
-    ind_orig = ind.copy() * 0
+    labeled = sub > 0
 
-    # Loop until no more voxels could be labeled or all the voxels are labeled
-    while (len(ind) > 0) & (not np.array_equal(ind, ind_orig)):
-        ind_orig = ind.copy()
-        # Process each unlabeled voxel
-        for coord in ind:
-            x, y, z = coord
+    while True:
+        unlabeled = sub_mask & ~labeled
+        if not unlabeled.any():
+            break
 
-            # Detecting the neighbors
-            neighbors = get_vox_neighbors(
-                coord=coord, neighborhood=neighborhood, dims="3"
+        # Number of labeled neighbors of every voxel
+        n_labeled = convolve(labeled.astype(np.uint8), kernel, mode="constant", cval=0)
+        front = np.argwhere(unlabeled & (n_labeled >= min_neighbors))
+        del n_labeled
+        if len(front) == 0:
+            break
+
+        # Labels of the neighbors of the front, read before any of them is
+        # labeled so the whole front grows at once (no scan-order bias)
+        neigh = front[:, None, :] + offsets[None, :, :]
+        inside = np.all((neigh >= 0) & (neigh < sub_shape), axis=2)
+        neigh = np.where(inside[..., None], neigh, 0)
+        neigh_lab = np.where(
+            inside, sub[neigh[..., 0], neigh[..., 1], neigh[..., 2]], 0
+        )
+        del neigh, inside
+
+        # One entry per labeled neighbor: (front voxel, label, distance)
+        rows = np.repeat(np.arange(len(front)), n_neigh)
+        labs = neigh_lab.ravel()
+        dists = np.tile(off_dist, len(front))
+        keep = labs > 0
+        rows, labs, dists = rows[keep], labs[keep], dists[keep]
+
+        # Group by (front voxel, label): count and distance of the closest
+        order = np.lexsort((dists, labs, rows))
+        rows, labs, dists = rows[order], labs[order], dists[order]
+        starts = np.flatnonzero(
+            np.r_[True, (rows[1:] != rows[:-1]) | (labs[1:] != labs[:-1])]
+        )
+        g_rows, g_labs, g_dist = rows[starts], labs[starts], dists[starts]
+        g_count = np.diff(np.r_[starts, len(rows)])
+
+        # Winner of each front voxel: most votes, then closest, then smallest
+        order = np.lexsort((g_labs, g_dist, -g_count, g_rows))
+        g_rows, g_labs = g_rows[order], g_labs[order]
+        first = np.r_[True, g_rows[1:] != g_rows[:-1]]
+        win_rows, win_labs = g_rows[first], g_labs[first]
+
+        tgt = front[win_rows]
+        sub[tgt[:, 0], tgt[:, 1], tgt[:, 2]] = win_labs
+        labeled[tgt[:, 0], tgt[:, 1], tgt[:, 2]] = True
+
+    n_left = int((sub_mask & ~labeled).sum())
+    if n_left > 0:
+        warnings.warn(
+            f"{n_left} voxels of the mask could not be labeled: they are not "
+            "connected to any labeled voxel"
+            + (
+                f" or have fewer than {min_neighbors} labeled neighbors"
+                if min_neighbors > 1
+                else ""
             )
-            # Remove from motion the coordinates out of the bounding box
-            neighbors = neighbors[
-                (neighbors[:, 0] >= 0)
-                & (neighbors[:, 0] < iparc.shape[0])
-                & (neighbors[:, 1] >= 0)
-                & (neighbors[:, 1] < iparc.shape[1])
-                & (neighbors[:, 2] >= 0)
-                & (neighbors[:, 2] < iparc.shape[2])
-            ]
-
-            # Labels of the neighbors
-            neigh_lab = iparc[neighbors[:, 0], neighbors[:, 1], neighbors[:, 2]]
-
-            # Require at least `min_neighbors` labeled neighbors to assign
-            # a label. This is the same threshold used to build `ind`
-            # above, so voxels that fail here will also be excluded from
-            # the next iteration's candidate list (their neighbor count
-            # only increases if a nearby voxel gets labeled elsewhere).
-            if len(np.argwhere(neigh_lab > 0)) >= min_neighbors:
-
-                # Remove the neighbors that are not labeled
-                neighbors = neighbors[neigh_lab > 0]
-                neigh_lab = neigh_lab[neigh_lab > 0]
-
-                unique_labels, counts = np.unique(neigh_lab, return_counts=True)
-                max_count = counts.max()
-                max_labels = unique_labels[counts == max_count]
-
-                if len(max_labels) == 1:
-                    iparc[x, y, z] = max_labels[0]
-
-                else:
-                    # In case of tie, choose the label of the closest neighbor
-                    distances = [
-                        distance.euclidean(coord, (dx, dy, dz))
-                        for (dx, dy, dz), lbl in zip(neighbors, neigh_lab, strict=False)
-                        if lbl in max_labels
-                    ]
-                    closest_label = max_labels[np.argmin(distances)]
-                    iparc[x, y, z] = closest_label
-                # most_frequent_label = np.bincount(neigh_lab[neigh_lab != 0]).argmax()
-
-        # Create a binary array where labeled voxels are marked as 1
-        binary_labels = (iparc > 0).astype(int)
-
-        # Convolve with the kernel to count labeled neighbors for each voxel
-        labeled_neighbor_count = convolve(
-            binary_labels, kernel, mode="constant", cval=0
+            + ". They are left as 0.",
+            stacklevel=2,
         )
 
-        # Mask for voxels that have at least `min_neighbors` labeled neighbors
-        mask_with_labeled_neighbors = (labeled_neighbor_count >= min_neighbors) & (
-            iparc == 0
-        )
-        ind = np.argwhere(
-            (mask_with_labeled_neighbors != 0) & (binary_labels == 0) & (mask)
-        )
-
-    # Voxels inside `mask` that never reached `min_neighbors` are left
-    # unlabeled. Made explicit here (rather than relying only on the
-    # multiplication below) so the intent is clear and safe even if
-    # `iparc` had stray nonzero values outside of proper labeling.
-    still_unlabeled = (iparc == 0) & mask.astype(bool)
-    iparc[still_unlabeled] = 0
-
-    return iparc * mask
+    out[~mask] = 0
+    return out
 
 
 #####################################################################################################

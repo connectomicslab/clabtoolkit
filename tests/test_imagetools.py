@@ -1328,6 +1328,66 @@ class TestRegionGrowing:
         assert (strict == 0).sum() >= (default == 0).sum()
         assert np.array_equal(strict[holed > 0], holed[holed > 0])
 
+    def test_float_mask_labels_every_voxel(self, data):
+        truth, holed, mask, gaps = data
+        # A mask read with get_fdata is float64
+        filled = cltimg.region_growing(holed, mask.astype(np.float64))
+        assert filled.dtype == holed.dtype
+        assert not ((filled == 0) & mask).any()
+        assert np.array_equal(filled[holed > 0], holed[holed > 0])
+
+    def test_thin_structures_are_labeled(self):
+        # A one-voxel-wide line has at most 2 labeled neighbors per voxel
+        parc = np.zeros((5, 5, 15), dtype=np.int16)
+        mask = np.zeros(parc.shape, dtype=bool)
+        mask[2, 2, :] = True
+        parc[2, 2, 0] = 3
+        filled = cltimg.region_growing(parc, mask)
+        assert np.all(filled[2, 2, :] == 3)
+
+    def test_labels_grow_at_the_same_speed(self):
+        # Two seeds at both ends of a line meet in the middle; a sequential
+        # scan would let the first seed sweep through the whole line
+        parc = np.zeros((3, 3, 11), dtype=np.int32)
+        mask = np.zeros(parc.shape, dtype=bool)
+        mask[1, 1, :] = True
+        parc[1, 1, 0] = 1
+        parc[1, 1, 10] = 2
+        filled = cltimg.region_growing(parc, mask, neighborhood="6")
+        # The middle voxel is a tie at the same distance: smallest label
+        assert filled[1, 1, :].tolist() == [1] * 6 + [2] * 5
+
+    def test_seeds_outside_the_mask_are_used_but_removed(self):
+        parc = np.zeros((5, 5, 5), dtype=np.int32)
+        mask = np.zeros(parc.shape, dtype=bool)
+        mask[1:4, 1:4, 2:4] = True
+        parc[1:4, 1:4, 1] = 7  # labeled slab just outside the mask
+        filled = cltimg.region_growing(parc, mask)
+        assert np.all(filled[mask] == 7)
+        assert not filled[~mask].any()
+
+    def test_unreachable_voxels_warn_and_stay_zero(self):
+        parc = np.zeros((10, 10, 10), dtype=np.int32)
+        mask = np.zeros(parc.shape, dtype=bool)
+        mask[1:4, 1:4, 1:4] = True
+        mask[6:9, 6:9, 6:9] = True  # component without any label
+        parc[2, 2, 2] = 5
+        with pytest.warns(UserWarning, match="27 voxels"):
+            filled = cltimg.region_growing(parc, mask)
+        assert np.all(filled[1:4, 1:4, 1:4] == 5)
+        assert not filled[6:9, 6:9, 6:9].any()
+
+    def test_invalid_inputs(self, data):
+        truth, holed, mask, gaps = data
+        with pytest.raises(ValueError, match="does not match"):
+            cltimg.region_growing(holed, mask[:-1])
+        with pytest.raises(ValueError, match="min_neighbors"):
+            cltimg.region_growing(holed, mask, neighborhood="6", min_neighbors=7)
+        with pytest.raises(ValueError, match="min_neighbors"):
+            cltimg.region_growing(holed, mask, min_neighbors=0)
+        with pytest.raises(ValueError, match="not supported"):
+            cltimg.region_growing(holed, mask, neighborhood="5")
+
 
 ######################################################################################################
 class TestImagetoolsUtils:
