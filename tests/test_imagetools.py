@@ -1056,6 +1056,37 @@ class TestSpams:
         assert written["index"] == [2, 4]
         assert written["name"] == ["b", "d"]
 
+    def test_spams2maxprob_overwrite(self, parc_files, lut_file, tmp_path):
+        spam_file = tmp_path / "spam.nii.gz"
+        cltimg.create_spams(parc_files, str(spam_file), lut_table=lut_file)
+        out = tmp_path / "maxprob.nii.gz"
+        ctab = tmp_path / "maxprob.lut"
+
+        # An existing image is not replaced without overwrite=True
+        out.write_text("existing")
+        with pytest.raises(FileExistsError, match="maxprob.nii.gz"):
+            cltimg.spams2maxprob(str(spam_file), maxp_name=str(out))
+        assert out.read_text() == "existing"
+
+        # Neither is an existing color table, and the image is not written either
+        out.unlink()
+        ctab.write_text("existing")
+        with pytest.raises(FileExistsError, match="maxprob.lut"):
+            cltimg.spams2maxprob(str(spam_file), maxp_name=str(out), lut_table=lut_file)
+        assert not out.exists()
+        assert ctab.read_text() == "existing"
+
+        # A color table is only checked when one is written
+        cltimg.spams2maxprob(str(spam_file), maxp_name=str(out))
+        assert out.is_file()
+
+        cltimg.spams2maxprob(
+            str(spam_file), maxp_name=str(out), lut_table=lut_file, overwrite=True
+        )
+        assert nib.load(out).shape == (20, 20, 12)
+        written = cltcol.ColorTableLoader.load_colortable(ctab)
+        assert written["index"] == [1, 2, 3, 4]
+
     def test_spams2maxprob_rejects_mismatched_colortable(
         self, parc_files, lut_file, tmp_path
     ):

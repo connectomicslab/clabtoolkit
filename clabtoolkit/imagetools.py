@@ -2094,6 +2094,7 @@ def spams2maxprob(
     lut_table: str | Path | dict = None,
     out_ctab: str | Path = None,
     ctab_format: str = "lut",
+    overwrite: bool = False,
 ):
     """
     Convert SPAM probability maps to maximum probability parcellation.
@@ -2141,6 +2142,11 @@ def spams2maxprob(
         Format of the output color table: 'lut', 'tsv', 'fsl' or 'nilearn'.
         Default is 'lut'.
 
+    overwrite : bool, optional
+        If True, replace the maximum probability image and its color table if
+        they already exist. If False, an existing output raises a
+        ``FileExistsError`` before any volume is read. Default is False.
+
     Returns
     -------
     str or np.ndarray
@@ -2151,6 +2157,10 @@ def spams2maxprob(
     ------
     FileNotFoundError
         If the SPAM image does not exist.
+
+    FileExistsError
+        If ``maxp_name`` or the output color table already exists and
+        ``overwrite`` is False.
 
     ValueError
         If the SPAM image is not 4D, if the number of entries in ``lut_table``
@@ -2263,6 +2273,18 @@ def spams2maxprob(
                     break
             ctab_ext = ".tsv" if ctab_format in ("tsv", "nilearn") else ".lut"
             out_ctab = maxp_path + ctab_ext
+
+    # Refuse to replace existing outputs before the (expensive) volume loop
+    if not overwrite:
+        outputs = [maxp_name]
+        if ctab is not None:
+            outputs.append(out_ctab)
+        for out_file in outputs:
+            if out_file is not None and os.path.exists(out_file):
+                raise FileExistsError(
+                    f"Output file {out_file} already exists. "
+                    "Use 'overwrite=True' to replace it."
+                )
 
     max_prob = np.zeros(spam_img.shape[:3], dtype=np.float32)
     maxprob_thl = np.zeros(spam_img.shape[:3], dtype=np.int32)
